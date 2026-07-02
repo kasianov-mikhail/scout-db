@@ -8,7 +8,7 @@
 import CryptoKit
 import Foundation
 
-struct UniversalCoder {
+struct EntityCoder {
     var keyProvider: (any EncryptionKeyProvider)?
 
     static let calendar: Calendar = {
@@ -40,20 +40,20 @@ struct UniversalCoder {
         }
         for field in fields {
             guard let value = resolved[field.name] else {
-                if field.required == true { throw UniversalSchemaError.missingField(field.name) }
+                if field.required == true { throw SchemaError.missingField(field.name) }
                 continue
             }
-            guard field.type.matches(value) else { throw UniversalSchemaError.typeMismatch(field.name) }
+            guard field.type.matches(value) else { throw SchemaError.typeMismatch(field.name) }
             if let allowed = field.allowed, case .string(let raw) = value, !allowed.contains(raw) {
-                throw UniversalSchemaError.invalidValue(field.name)
+                throw SchemaError.invalidValue(field.name)
             }
             if let scalar = value.scalar {
-                if let minimum = field.minimum, scalar < minimum { throw UniversalSchemaError.invalidValue(field.name) }
-                if let maximum = field.maximum, scalar > maximum { throw UniversalSchemaError.invalidValue(field.name) }
+                if let minimum = field.minimum, scalar < minimum { throw SchemaError.invalidValue(field.name) }
+                if let maximum = field.maximum, scalar > maximum { throw SchemaError.invalidValue(field.name) }
             }
         }
         for name in resolved.keys where !fields.contains(where: { $0.name == name }) {
-            throw UniversalSchemaError.unknownField(name)
+            throw SchemaError.unknownField(name)
         }
         return resolved
     }
@@ -61,7 +61,7 @@ struct UniversalCoder {
     func naturalUUID(for values: [String: RecordValue], using definition: EntityDefinition) throws -> String? {
         guard let unique = definition.unique else { return nil }
         let key = try unique.map { name in
-            guard let value = values[name] else { throw UniversalSchemaError.missingField(name) }
+            guard let value = values[name] else { throw SchemaError.missingField(name) }
             return "\(name)=\(value.canonical)"
         }
         let digest = SHA256.hash(data: Data(key.joined(separator: "|").utf8))
@@ -99,10 +99,10 @@ struct UniversalCoder {
 
     func decode(_ record: Record, using definition: EntityDefinition) throws -> EntityRecord {
         guard let version: Int64 = record["schema_version"], let uuid: String = record["uuid"] else {
-            throw UniversalSchemaError.staleSchema(entity: definition.entity, version: 0)
+            throw SchemaError.staleSchema(entity: definition.entity, version: 0)
         }
         guard version <= definition.version else {
-            throw UniversalSchemaError.staleSchema(entity: definition.entity, version: Int(version))
+            throw SchemaError.staleSchema(entity: definition.entity, version: Int(version))
         }
 
         var payload: [String: RecordValue] = [:]

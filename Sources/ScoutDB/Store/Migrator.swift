@@ -7,12 +7,12 @@
 
 import Foundation
 
-public struct UniversalMigrator: Sendable {
-    let database: any RecordReader & RecordWriter
+public struct Migrator: Sendable {
+    let database: any Database
     let registry: SchemaRegistry
     var keyProvider: (any EncryptionKeyProvider)?
 
-    public init(database: any RecordReader & RecordWriter, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil) {
+    init(database: any Database, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil) {
         self.database = database
         self.registry = registry
         self.keyProvider = keyProvider
@@ -32,7 +32,7 @@ public struct UniversalMigrator: Sendable {
         // new version keep their old values on the server — correctness relies on the
         // registry invariant that a slot is never reassigned while old records exist.
         // Interrupted runs are safe to repeat: migrated records leave the query above.
-        let coder = UniversalCoder(keyProvider: keyProvider)
+        let coder = EntityCoder(keyProvider: keyProvider)
         var migrated: [Record] = []
         for record in outdated {
             let decoded = try coder.decode(record, using: definition)
@@ -63,6 +63,6 @@ public struct UniversalMigrator: Sendable {
     }
 }
 
-extension UniversalMigrator {
+extension Migrator {
     static var maxBatchSize: Int { 400 }
 }

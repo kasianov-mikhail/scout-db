@@ -42,12 +42,12 @@ branch:
 
 Prefer a single `in` filter when the branches only differ by one field's value.
 
-## Server or client?
+## Performance
 
-Every filter runs server-side when CloudKit can express it and as a client-side matcher on
-the fetched results otherwise — see the side column in [Operators](operators.md).
-`explain()` shows the exact split for a query. Client-side matchers scan the server-filtered
-set, so pair them with at least one selective server predicate on large entities.
+Some operators (`matches`, `isNull`, substring `contains` without a shadow field) scan the
+records the rest of the query selects — on large entities, combine them with at least one
+selective filter such as an equality or a date range. `explain()` prints the plan of a query
+when in doubt.
 
 ## Shadow fields
 

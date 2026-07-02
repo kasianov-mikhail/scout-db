@@ -7,12 +7,11 @@
 
 import Foundation
 
-/// One schema change, Fluent-style: publish definitions in `prepare`, undo
-/// them in `revert`.
+/// One schema change: publish definitions in `prepare`, undo them in `revert`.
 ///
 /// ```swift
 /// struct CreatePurchase: Migration {
-///     func prepare(on store: UniversalStore) async throws {
+///     func prepare(on store: EntityStore) async throws {
 ///         try await store.schema("purchase")
 ///             .field("product_id", .string, .required)
 ///             .field("date", .timestamp)
@@ -28,17 +27,17 @@ import Foundation
 ///
 public protocol Migration: Sendable {
     /// Applies the change: publish a definition, backfill records.
-    func prepare(on store: UniversalStore) async throws
+    func prepare(on store: EntityStore) async throws
 
     /// Undoes the change; the default does nothing.
-    func revert(on store: UniversalStore) async throws
+    func revert(on store: EntityStore) async throws
 }
 
 extension Migration {
-    public func revert(on store: UniversalStore) async throws {}
+    public func revert(on store: EntityStore) async throws {}
 }
 
-extension UniversalStore {
+extension EntityStore {
     /// Runs every migration in order.
     public func migrate(_ migrations: [any Migration]) async throws {
         for migration in migrations {

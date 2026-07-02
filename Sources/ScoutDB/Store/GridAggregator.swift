@@ -9,7 +9,7 @@ import CryptoKit
 import Foundation
 
 struct GridAggregator {
-    let database: any RecordReader & RecordWriter
+    let database: any Database
     let maxRetry = 3
 
     func record(_ entityRecord: EntityRecord, using definition: EntityDefinition) async throws {
@@ -21,7 +21,7 @@ struct GridAggregator {
 
             if let histogram = view.histogram {
                 guard let value = entityRecord.values[histogram.field]?.scalar else { continue }
-                let period = UniversalCoder.calendar.startOfDay(for: date)
+                let period = EntityCoder.calendar.startOfDay(for: date)
                 let index = histogram.bounds.firstIndex { value < $0 } ?? histogram.bounds.count
                 try await bump(index: index, metric: nil, squares: nil, entity: entityRecord.entity, view: view.name, group: group, day: period)
                 continue
@@ -38,7 +38,7 @@ struct GridAggregator {
     }
 
     static func bucket(_ bucket: AggregateView.Bucket, for date: Date) -> (period: Date, index: Int) {
-        let calendar = UniversalCoder.calendar
+        let calendar = EntityCoder.calendar
         switch bucket {
         case .hour:
             return (calendar.startOfDay(for: date), calendar.component(.hour, from: date))
@@ -106,7 +106,6 @@ struct GridAggregator {
 
 struct GridItem: RecordDecodable {
     static let recordType = "GridItem"
-    static let sampleRecords: [Record] = []
     static let desiredKeys: [String] = []
 
     init(record: Record) throws {}

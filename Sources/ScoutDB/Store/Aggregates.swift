@@ -52,11 +52,11 @@ public struct AggregateTotal: Equatable, Sendable {
     }
 }
 
-extension UniversalStore {
+extension EntityStore {
     public func aggregate(entity: String, view viewName: String, from: Date? = nil, to: Date? = nil) async throws -> [AggregateRow] {
         let definition = try await registry.definition(for: entity)
         guard let view = definition.views?.first(where: { $0.name == viewName }) else {
-            throw UniversalSchemaError.unknownField(viewName)
+            throw SchemaError.unknownField(viewName)
         }
         let records = try await gridRecords(entity: entity, view: viewName, from: from, to: to)
         let kind = view.metric?.kind
@@ -99,7 +99,7 @@ extension UniversalStore {
     public func percentile(_ p: Double, entity: String, view viewName: String, from: Date? = nil, to: Date? = nil) async throws -> Double? {
         let definition = try await registry.definition(for: entity)
         guard let histogram = definition.views?.first(where: { $0.name == viewName })?.histogram else {
-            throw UniversalSchemaError.invalidValue(viewName)
+            throw SchemaError.invalidValue(viewName)
         }
 
         var counts = [Double](repeating: 0, count: histogram.bounds.count + 1)

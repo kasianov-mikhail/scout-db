@@ -27,7 +27,7 @@ public struct TransactionDraft {
     }
 }
 
-extension UniversalStore {
+extension EntityStore {
     public static let transactionEntity = "_txn"
 
     public static var transactionDefinition: EntityDefinition {

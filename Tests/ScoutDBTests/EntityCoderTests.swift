@@ -10,9 +10,9 @@ import Testing
 
 @testable import ScoutDB
 
-@Suite("UniversalCoder")
-struct UniversalCoderTests {
-    let coder = UniversalCoder()
+@Suite("EntityCoder")
+struct EntityCoderTests {
+    let coder = EntityCoder()
     let definition = makePurchaseDefinition()
 
     @Test("Encode packs the record into typed slots and the envelope")
@@ -57,7 +57,7 @@ struct UniversalCoderTests {
     func typeMismatch() {
         var purchase = makePurchase()
         purchase.values["quantity"] = .string("three")
-        #expect(throws: UniversalSchemaError.typeMismatch("quantity")) {
+        #expect(throws: SchemaError.typeMismatch("quantity")) {
             try coder.encode(purchase, using: definition)
         }
     }
@@ -66,7 +66,7 @@ struct UniversalCoderTests {
     func unknownField() {
         var purchase = makePurchase()
         purchase.values["color"] = .string("red")
-        #expect(throws: UniversalSchemaError.unknownField("color")) {
+        #expect(throws: SchemaError.unknownField("color")) {
             try coder.encode(purchase, using: definition)
         }
     }
@@ -77,7 +77,7 @@ struct UniversalCoderTests {
         record["entity"] = "purchase"
         record["schema_version"] = Int64(3)
         record["uuid"] = "p-3"
-        #expect(throws: UniversalSchemaError.staleSchema(entity: "purchase", version: 3)) {
+        #expect(throws: SchemaError.staleSchema(entity: "purchase", version: 3)) {
             try coder.decode(record, using: definition)
         }
     }
@@ -100,7 +100,7 @@ struct UniversalCoderTests {
             fields: [
                 FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"), required: true)
             ])
-        #expect(throws: UniversalSchemaError.missingField("name")) {
+        #expect(throws: SchemaError.missingField("name")) {
             try coder.resolve([:], at: 2, using: definition)
         }
     }
@@ -112,7 +112,7 @@ struct UniversalCoderTests {
             fields: [
                 FieldDefinition(name: "level", type: .string, storage: .slot(.string, "s_00"), allowed: ["info", "error"])
             ])
-        #expect(throws: UniversalSchemaError.invalidValue("level")) {
+        #expect(throws: SchemaError.invalidValue("level")) {
             try coder.resolve(["level": .string("debug")], at: 2, using: definition)
         }
     }
@@ -124,7 +124,7 @@ struct UniversalCoderTests {
             fields: [
                 FieldDefinition(name: "count", type: .int, storage: .slot(.int, "i_00"), minimum: 0)
             ])
-        #expect(throws: UniversalSchemaError.invalidValue("count")) {
+        #expect(throws: SchemaError.invalidValue("count")) {
             try coder.resolve(["count": .int(-1)], at: 2, using: definition)
         }
     }

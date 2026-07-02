@@ -15,20 +15,20 @@ struct StaticKeyProvider: EncryptionKeyProvider {
     let keys: [String: SymmetricKey]
 
     func key(for keyID: String) throws -> SymmetricKey {
-        guard let key = keys[keyID] else { throw UniversalSchemaError.missingKey(keyID) }
+        guard let key = keys[keyID] else { throw SchemaError.missingKey(keyID) }
         return key
     }
 }
 
-@Suite("UniversalStore")
-struct UniversalStoreTests {
+@Suite("EntityStore")
+struct EntityStoreTests {
     let database = InMemoryDatabase()
-    let store: UniversalStore
+    let store: EntityStore
     let registry: SchemaRegistry
 
     init() async throws {
         registry = SchemaRegistry(database: database)
-        store = UniversalStore(database: database, registry: registry)
+        store = EntityStore(database: database, registry: registry)
         try await registry.publish(makePurchaseDefinition())
     }
 
@@ -53,7 +53,7 @@ struct UniversalStoreTests {
         other["product_id"] = .string("sku-7")
         try await store.write(other, entity: "purchase", uuid: "p-2")
 
-        let filter = UniversalStore.Filter(field: "product_id", op: .equals, value: .string("sku-7"))
+        let filter = EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-7"))
         let records = try await store.read(entity: "purchase", filters: [filter])
         #expect(records.map(\.uuid) == ["p-2"])
     }
@@ -66,9 +66,9 @@ struct UniversalStoreTests {
         try await store.write(cheap, entity: "purchase", uuid: "p-2")
 
         let filters = [
-            UniversalStore.Filter(field: "product_id", op: .equals, value: .string("sku-42")),
-            UniversalStore.Filter(field: "quantity", op: .greaterThan, value: .int(1)),
-            UniversalStore.Filter(field: "date", op: .greaterThan, value: .date(Date(timeIntervalSince1970: 500_000))),
+            EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-42")),
+            EntityStore.Filter(field: "quantity", op: .greaterThan, value: .int(1)),
+            EntityStore.Filter(field: "date", op: .greaterThan, value: .date(Date(timeIntervalSince1970: 500_000))),
         ]
         let records = try await store.read(entity: "purchase", filters: filters)
         #expect(records.map(\.uuid) == ["p-1"])
@@ -82,17 +82,17 @@ struct UniversalStoreTests {
             try await store.write(values, entity: "purchase", uuid: "p-\(index)")
         }
 
-        let ascending = try await store.read(entity: "purchase", sort: [UniversalStore.Sort(field: "quantity")])
+        let ascending = try await store.read(entity: "purchase", sort: [EntityStore.Sort(field: "quantity")])
         #expect(ascending.map(\.uuid) == ["p-1", "p-2", "p-0"])
 
-        let descending = try await store.read(entity: "purchase", sort: [UniversalStore.Sort(field: "quantity", ascending: false)])
+        let descending = try await store.read(entity: "purchase", sort: [EntityStore.Sort(field: "quantity", ascending: false)])
         #expect(descending.map(\.uuid) == ["p-0", "p-2", "p-1"])
     }
 
     @Test("Sorting on an unknown field fails")
     func sortUnknownField() async throws {
-        await #expect(throws: UniversalSchemaError.unknownField("ghost")) {
-            try await store.read(entity: "purchase", sort: [UniversalStore.Sort(field: "ghost")])
+        await #expect(throws: SchemaError.unknownField("ghost")) {
+            try await store.read(entity: "purchase", sort: [EntityStore.Sort(field: "ghost")])
         }
     }
 
@@ -106,11 +106,11 @@ struct UniversalStoreTests {
         }
 
         let branches = [
-            [UniversalStore.Filter(field: "product_id", op: .equals, value: .string("sku-1"))],
-            [UniversalStore.Filter(field: "product_id", op: .equals, value: .string("sku-3"))],
-            [UniversalStore.Filter(field: "quantity", op: .greaterThan, value: .int(2))],
+            [EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-1"))],
+            [EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-3"))],
+            [EntityStore.Filter(field: "quantity", op: .greaterThan, value: .int(2))],
         ]
-        let records = try await store.read(entity: "purchase", any: branches, sort: [UniversalStore.Sort(field: "quantity")])
+        let records = try await store.read(entity: "purchase", any: branches, sort: [EntityStore.Sort(field: "quantity")])
         #expect(records.map(\.uuid) == ["p-0", "p-2"])
     }
 
@@ -121,7 +121,7 @@ struct UniversalStoreTests {
         other["product_id"] = .string("sku-7")
         try await store.write(other, entity: "purchase", uuid: "p-2")
 
-        let filter = UniversalStore.Filter(field: "product_id", op: .notIn, value: .strings(["sku-42"]))
+        let filter = EntityStore.Filter(field: "product_id", op: .notIn, value: .strings(["sku-42"]))
         let records = try await store.read(entity: "purchase", filters: [filter])
         #expect(records.map(\.uuid) == ["p-2"])
     }
@@ -133,7 +133,7 @@ struct UniversalStoreTests {
             values["date"] = .date(Date(timeIntervalSince1970: TimeInterval(seconds)))
             try await store.write(values, entity: "purchase", uuid: "p-\(index)")
         }
-        let range = UniversalStore.Filter.between("date", .date(Date(timeIntervalSince1970: 1_500)), .date(Date(timeIntervalSince1970: 3_000)))
+        let range = EntityStore.Filter.between("date", .date(Date(timeIntervalSince1970: 1_500)), .date(Date(timeIntervalSince1970: 3_000)))
         let records = try await store.read(entity: "purchase", filters: range)
         #expect(records.map(\.uuid) == ["p-1"])
     }
@@ -150,10 +150,10 @@ struct UniversalStoreTests {
         try await store.write(["tags": .strings(["swift", "server"])], entity: "post", uuid: "n-2")
         try await store.write(["tags": .strings(["android"])], entity: "post", uuid: "n-3")
 
-        let both = try await store.read(entity: "post", filters: UniversalStore.Filter.containsAll("tags", ["swift", "ios"]))
+        let both = try await store.read(entity: "post", filters: EntityStore.Filter.containsAll("tags", ["swift", "ios"]))
         #expect(both.map(\.uuid) == ["n-1"])
 
-        let either = try await store.read(entity: "post", any: UniversalStore.Filter.containsAny("tags", ["ios", "server"]))
+        let either = try await store.read(entity: "post", any: EntityStore.Filter.containsAny("tags", ["ios", "server"]))
         #expect(Set(either.map(\.uuid)) == ["n-1", "n-2"])
     }
 
@@ -176,7 +176,7 @@ struct UniversalStoreTests {
         #expect(record.values["scores"] == .doubles([9.5]))
         #expect(record.values["times"] == .dates([t0]))
 
-        let filter = UniversalStore.Filter(field: "codes", op: .contains, value: .int(2))
+        let filter = EntityStore.Filter(field: "codes", op: .contains, value: .int(2))
         let matched = try await store.read(entity: "sample", filters: [filter])
         #expect(matched.map(\.uuid) == ["s-1"])
     }
@@ -218,15 +218,15 @@ struct UniversalStoreTests {
 
     @Test("Filtering on an unknown field fails")
     func unknownFilter() async throws {
-        let filter = UniversalStore.Filter(field: "ghost", op: .equals, value: .string("x"))
-        await #expect(throws: UniversalSchemaError.unknownField("ghost")) {
+        let filter = EntityStore.Filter(field: "ghost", op: .equals, value: .string("x"))
+        await #expect(throws: SchemaError.unknownField("ghost")) {
             try await store.read(entity: "purchase", filters: [filter])
         }
     }
 
     @Test("Reading an unpublished entity fails")
     func unknownEntity() async throws {
-        await #expect(throws: UniversalSchemaError.unknownEntity("ghost")) {
+        await #expect(throws: SchemaError.unknownEntity("ghost")) {
             try await store.read(entity: "ghost")
         }
     }
@@ -287,7 +287,7 @@ struct UniversalStoreTests {
         try await store.write(["title": .string("Intro"), "tags": .strings(["swift", "ios"])], entity: "post", uuid: "n-1")
         try await store.write(["title": .string("Server"), "tags": .strings(["vapor"])], entity: "post", uuid: "n-2")
 
-        let filter = UniversalStore.Filter(field: "tags", op: .contains, value: .string("swift"))
+        let filter = EntityStore.Filter(field: "tags", op: .contains, value: .string("swift"))
         let records = try await store.read(entity: "post", filters: [filter])
         #expect(records.map(\.uuid) == ["n-1"])
     }
@@ -305,7 +305,7 @@ struct UniversalStoreTests {
         try await store.write(["name": .string("spb"), "place": .location(latitude: 59.939, longitude: 30.315)], entity: "store_visit", uuid: "v-2")
 
         let center = RecordValue.location(latitude: 55.75, longitude: 37.62)
-        let filter = UniversalStore.Filter(field: "place", op: .near, value: center, radius: 5_000)
+        let filter = EntityStore.Filter(field: "place", op: .near, value: center, radius: 5_000)
         let records = try await store.read(entity: "store_visit", filters: [filter])
         #expect(records.map(\.uuid) == ["v-1"])
     }
@@ -387,7 +387,7 @@ struct UniversalStoreTests {
     @Test("Encrypted fields hide plaintext but keep the surrogate filterable")
     func encryption() async throws {
         let provider = StaticKeyProvider(keys: ["k1": SymmetricKey(size: .bits256)])
-        let secure = UniversalStore(database: database, registry: registry, keyProvider: provider)
+        let secure = EntityStore(database: database, registry: registry, keyProvider: provider)
         try await registry.publish(
             makeDefinition(
                 entity: "account",
@@ -408,7 +408,7 @@ struct UniversalStoreTests {
         #expect(alice.values["email"] == .string("alice@example.com"))
 
         let hash = try #require(alice.values["email_hash"])
-        let filtered = try await secure.read(entity: "account", filters: [UniversalStore.Filter(field: "email_hash", op: .equals, value: hash)])
+        let filtered = try await secure.read(entity: "account", filters: [EntityStore.Filter(field: "email_hash", op: .equals, value: hash)])
         #expect(filtered.map(\.uuid) == ["a-1"])
 
         let blind = try await store.read(entity: "account")
@@ -423,7 +423,7 @@ struct UniversalStoreTests {
                 fields: [
                     FieldDefinition(name: "token", type: .string, storage: .payload, encrypted: true)
                 ], keyID: "k9"))
-        await #expect(throws: UniversalSchemaError.missingKey("k9")) {
+        await #expect(throws: SchemaError.missingKey("k9")) {
             try await store.write(["token": .string("shh")], entity: "secret")
         }
     }

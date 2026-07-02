@@ -40,33 +40,33 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
         for field in fields {
             if case .slot(let pool, let slot) = field.storage {
                 guard field.type.pool == pool else {
-                    throw UniversalSchemaError.invalidDefinition(
+                    throw SchemaError.invalidDefinition(
                         "Field '\(field.name)' of type '\(field.type.rawValue)' cannot live in the '\(pool.rawValue)' pool")
                 }
                 guard slot.hasPrefix("\(pool.rawValue)_"), let index = Int(slot.dropFirst(pool.rawValue.count + 1)), index >= 0 else {
-                    throw UniversalSchemaError.invalidDefinition("Slot '\(slot)' does not belong to the '\(pool.rawValue)' pool")
+                    throw SchemaError.invalidDefinition("Slot '\(slot)' does not belong to the '\(pool.rawValue)' pool")
                 }
                 guard index < pool.capacity else {
-                    throw UniversalSchemaError.invalidDefinition("Slot '\(slot)' is beyond the '\(pool.rawValue)' pool capacity of \(pool.capacity)")
+                    throw SchemaError.invalidDefinition("Slot '\(slot)' is beyond the '\(pool.rawValue)' pool capacity of \(pool.capacity)")
                 }
             }
             if field.type == .asset, field.storage == .payload {
-                throw UniversalSchemaError.invalidDefinition("Asset field '\(field.name)' must live in an asset slot")
+                throw SchemaError.invalidDefinition("Asset field '\(field.name)' must live in an asset slot")
             }
             if let derived = field.derived, !names.contains(derived.source) {
-                throw UniversalSchemaError.invalidDefinition("Field '\(field.name)' derives from unknown '\(derived.source)'")
+                throw SchemaError.invalidDefinition("Field '\(field.name)' derives from unknown '\(derived.source)'")
             }
             if field.derived?.transform == .ngrams, field.type != .stringList {
-                throw UniversalSchemaError.invalidDefinition("Ngram field '\(field.name)' must be a string list")
+                throw SchemaError.invalidDefinition("Ngram field '\(field.name)' must be a string list")
             }
             if field.encrypted == true, field.storage != .payload {
-                throw UniversalSchemaError.invalidDefinition("Encrypted field '\(field.name)' must live in payload")
+                throw SchemaError.invalidDefinition("Encrypted field '\(field.name)' must live in payload")
             }
             if field.encrypted == true || field.derived?.transform == .hmac, keyID == nil {
-                throw UniversalSchemaError.invalidDefinition("Field '\(field.name)' needs a keyID on the definition")
+                throw SchemaError.invalidDefinition("Field '\(field.name)' needs a keyID on the definition")
             }
             if field.references != nil, field.type != .string {
-                throw UniversalSchemaError.invalidDefinition("Reference field '\(field.name)' must be a string uuid")
+                throw SchemaError.invalidDefinition("Reference field '\(field.name)' must be a string uuid")
             }
         }
         for lhs in fields {
@@ -74,43 +74,43 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
                 guard case .slot(_, let lhsSlot) = lhs.storage else { continue }
                 guard case .slot(_, let rhsSlot) = rhs.storage else { continue }
                 if lhsSlot == rhsSlot, lhs.overlaps(rhs) {
-                    throw UniversalSchemaError.invalidDefinition("Fields '\(lhs.name)' and '\(rhs.name)' share slot '\(lhsSlot)'")
+                    throw SchemaError.invalidDefinition("Fields '\(lhs.name)' and '\(rhs.name)' share slot '\(lhsSlot)'")
                 }
             }
         }
         if let envelopeDate {
             guard fields.first(where: { $0.name == envelopeDate })?.type == .timestamp else {
-                throw UniversalSchemaError.invalidDefinition("Envelope date '\(envelopeDate)' is not a timestamp field")
+                throw SchemaError.invalidDefinition("Envelope date '\(envelopeDate)' is not a timestamp field")
             }
         }
         if ttl != nil, envelopeDate == nil {
-            throw UniversalSchemaError.invalidDefinition("TTL requires an envelope date")
+            throw SchemaError.invalidDefinition("TTL requires an envelope date")
         }
         for key in unique ?? [] where !names.contains(key) {
-            throw UniversalSchemaError.invalidDefinition("Unique key '\(key)' is not a field")
+            throw SchemaError.invalidDefinition("Unique key '\(key)' is not a field")
         }
         for view in views ?? [] {
             guard envelopeDate != nil else {
-                throw UniversalSchemaError.invalidDefinition("View '\(view.name)' requires an envelope date")
+                throw SchemaError.invalidDefinition("View '\(view.name)' requires an envelope date")
             }
             if let groupBy = view.groupBy, !names.contains(groupBy) {
-                throw UniversalSchemaError.invalidDefinition("View '\(view.name)' groups by unknown '\(groupBy)'")
+                throw SchemaError.invalidDefinition("View '\(view.name)' groups by unknown '\(groupBy)'")
             }
             let metrics = [view.sum, view.min, view.max, view.stats, view.histogram?.field].compactMap { $0 }
             guard metrics.count <= 1 else {
-                throw UniversalSchemaError.invalidDefinition("View '\(view.name)' declares more than one metric")
+                throw SchemaError.invalidDefinition("View '\(view.name)' declares more than one metric")
             }
             for field in metrics {
                 guard let type = fields.first(where: { $0.name == field })?.type, type == .int || type == .double else {
-                    throw UniversalSchemaError.invalidDefinition("View '\(view.name)' aggregates non-numeric '\(field)'")
+                    throw SchemaError.invalidDefinition("View '\(view.name)' aggregates non-numeric '\(field)'")
                 }
             }
             if let histogram = view.histogram {
                 guard histogram.bounds.count > 0, histogram.bounds.count < 64, histogram.bounds == histogram.bounds.sorted() else {
-                    throw UniversalSchemaError.invalidDefinition("View '\(view.name)' has invalid histogram bounds")
+                    throw SchemaError.invalidDefinition("View '\(view.name)' has invalid histogram bounds")
                 }
                 guard view.bucket == nil else {
-                    throw UniversalSchemaError.invalidDefinition("View '\(view.name)' cannot combine a histogram with a time bucket")
+                    throw SchemaError.invalidDefinition("View '\(view.name)' cannot combine a histogram with a time bucket")
                 }
             }
         }
@@ -310,7 +310,7 @@ extension Storage: Codable {
     }
 }
 
-public enum UniversalSchemaError: Error, Equatable {
+public enum SchemaError: Error, Equatable {
     case unknownEntity(String)
     case unknownField(String)
     case typeMismatch(String)

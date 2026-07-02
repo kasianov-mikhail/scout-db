@@ -8,16 +8,16 @@
 import CryptoKit
 import Foundation
 
-extension UniversalCoder {
+extension EntityCoder {
     static let maxAssetSize = 50 * 1024 * 1024
 
     // Content-addressed staging: retries of the same payload reuse the same file,
     // so an interrupted write never leaves a second copy behind.
     static func stage(_ data: Data, limit: Int = maxAssetSize) throws -> RecordValue {
-        guard data.count <= limit else { throw UniversalSchemaError.invalidValue("asset") }
+        guard data.count <= limit else { throw SchemaError.invalidValue("asset") }
 
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("UniversalAssets", isDirectory: true)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ScoutDBAssets", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
         let url = directory.appendingPathComponent(digest)
@@ -29,7 +29,7 @@ extension UniversalCoder {
 
     static func validateAssetSize(at url: URL, limit: Int = maxAssetSize) throws {
         guard let size = try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int else { return }
-        guard size <= limit else { throw UniversalSchemaError.invalidValue("asset") }
+        guard size <= limit else { throw SchemaError.invalidValue("asset") }
     }
 }
 

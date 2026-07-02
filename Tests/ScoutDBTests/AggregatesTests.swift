@@ -10,16 +10,16 @@ import Testing
 
 @testable import ScoutDB
 
-@Suite("Universal aggregates")
-struct UniversalAggregatesTests {
+@Suite("Aggregates")
+struct AggregatesTests {
     let database = InMemoryDatabase()
-    let store: UniversalStore
+    let store: EntityStore
     let registry: SchemaRegistry
     let noon = Date(timeIntervalSince1970: 36_000)
 
     init() async throws {
         registry = SchemaRegistry(database: database)
-        store = UniversalStore(database: database, registry: registry)
+        store = EntityStore(database: database, registry: registry)
     }
 
     private func publishPayment(views: [AggregateView]) async throws {
@@ -146,7 +146,7 @@ struct UniversalAggregatesTests {
                 FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
             ], envelopeDate: "date", views: [AggregateView(name: "broken", histogram: AggregateView.Histogram(field: "amount", bounds: [50, 10]))])
-        #expect(throws: UniversalSchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
     @Test("A view with two metrics is rejected")
@@ -157,6 +157,6 @@ struct UniversalAggregatesTests {
                 FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
             ], envelopeDate: "date", views: [AggregateView(name: "broken", sum: "amount", min: "amount")])
-        #expect(throws: UniversalSchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.self) { try definition.validate() }
     }
 }

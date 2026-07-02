@@ -22,15 +22,15 @@ public struct EntityCursor: Codable, Equatable, Sendable {
     }
 }
 
-extension UniversalStore {
+extension EntityStore {
     public func update(entity: String, uuid: String, maxRetry: Int = 3, transform: (inout EntityRecord) throws -> Void) async throws {
         let definition = try await registry.definition(for: entity)
-        let coder = UniversalCoder(keyProvider: keyProvider)
+        let coder = EntityCoder(keyProvider: keyProvider)
         var attempt = 0
 
         while true {
             guard let existing = try await items(entity: entity, uuids: [uuid]).first else {
-                throw UniversalSchemaError.notFound(uuid)
+                throw SchemaError.notFound(uuid)
             }
             var entityRecord = try coder.decode(existing, using: definition)
             try transform(&entityRecord)
@@ -49,7 +49,7 @@ extension UniversalStore {
     public func read(entity: String, filters: [Filter] = [], limit: Int, after cursor: EntityCursor? = nil) async throws -> EntityPage {
         let definition = try await registry.definition(for: entity)
         guard let dateField = definition.envelopeDate else {
-            throw UniversalSchemaError.invalidDefinition("Pagination requires an envelope date")
+            throw SchemaError.invalidDefinition("Pagination requires an envelope date")
         }
 
         var pageFilters = filters
@@ -94,7 +94,7 @@ extension UniversalStore {
 
     @discardableResult public func updateAll(entity: String, filters: [Filter] = [], transform: (inout EntityRecord) throws -> Void) async throws -> Int {
         let definition = try await registry.definition(for: entity)
-        let coder = UniversalCoder(keyProvider: keyProvider)
+        let coder = EntityCoder(keyProvider: keyProvider)
 
         var updated: [Record] = []
         for var record in try await read(entity: entity, filters: filters) {

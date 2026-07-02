@@ -12,16 +12,16 @@ public protocol EncryptionKeyProvider: Sendable {
     func key(for keyID: String) throws -> SymmetricKey
 }
 
-extension UniversalCoder {
+extension EntityCoder {
     func seal(_ value: RecordValue, keyID: String?) throws -> RecordValue {
         let plain = try JSONEncoder().encode(value)
         let box = try AES.GCM.seal(plain, using: key(for: keyID))
-        guard let combined = box.combined else { throw UniversalSchemaError.missingKey(keyID ?? "") }
+        guard let combined = box.combined else { throw SchemaError.missingKey(keyID ?? "") }
         return .bytes(combined)
     }
 
     func open(_ value: RecordValue, keyID: String?) throws -> RecordValue {
-        guard case .bytes(let data) = value else { throw UniversalSchemaError.invalidValue("ciphertext") }
+        guard case .bytes(let data) = value else { throw SchemaError.invalidValue("ciphertext") }
         let box = try AES.GCM.SealedBox(combined: data)
         let plain = try AES.GCM.open(box, using: key(for: keyID))
         return try JSONDecoder().decode(RecordValue.self, from: plain)
@@ -33,7 +33,7 @@ extension UniversalCoder {
     }
 
     private func key(for keyID: String?) throws -> SymmetricKey {
-        guard let keyID, let keyProvider else { throw UniversalSchemaError.missingKey(keyID ?? "") }
+        guard let keyID, let keyProvider else { throw SchemaError.missingKey(keyID ?? "") }
         return try keyProvider.key(for: keyID)
     }
 }

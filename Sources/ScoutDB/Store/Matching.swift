@@ -8,24 +8,25 @@
 import Foundation
 
 public struct QueryPlan: Equatable, Sendable, CustomStringConvertible {
-    public let server: [RecordQuery.Filter]
-    public let client: [UniversalStore.Filter]
-    public let sort: [RecordQuery.Sort]
+    public let server: [String]
+    public let client: [String]
+    public let sort: [String]
 
     public var description: String {
-        let lines =
-            server.map { "SERVER \($0.field) \($0.op.rawValue) \($0.value.canonical)" }
-            + client.map { "CLIENT \($0.field) \($0.op) \($0.value.canonical)" }
-            + sort.map { "SORT \($0.field) \($0.ascending ? "asc" : "desc")" }
+        let lines = server.map { "SERVER \($0)" } + client.map { "CLIENT \($0)" } + sort.map { "SORT \($0)" }
         return lines.joined(separator: "\n")
     }
 }
 
-extension UniversalStore {
+extension EntityStore {
     public func explain(entity: String, filters: [Filter] = [], sort: [Sort] = []) async throws -> QueryPlan {
         let definition = try await registry.definition(for: entity)
         let (server, client) = try split(filters, entity: entity, using: definition)
-        return QueryPlan(server: server, client: client, sort: try recordSort(sort, using: definition))
+        return QueryPlan(
+            server: server.map { "\($0.field) \($0.op.rawValue) \($0.value.canonical)" },
+            client: client.map { "\($0.field) \($0.op) \($0.value.canonical)" },
+            sort: try recordSort(sort, using: definition).map { "\($0.field) \($0.ascending ? "asc" : "desc")" }
+        )
     }
 
     public enum Match: Equatable, Sendable {
@@ -92,7 +93,7 @@ extension UniversalStore {
 
         for filter in filters {
             guard let field = fields.first(where: { $0.name == filter.field }) else {
-                throw UniversalSchemaError.unknownField(filter.field)
+                throw SchemaError.unknownField(filter.field)
             }
             switch filter.op {
             case .isNull, .isNotNull, .matches:
@@ -116,12 +117,12 @@ extension UniversalStore {
                 }
             case .search:
                 guard field.type == .text, case .slot(_, let slot) = field.storage else {
-                    throw UniversalSchemaError.invalidValue(filter.field)
+                    throw SchemaError.invalidValue(filter.field)
                 }
                 server.append(RecordQuery.Filter(field: slot, op: .search, value: filter.value))
             default:
                 guard let op = filter.op.serverOperator, case .slot(_, let slot) = field.storage else {
-                    throw UniversalSchemaError.unknownField(filter.field)
+                    throw SchemaError.unknownField(filter.field)
                 }
                 server.append(RecordQuery.Filter(field: slot, op: op, value: filter.value, radius: filter.radius))
             }
@@ -180,7 +181,7 @@ extension UniversalStore {
         return needles.flatMap { needle in
             let folded = needle.folded
             guard folded.count >= 3 else { return [RecordQuery.Filter]() }
-            return UniversalCoder.trigrams(of: folded).map {
+            return EntityCoder.trigrams(of: folded).map {
                 RecordQuery.Filter(field: slot, op: .contains, value: .string($0))
             }
         }

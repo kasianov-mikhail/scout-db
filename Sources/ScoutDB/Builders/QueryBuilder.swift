@@ -7,7 +7,7 @@
 
 import Foundation
 
-/// A Fluent-style query builder over an entity.
+/// A chainable query builder over an entity.
 ///
 /// ```swift
 /// let recent = try await store.query("purchase")
@@ -20,15 +20,15 @@ import Foundation
 ///
 public struct QueryBuilder {
     let entity: String
-    let store: UniversalStore
+    let store: EntityStore
 
-    private var filters: [UniversalStore.Filter] = []
-    private var groups: [[UniversalStore.Filter]] = []
-    private var sorts: [UniversalStore.Sort] = []
+    private var filters: [EntityStore.Filter] = []
+    private var groups: [[EntityStore.Filter]] = []
+    private var sorts: [EntityStore.Sort] = []
     private var projection: [String]?
     private var ceiling: Int?
 
-    init(entity: String, store: UniversalStore) {
+    init(entity: String, store: EntityStore) {
         self.entity = entity
         self.store = store
     }
@@ -40,15 +40,15 @@ public struct QueryBuilder {
     }
 
     /// Adds a filter built with the operator sugar: `.filter("quantity" > 5)`.
-    public func filter(_ filter: UniversalStore.Filter) -> Self {
+    public func filter(_ filter: EntityStore.Filter) -> Self {
         var builder = self
         builder.filters.append(filter)
         return builder
     }
 
     /// Adds a filter from its parts: `.filter("product_id", .equals, "sku-42")`.
-    public func filter(_ field: String, _ method: UniversalStore.Match, _ value: RecordValue, radius: Double? = nil) -> Self {
-        filter(UniversalStore.Filter(field: field, op: method, value: value, radius: radius))
+    public func filter(_ field: String, _ method: EntityStore.Match, _ value: RecordValue, radius: Double? = nil) -> Self {
+        filter(EntityStore.Filter(field: field, op: method, value: value, radius: radius))
     }
 
     /// Adds a group of alternatives combined with `OR`; the group as a whole is
@@ -72,7 +72,7 @@ public struct QueryBuilder {
     /// Adds a sort clause; clauses apply in the order they are added.
     public func sort(_ field: String, _ direction: Direction = .ascending) -> Self {
         var builder = self
-        builder.sorts.append(UniversalStore.Sort(field: field, ascending: direction == .ascending))
+        builder.sorts.append(EntityStore.Sort(field: field, ascending: direction == .ascending))
         return builder
     }
 
@@ -141,7 +141,7 @@ public struct QueryBuilder {
 
     // Distributes the AND-ed base filters over the OR groups into disjunctive
     // normal form: one branch per combination of picks, one query per branch.
-    private func branches() -> [[UniversalStore.Filter]] {
+    private func branches() -> [[EntityStore.Filter]] {
         groups.reduce([filters]) { branches, group in
             branches.flatMap { branch in group.map { branch + [$0] } }
         }
@@ -150,20 +150,20 @@ public struct QueryBuilder {
 
 /// Collects the alternatives of a ``QueryBuilder/group(_:)`` clause.
 public struct OrGroup {
-    fileprivate var alternatives: [UniversalStore.Filter] = []
+    fileprivate var alternatives: [EntityStore.Filter] = []
 
     /// Adds one alternative to the group.
-    public mutating func filter(_ filter: UniversalStore.Filter) {
+    public mutating func filter(_ filter: EntityStore.Filter) {
         alternatives.append(filter)
     }
 
     /// Adds one alternative from its parts.
-    public mutating func filter(_ field: String, _ method: UniversalStore.Match, _ value: RecordValue) {
-        alternatives.append(UniversalStore.Filter(field: field, op: method, value: value))
+    public mutating func filter(_ field: String, _ method: EntityStore.Match, _ value: RecordValue) {
+        alternatives.append(EntityStore.Filter(field: field, op: method, value: value))
     }
 }
 
-extension UniversalStore {
+extension EntityStore {
     /// Opens a Fluent-style query on an entity.
     public func query(_ entity: String) -> QueryBuilder {
         QueryBuilder(entity: entity, store: self)

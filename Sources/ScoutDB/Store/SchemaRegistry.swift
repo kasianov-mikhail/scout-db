@@ -8,10 +8,10 @@
 import Foundation
 
 public actor SchemaRegistry {
-    private let database: any RecordReader & RecordWriter
+    private let database: any Database
     private var cache: [String: EntityDefinition] = [:]
 
-    public init(database: any RecordReader & RecordWriter) {
+    init(database: any Database) {
         self.database = database
     }
 
@@ -21,7 +21,7 @@ public actor SchemaRegistry {
         }
         let entries: [MetaEntry] = try await database.readAll(matching: metaQuery(entity: entity))
         guard let definition = try latest(of: entries) else {
-            throw UniversalSchemaError.unknownEntity(entity)
+            throw SchemaError.unknownEntity(entity)
         }
         cache[entity] = definition
         return definition
@@ -34,7 +34,7 @@ public actor SchemaRegistry {
             definition = try await self.definition(for: entity)
         }
         guard definition.version >= version else {
-            throw UniversalSchemaError.staleSchema(entity: entity, version: version)
+            throw SchemaError.staleSchema(entity: entity, version: version)
         }
         return definition
     }
@@ -88,7 +88,6 @@ public actor SchemaRegistry {
 
 struct MetaEntry: RecordDecodable {
     static let recordType = "Meta"
-    static let sampleRecords: [Record] = []
 
     static let desiredKeys = [
         "entity",
@@ -103,7 +102,7 @@ struct MetaEntry: RecordDecodable {
 
     init(record: Record) throws {
         guard let entity: String = record["entity"], let version: Int64 = record["entity_version"], let definition: Data = record["definition"] else {
-            throw UniversalSchemaError.invalidDefinition("Malformed Meta record '\(record.recordID)'")
+            throw SchemaError.invalidDefinition("Malformed Meta record '\(record.recordID)'")
         }
         self.entity = entity
         self.version = Int(version)
