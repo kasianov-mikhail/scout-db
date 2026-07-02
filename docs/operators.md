@@ -1,6 +1,6 @@
 # Operators
 
-Query and aggregation operators ScoutDB supports. See [README.md](README.md) for
+Query and aggregation operators ScoutDB supports. See the [README](../README.md) for
 the architecture this builds on.
 
 ```swift

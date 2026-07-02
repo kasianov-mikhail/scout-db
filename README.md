@@ -4,6 +4,35 @@ A schema-registry layer on top of CloudKit. The physical CloudKit schema (`Schem
 repository root) is uploaded once and frozen; every logical schema change afterwards is a data
 change — a new `Meta` record — so migrations never touch `cktool import-schema` again.
 
+## Quick start
+
+```swift
+let store = UniversalStore(database: container.publicCloudDatabase, registry: registry)
+
+try await store.schema("purchase")
+    .field("product_id", .string, .required)
+    .field("amount", .double)
+    .field("date", .timestamp)
+    .envelopeDate("date")
+    .create()
+
+let recent = try await store.query("purchase")
+    .filter("amount" > 10)
+    .sort("date", .descending)
+    .limit(20)
+    .all()
+```
+
+## Documentation
+
+- [Getting started](docs/getting-started.md)
+- [Schema](docs/schema.md)
+- [Migrations](docs/migrations.md)
+- [Filtering](docs/filtering.md)
+- [Operators](docs/operators.md)
+- [Aggregation](docs/aggregation.md)
+- [Security](docs/security.md)
+
 ## Why
 
 Production CloudKit schemas are append-only: fields, record types, and index modifiers can never
@@ -132,7 +161,7 @@ Recipes intentionally left to callers (thin compositions of the above): offline 
 `UniversalStore.Filter` accepts a `Match` operator; the store splits filters into predicates
 CloudKit runs server-side and matchers applied client-side after decoding. The full operator
 reference — comparison, string matching, shadow-slot techniques, existence checks, and
-aggregation — lives in [OPERATORS.md](OPERATORS.md).
+aggregation — lives in [docs/operators.md](docs/operators.md).
 
 ## Limits that remain
 
