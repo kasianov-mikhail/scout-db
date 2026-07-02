@@ -5,6 +5,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
 import Foundation
 import Testing
 
@@ -35,7 +36,7 @@ struct OperationsTests {
     @Test("CAS update retries after a conflict")
     func updateConflict() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        database.writeErrors = [RecordConflictError(serverRecord: Record(recordType: "Item", recordID: "p-1"))]
+        database.writeErrors = [RecordConflictError(serverRecord: CKRecord(recordType: "Item", recordID: CKRecord.ID(recordName: "p-1")))]
         try await store.update(entity: "purchase", uuid: "p-1") { record in
             record.values["quantity"] = .int(9)
         }
@@ -268,8 +269,8 @@ struct OperationsTests {
     }
 
     private func stampCreator(uuid: String, creator: String) {
-        for index in database.records.indices where database.records[index].recordType == "Item" && database.records[index].recordID == uuid {
-            database.records[index].fields["___createdBy"] = .string(creator)
+        for record in database.records where record.recordType == "Item" && record.recordID.recordName == uuid {
+            record.overrideCreator(creator)
         }
     }
 }

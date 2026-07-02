@@ -5,6 +5,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
 import CryptoKit
 import Foundation
 
@@ -68,11 +69,11 @@ struct EntityCoder {
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 
-    func encode(_ entityRecord: EntityRecord, using definition: EntityDefinition) throws -> Record {
+    func encode(_ entityRecord: EntityRecord, using definition: EntityDefinition, into base: CKRecord? = nil) throws -> CKRecord {
         let fields = definition.fields(at: entityRecord.schemaVersion)
         let values = try resolve(entityRecord.values, at: entityRecord.schemaVersion, using: definition)
 
-        var record = Record(recordType: Item.recordType, recordID: entityRecord.uuid)
+        let record = base ?? CKRecord(recordType: Item.recordType, recordID: CKRecord.ID(recordName: entityRecord.uuid))
         record["entity"] = entityRecord.entity
         record["schema_version"] = Int64(entityRecord.schemaVersion)
         record["uuid"] = entityRecord.uuid
@@ -86,7 +87,7 @@ struct EntityCoder {
             guard let field = fields.first(where: { $0.name == name }) else { continue }
             switch field.storage {
             case .slot(_, let slot):
-                record.fields[slot] = value
+                record.setScoutValue(value, forKey: slot)
             case .payload:
                 payload[name] = field.encrypted == true ? try seal(value, keyID: definition.keyID) : value
             }
@@ -97,8 +98,8 @@ struct EntityCoder {
         return record
     }
 
-    func decode(_ record: Record, using definition: EntityDefinition) throws -> EntityRecord {
-        guard let version: Int64 = record["schema_version"], let uuid: String = record["uuid"] else {
+    func decode(_ record: CKRecord, using definition: EntityDefinition) throws -> EntityRecord {
+        guard let version = record["schema_version"] as? Int64, let uuid = record["uuid"] as? String else {
             throw SchemaError.staleSchema(entity: definition.entity, version: 0)
         }
         guard version <= definition.version else {
@@ -106,7 +107,7 @@ struct EntityCoder {
         }
 
         var payload: [String: RecordValue] = [:]
-        if let data: Data = record["payload"] {
+        if let data = record["payload"] as? Data {
             payload = try JSONDecoder().decode([String: RecordValue].self, from: data)
         }
 
@@ -114,7 +115,7 @@ struct EntityCoder {
         for field in definition.fields(at: Int(version)) {
             switch field.storage {
             case .slot(_, let slot):
-                values[field.name] = record.fields[slot]
+                values[field.name] = record.scoutValue(forKey: slot)
             case .payload:
                 if field.encrypted == true {
                     values[field.name] = keyProvider == nil ? nil : try payload[field.name].map { try open($0, keyID: definition.keyID) }
@@ -124,7 +125,7 @@ struct EntityCoder {
             }
         }
 
-        let deleted = (record["deleted"] as Int64? ?? 0) > 0
+        let deleted = (record["deleted"] as? Int64 ?? 0) > 0
         return EntityRecord(entity: definition.entity, uuid: uuid, schemaVersion: Int(version), values: values, deleted: deleted)
     }
 

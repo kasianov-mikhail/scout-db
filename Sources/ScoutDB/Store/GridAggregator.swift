@@ -5,11 +5,12 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
 import CryptoKit
 import Foundation
 
 struct GridAggregator {
-    let database: any Database
+    let database: any CloudDatabase
     let maxRetry = 3
 
     func record(_ entityRecord: EntityRecord, using definition: EntityDefinition) async throws {
@@ -62,13 +63,13 @@ struct GridAggregator {
         let squareCell = String(format: "f_%02d", index + 32)
 
         for _ in 0..<maxRetry {
-            record.fields[countCell] = .int((record[countCell] as Int64? ?? 0) + 1)
+            record[countCell] = (record[countCell] as? Int64 ?? 0) + 1
             if let (kind, value) = metric {
-                let combined = (record[valueCell] as Double?).map { kind.combine($0, value) } ?? value
-                record.fields[valueCell] = .double(combined)
+                let combined = (record[valueCell] as? Double).map { kind.combine($0, value) } ?? value
+                record[valueCell] = combined
             }
             if let squares {
-                record.fields[squareCell] = .double((record[squareCell] as Double? ?? 0) + squares)
+                record[squareCell] = (record[squareCell] as? Double ?? 0) + squares
             }
             do {
                 try await database.write(record: record)
@@ -80,22 +81,22 @@ struct GridAggregator {
         throw RecordConflictError(serverRecord: record)
     }
 
-    private func lookup(entity: String, view: String, group: String, day: Date) async throws -> Record {
-        let query = RecordQuery(
-            recordType: GridItem.self,
+    private func lookup(entity: String, view: String, group: String, day: Date) async throws -> CKRecord {
+        let query = ckQuery(
+            GridItem.recordType,
             filters: [
-                RecordQuery.Filter(field: "entity", op: .equals, value: .string(entity)),
-                RecordQuery.Filter(field: "view", op: .equals, value: .string(view)),
-                RecordQuery.Filter(field: "group_key", op: .equals, value: .string(group)),
-                RecordQuery.Filter(field: "date", op: .equals, value: .date(day)),
+                ServerFilter(field: "entity", op: .equals, value: .string(entity)),
+                ServerFilter(field: "view", op: .equals, value: .string(view)),
+                ServerFilter(field: "group_key", op: .equals, value: .string(group)),
+                ServerFilter(field: "date", op: .equals, value: .date(day)),
             ])
-        if let existing = try await database.readAll(matching: query, fields: nil).first {
+        if let existing = try await database.allRecords(matching: query).first {
             return existing
         }
 
         let key = "\(entity)|\(view)|\(group)|\(day.millisecondsSince1970)"
         let digest = SHA256.hash(data: Data(key.utf8))
-        var record = Record(recordType: GridItem.recordType, recordID: "grid-" + digest.map { String(format: "%02x", $0) }.joined())
+        let record = CKRecord(recordType: GridItem.recordType, recordID: CKRecord.ID(recordName: "grid-" + digest.map { String(format: "%02x", $0) }.joined()))
         record["entity"] = entity
         record["view"] = view
         record["group_key"] = group
@@ -104,9 +105,6 @@ struct GridAggregator {
     }
 }
 
-struct GridItem: RecordDecodable {
+enum GridItem {
     static let recordType = "GridItem"
-    static let desiredKeys: [String] = []
-
-    init(record: Record) throws {}
 }

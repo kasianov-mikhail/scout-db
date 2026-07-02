@@ -5,15 +5,16 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
 import Foundation
 
 public struct EntityStore: Sendable {
-    let database: any Database
+    let database: any CloudDatabase
     let registry: SchemaRegistry
     var keyProvider: (any EncryptionKeyProvider)?
     var trustedWriters: Set<String>?
 
-    init(database: any Database, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil, trustedWriters: Set<String>? = nil) {
+    init(database: any CloudDatabase, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil, trustedWriters: Set<String>? = nil) {
         self.database = database
         self.registry = registry
         self.keyProvider = keyProvider
@@ -75,8 +76,8 @@ public struct EntityStore: Sendable {
         try await database.write(record: Self.tombstone(entity: entity, uuid: uuid, definition: definition))
     }
 
-    static func tombstone(entity: String, uuid: String, definition: EntityDefinition) -> Record {
-        var record = Record(recordType: Item.recordType, recordID: uuid)
+    static func tombstone(entity: String, uuid: String, definition: EntityDefinition) -> CKRecord {
+        let record = CKRecord(recordType: Item.recordType, recordID: CKRecord.ID(recordName: uuid))
         record["entity"] = entity
         record["schema_version"] = Int64(definition.version)
         record["uuid"] = uuid
@@ -87,10 +88,10 @@ public struct EntityStore: Sendable {
     public func read(entity: String, filters: [Filter] = [], sort: [Sort] = [], fields: [String]? = nil) async throws -> [EntityRecord] {
         let definition = try await registry.definition(for: entity)
         var (server, client) = try split(filters, entity: entity, using: definition)
-        server.append(RecordQuery.Filter(field: "deleted", op: .equals, value: .int(0)))
-        let query = RecordQuery(recordType: Item.self, filters: server, sort: try recordSort(sort, using: definition))
+        server.append(ServerFilter(field: "deleted", op: .equals, value: .int(0)))
+        let query = ckQuery(Item.recordType, filters: server, sort: try serverSort(sort, using: definition))
         let keys = try fields.map { try desiredKeys($0 + filters.map(\.field), using: definition) }
-        let records = try await database.readAll(matching: query, fields: keys)
+        let records = try await database.allRecords(matching: query, desiredKeys: keys)
         return try decode(records, using: definition).filter { record in
             !record.deleted && client.allSatisfy { matches(record, $0) }
         }
@@ -124,32 +125,23 @@ public struct EntityStore: Sendable {
         return union.sorted { Self.ordered($0, $1, by: sort) }
     }
 
-    func recordSort(_ sort: [Sort], using definition: EntityDefinition) throws -> [RecordQuery.Sort] {
-        try sort.map { sort in
-            guard case .slot(_, let slot)? = definition.fields(at: definition.version).first(where: { $0.name == sort.field })?.storage else {
-                throw SchemaError.unknownField(sort.field)
-            }
-            return RecordQuery.Sort(field: slot, ascending: sort.ascending)
-        }
-    }
-
     public func changes(entity: String, since cursor: Date? = nil) async throws -> (records: [EntityRecord], cursor: Date?) {
         let definition = try await registry.definition(for: entity)
-        var filters = [RecordQuery.Filter(field: "entity", op: .equals, value: .string(entity))]
+        var filters = [ServerFilter(field: "entity", op: .equals, value: .string(entity))]
         if let cursor {
-            filters.append(RecordQuery.Filter(field: "___modTime", op: .greaterThan, value: .date(cursor)))
+            filters.append(ServerFilter(field: "modificationDate", op: .greaterThan, value: .date(cursor)))
         }
-        let query = RecordQuery(recordType: Item.self, filters: filters)
-        let records = try await database.readAll(matching: query, fields: nil)
-        let next = records.compactMap { $0["___modTime"] as Date? }.max() ?? cursor
+        let query = ckQuery(Item.recordType, filters: filters)
+        let records = try await database.allRecords(matching: query)
+        let next = records.compactMap(\.recordModificationDate).max() ?? cursor
         return (try decode(records, using: definition), next)
     }
 
-    func decode(_ records: [Record], using definition: EntityDefinition) throws -> [EntityRecord] {
+    func decode(_ records: [CKRecord], using definition: EntityDefinition) throws -> [EntityRecord] {
         let coder = EntityCoder(keyProvider: keyProvider)
         return try records.compactMap { record in
             if let trustedWriters {
-                guard let creator: String = record["___createdBy"], trustedWriters.contains(creator) else { return nil }
+                guard let creator = record.recordCreator, trustedWriters.contains(creator) else { return nil }
             }
             return try coder.decode(record, using: definition)
         }

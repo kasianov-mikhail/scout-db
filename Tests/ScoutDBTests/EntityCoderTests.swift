@@ -5,6 +5,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
 import Foundation
 import Testing
 
@@ -19,7 +20,7 @@ struct EntityCoderTests {
     func encode() throws {
         let record = try coder.encode(makePurchase(), using: definition)
         #expect(record.recordType == "Item")
-        #expect(record.recordID == "p-1")
+        #expect(record.recordID.recordName == "p-1")
         #expect(record["entity"] == "purchase")
         #expect(record["schema_version"] == Int64(2))
         #expect(record["uuid"] == "p-1")
@@ -27,7 +28,7 @@ struct EntityCoderTests {
         #expect(record["i_01"] == Int64(3))
         #expect(record["d_00"] == 29.97)
         #expect(record["t_00"] == Date(timeIntervalSince1970: 1_000_000))
-        #expect(record.fields["payload"] != nil)
+        #expect(record["payload"] != nil)
     }
 
     @Test("Decode restores the encoded record")
@@ -73,7 +74,7 @@ struct EntityCoderTests {
 
     @Test("Decode refuses records newer than the definition")
     func staleSchema() throws {
-        var record = Record(recordType: "Item", recordID: "p-3")
+        let record = CKRecord(recordType: "Item", recordID: CKRecord.ID(recordName: "p-3"))
         record["entity"] = "purchase"
         record["schema_version"] = Int64(3)
         record["uuid"] = "p-3"

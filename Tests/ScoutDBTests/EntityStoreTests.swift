@@ -5,6 +5,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
 import CryptoKit
 import Foundation
 import Testing
@@ -364,8 +365,8 @@ struct EntityStoreTests {
 
         let records = try await store.read(entity: "report")
         #expect(records.first?.values["dump"] == .asset(url))
-        let item = try #require(database.records.first { $0.recordID == "r-1" })
-        #expect(item.fields["a_00"] == .asset(url))
+        let item = try #require(database.records.first { $0.recordID.recordName == "r-1" })
+        #expect((item["a_00"] as? CKAsset)?.fileURL == url)
     }
 
     @Test("Weekday bucket counts into a weekly grid")
@@ -429,8 +430,8 @@ struct EntityStoreTests {
     }
 
     private func stampModTime(uuid: String, at date: Date) {
-        for index in database.records.indices where database.records[index].recordType == "Item" && database.records[index].recordID == uuid {
-            database.records[index].fields["___modTime"] = .date(date)
+        for record in database.records where record.recordType == "Item" && record.recordID.recordName == uuid {
+            record.overrideModificationDate(date)
         }
     }
 }

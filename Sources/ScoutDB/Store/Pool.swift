@@ -30,9 +30,6 @@ public enum Pool: String, Codable, CaseIterable, Sendable {
     public var capacity: Int { 16 }
 }
 
-struct Item: RecordDecodable {
+enum Item {
     static let recordType = "Item"
-    static let desiredKeys: [String] = []
-
-    init(record: Record) throws {}
 }

@@ -5,6 +5,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
 import Foundation
 import Testing
 
@@ -34,8 +35,8 @@ struct AssetsTests {
         let payload = Data("stack trace".utf8)
         try await store.write(["name": .string("crash"), "dump": .bytes(payload)], entity: "report", uuid: "r-1")
 
-        let item = try #require(database.records.first { $0.recordID == "r-1" })
-        guard case .asset(let url)? = item.fields["a_00"] else {
+        let item = try #require(database.records.first { $0.recordID.recordName == "r-1" })
+        guard let asset = item["a_00"] as? CKAsset, let url = asset.fileURL else {
             Issue.record("Expected a staged asset URL")
             return
         }

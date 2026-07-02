@@ -5,6 +5,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
 import Foundation
 
 public struct EntityPage: Equatable, Sendable {
@@ -34,8 +35,7 @@ extension EntityStore {
             }
             var entityRecord = try coder.decode(existing, using: definition)
             try transform(&entityRecord)
-            var encoded = try coder.encode(entityRecord, using: definition)
-            encoded.metadata = existing.metadata
+            let encoded = try coder.encode(entityRecord, using: definition, into: existing)
             do {
                 try await database.write(record: encoded)
                 return
@@ -96,7 +96,7 @@ extension EntityStore {
         let definition = try await registry.definition(for: entity)
         let coder = EntityCoder(keyProvider: keyProvider)
 
-        var updated: [Record] = []
+        var updated: [CKRecord] = []
         for var record in try await read(entity: entity, filters: filters) {
             try transform(&record)
             updated.append(try coder.encode(record, using: definition))
@@ -119,14 +119,14 @@ extension EntityStore {
 
     @discardableResult public func reap(entity: String, asOf: Date) async throws -> Int {
         let definition = try await registry.definition(for: entity)
-        let query = RecordQuery(
-            recordType: Item.self,
+        let query = ckQuery(
+            Item.recordType,
             filters: [
-                RecordQuery.Filter(field: "entity", op: .equals, value: .string(entity)),
-                RecordQuery.Filter(field: "expires", op: .lessThan, value: .date(asOf)),
-                RecordQuery.Filter(field: "deleted", op: .equals, value: .int(0)),
+                ServerFilter(field: "entity", op: .equals, value: .string(entity)),
+                ServerFilter(field: "expires", op: .lessThan, value: .date(asOf)),
+                ServerFilter(field: "deleted", op: .equals, value: .int(0)),
             ])
-        let expired = try await database.readAll(matching: query, fields: nil).compactMap { $0["uuid"] as String? }
+        let expired = try await database.allRecords(matching: query).compactMap { $0["uuid"] as? String }
 
         let tombstones = expired.sorted().map { Self.tombstone(entity: entity, uuid: $0, definition: definition) }
         for chunk in tombstones.chunked(into: 400) {
@@ -141,16 +141,16 @@ extension EntityStore {
         return try decode(records, using: definition).filter { !$0.deleted }.sorted { $0.uuid < $1.uuid }
     }
 
-    func items(entity: String, uuids: [String]) async throws -> [Record] {
-        var records: [Record] = []
+    func items(entity: String, uuids: [String]) async throws -> [CKRecord] {
+        var records: [CKRecord] = []
         for chunk in uuids.chunked(into: 100) {
-            let query = RecordQuery(
-                recordType: Item.self,
+            let query = ckQuery(
+                Item.recordType,
                 filters: [
-                    RecordQuery.Filter(field: "entity", op: .equals, value: .string(entity)),
-                    RecordQuery.Filter(field: "uuid", op: .in, value: .strings(chunk)),
+                    ServerFilter(field: "entity", op: .equals, value: .string(entity)),
+                    ServerFilter(field: "uuid", op: .in, value: .strings(chunk)),
                 ])
-            records += try await database.readAll(matching: query, fields: nil)
+            records += try await database.allRecords(matching: query)
         }
         return records
     }
