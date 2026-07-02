@@ -21,18 +21,6 @@ protocol CloudDatabase: Sendable {
     func modifyRecords(saving: [CKRecord], deleting: [CKRecord.ID]) async throws
 }
 
-extension CKDatabase: CloudDatabase {
-    func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
-        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?
-    ) {
-        try await records(matching: query, inZoneWith: nil, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
-    }
-
-    func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {
-        _ = try await modifyRecords(saving: records, deleting: recordIDs, savePolicy: .allKeys, atomically: true)
-    }
-}
-
 extension CloudDatabase {
     static var maxBatchSize: Int { 400 }
 
@@ -60,6 +48,39 @@ extension CloudDatabase {
     func write(records: [CKRecord]) async throws {
         for chunk in records.chunked(into: Self.maxBatchSize) {
             try await modifyRecords(saving: chunk, deleting: [])
+        }
+    }
+}
+
+// Routes every real CloudKit call through the shared concurrency limit and a
+// bounded operation configuration; the in-memory test double bypasses both
+// since it never talks to the network.
+extension CKDatabase: CloudDatabase {
+    func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?
+    ) {
+        try await throttled { database in
+            try await database.records(matching: query, inZoneWith: nil, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+        }
+    }
+
+    func records(continuingMatchFrom cursor: CKQueryOperation.Cursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?
+    ) {
+        try await throttled { database in
+            try await database.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+        }
+    }
+
+    func save(_ record: CKRecord) async throws -> CKRecord {
+        try await throttled { database in
+            try await database.save(record)
+        }
+    }
+
+    func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {
+        try await throttled { database in
+            _ = try await database.modifyRecords(saving: records, deleting: recordIDs, savePolicy: .allKeys, atomically: true)
         }
     }
 }
