@@ -32,7 +32,6 @@ public enum Pool: String, Codable, CaseIterable, Sendable {
 
 struct Item: RecordDecodable {
     static let recordType = "Item"
-    static let sampleRecords: [Record] = []
     static let desiredKeys: [String] = []
 
     init(record: Record) throws {}

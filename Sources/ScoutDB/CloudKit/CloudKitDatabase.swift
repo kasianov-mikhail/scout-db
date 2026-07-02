@@ -7,13 +7,30 @@
 
 import CloudKit
 
-extension CKDatabase: RecordReader {
-    public func read(matching query: RecordQuery, fields: [String]?) async throws -> RecordChunk {
-        try await read(matching: query, fields: fields, limit: CKQueryOperation.maximumResults)
+extension EntityStore {
+    /// Creates a store backed by a CloudKit database.
+    public init(database: CKDatabase, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil, trustedWriters: Set<String>? = nil) {
+        self.init(database: database as any Database, registry: registry, keyProvider: keyProvider, trustedWriters: trustedWriters)
     }
+}
 
-    public func read(matching query: RecordQuery, fields: [String]?, limit: Int) async throws -> RecordChunk {
-        let results = try await records(matching: CKQuery(query), desiredKeys: fields, resultsLimit: limit)
+extension SchemaRegistry {
+    /// Creates a registry backed by a CloudKit database.
+    public init(database: CKDatabase) {
+        self.init(database: database as any Database)
+    }
+}
+
+extension Migrator {
+    /// Creates a migrator backed by a CloudKit database.
+    public init(database: CKDatabase, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil) {
+        self.init(database: database as any Database, registry: registry, keyProvider: keyProvider)
+    }
+}
+
+extension CKDatabase: Database {
+    func read(matching query: RecordQuery, fields: [String]?) async throws -> RecordChunk {
+        let results = try await records(matching: CKQuery(query), desiredKeys: fields, resultsLimit: CKQueryOperation.maximumResults)
         return try chunk(from: results)
     }
 
@@ -27,10 +44,8 @@ extension CKDatabase: RecordReader {
         }
         return RecordChunk(records: records, cursor: cursor)
     }
-}
 
-extension CKDatabase: RecordWriter {
-    public func write(record: Record) async throws {
+    func write(record: Record) async throws {
         do {
             try await save(record.ckRecord)
         } catch let error as CKError where error.code == .serverRecordChanged {
@@ -41,7 +56,7 @@ extension CKDatabase: RecordWriter {
         }
     }
 
-    public func write(records: [Record]) async throws {
+    func write(records: [Record]) async throws {
         for chunk in records.chunked(into: Self.maxBatchSize) {
             _ = try await modifyRecords(saving: chunk.map(\.ckRecord), deleting: [], savePolicy: .allKeys, atomically: true)
         }

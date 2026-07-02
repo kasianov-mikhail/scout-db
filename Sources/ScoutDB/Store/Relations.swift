@@ -7,11 +7,11 @@
 
 import Foundation
 
-extension UniversalStore {
+extension EntityStore {
     public func join(entity: String, records: [EntityRecord], field: String) async throws -> [String: EntityRecord] {
         let definition = try await registry.definition(for: entity)
         guard let parent = definition.fields(at: definition.version).first(where: { $0.name == field })?.references else {
-            throw UniversalSchemaError.unknownField(field)
+            throw SchemaError.unknownField(field)
         }
         let keys = Set(
             records.compactMap { record -> String? in

@@ -7,7 +7,7 @@
 
 import Foundation
 
-/// A Fluent-style schema builder that assigns slots and versions automatically.
+/// A chainable schema builder that assigns slots and versions automatically.
 ///
 /// ```swift
 /// try await store.schema("purchase")
@@ -164,7 +164,7 @@ public struct SchemaBuilder {
             resolved = storage
         } else if declaration.wantsSlot {
             guard let pool = declaration.type.pool else {
-                throw UniversalSchemaError.invalidDefinition("Field '\(declaration.name)' of type '\(declaration.type.rawValue)' cannot occupy a slot")
+                throw SchemaError.invalidDefinition("Field '\(declaration.name)' of type '\(declaration.type.rawValue)' cannot occupy a slot")
             }
             resolved = .slot(pool, try allocator.next(in: pool))
         } else {
@@ -208,7 +208,7 @@ private struct SlotAllocator {
             used[pool, default: []].insert(slot)
             return slot
         }
-        throw UniversalSchemaError.invalidDefinition("The '\(pool.rawValue)' pool is exhausted")
+        throw SchemaError.invalidDefinition("The '\(pool.rawValue)' pool is exhausted")
     }
 }
 
@@ -219,7 +219,7 @@ extension Storage {
     }
 }
 
-extension UniversalStore {
+extension EntityStore {
     /// Opens a Fluent-style schema builder for an entity.
     public func schema(_ entity: String) -> SchemaBuilder {
         SchemaBuilder(entity: entity, registry: registry)

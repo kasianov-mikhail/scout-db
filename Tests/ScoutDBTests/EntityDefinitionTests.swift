@@ -39,7 +39,7 @@ struct EntityDefinitionTests {
         let definition = makeDefinition(fields: [
             FieldDefinition(name: "count", type: .int, storage: .slot(.string, "s_00"))
         ])
-        #expect(throws: UniversalSchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
     @Test("Validation rejects a slot with a foreign prefix")
@@ -47,7 +47,7 @@ struct EntityDefinitionTests {
         let definition = makeDefinition(fields: [
             FieldDefinition(name: "count", type: .int, storage: .slot(.int, "d_00"))
         ])
-        #expect(throws: UniversalSchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
     @Test("Validation rejects overlapping fields sharing a slot")
@@ -56,7 +56,7 @@ struct EntityDefinitionTests {
             FieldDefinition(name: "first", type: .int, storage: .slot(.int, "i_00")),
             FieldDefinition(name: "second", type: .int, storage: .slot(.int, "i_00")),
         ])
-        #expect(throws: UniversalSchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
     @Test("Validation allows slot reuse across disjoint versions")
@@ -81,7 +81,7 @@ struct EntityDefinitionTests {
         let definition = makeDefinition(fields: [
             FieldDefinition(name: "title", type: .text, storage: .slot(.string, "s_00"))
         ])
-        #expect(throws: UniversalSchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
     @Test("Validation rejects an encrypted field in a slot")
@@ -90,7 +90,7 @@ struct EntityDefinitionTests {
             fields: [
                 FieldDefinition(name: "email", type: .string, storage: .slot(.string, "s_00"), encrypted: true)
             ], keyID: "k1")
-        #expect(throws: UniversalSchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
     @Test("Validation rejects encryption without a keyID")
@@ -98,7 +98,7 @@ struct EntityDefinitionTests {
         let definition = makeDefinition(fields: [
             FieldDefinition(name: "email", type: .string, storage: .payload, encrypted: true)
         ])
-        #expect(throws: UniversalSchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
     @Test("Validation rejects a non-timestamp envelope date")
@@ -107,7 +107,7 @@ struct EntityDefinitionTests {
             fields: [
                 FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
             ], envelopeDate: "name")
-        #expect(throws: UniversalSchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
     @Test("Validation rejects a view without an envelope date")
@@ -116,7 +116,7 @@ struct EntityDefinitionTests {
             fields: [
                 FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
             ], views: [AggregateView(name: "hourly")])
-        #expect(throws: UniversalSchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
     @Test("Validation rejects a slot beyond the pool capacity")
@@ -124,7 +124,7 @@ struct EntityDefinitionTests {
         let definition = makeDefinition(fields: [
             FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_99"))
         ])
-        #expect(throws: UniversalSchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
     @Test("Validation rejects an asset field in payload")
@@ -132,7 +132,7 @@ struct EntityDefinitionTests {
         let definition = makeDefinition(fields: [
             FieldDefinition(name: "screenshot", type: .asset, storage: .payload)
         ])
-        #expect(throws: UniversalSchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
     @Test("Validation allows several asset fields in distinct slots")
@@ -151,7 +151,7 @@ struct EntityDefinitionTests {
                 FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
             ], envelopeDate: "date", views: [AggregateView(name: "hourly", sum: "name")])
-        #expect(throws: UniversalSchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
     @Test("Validation rejects a unique key that is not a field")
@@ -160,7 +160,7 @@ struct EntityDefinitionTests {
             fields: [
                 FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
             ], unique: ["user_id"])
-        #expect(throws: UniversalSchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.self) { try definition.validate() }
     }
 }
 

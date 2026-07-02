@@ -6,13 +6,13 @@ record stores the `schema_version` it was written with, and the definition descr
 version at once (`since`/`until` bounds on fields) — so any record ever written stays
 readable forever, and there is nothing to re-import.
 
-## The Fluent way
+## Declaring migrations
 
 Declare each change as a `Migration` and run the list at startup:
 
 ```swift
 struct CreatePurchase: Migration {
-    func prepare(on store: UniversalStore) async throws {
+    func prepare(on store: EntityStore) async throws {
         try await store.schema("purchase")
             .field("product_id", .string, .required)
             .field("amount", .int)
@@ -23,7 +23,7 @@ struct CreatePurchase: Migration {
 }
 
 struct RetypePurchaseAmount: Migration {
-    func prepare(on store: UniversalStore) async throws {
+    func prepare(on store: EntityStore) async throws {
         try await store.schema("purchase")
             .field("product_id", .string, .required)
             .field("amount", .double)      // int → double
@@ -70,7 +70,7 @@ records see `user`, and a backfill carries the value across automatically.
 Old records stay valid without any rewriting. To actively move them to the latest version:
 
 ```swift
-let migrator = UniversalMigrator(database: database, registry: registry)
+let migrator = Migrator(database: database, registry: registry)
 try await migrator.backfill(entity: "purchase") { record in
     if case .int(let cents)? = record.values["amount"] {
         record.values["amount"] = .double(Double(cents) / 100)

@@ -7,15 +7,13 @@
 
 import Foundation
 
-public struct UniversalStore: Sendable {
-    let database: any RecordReader & RecordWriter
+public struct EntityStore: Sendable {
+    let database: any Database
     let registry: SchemaRegistry
     var keyProvider: (any EncryptionKeyProvider)?
     var trustedWriters: Set<String>?
 
-    public init(
-        database: any RecordReader & RecordWriter, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil, trustedWriters: Set<String>? = nil
-    ) {
+    init(database: any Database, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil, trustedWriters: Set<String>? = nil) {
         self.database = database
         self.registry = registry
         self.keyProvider = keyProvider
@@ -63,7 +61,7 @@ public struct UniversalStore: Sendable {
 
     @discardableResult public func write(_ values: [String: RecordValue], entity: String, uuid: String = UUID().uuidString) async throws -> String {
         let definition = try await registry.definition(for: entity)
-        let coder = UniversalCoder(keyProvider: keyProvider)
+        let coder = EntityCoder(keyProvider: keyProvider)
         let resolved = try coder.resolve(values, at: definition.version, using: definition)
         let recordUUID = try coder.naturalUUID(for: resolved, using: definition) ?? uuid
         let entityRecord = EntityRecord(entity: entity, uuid: recordUUID, schemaVersion: definition.version, values: resolved)
@@ -102,7 +100,7 @@ public struct UniversalStore: Sendable {
         var keys = ["entity", "schema_version", "uuid", "deleted"]
         for name in Set(fields) {
             guard let field = definition.fields(at: definition.version).first(where: { $0.name == name }) else {
-                throw UniversalSchemaError.unknownField(name)
+                throw SchemaError.unknownField(name)
             }
             switch field.storage {
             case .slot(_, let slot):
@@ -129,7 +127,7 @@ public struct UniversalStore: Sendable {
     func recordSort(_ sort: [Sort], using definition: EntityDefinition) throws -> [RecordQuery.Sort] {
         try sort.map { sort in
             guard case .slot(_, let slot)? = definition.fields(at: definition.version).first(where: { $0.name == sort.field })?.storage else {
-                throw UniversalSchemaError.unknownField(sort.field)
+                throw SchemaError.unknownField(sort.field)
             }
             return RecordQuery.Sort(field: slot, ascending: sort.ascending)
         }
@@ -148,7 +146,7 @@ public struct UniversalStore: Sendable {
     }
 
     func decode(_ records: [Record], using definition: EntityDefinition) throws -> [EntityRecord] {
-        let coder = UniversalCoder(keyProvider: keyProvider)
+        let coder = EntityCoder(keyProvider: keyProvider)
         return try records.compactMap { record in
             if let trustedWriters {
                 guard let creator: String = record["___createdBy"], trustedWriters.contains(creator) else { return nil }

@@ -13,7 +13,7 @@ try await store.schema("account")
     .keyID("k1")
     .create()
 
-let store = UniversalStore(database: database, registry: registry, keyProvider: provider)
+let store = EntityStore(database: database, registry: registry, keyProvider: provider)
 ```
 
 Values are sealed with AES-GCM. Readers without the key see ciphertext and simply get `nil`
@@ -38,7 +38,7 @@ with its creator (`___createdBy`) server-side — it cannot be forged — so a r
 records from unknown writers:
 
 ```swift
-let store = UniversalStore(database: database, registry: registry, trustedWriters: ["_abc123"])
+let store = EntityStore(database: database, registry: registry, trustedWriters: ["_abc123"])
 ```
 
 Grants cannot be narrowed after the fact, so this reader-side filter is the practical

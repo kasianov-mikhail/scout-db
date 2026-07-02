@@ -4,32 +4,27 @@ Query and aggregation operators ScoutDB supports. See the [README](../README.md)
 the architecture this builds on.
 
 ```swift
-let filter = UniversalStore.Filter(field: "title", op: .endsWith, value: .string("World"))
+let filter = EntityStore.Filter(field: "title", op: .endsWith, value: .string("World"))
 let notes = try await store.read(entity: "note", filters: [filter])
 ```
 
-Filters marked **server** run as CloudKit predicates. Filters marked **client** are checked
-after decoding — pair them with at least one server filter on large entities.
-
 ## Comparison
 
-| Operator | Side |
-|---|---|
-| `equals` / `notEquals` | server |
-| `greaterThan` / `lessThan` (+ `OrEquals`) | server |
-| `in` / `notIn` | server |
-| `Filter.between(field, lower, upper)` | server |
+- `equals` / `notEquals`
+- `greaterThan` / `lessThan` (+ `OrEquals`)
+- `in` / `notIn`
+- `Filter.between(field, lower, upper)`
 
 ## String matching
 
-| Operator | Side | Notes |
-|---|---|---|
-| `beginsWith` | server | prefix match |
-| `endsWith` | server* | *needs a `reversed` shadow field, else client |
-| `contains` | server + client | substring, narrowed server-side via a shadow field |
-| `like` (`*`, `?`) | server + client | wildcards, same narrowing |
-| `matches` | client | regex, whole-string |
-| `search` | server | whole-token full-text on a `text` field |
+| Operator | Notes |
+|---|---|
+| `beginsWith` | prefix match |
+| `endsWith` | fastest with a `reversed` shadow field |
+| `contains` | substring; a `ngrams` shadow field speeds it up |
+| `like` (`*`, `?`) | wildcards, whole-string match |
+| `matches` | regular expression, whole-string match |
+| `search` | whole-token full-text on a `text` field |
 
 Case/diacritic-insensitive matching and substring search are shadow-field techniques, not
 operator flags — declare a derived `fold`, `reversed`, or `ngrams` field once and the matching
@@ -37,16 +32,14 @@ operators pick it up automatically.
 
 ## Collections and geo
 
-| Operator | Side |
-|---|---|
-| `contains` on a `list` field | server |
-| `Filter.containsAll(field, values)` | server |
-| `Filter.containsAny(field, values)` | fan-out |
-| `near` (radius, on a `location` field) | server |
+- `contains` on a list field — membership: `tags CONTAINS "swift"`
+- `Filter.containsAll(field, values)` — every value present
+- `Filter.containsAny(field, values)` — at least one present, via `read(any:)`
+- `near` — radius match on a `location` field, in meters
 
 ## Existence
 
-`isNull` / `isNotNull` — always **client**. CloudKit has no way to match a missing field.
+`isNull` / `isNotNull` — match records missing or carrying a value; work on payload fields too.
 
 ## OR and ORDER BY
 
@@ -59,16 +52,12 @@ prefer a single `in` filter when branches only differ by value.
 
 Declare `views` on the definition; every write updates counters so reads never scan raw records.
 
-| Operator | Side |
-|---|---|
-| `COUNT` | write |
-| `SUM` / `MIN` / `MAX` | write |
-| `AVG` | read |
-| `STDDEV` / `VARIANCE` | write + read |
-| Percentiles | write + read |
-| `GROUP BY` | read |
-| `HAVING` | read |
-| `DISTINCT` | read |
+- `COUNT`, `SUM`, `MIN`, `MAX` — declared on a view
+- `AVG`, `STDDEV`, `VARIANCE` — derived from view metrics at read time
+- Percentiles — from a histogram view
+- `GROUP BY` — `aggregate(...)` and `totals(...)`
+- `HAVING` — the `having:` closure of `totals(...)`
+- `DISTINCT` — `distinct(entity:field:)`
 
 ## Read and write shapes
 

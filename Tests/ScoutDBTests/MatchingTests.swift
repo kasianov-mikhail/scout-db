@@ -10,15 +10,15 @@ import Testing
 
 @testable import ScoutDB
 
-@Suite("Universal matching")
-struct UniversalMatchingTests {
+@Suite("Matching")
+struct MatchingTests {
     let database = InMemoryDatabase()
-    let store: UniversalStore
+    let store: EntityStore
     let registry: SchemaRegistry
 
     init() async throws {
         registry = SchemaRegistry(database: database)
-        store = UniversalStore(database: database, registry: registry)
+        store = EntityStore(database: database, registry: registry)
         try await registry.publish(
             makeDefinition(
                 entity: "note",
@@ -36,8 +36,8 @@ struct UniversalMatchingTests {
         try await store.write(["title": .string("Café Crème"), "body": .string("Lazy dog sleeps")], entity: "note", uuid: "n-2")
     }
 
-    private func read(_ field: String, _ op: UniversalStore.Match, _ value: String) async throws -> [String] {
-        let records = try await store.read(entity: "note", filters: [UniversalStore.Filter(field: field, op: op, value: .string(value))])
+    private func read(_ field: String, _ op: EntityStore.Match, _ value: String) async throws -> [String] {
+        let records = try await store.read(entity: "note", filters: [EntityStore.Filter(field: field, op: op, value: .string(value))])
         return records.map(\.uuid)
     }
 
@@ -71,11 +71,11 @@ struct UniversalMatchingTests {
     @Test("Substring search narrows server-side through trigram predicates")
     func ngramPrefilter() async throws {
         let definition = try await registry.definition(for: "note")
-        let filter = UniversalStore.Filter(field: "title", op: .contains, value: .string("lo Wo"))
+        let filter = EntityStore.Filter(field: "title", op: .contains, value: .string("lo Wo"))
         let (server, client) = try store.split([filter], entity: "note", using: definition)
 
         let trigramFilters = server.filter { $0.field == "ls_00" && $0.op == .contains }
-        #expect(trigramFilters.count == UniversalCoder.trigrams(of: "lo wo").count)
+        #expect(trigramFilters.count == EntityCoder.trigrams(of: "lo wo").count)
         #expect(client == [filter])
     }
 
@@ -83,7 +83,7 @@ struct UniversalMatchingTests {
     func shortNeedle() async throws {
         #expect(try await read("title", .contains, "lo") == ["n-1"])
         let definition = try await registry.definition(for: "note")
-        let filter = UniversalStore.Filter(field: "title", op: .contains, value: .string("lo"))
+        let filter = EntityStore.Filter(field: "title", op: .contains, value: .string("lo"))
         let (server, _) = try store.split([filter], entity: "note", using: definition)
         #expect(server.filter { $0.field == "ls_00" }.count == 0)
     }
@@ -92,9 +92,9 @@ struct UniversalMatchingTests {
     func likePrefilter() async throws {
         #expect(try await read("title", .like, "H*World") == ["n-1"])
         let definition = try await registry.definition(for: "note")
-        let filter = UniversalStore.Filter(field: "title", op: .like, value: .string("H*World"))
+        let filter = EntityStore.Filter(field: "title", op: .like, value: .string("H*World"))
         let (server, _) = try store.split([filter], entity: "note", using: definition)
-        #expect(server.filter { $0.field == "ls_00" }.count == UniversalCoder.trigrams(of: "world").count)
+        #expect(server.filter { $0.field == "ls_00" }.count == EntityCoder.trigrams(of: "world").count)
     }
 
     @Test("LIKE supports * and ? wildcards")
@@ -118,7 +118,7 @@ struct UniversalMatchingTests {
 
     @Test("Search is rejected on non-searchable fields")
     func searchRequiresText() async throws {
-        await #expect(throws: UniversalSchemaError.invalidValue("title")) {
+        await #expect(throws: SchemaError.invalidValue("title")) {
             _ = try await read("title", .search, "hello")
         }
     }

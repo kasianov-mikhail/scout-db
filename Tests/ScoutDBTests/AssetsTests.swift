@@ -10,15 +10,15 @@ import Testing
 
 @testable import ScoutDB
 
-@Suite("Universal assets")
-struct UniversalAssetsTests {
+@Suite("Assets")
+struct AssetsTests {
     let database = InMemoryDatabase()
-    let store: UniversalStore
+    let store: EntityStore
     let registry: SchemaRegistry
 
     init() async throws {
         registry = SchemaRegistry(database: database)
-        store = UniversalStore(database: database, registry: registry)
+        store = EntityStore(database: database, registry: registry)
         try await registry.publish(
             makeDefinition(
                 entity: "report",
@@ -66,28 +66,28 @@ struct UniversalAssetsTests {
     @Test("Staging is content-addressed")
     func contentAddressing() throws {
         let payload = Data("same bytes".utf8)
-        let first = try UniversalCoder.stage(payload)
-        let second = try UniversalCoder.stage(payload)
-        let other = try UniversalCoder.stage(Data("different".utf8))
+        let first = try EntityCoder.stage(payload)
+        let second = try EntityCoder.stage(payload)
+        let other = try EntityCoder.stage(Data("different".utf8))
         #expect(first == second)
         #expect(first != other)
     }
 
     @Test("Oversized payloads are rejected before upload")
     func oversize() throws {
-        #expect(throws: UniversalSchemaError.invalidValue("asset")) {
-            try UniversalCoder.stage(Data(count: 9), limit: 8)
+        #expect(throws: SchemaError.invalidValue("asset")) {
+            try EntityCoder.stage(Data(count: 9), limit: 8)
         }
     }
 
     @Test("Oversized staged files are rejected too")
     func oversizeFile() throws {
-        guard case .asset(let url) = try UniversalCoder.stage(Data(count: 9)) else {
+        guard case .asset(let url) = try EntityCoder.stage(Data(count: 9)) else {
             Issue.record("Expected a staged asset URL")
             return
         }
-        #expect(throws: UniversalSchemaError.invalidValue("asset")) {
-            try UniversalCoder.validateAssetSize(at: url, limit: 8)
+        #expect(throws: SchemaError.invalidValue("asset")) {
+            try EntityCoder.validateAssetSize(at: url, limit: 8)
         }
     }
 

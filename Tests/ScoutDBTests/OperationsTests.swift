@@ -10,15 +10,15 @@ import Testing
 
 @testable import ScoutDB
 
-@Suite("UniversalStore operations")
-struct UniversalOperationsTests {
+@Suite("Operations")
+struct OperationsTests {
     let database = InMemoryDatabase()
-    let store: UniversalStore
+    let store: EntityStore
     let registry: SchemaRegistry
 
     init() async throws {
         registry = SchemaRegistry(database: database)
-        store = UniversalStore(database: database, registry: registry)
+        store = EntityStore(database: database, registry: registry)
         try await registry.publish(makePurchaseDefinition())
     }
 
@@ -45,7 +45,7 @@ struct UniversalOperationsTests {
 
     @Test("CAS update of a missing record fails")
     func updateMissing() async throws {
-        await #expect(throws: UniversalSchemaError.notFound("ghost")) {
+        await #expect(throws: SchemaError.notFound("ghost")) {
             try await store.update(entity: "purchase", uuid: "ghost") { _ in }
         }
     }
@@ -101,7 +101,7 @@ struct UniversalOperationsTests {
     @Test("Projection auto-includes filtered fields")
     func projectionWithFilter() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        let filter = UniversalStore.Filter(field: "comment", op: .contains, value: .string("gif"))
+        let filter = EntityStore.Filter(field: "comment", op: .contains, value: .string("gif"))
         let records = try await store.read(entity: "purchase", filters: [filter], fields: ["product_id"])
         #expect(records.map(\.uuid) == ["p-1"])
     }
@@ -109,13 +109,13 @@ struct UniversalOperationsTests {
     @Test("Explain reveals the server and client sides of a query")
     func explain() async throws {
         let filters = [
-            UniversalStore.Filter(field: "product_id", op: .equals, value: .string("sku-42")),
-            UniversalStore.Filter(field: "comment", op: .contains, value: .string("gif")),
+            EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-42")),
+            EntityStore.Filter(field: "comment", op: .contains, value: .string("gif")),
         ]
-        let plan = try await store.explain(entity: "purchase", filters: filters, sort: [UniversalStore.Sort(field: "date")])
-        #expect(plan.server.contains { $0.field == "s_00" && $0.op == .equals })
-        #expect(plan.client == [filters[1]])
-        #expect(plan.sort == [RecordQuery.Sort(field: "t_00", ascending: true)])
+        let plan = try await store.explain(entity: "purchase", filters: filters, sort: [EntityStore.Sort(field: "date")])
+        #expect(plan.server.contains("s_00 equals sku-42"))
+        #expect(plan.client.contains("comment contains gif"))
+        #expect(plan.sort == ["t_00 asc"])
         #expect(plan.description.contains("SERVER s_00 equals sku-42"))
     }
 
@@ -139,7 +139,7 @@ struct UniversalOperationsTests {
         for index in 0..<3 {
             try await store.write(makePurchase().values, entity: "purchase", uuid: "p-\(index)")
         }
-        let filter = UniversalStore.Filter(field: "product_id", op: .equals, value: .string("sku-42"))
+        let filter = EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-42"))
         let updated = try await store.updateAll(entity: "purchase", filters: [filter]) { record in
             record.values["quantity"] = .int(99)
         }
@@ -156,7 +156,7 @@ struct UniversalOperationsTests {
         other["product_id"] = .string("sku-7")
         try await store.write(other, entity: "purchase", uuid: "p-2")
 
-        let filter = UniversalStore.Filter(field: "product_id", op: .equals, value: .string("sku-42"))
+        let filter = EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-42"))
         let deleted = try await store.deleteAll(entity: "purchase", filters: [filter])
         #expect(deleted == 1)
         #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-2"])
@@ -164,31 +164,31 @@ struct UniversalOperationsTests {
 
     @Test("Transaction applies every step and commits")
     func transaction() async throws {
-        try await registry.publish(UniversalStore.transactionDefinition)
+        try await registry.publish(EntityStore.transactionDefinition)
         let txn = try await store.transaction { draft in
             draft.write(makePurchase(uuid: "p-1").values, entity: "purchase", uuid: "p-1")
             draft.write(makePurchase(uuid: "p-2").values, entity: "purchase", uuid: "p-2")
         }
 
         #expect(try await store.read(entity: "purchase").count == 2)
-        let committed = try await store.read(entity: UniversalStore.transactionEntity)
+        let committed = try await store.read(entity: EntityStore.transactionEntity)
         #expect(committed.map(\.uuid) == [txn])
         #expect(committed.first?.values["status"] == .string("committed"))
     }
 
     @Test("Repair completes an interrupted transaction")
     func repair() async throws {
-        try await registry.publish(UniversalStore.transactionDefinition)
+        try await registry.publish(EntityStore.transactionDefinition)
         let steps = try JSONEncoder().encode([TransactionStep(entity: "purchase", uuid: "p-9", values: makePurchase().values)])
         try await store.write(
-            ["status": .string("pending"), "date": .date(Date(timeIntervalSince1970: 1_000)), "steps": .bytes(steps)], entity: UniversalStore.transactionEntity,
+            ["status": .string("pending"), "date": .date(Date(timeIntervalSince1970: 1_000)), "steps": .bytes(steps)], entity: EntityStore.transactionEntity,
             uuid: "t-1")
 
         let repaired = try await store.repairTransactions()
         #expect(repaired == 1)
         #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-9"])
 
-        let committed = try await store.read(entity: UniversalStore.transactionEntity)
+        let committed = try await store.read(entity: EntityStore.transactionEntity)
         #expect(committed.first?.values["status"] == .string("committed"))
         #expect(try await store.repairTransactions() == 0)
     }
@@ -221,7 +221,7 @@ struct UniversalOperationsTests {
         stampCreator(uuid: "p-1", creator: "good")
         stampCreator(uuid: "p-2", creator: "evil")
 
-        let guarded = UniversalStore(database: database, registry: registry, trustedWriters: ["good"])
+        let guarded = EntityStore(database: database, registry: registry, trustedWriters: ["good"])
         let records = try await guarded.read(entity: "purchase")
         #expect(records.map(\.uuid) == ["p-1"])
     }

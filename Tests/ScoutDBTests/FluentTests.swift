@@ -13,12 +13,12 @@ import Testing
 @Suite("Fluent interface")
 struct FluentTests {
     let database = InMemoryDatabase()
-    let store: UniversalStore
+    let store: EntityStore
     let registry: SchemaRegistry
 
     init() async throws {
         registry = SchemaRegistry(database: database)
-        store = UniversalStore(database: database, registry: registry)
+        store = EntityStore(database: database, registry: registry)
         try await store.schema("purchase")
             .field("product_id", .string, .required)
             .field("quantity", .int, .minimum(0))
@@ -127,7 +127,7 @@ struct FluentTests {
     @Test("Migrations run in order and are repeatable")
     func migrations() async throws {
         struct CreateNote: Migration {
-            func prepare(on store: UniversalStore) async throws {
+            func prepare(on store: EntityStore) async throws {
                 try await store.schema("note")
                     .field("title", .string)
                     .create()

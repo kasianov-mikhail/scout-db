@@ -4,7 +4,7 @@
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/kasianov-mikhail/scout-db.git", from: "0.1.0")
+    .package(url: "https://github.com/kasianov-mikhail/scout-db.git", from: "0.2.0")
 ]
 ```
 
@@ -30,7 +30,7 @@ import ScoutDB
 
 let database = CKContainer(identifier: "iCloud.com.example.app").publicCloudDatabase
 let registry = SchemaRegistry(database: database)
-let store = UniversalStore(database: database, registry: registry)
+let store = EntityStore(database: database, registry: registry)
 ```
 
 ## Declare an entity
