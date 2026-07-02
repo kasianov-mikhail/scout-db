@@ -7,18 +7,23 @@
 
 import Foundation
 
-struct EntityPage: Equatable, Sendable {
-    let records: [EntityRecord]
-    let cursor: EntityCursor?
+public struct EntityPage: Equatable, Sendable {
+    public let records: [EntityRecord]
+    public let cursor: EntityCursor?
 }
 
-struct EntityCursor: Codable, Equatable, Sendable {
-    let date: Date
-    let uuid: String
+public struct EntityCursor: Codable, Equatable, Sendable {
+    public let date: Date
+    public let uuid: String
+
+    public init(date: Date, uuid: String) {
+        self.date = date
+        self.uuid = uuid
+    }
 }
 
 extension UniversalStore {
-    func update(entity: String, uuid: String, maxRetry: Int = 3, transform: (inout EntityRecord) throws -> Void) async throws {
+    public func update(entity: String, uuid: String, maxRetry: Int = 3, transform: (inout EntityRecord) throws -> Void) async throws {
         let definition = try await registry.definition(for: entity)
         let coder = UniversalCoder(keyProvider: keyProvider)
         var attempt = 0
@@ -41,7 +46,7 @@ extension UniversalStore {
         }
     }
 
-    func read(entity: String, filters: [Filter] = [], limit: Int, after cursor: EntityCursor? = nil) async throws -> EntityPage {
+    public func read(entity: String, filters: [Filter] = [], limit: Int, after cursor: EntityCursor? = nil) async throws -> EntityPage {
         let definition = try await registry.definition(for: entity)
         guard let dateField = definition.envelopeDate else {
             throw UniversalSchemaError.invalidDefinition("Pagination requires an envelope date")
@@ -66,7 +71,7 @@ extension UniversalStore {
         return EntityPage(records: records, cursor: next)
     }
 
-    func stream(entity: String, filters: [Filter] = [], pageSize: Int = 100) -> AsyncThrowingStream<EntityRecord, any Error> {
+    public func stream(entity: String, filters: [Filter] = [], pageSize: Int = 100) -> AsyncThrowingStream<EntityRecord, any Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 var cursor: EntityCursor?
@@ -87,7 +92,7 @@ extension UniversalStore {
         }
     }
 
-    @discardableResult func updateAll(entity: String, filters: [Filter] = [], transform: (inout EntityRecord) throws -> Void) async throws -> Int {
+    @discardableResult public func updateAll(entity: String, filters: [Filter] = [], transform: (inout EntityRecord) throws -> Void) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         let coder = UniversalCoder(keyProvider: keyProvider)
 
@@ -102,7 +107,7 @@ extension UniversalStore {
         return updated.count
     }
 
-    @discardableResult func deleteAll(entity: String, filters: [Filter] = []) async throws -> Int {
+    @discardableResult public func deleteAll(entity: String, filters: [Filter] = []) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         let victims = try await read(entity: entity, filters: filters)
         let tombstones = victims.map { Self.tombstone(entity: entity, uuid: $0.uuid, definition: definition) }
@@ -112,7 +117,7 @@ extension UniversalStore {
         return victims.count
     }
 
-    @discardableResult func reap(entity: String, asOf: Date) async throws -> Int {
+    @discardableResult public func reap(entity: String, asOf: Date) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         let query = RecordQuery(
             recordType: Item.self,
@@ -130,7 +135,7 @@ extension UniversalStore {
         return expired.count
     }
 
-    func fetch(entity: String, uuids: [String]) async throws -> [EntityRecord] {
+    public func fetch(entity: String, uuids: [String]) async throws -> [EntityRecord] {
         let definition = try await registry.definition(for: entity)
         let records = try await items(entity: entity, uuids: uuids)
         return try decode(records, using: definition).filter { !$0.deleted }.sorted { $0.uuid < $1.uuid }

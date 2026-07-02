@@ -36,7 +36,7 @@ extension UniversalCoder {
 extension EntityRecord {
     // A downloaded asset URL points into CloudKit's ephemeral cache — read the
     // contents promptly instead of holding on to the URL.
-    func assetData(for field: String) throws -> Data? {
+    public func assetData(for field: String) throws -> Data? {
         guard case .asset(let url)? = values[field] else { return nil }
         return try Data(contentsOf: url)
     }

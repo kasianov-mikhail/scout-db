@@ -7,14 +7,22 @@
 
 import Foundation
 
-struct EntityRecord: Codable, Equatable, Sendable {
-    let entity: String
-    let uuid: String
-    var schemaVersion: Int
-    var values: [String: RecordValue]
-    var deleted = false
+public struct EntityRecord: Codable, Equatable, Sendable {
+    public let entity: String
+    public let uuid: String
+    public var schemaVersion: Int
+    public var values: [String: RecordValue]
+    public var deleted = false
 
-    subscript<T: RecordValueConvertible>(name: String) -> T? {
+    public init(entity: String, uuid: String, schemaVersion: Int, values: [String: RecordValue], deleted: Bool = false) {
+        self.entity = entity
+        self.uuid = uuid
+        self.schemaVersion = schemaVersion
+        self.values = values
+        self.deleted = deleted
+    }
+
+    public subscript<T: RecordValueConvertible>(name: String) -> T? {
         get { values[name].flatMap(T.init(recordValue:)) }
         set { values[name] = newValue?.recordValue }
     }

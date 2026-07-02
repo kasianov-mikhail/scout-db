@@ -7,7 +7,7 @@
 
 import Foundation
 
-protocol RecordReader: Sendable {
+public protocol RecordReader: Sendable {
     func read(matching query: RecordQuery, fields: [String]?) async throws -> RecordChunk
     func read(matching query: RecordQuery, fields: [String]?, limit: Int) async throws -> RecordChunk
 }
@@ -34,13 +34,22 @@ extension RecordReader {
     }
 }
 
-struct RecordCursor: Sendable {
-    let next: @Sendable ([String]?) async throws -> RecordChunk
+public struct RecordCursor: Sendable {
+    public let next: @Sendable ([String]?) async throws -> RecordChunk
+
+    public init(next: @escaping @Sendable ([String]?) async throws -> RecordChunk) {
+        self.next = next
+    }
 }
 
-struct RecordChunk {
-    let records: [Record]
-    let cursor: RecordCursor?
+public struct RecordChunk {
+    public let records: [Record]
+    public let cursor: RecordCursor?
+
+    public init(records: [Record], cursor: RecordCursor?) {
+        self.records = records
+        self.cursor = cursor
+    }
 
     static func += (lhs: inout Self, rhs: Self) {
         lhs = lhs + rhs

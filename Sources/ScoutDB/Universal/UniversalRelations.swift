@@ -8,7 +8,7 @@
 import Foundation
 
 extension UniversalStore {
-    func join(entity: String, records: [EntityRecord], field: String) async throws -> [String: EntityRecord] {
+    public func join(entity: String, records: [EntityRecord], field: String) async throws -> [String: EntityRecord] {
         let definition = try await registry.definition(for: entity)
         guard let parent = definition.fields(at: definition.version).first(where: { $0.name == field })?.references else {
             throw UniversalSchemaError.unknownField(field)
@@ -22,7 +22,7 @@ extension UniversalStore {
         return Dictionary(uniqueKeysWithValues: parents.map { ($0.uuid, $0) })
     }
 
-    func orphans(entity: String, field: String) async throws -> [EntityRecord] {
+    public func orphans(entity: String, field: String) async throws -> [EntityRecord] {
         let records = try await read(entity: entity)
         let parents = try await join(entity: entity, records: records, field: field)
         return records.filter { record in
@@ -31,7 +31,7 @@ extension UniversalStore {
         }
     }
 
-    func delete(entity: String, uuid: String, cascade: Bool) async throws {
+    public func delete(entity: String, uuid: String, cascade: Bool) async throws {
         try await delete(entity: entity, uuid: uuid)
         guard cascade else { return }
 

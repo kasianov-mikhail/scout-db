@@ -7,12 +7,12 @@
 
 import Foundation
 
-struct QueryPlan: Equatable, Sendable, CustomStringConvertible {
-    let server: [RecordQuery.Filter]
-    let client: [UniversalStore.Filter]
-    let sort: [RecordQuery.Sort]
+public struct QueryPlan: Equatable, Sendable, CustomStringConvertible {
+    public let server: [RecordQuery.Filter]
+    public let client: [UniversalStore.Filter]
+    public let sort: [RecordQuery.Sort]
 
-    var description: String {
+    public var description: String {
         let lines =
             server.map { "SERVER \($0.field) \($0.op.rawValue) \($0.value.canonical)" }
             + client.map { "CLIENT \($0.field) \($0.op) \($0.value.canonical)" }
@@ -22,13 +22,13 @@ struct QueryPlan: Equatable, Sendable, CustomStringConvertible {
 }
 
 extension UniversalStore {
-    func explain(entity: String, filters: [Filter] = [], sort: [Sort] = []) async throws -> QueryPlan {
+    public func explain(entity: String, filters: [Filter] = [], sort: [Sort] = []) async throws -> QueryPlan {
         let definition = try await registry.definition(for: entity)
         let (server, client) = try split(filters, entity: entity, using: definition)
         return QueryPlan(server: server, client: client, sort: try recordSort(sort, using: definition))
     }
 
-    enum Match: Equatable, Sendable {
+    public enum Match: Equatable, Sendable {
         case equals, notEquals
         case greaterThan, greaterThanOrEquals, lessThan, lessThanOrEquals
         case `in`, notIn, beginsWith, contains, near, search
