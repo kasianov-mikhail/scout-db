@@ -1,0 +1,155 @@
+//
+// Copyright 2026 Mikhail Kasianov
+//
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+import Foundation
+
+struct AggregateRow: Equatable, Sendable {
+    let group: String
+    let period: Date
+    let count: Int
+    let value: Double?
+    var squares: Double?
+
+    var average: Double? {
+        guard let value, count > 0 else { return nil }
+        return value / Double(count)
+    }
+
+    var variance: Double? {
+        guard let value, let squares, count > 0 else { return nil }
+        let mean = value / Double(count)
+        return Swift.max(0, squares / Double(count) - mean * mean)
+    }
+
+    var standardDeviation: Double? {
+        variance.map(sqrt)
+    }
+}
+
+struct AggregateTotal: Equatable, Sendable {
+    let group: String
+    let count: Int
+    let value: Double?
+    var squares: Double?
+
+    var average: Double? {
+        guard let value, count > 0 else { return nil }
+        return value / Double(count)
+    }
+
+    var variance: Double? {
+        guard let value, let squares, count > 0 else { return nil }
+        let mean = value / Double(count)
+        return Swift.max(0, squares / Double(count) - mean * mean)
+    }
+
+    var standardDeviation: Double? {
+        variance.map(sqrt)
+    }
+}
+
+extension UniversalStore {
+    func aggregate(entity: String, view viewName: String, from: Date? = nil, to: Date? = nil) async throws -> [AggregateRow] {
+        let definition = try await registry.definition(for: entity)
+        guard let view = definition.views?.first(where: { $0.name == viewName }) else {
+            throw UniversalSchemaError.unknownField(viewName)
+        }
+        let records = try await gridRecords(entity: entity, view: viewName, from: from, to: to)
+        let kind = view.metric?.kind
+        let isStats = view.stats != nil
+
+        return records.compactMap { record -> AggregateRow? in
+            guard let period: Date = record["date"], let group: String = record["group_key"] else { return nil }
+            var count = 0
+            var value: Double?
+            var squares: Double?
+            for index in 0..<64 {
+                count += Int(record[String(format: "c_%02d", index)] as Int64? ?? 0)
+                guard let kind, let cell = record[String(format: "f_%02d", index)] as Double? else { continue }
+                if isStats, index >= 32 {
+                    squares = (squares ?? 0) + cell
+                } else {
+                    value = value.map { kind.combine($0, cell) } ?? cell
+                }
+            }
+            return AggregateRow(group: group, period: period, count: count, value: value, squares: squares)
+        }.sorted { ($0.period, $0.group) < ($1.period, $1.group) }
+    }
+
+    func totals(entity: String, view viewName: String, from: Date? = nil, to: Date? = nil, having: (AggregateTotal) -> Bool = { _ in true }) async throws
+        -> [AggregateTotal]
+    {
+        let definition = try await registry.definition(for: entity)
+        let kind = definition.views?.first { $0.name == viewName }?.metric?.kind
+        let rows = try await aggregate(entity: entity, view: viewName, from: from, to: to)
+
+        return Dictionary(grouping: rows, by: \.group).map { group, rows in
+            let count = rows.reduce(0) { $0 + $1.count }
+            let values = rows.compactMap(\.value)
+            let value: Double? = values.count > 0 ? values.dropFirst().reduce(values[0]) { kind?.combine($0, $1) ?? $0 + $1 } : nil
+            let squares = rows.compactMap(\.squares)
+            return AggregateTotal(group: group, count: count, value: value, squares: squares.count > 0 ? squares.reduce(0, +) : nil)
+        }.filter(having).sorted { $0.group < $1.group }
+    }
+
+    func percentile(_ p: Double, entity: String, view viewName: String, from: Date? = nil, to: Date? = nil) async throws -> Double? {
+        let definition = try await registry.definition(for: entity)
+        guard let histogram = definition.views?.first(where: { $0.name == viewName })?.histogram else {
+            throw UniversalSchemaError.invalidValue(viewName)
+        }
+
+        var counts = [Double](repeating: 0, count: histogram.bounds.count + 1)
+        for record in try await gridRecords(entity: entity, view: viewName, from: from, to: to) {
+            for index in counts.indices {
+                counts[index] += Double(record[String(format: "c_%02d", index)] as Int64? ?? 0)
+            }
+        }
+
+        let total = counts.reduce(0, +)
+        guard total > 0 else { return nil }
+        let target = p * total
+
+        var cumulative = 0.0
+        for (index, count) in counts.enumerated() where count > 0 {
+            if cumulative + count >= target {
+                if index == 0 { return histogram.bounds.first }
+                if index == counts.count - 1 { return histogram.bounds.last }
+                let lower = histogram.bounds[index - 1]
+                let upper = histogram.bounds[index]
+                return lower + (target - cumulative) / count * (upper - lower)
+            }
+            cumulative += count
+        }
+        return histogram.bounds.last
+    }
+
+    func distinct(entity: String, field: String, filters: [Filter] = []) async throws -> [RecordValue] {
+        var seen: Set<String> = []
+        var values: [RecordValue] = []
+        for record in try await read(entity: entity, filters: filters) {
+            guard let value = record.values[field] else { continue }
+            if seen.insert(value.canonical).inserted {
+                values.append(value)
+            }
+        }
+        return values
+    }
+
+    private func gridRecords(entity: String, view: String, from: Date?, to: Date?) async throws -> [Record] {
+        var filters = [
+            RecordQuery.Filter(field: "entity", op: .equals, value: .string(entity)),
+            RecordQuery.Filter(field: "view", op: .equals, value: .string(view)),
+        ]
+        if let from {
+            filters.append(RecordQuery.Filter(field: "date", op: .greaterThanOrEquals, value: .date(from)))
+        }
+        if let to {
+            filters.append(RecordQuery.Filter(field: "date", op: .lessThan, value: .date(to)))
+        }
+        return try await database.readAll(matching: RecordQuery(recordType: GridItem.self, filters: filters), fields: nil)
+    }
+}

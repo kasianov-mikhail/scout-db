@@ -1,0 +1,62 @@
+//
+// Copyright 2026 Mikhail Kasianov
+//
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+import Foundation
+
+struct UniversalMigrator {
+    let database: any RecordReader & RecordWriter
+    let registry: SchemaRegistry
+    var keyProvider: (any EncryptionKeyProvider)?
+
+    @discardableResult func backfill(entity: String, transform: (inout EntityRecord) throws -> Void = { _ in }) async throws -> Int {
+        let definition = try await registry.definition(for: entity)
+        let query = RecordQuery(
+            recordType: Item.self,
+            filters: [
+                RecordQuery.Filter(field: "entity", op: .equals, value: .string(entity)),
+                RecordQuery.Filter(field: "schema_version", op: .lessThan, value: .int(Int64(definition.version))),
+            ])
+        let outdated = try await database.readAll(matching: query, fields: nil)
+
+        // Rewriting reuses the record IDs, so backends upsert in place. Slots freed by the
+        // new version keep their old values on the server — correctness relies on the
+        // registry invariant that a slot is never reassigned while old records exist.
+        // Interrupted runs are safe to repeat: migrated records leave the query above.
+        let coder = UniversalCoder(keyProvider: keyProvider)
+        var migrated: [Record] = []
+        for record in outdated {
+            let decoded = try coder.decode(record, using: definition)
+            guard !decoded.deleted else { continue }
+            var entityRecord = EntityRecord(entity: entity, uuid: decoded.uuid, schemaVersion: definition.version, values: rekey(decoded, using: definition))
+            try transform(&entityRecord)
+            migrated.append(try coder.encode(entityRecord, using: definition))
+        }
+
+        for chunk in migrated.chunked(into: Self.maxBatchSize) {
+            try await database.write(records: chunk)
+        }
+        return migrated.count
+    }
+
+    private func rekey(_ decoded: EntityRecord, using definition: EntityDefinition) -> [String: RecordValue] {
+        let oldFields = definition.fields(at: decoded.schemaVersion)
+        var values: [String: RecordValue] = [:]
+        for field in definition.fields(at: definition.version) {
+            if let value = decoded.values[field.name] {
+                values[field.name] = value
+            } else if case .slot(let pool, let slot) = field.storage {
+                let predecessor = oldFields.first { .slot(pool, slot) == $0.storage }
+                values[field.name] = predecessor.flatMap { decoded.values[$0.name] }
+            }
+        }
+        return values
+    }
+}
+
+extension UniversalMigrator {
+    static var maxBatchSize: Int { 400 }
+}

@@ -1,0 +1,138 @@
+//
+// Copyright 2026 Mikhail Kasianov
+//
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+import Foundation
+
+struct UniversalStore {
+    let database: any RecordReader & RecordWriter
+    let registry: SchemaRegistry
+    var keyProvider: (any EncryptionKeyProvider)?
+    var trustedWriters: Set<String>?
+
+    struct Filter: Equatable, Sendable {
+        let field: String
+        let op: Match
+        let value: RecordValue
+        var radius: Double?
+
+        static func between(_ field: String, _ lower: RecordValue, _ upper: RecordValue) -> [Filter] {
+            [
+                Filter(field: field, op: .greaterThanOrEquals, value: lower),
+                Filter(field: field, op: .lessThan, value: upper),
+            ]
+        }
+
+        static func containsAll(_ field: String, _ values: [String]) -> [Filter] {
+            values.map { Filter(field: field, op: .contains, value: .string($0)) }
+        }
+
+        static func containsAny(_ field: String, _ values: [String]) -> [[Filter]] {
+            values.map { [Filter(field: field, op: .contains, value: .string($0))] }
+        }
+    }
+
+    struct Sort: Equatable, Sendable {
+        let field: String
+        var ascending = true
+    }
+
+    @discardableResult func write(_ values: [String: RecordValue], entity: String, uuid: String = UUID().uuidString) async throws -> String {
+        let definition = try await registry.definition(for: entity)
+        let coder = UniversalCoder(keyProvider: keyProvider)
+        let resolved = try coder.resolve(values, at: definition.version, using: definition)
+        let recordUUID = try coder.naturalUUID(for: resolved, using: definition) ?? uuid
+        let entityRecord = EntityRecord(entity: entity, uuid: recordUUID, schemaVersion: definition.version, values: resolved)
+        try await database.write(record: coder.encode(entityRecord, using: definition))
+        try await GridAggregator(database: database).record(entityRecord, using: definition)
+        return recordUUID
+    }
+
+    func delete(entity: String, uuid: String) async throws {
+        let definition = try await registry.definition(for: entity)
+        try await database.write(record: Self.tombstone(entity: entity, uuid: uuid, definition: definition))
+    }
+
+    static func tombstone(entity: String, uuid: String, definition: EntityDefinition) -> Record {
+        var record = Record(recordType: Item.recordType, recordID: uuid)
+        record["entity"] = entity
+        record["schema_version"] = Int64(definition.version)
+        record["uuid"] = uuid
+        record["deleted"] = Int64(1)
+        return record
+    }
+
+    func read(entity: String, filters: [Filter] = [], sort: [Sort] = [], fields: [String]? = nil) async throws -> [EntityRecord] {
+        let definition = try await registry.definition(for: entity)
+        var (server, client) = try split(filters, entity: entity, using: definition)
+        server.append(RecordQuery.Filter(field: "deleted", op: .equals, value: .int(0)))
+        let query = RecordQuery(recordType: Item.self, filters: server, sort: try recordSort(sort, using: definition))
+        let keys = try fields.map { try desiredKeys($0 + filters.map(\.field), using: definition) }
+        let records = try await database.readAll(matching: query, fields: keys)
+        return try decode(records, using: definition).filter { record in
+            !record.deleted && client.allSatisfy { matches(record, $0) }
+        }
+    }
+
+    private func desiredKeys(_ fields: [String], using definition: EntityDefinition) throws -> [String] {
+        var keys = ["entity", "schema_version", "uuid", "deleted"]
+        for name in Set(fields) {
+            guard let field = definition.fields(at: definition.version).first(where: { $0.name == name }) else {
+                throw UniversalSchemaError.unknownField(name)
+            }
+            switch field.storage {
+            case .slot(_, let slot):
+                keys.append(slot)
+            case .payload:
+                if !keys.contains("payload") { keys.append("payload") }
+            }
+        }
+        return keys
+    }
+
+    func read(entity: String, any branches: [[Filter]], sort: [Sort] = []) async throws -> [EntityRecord] {
+        var seen: Set<String> = []
+        var union: [EntityRecord] = []
+        for branch in branches {
+            for record in try await read(entity: entity, filters: branch) where seen.insert(record.uuid).inserted {
+                union.append(record)
+            }
+        }
+        guard sort.count > 0 else { return union }
+        return union.sorted { Self.ordered($0, $1, by: sort) }
+    }
+
+    func recordSort(_ sort: [Sort], using definition: EntityDefinition) throws -> [RecordQuery.Sort] {
+        try sort.map { sort in
+            guard case .slot(_, let slot)? = definition.fields(at: definition.version).first(where: { $0.name == sort.field })?.storage else {
+                throw UniversalSchemaError.unknownField(sort.field)
+            }
+            return RecordQuery.Sort(field: slot, ascending: sort.ascending)
+        }
+    }
+
+    func changes(entity: String, since cursor: Date? = nil) async throws -> (records: [EntityRecord], cursor: Date?) {
+        let definition = try await registry.definition(for: entity)
+        var filters = [RecordQuery.Filter(field: "entity", op: .equals, value: .string(entity))]
+        if let cursor {
+            filters.append(RecordQuery.Filter(field: "___modTime", op: .greaterThan, value: .date(cursor)))
+        }
+        let query = RecordQuery(recordType: Item.self, filters: filters)
+        let records = try await database.readAll(matching: query, fields: nil)
+        let next = records.compactMap { $0["___modTime"] as Date? }.max() ?? cursor
+        return (try decode(records, using: definition), next)
+    }
+
+    func decode(_ records: [Record], using definition: EntityDefinition) throws -> [EntityRecord] {
+        let coder = UniversalCoder(keyProvider: keyProvider)
+        return try records.compactMap { record in
+            if let trustedWriters {
+                guard let creator: String = record["___createdBy"], trustedWriters.contains(creator) else { return nil }
+            }
+            return try coder.decode(record, using: definition)
+        }
+    }
+}
