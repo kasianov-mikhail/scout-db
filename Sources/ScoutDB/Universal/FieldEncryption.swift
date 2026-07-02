@@ -8,7 +8,7 @@
 import CryptoKit
 import Foundation
 
-protocol EncryptionKeyProvider: Sendable {
+public protocol EncryptionKeyProvider: Sendable {
     func key(for keyID: String) throws -> SymmetricKey
 }
 

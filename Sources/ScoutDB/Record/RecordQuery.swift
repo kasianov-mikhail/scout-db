@@ -7,14 +7,20 @@
 
 import Foundation
 
-struct RecordQuery: Sendable {
-    let recordType: any RecordDecodable.Type
+public struct RecordQuery: Sendable {
+    public let recordType: any RecordDecodable.Type
 
-    var filters: [Filter] = []
-    var sort: [Sort] = []
+    public var filters: [Filter] = []
+    public var sort: [Sort] = []
 
-    struct Filter: Codable, Equatable, Sendable {
-        enum Operator: String, Codable, Sendable {
+    public init(recordType: any RecordDecodable.Type, filters: [Filter] = [], sort: [Sort] = []) {
+        self.recordType = recordType
+        self.filters = filters
+        self.sort = sort
+    }
+
+    public struct Filter: Codable, Equatable, Sendable {
+        public enum Operator: String, Codable, Sendable {
             case equals
             case notEquals
             case greaterThan
@@ -29,19 +35,31 @@ struct RecordQuery: Sendable {
             case search
         }
 
-        let field: String
-        let op: Operator
-        let value: RecordValue
-        var radius: Double?
+        public let field: String
+        public let op: Operator
+        public let value: RecordValue
+        public var radius: Double?
+
+        public init(field: String, op: Operator, value: RecordValue, radius: Double? = nil) {
+            self.field = field
+            self.op = op
+            self.value = value
+            self.radius = radius
+        }
     }
 
-    struct Sort: Codable, Equatable, Sendable {
-        let field: String
-        let ascending: Bool
+    public struct Sort: Codable, Equatable, Sendable {
+        public let field: String
+        public let ascending: Bool
+
+        public init(field: String, ascending: Bool = true) {
+            self.field = field
+            self.ascending = ascending
+        }
     }
 }
 
-protocol RecordDecodable: Sendable, Equatable {
+public protocol RecordDecodable: Sendable, Equatable {
     static var recordType: String { get }
     static var sampleRecords: [Record] { get }
     static var desiredKeys: [String] { get }

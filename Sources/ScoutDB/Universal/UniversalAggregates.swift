@@ -7,53 +7,53 @@
 
 import Foundation
 
-struct AggregateRow: Equatable, Sendable {
-    let group: String
-    let period: Date
-    let count: Int
-    let value: Double?
-    var squares: Double?
+public struct AggregateRow: Equatable, Sendable {
+    public let group: String
+    public let period: Date
+    public let count: Int
+    public let value: Double?
+    public var squares: Double?
 
-    var average: Double? {
+    public var average: Double? {
         guard let value, count > 0 else { return nil }
         return value / Double(count)
     }
 
-    var variance: Double? {
+    public var variance: Double? {
         guard let value, let squares, count > 0 else { return nil }
         let mean = value / Double(count)
         return Swift.max(0, squares / Double(count) - mean * mean)
     }
 
-    var standardDeviation: Double? {
+    public var standardDeviation: Double? {
         variance.map(sqrt)
     }
 }
 
-struct AggregateTotal: Equatable, Sendable {
-    let group: String
-    let count: Int
-    let value: Double?
-    var squares: Double?
+public struct AggregateTotal: Equatable, Sendable {
+    public let group: String
+    public let count: Int
+    public let value: Double?
+    public var squares: Double?
 
-    var average: Double? {
+    public var average: Double? {
         guard let value, count > 0 else { return nil }
         return value / Double(count)
     }
 
-    var variance: Double? {
+    public var variance: Double? {
         guard let value, let squares, count > 0 else { return nil }
         let mean = value / Double(count)
         return Swift.max(0, squares / Double(count) - mean * mean)
     }
 
-    var standardDeviation: Double? {
+    public var standardDeviation: Double? {
         variance.map(sqrt)
     }
 }
 
 extension UniversalStore {
-    func aggregate(entity: String, view viewName: String, from: Date? = nil, to: Date? = nil) async throws -> [AggregateRow] {
+    public func aggregate(entity: String, view viewName: String, from: Date? = nil, to: Date? = nil) async throws -> [AggregateRow] {
         let definition = try await registry.definition(for: entity)
         guard let view = definition.views?.first(where: { $0.name == viewName }) else {
             throw UniversalSchemaError.unknownField(viewName)
@@ -80,7 +80,7 @@ extension UniversalStore {
         }.sorted { ($0.period, $0.group) < ($1.period, $1.group) }
     }
 
-    func totals(entity: String, view viewName: String, from: Date? = nil, to: Date? = nil, having: (AggregateTotal) -> Bool = { _ in true }) async throws
+    public func totals(entity: String, view viewName: String, from: Date? = nil, to: Date? = nil, having: (AggregateTotal) -> Bool = { _ in true }) async throws
         -> [AggregateTotal]
     {
         let definition = try await registry.definition(for: entity)
@@ -96,7 +96,7 @@ extension UniversalStore {
         }.filter(having).sorted { $0.group < $1.group }
     }
 
-    func percentile(_ p: Double, entity: String, view viewName: String, from: Date? = nil, to: Date? = nil) async throws -> Double? {
+    public func percentile(_ p: Double, entity: String, view viewName: String, from: Date? = nil, to: Date? = nil) async throws -> Double? {
         let definition = try await registry.definition(for: entity)
         guard let histogram = definition.views?.first(where: { $0.name == viewName })?.histogram else {
             throw UniversalSchemaError.invalidValue(viewName)
@@ -127,7 +127,7 @@ extension UniversalStore {
         return histogram.bounds.last
     }
 
-    func distinct(entity: String, field: String, filters: [Filter] = []) async throws -> [RecordValue] {
+    public func distinct(entity: String, field: String, filters: [Filter] = []) async throws -> [RecordValue] {
         var seen: Set<String> = []
         var values: [RecordValue] = []
         for record in try await read(entity: entity, filters: filters) {

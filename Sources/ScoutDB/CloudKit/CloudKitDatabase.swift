@@ -8,11 +8,11 @@
 import CloudKit
 
 extension CKDatabase: RecordReader {
-    func read(matching query: RecordQuery, fields: [String]?) async throws -> RecordChunk {
+    public func read(matching query: RecordQuery, fields: [String]?) async throws -> RecordChunk {
         try await read(matching: query, fields: fields, limit: CKQueryOperation.maximumResults)
     }
 
-    func read(matching query: RecordQuery, fields: [String]?, limit: Int) async throws -> RecordChunk {
+    public func read(matching query: RecordQuery, fields: [String]?, limit: Int) async throws -> RecordChunk {
         let results = try await records(matching: CKQuery(query), desiredKeys: fields, resultsLimit: limit)
         return try chunk(from: results)
     }
@@ -30,7 +30,7 @@ extension CKDatabase: RecordReader {
 }
 
 extension CKDatabase: RecordWriter {
-    func write(record: Record) async throws {
+    public func write(record: Record) async throws {
         do {
             try await save(record.ckRecord)
         } catch let error as CKError where error.code == .serverRecordChanged {
@@ -41,7 +41,7 @@ extension CKDatabase: RecordWriter {
         }
     }
 
-    func write(records: [Record]) async throws {
+    public func write(records: [Record]) async throws {
         for chunk in records.chunked(into: Self.maxBatchSize) {
             _ = try await modifyRecords(saving: chunk.map(\.ckRecord), deleting: [], savePolicy: .allKeys, atomically: true)
         }

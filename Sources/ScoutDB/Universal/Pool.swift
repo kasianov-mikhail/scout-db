@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum Pool: String, Codable, CaseIterable, Sendable {
+public enum Pool: String, Codable, CaseIterable, Sendable {
     case string = "s"
     case text = "x"
     case int = "i"
@@ -27,7 +27,7 @@ enum Pool: String, Codable, CaseIterable, Sendable {
     // Mirrors the slot counts declared in the frozen Schema file. CloudKit caps a
     // record type at 256 fields total — the 6 system fields count too. Budget:
     // 6 system + 5 envelope + 240 slots (15 x 16) + 1 payload = 252, leaving 4 free.
-    var capacity: Int { 16 }
+    public var capacity: Int { 16 }
 }
 
 struct Item: RecordDecodable {

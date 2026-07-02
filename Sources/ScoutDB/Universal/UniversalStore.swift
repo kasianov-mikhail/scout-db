@@ -7,40 +7,61 @@
 
 import Foundation
 
-struct UniversalStore {
+public struct UniversalStore: Sendable {
     let database: any RecordReader & RecordWriter
     let registry: SchemaRegistry
     var keyProvider: (any EncryptionKeyProvider)?
     var trustedWriters: Set<String>?
 
-    struct Filter: Equatable, Sendable {
-        let field: String
-        let op: Match
-        let value: RecordValue
-        var radius: Double?
+    public init(
+        database: any RecordReader & RecordWriter, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil, trustedWriters: Set<String>? = nil
+    ) {
+        self.database = database
+        self.registry = registry
+        self.keyProvider = keyProvider
+        self.trustedWriters = trustedWriters
+    }
 
-        static func between(_ field: String, _ lower: RecordValue, _ upper: RecordValue) -> [Filter] {
+    public struct Filter: Equatable, Sendable {
+        public let field: String
+        public let op: Match
+        public let value: RecordValue
+        public var radius: Double?
+
+        public init(field: String, op: Match, value: RecordValue, radius: Double? = nil) {
+            self.field = field
+            self.op = op
+            self.value = value
+            self.radius = radius
+        }
+
+        public static func between(_ field: String, _ lower: RecordValue, _ upper: RecordValue) -> [Filter] {
             [
                 Filter(field: field, op: .greaterThanOrEquals, value: lower),
                 Filter(field: field, op: .lessThan, value: upper),
             ]
         }
 
-        static func containsAll(_ field: String, _ values: [String]) -> [Filter] {
+        public static func containsAll(_ field: String, _ values: [String]) -> [Filter] {
             values.map { Filter(field: field, op: .contains, value: .string($0)) }
         }
 
-        static func containsAny(_ field: String, _ values: [String]) -> [[Filter]] {
+        public static func containsAny(_ field: String, _ values: [String]) -> [[Filter]] {
             values.map { [Filter(field: field, op: .contains, value: .string($0))] }
         }
     }
 
-    struct Sort: Equatable, Sendable {
-        let field: String
-        var ascending = true
+    public struct Sort: Equatable, Sendable {
+        public let field: String
+        public var ascending = true
+
+        public init(field: String, ascending: Bool = true) {
+            self.field = field
+            self.ascending = ascending
+        }
     }
 
-    @discardableResult func write(_ values: [String: RecordValue], entity: String, uuid: String = UUID().uuidString) async throws -> String {
+    @discardableResult public func write(_ values: [String: RecordValue], entity: String, uuid: String = UUID().uuidString) async throws -> String {
         let definition = try await registry.definition(for: entity)
         let coder = UniversalCoder(keyProvider: keyProvider)
         let resolved = try coder.resolve(values, at: definition.version, using: definition)
@@ -51,7 +72,7 @@ struct UniversalStore {
         return recordUUID
     }
 
-    func delete(entity: String, uuid: String) async throws {
+    public func delete(entity: String, uuid: String) async throws {
         let definition = try await registry.definition(for: entity)
         try await database.write(record: Self.tombstone(entity: entity, uuid: uuid, definition: definition))
     }
@@ -65,7 +86,7 @@ struct UniversalStore {
         return record
     }
 
-    func read(entity: String, filters: [Filter] = [], sort: [Sort] = [], fields: [String]? = nil) async throws -> [EntityRecord] {
+    public func read(entity: String, filters: [Filter] = [], sort: [Sort] = [], fields: [String]? = nil) async throws -> [EntityRecord] {
         let definition = try await registry.definition(for: entity)
         var (server, client) = try split(filters, entity: entity, using: definition)
         server.append(RecordQuery.Filter(field: "deleted", op: .equals, value: .int(0)))
@@ -93,7 +114,7 @@ struct UniversalStore {
         return keys
     }
 
-    func read(entity: String, any branches: [[Filter]], sort: [Sort] = []) async throws -> [EntityRecord] {
+    public func read(entity: String, any branches: [[Filter]], sort: [Sort] = []) async throws -> [EntityRecord] {
         var seen: Set<String> = []
         var union: [EntityRecord] = []
         for branch in branches {
@@ -114,7 +135,7 @@ struct UniversalStore {
         }
     }
 
-    func changes(entity: String, since cursor: Date? = nil) async throws -> (records: [EntityRecord], cursor: Date?) {
+    public func changes(entity: String, since cursor: Date? = nil) async throws -> (records: [EntityRecord], cursor: Date?) {
         let definition = try await registry.definition(for: entity)
         var filters = [RecordQuery.Filter(field: "entity", op: .equals, value: .string(entity))]
         if let cursor {

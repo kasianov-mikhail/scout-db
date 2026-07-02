@@ -7,12 +7,18 @@
 
 import Foundation
 
-struct UniversalMigrator {
+public struct UniversalMigrator: Sendable {
     let database: any RecordReader & RecordWriter
     let registry: SchemaRegistry
     var keyProvider: (any EncryptionKeyProvider)?
 
-    @discardableResult func backfill(entity: String, transform: (inout EntityRecord) throws -> Void = { _ in }) async throws -> Int {
+    public init(database: any RecordReader & RecordWriter, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil) {
+        self.database = database
+        self.registry = registry
+        self.keyProvider = keyProvider
+    }
+
+    @discardableResult public func backfill(entity: String, transform: (inout EntityRecord) throws -> Void = { _ in }) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         let query = RecordQuery(
             recordType: Item.self,

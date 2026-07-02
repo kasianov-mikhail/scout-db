@@ -7,7 +7,7 @@
 
 import Foundation
 
-protocol RecordWriter: Sendable {
+public protocol RecordWriter: Sendable {
     func write(record: Record) async throws
     func write(records: [Record]) async throws
 }
@@ -18,7 +18,11 @@ extension RecordWriter {
     static var maxBatchSize: Int { 400 }
 }
 
-struct RecordConflictError: LocalizedError {
-    let serverRecord: Record
-    let errorDescription: String? = "The record was changed on the server"
+public struct RecordConflictError: LocalizedError {
+    public let serverRecord: Record
+    public let errorDescription: String? = "The record was changed on the server"
+
+    public init(serverRecord: Record) {
+        self.serverRecord = serverRecord
+    }
 }

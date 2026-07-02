@@ -7,8 +7,10 @@
 
 import Foundation
 
-struct DefinitionCodeGenerator {
-    func source(for definition: EntityDefinition) -> String {
+public struct DefinitionCodeGenerator {
+    public init() {}
+
+    public func source(for definition: EntityDefinition) -> String {
         let typeName = camel(definition.entity, capitalized: true)
         let fields = definition.fields(at: definition.version)
 

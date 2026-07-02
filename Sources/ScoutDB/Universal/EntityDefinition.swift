@@ -7,21 +7,35 @@
 
 import Foundation
 
-struct EntityDefinition: Codable, Equatable, Sendable {
-    let entity: String
-    let version: Int
-    let fields: [FieldDefinition]
-    var envelopeDate: String?
-    var unique: [String]?
-    var views: [AggregateView]?
-    var keyID: String?
-    var ttl: Double?
+public struct EntityDefinition: Codable, Equatable, Sendable {
+    public let entity: String
+    public let version: Int
+    public let fields: [FieldDefinition]
+    public var envelopeDate: String?
+    public var unique: [String]?
+    public var views: [AggregateView]?
+    public var keyID: String?
+    public var ttl: Double?
 
-    func fields(at version: Int) -> [FieldDefinition] {
+    public init(
+        entity: String, version: Int, fields: [FieldDefinition], envelopeDate: String? = nil, unique: [String]? = nil, views: [AggregateView]? = nil,
+        keyID: String? = nil, ttl: Double? = nil
+    ) {
+        self.entity = entity
+        self.version = version
+        self.fields = fields
+        self.envelopeDate = envelopeDate
+        self.unique = unique
+        self.views = views
+        self.keyID = keyID
+        self.ttl = ttl
+    }
+
+    public func fields(at version: Int) -> [FieldDefinition] {
         fields.filter { $0.isActive(at: version) }
     }
 
-    func validate() throws {
+    public func validate() throws {
         let names = Set(fields.map(\.name))
         for field in fields {
             if case .slot(let pool, let slot) = field.storage {
@@ -103,27 +117,46 @@ struct EntityDefinition: Codable, Equatable, Sendable {
     }
 }
 
-struct FieldDefinition: Codable, Equatable, Sendable {
-    let name: String
-    let type: FieldType
-    let storage: Storage
-    var since: Int?
-    var until: Int?
-    var required: Bool?
-    var defaultValue: RecordValue?
-    var allowed: [String]?
-    var minimum: Double?
-    var maximum: Double?
-    var derived: Derivation?
-    var encrypted: Bool?
-    var references: String?
+public struct FieldDefinition: Codable, Equatable, Sendable {
+    public let name: String
+    public let type: FieldType
+    public let storage: Storage
+    public var since: Int?
+    public var until: Int?
+    public var required: Bool?
+    public var defaultValue: RecordValue?
+    public var allowed: [String]?
+    public var minimum: Double?
+    public var maximum: Double?
+    public var derived: Derivation?
+    public var encrypted: Bool?
+    public var references: String?
+
+    public init(
+        name: String, type: FieldType, storage: Storage, since: Int? = nil, until: Int? = nil, required: Bool? = nil, defaultValue: RecordValue? = nil,
+        allowed: [String]? = nil, minimum: Double? = nil, maximum: Double? = nil, derived: Derivation? = nil, encrypted: Bool? = nil, references: String? = nil
+    ) {
+        self.name = name
+        self.type = type
+        self.storage = storage
+        self.since = since
+        self.until = until
+        self.required = required
+        self.defaultValue = defaultValue
+        self.allowed = allowed
+        self.minimum = minimum
+        self.maximum = maximum
+        self.derived = derived
+        self.encrypted = encrypted
+        self.references = references
+    }
 
     private enum CodingKeys: String, CodingKey {
         case name, type, storage, since, until, required, allowed, minimum, maximum, derived, encrypted, references
         case defaultValue = "default"
     }
 
-    func isActive(at version: Int) -> Bool {
+    public func isActive(at version: Int) -> Bool {
         version >= (since ?? 1) && version < (until ?? .max)
     }
 
@@ -132,35 +165,59 @@ struct FieldDefinition: Codable, Equatable, Sendable {
     }
 }
 
-struct Derivation: Codable, Equatable, Sendable {
-    let source: String
-    let transform: Transform
+public struct Derivation: Codable, Equatable, Sendable {
+    public let source: String
+    public let transform: Transform
 
-    enum Transform: String, Codable, Sendable {
+    public init(source: String, transform: Transform) {
+        self.source = source
+        self.transform = transform
+    }
+
+    public enum Transform: String, Codable, Sendable {
         case lowercase, fold, reversed, ngrams, hour, day, week, month, hmac
     }
 }
 
-struct AggregateView: Codable, Equatable, Sendable {
-    let name: String
-    var groupBy: String?
-    var bucket: Bucket?
-    var sum: String?
-    var min: String?
-    var max: String?
-    var stats: String?
-    var histogram: Histogram?
+public struct AggregateView: Codable, Equatable, Sendable {
+    public let name: String
+    public var groupBy: String?
+    public var bucket: Bucket?
+    public var sum: String?
+    public var min: String?
+    public var max: String?
+    public var stats: String?
+    public var histogram: Histogram?
 
-    struct Histogram: Codable, Equatable, Sendable {
-        let field: String
-        let bounds: [Double]
+    public init(
+        name: String, groupBy: String? = nil, bucket: Bucket? = nil, sum: String? = nil, min: String? = nil, max: String? = nil, stats: String? = nil,
+        histogram: Histogram? = nil
+    ) {
+        self.name = name
+        self.groupBy = groupBy
+        self.bucket = bucket
+        self.sum = sum
+        self.min = min
+        self.max = max
+        self.stats = stats
+        self.histogram = histogram
     }
 
-    enum Bucket: String, Codable, Sendable {
+    public struct Histogram: Codable, Equatable, Sendable {
+        public let field: String
+        public let bounds: [Double]
+
+        public init(field: String, bounds: [Double]) {
+            self.field = field
+            self.bounds = bounds
+        }
+    }
+
+    public enum Bucket: String, Codable, Sendable {
         case hour, weekday, day
     }
 
-    enum Metric: Equatable, Sendable {
+    public enum Metric: Equatable, Sendable {
         case sum, min, max
 
         func combine(_ lhs: Double, _ rhs: Double) -> Double {
@@ -181,7 +238,7 @@ struct AggregateView: Codable, Equatable, Sendable {
     }
 }
 
-enum FieldType: String, Codable, Equatable, Sendable {
+public enum FieldType: String, Codable, Equatable, Sendable {
     case string, text, int, double, timestamp, bytes, location, reference, asset
     case stringList, intList, doubleList, timestampList, locationList, assetList
 
@@ -225,13 +282,13 @@ enum FieldType: String, Codable, Equatable, Sendable {
     }
 }
 
-enum Storage: Equatable, Sendable {
+public enum Storage: Equatable, Sendable {
     case slot(Pool, String)
     case payload
 }
 
 extension Storage: Codable {
-    init(from decoder: any Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
         if raw == "payload" {
             self = .payload
@@ -242,7 +299,7 @@ extension Storage: Codable {
         }
     }
 
-    func encode(to encoder: any Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
         case .payload:
@@ -253,7 +310,7 @@ extension Storage: Codable {
     }
 }
 
-enum UniversalSchemaError: Error, Equatable {
+public enum UniversalSchemaError: Error, Equatable {
     case unknownEntity(String)
     case unknownField(String)
     case typeMismatch(String)

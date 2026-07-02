@@ -7,24 +7,30 @@
 
 import Foundation
 
-struct TransactionStep: Codable, Equatable, Sendable {
-    let entity: String
-    let uuid: String
-    let values: [String: RecordValue]
+public struct TransactionStep: Codable, Equatable, Sendable {
+    public let entity: String
+    public let uuid: String
+    public let values: [String: RecordValue]
+
+    public init(entity: String, uuid: String, values: [String: RecordValue]) {
+        self.entity = entity
+        self.uuid = uuid
+        self.values = values
+    }
 }
 
-struct TransactionDraft {
-    private(set) var steps: [TransactionStep] = []
+public struct TransactionDraft {
+    public private(set) var steps: [TransactionStep] = []
 
-    mutating func write(_ values: [String: RecordValue], entity: String, uuid: String = UUID().uuidString) {
+    public mutating func write(_ values: [String: RecordValue], entity: String, uuid: String = UUID().uuidString) {
         steps.append(TransactionStep(entity: entity, uuid: uuid, values: values))
     }
 }
 
 extension UniversalStore {
-    static let transactionEntity = "_txn"
+    public static let transactionEntity = "_txn"
 
-    static var transactionDefinition: EntityDefinition {
+    public static var transactionDefinition: EntityDefinition {
         EntityDefinition(
             entity: transactionEntity, version: 1,
             fields: [
@@ -34,7 +40,7 @@ extension UniversalStore {
             ], envelopeDate: "date")
     }
 
-    @discardableResult func transaction(_ body: (inout TransactionDraft) throws -> Void) async throws -> String {
+    @discardableResult public func transaction(_ body: (inout TransactionDraft) throws -> Void) async throws -> String {
         var draft = TransactionDraft()
         try body(&draft)
 
@@ -49,7 +55,7 @@ extension UniversalStore {
     // Replays are at-least-once: record writes are idempotent through their fixed uuids,
     // but aggregate views count every write, so a repaired transaction may double-count
     // grid cells. Keep transactional entities and view-aggregated entities separate.
-    @discardableResult func repairTransactions(olderThan cutoff: Date? = nil) async throws -> Int {
+    @discardableResult public func repairTransactions(olderThan cutoff: Date? = nil) async throws -> Int {
         var filters = [Filter(field: "status", op: .equals, value: .string("pending"))]
         if let cutoff {
             filters.append(Filter(field: "date", op: .lessThan, value: .date(cutoff)))

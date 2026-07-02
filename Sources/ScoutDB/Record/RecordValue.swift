@@ -7,12 +7,17 @@
 
 import Foundation
 
-struct GeoPoint: Equatable, Sendable, Codable {
-    let latitude: Double
-    let longitude: Double
+public struct GeoPoint: Equatable, Sendable, Codable {
+    public let latitude: Double
+    public let longitude: Double
+
+    public init(latitude: Double, longitude: Double) {
+        self.latitude = latitude
+        self.longitude = longitude
+    }
 }
 
-enum RecordValue: Equatable, Sendable {
+public enum RecordValue: Equatable, Sendable {
     case string(String)
     case int(Int64)
     case double(Double)
@@ -35,7 +40,7 @@ extension RecordValue: Codable {
         case strings, ints, doubles, dates, locations, assets
     }
 
-    init(from decoder: any Decoder) throws {
+    public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
         if let value = try container.decodeIfPresent(String.self, forKey: .string) {
@@ -71,7 +76,7 @@ extension RecordValue: Codable {
         }
     }
 
-    func encode(to encoder: any Encoder) throws {
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
 
         switch self {

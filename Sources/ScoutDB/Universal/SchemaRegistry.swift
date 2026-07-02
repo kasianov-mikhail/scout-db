@@ -7,15 +7,15 @@
 
 import Foundation
 
-actor SchemaRegistry {
+public actor SchemaRegistry {
     private let database: any RecordReader & RecordWriter
     private var cache: [String: EntityDefinition] = [:]
 
-    init(database: any RecordReader & RecordWriter) {
+    public init(database: any RecordReader & RecordWriter) {
         self.database = database
     }
 
-    func definition(for entity: String) async throws -> EntityDefinition {
+    public func definition(for entity: String) async throws -> EntityDefinition {
         if let cached = cache[entity] {
             return cached
         }
@@ -27,7 +27,7 @@ actor SchemaRegistry {
         return definition
     }
 
-    func definition(for entity: String, version: Int) async throws -> EntityDefinition {
+    public func definition(for entity: String, version: Int) async throws -> EntityDefinition {
         var definition = try await definition(for: entity)
         if definition.version < version {
             cache[entity] = nil
@@ -39,11 +39,11 @@ actor SchemaRegistry {
         return definition
     }
 
-    func definitions() -> [EntityDefinition] {
+    public func definitions() -> [EntityDefinition] {
         Array(cache.values)
     }
 
-    @discardableResult func preload() async throws -> Int {
+    @discardableResult public func preload() async throws -> Int {
         let query = RecordQuery(
             recordType: MetaEntry.self,
             filters: [
@@ -58,7 +58,7 @@ actor SchemaRegistry {
         return cache.count
     }
 
-    func publish(_ definition: EntityDefinition) async throws {
+    public func publish(_ definition: EntityDefinition) async throws {
         try definition.validate()
         var record = Record(recordType: MetaEntry.recordType, recordID: "\(definition.entity)@\(definition.version)")
         record["entity"] = definition.entity
