@@ -5,9 +5,9 @@
 [![License](https://img.shields.io/github/license/kasianov-mikhail/scout-db)](LICENSE)
 
 ## Description
-ScoutDB turns CloudKit into a database. Define entities in code, query them with filters and
-sorting, aggregate without scanning, and evolve your schema freely — the CloudKit schema is
-uploaded once and never touched again.
+ScoutDB adds entities, migrations, and structured queries on top of CloudKit. Define entities
+in code, query them with filters and sorting, aggregate without scanning, and evolve your
+schema freely — the CloudKit schema is uploaded once and never touched again.
 
 ## Table of Contents
 - [Features](#features)
