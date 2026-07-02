@@ -5,6 +5,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
 import Foundation
 
 public struct AggregateRow: Equatable, Sendable {
@@ -63,13 +64,13 @@ extension EntityStore {
         let isStats = view.stats != nil
 
         return records.compactMap { record -> AggregateRow? in
-            guard let period: Date = record["date"], let group: String = record["group_key"] else { return nil }
+            guard let period = record["date"] as? Date, let group = record["group_key"] as? String else { return nil }
             var count = 0
             var value: Double?
             var squares: Double?
             for index in 0..<64 {
-                count += Int(record[String(format: "c_%02d", index)] as Int64? ?? 0)
-                guard let kind, let cell = record[String(format: "f_%02d", index)] as Double? else { continue }
+                count += Int(record[String(format: "c_%02d", index)] as? Int64 ?? 0)
+                guard let kind, let cell = record[String(format: "f_%02d", index)] as? Double else { continue }
                 if isStats, index >= 32 {
                     squares = (squares ?? 0) + cell
                 } else {
@@ -105,7 +106,7 @@ extension EntityStore {
         var counts = [Double](repeating: 0, count: histogram.bounds.count + 1)
         for record in try await gridRecords(entity: entity, view: viewName, from: from, to: to) {
             for index in counts.indices {
-                counts[index] += Double(record[String(format: "c_%02d", index)] as Int64? ?? 0)
+                counts[index] += Double(record[String(format: "c_%02d", index)] as? Int64 ?? 0)
             }
         }
 
@@ -139,17 +140,17 @@ extension EntityStore {
         return values
     }
 
-    private func gridRecords(entity: String, view: String, from: Date?, to: Date?) async throws -> [Record] {
+    private func gridRecords(entity: String, view: String, from: Date?, to: Date?) async throws -> [CKRecord] {
         var filters = [
-            RecordQuery.Filter(field: "entity", op: .equals, value: .string(entity)),
-            RecordQuery.Filter(field: "view", op: .equals, value: .string(view)),
+            ServerFilter(field: "entity", op: .equals, value: .string(entity)),
+            ServerFilter(field: "view", op: .equals, value: .string(view)),
         ]
         if let from {
-            filters.append(RecordQuery.Filter(field: "date", op: .greaterThanOrEquals, value: .date(from)))
+            filters.append(ServerFilter(field: "date", op: .greaterThanOrEquals, value: .date(from)))
         }
         if let to {
-            filters.append(RecordQuery.Filter(field: "date", op: .lessThan, value: .date(to)))
+            filters.append(ServerFilter(field: "date", op: .lessThan, value: .date(to)))
         }
-        return try await database.readAll(matching: RecordQuery(recordType: GridItem.self, filters: filters), fields: nil)
+        return try await database.allRecords(matching: ckQuery(GridItem.recordType, filters: filters))
     }
 }

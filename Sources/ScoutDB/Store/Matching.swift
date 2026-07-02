@@ -5,6 +5,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
 import Foundation
 
 public struct QueryPlan: Equatable, Sendable, CustomStringConvertible {
@@ -18,6 +19,65 @@ public struct QueryPlan: Equatable, Sendable, CustomStringConvertible {
     }
 }
 
+// The structured form of a server-side predicate, turned into an NSPredicate at
+// the single point the store talks to CloudKit.
+struct ServerFilter: Equatable, Sendable {
+    enum Operator: String, Sendable {
+        case equals
+        case notEquals
+        case greaterThan
+        case greaterThanOrEquals
+        case lessThan
+        case lessThanOrEquals
+        case `in`
+        case notIn
+        case beginsWith
+        case contains
+        case near
+        case search
+    }
+
+    let field: String
+    let op: Operator
+    let value: RecordValue
+    var radius: Double?
+
+    var predicate: NSPredicate {
+        let value = value.predicateValue
+        return switch op {
+        case .equals: NSPredicate(format: "%K == %@", field, value)
+        case .notEquals: NSPredicate(format: "%K != %@", field, value)
+        case .greaterThan: NSPredicate(format: "%K > %@", field, value)
+        case .greaterThanOrEquals: NSPredicate(format: "%K >= %@", field, value)
+        case .lessThan: NSPredicate(format: "%K < %@", field, value)
+        case .lessThanOrEquals: NSPredicate(format: "%K <= %@", field, value)
+        case .in: NSPredicate(format: "%K IN %@", field, value)
+        case .notIn: NSPredicate(format: "NOT (%K IN %@)", field, value)
+        case .beginsWith: NSPredicate(format: "%K BEGINSWITH %@", field, value)
+        case .contains: NSPredicate(format: "%K CONTAINS %@", field, value)
+        case .near: NSPredicate(format: "distanceToLocation:fromLocation:(%K, %@) < %f", field, value, radius ?? 0)
+        case .search: NSPredicate(format: "self contains %@", value)
+        }
+    }
+}
+
+struct ServerSort: Equatable, Sendable {
+    let field: String
+    let ascending: Bool
+}
+
+func ckQuery(_ recordType: String, filters: [ServerFilter], sort: [ServerSort] = []) -> CKQuery {
+    let predicate: NSPredicate =
+        filters.isEmpty
+        ? NSPredicate(value: true)
+        : NSCompoundPredicate(type: .and, subpredicates: filters.map(\.predicate))
+    let query = CKQuery(recordType: recordType, predicate: predicate)
+    if sort.count > 0 {
+        query.sortDescriptors = sort.map { NSSortDescriptor(key: $0.field, ascending: $0.ascending) }
+    }
+    return query
+}
+
 extension EntityStore {
     public func explain(entity: String, filters: [Filter] = [], sort: [Sort] = []) async throws -> QueryPlan {
         let definition = try await registry.definition(for: entity)
@@ -25,7 +85,7 @@ extension EntityStore {
         return QueryPlan(
             server: server.map { "\($0.field) \($0.op.rawValue) \($0.value.canonical)" },
             client: client.map { "\($0.field) \($0.op) \($0.value.canonical)" },
-            sort: try recordSort(sort, using: definition).map { "\($0.field) \($0.ascending ? "asc" : "desc")" }
+            sort: try serverSort(sort, using: definition).map { "\($0.field) \($0.ascending ? "asc" : "desc")" }
         )
     }
 
@@ -36,7 +96,7 @@ extension EntityStore {
         case endsWith, like, matches
         case isNull, isNotNull
 
-        var serverOperator: RecordQuery.Filter.Operator? {
+        var serverOperator: ServerFilter.Operator? {
             switch self {
             case .equals: .equals
             case .notEquals: .notEquals
@@ -86,8 +146,8 @@ extension EntityStore {
     // store applies after decoding. `contains` is server-side list membership but a
     // client-side substring check on strings; `endsWith` runs server-side when the
     // definition declares a `reversed` shadow of the field, and falls back otherwise.
-    func split(_ filters: [Filter], entity: String, using definition: EntityDefinition) throws -> (server: [RecordQuery.Filter], client: [Filter]) {
-        var server = [RecordQuery.Filter(field: "entity", op: .equals, value: .string(entity))]
+    func split(_ filters: [Filter], entity: String, using definition: EntityDefinition) throws -> (server: [ServerFilter], client: [Filter]) {
+        var server = [ServerFilter(field: "entity", op: .equals, value: .string(entity))]
         var client: [Filter] = []
         let fields = definition.fields(at: definition.version)
 
@@ -111,7 +171,7 @@ extension EntityStore {
                 client.append(filter)
             case .endsWith:
                 if case .slot(_, let slot)? = reversedShadow(of: field, in: fields)?.storage, case .string(let suffix) = filter.value {
-                    server.append(RecordQuery.Filter(field: slot, op: .beginsWith, value: .string(String(suffix.reversed()))))
+                    server.append(ServerFilter(field: slot, op: .beginsWith, value: .string(String(suffix.reversed()))))
                 } else {
                     client.append(filter)
                 }
@@ -119,15 +179,24 @@ extension EntityStore {
                 guard field.type == .text, case .slot(_, let slot) = field.storage else {
                     throw SchemaError.invalidValue(filter.field)
                 }
-                server.append(RecordQuery.Filter(field: slot, op: .search, value: filter.value))
+                server.append(ServerFilter(field: slot, op: .search, value: filter.value))
             default:
                 guard let op = filter.op.serverOperator, case .slot(_, let slot) = field.storage else {
                     throw SchemaError.unknownField(filter.field)
                 }
-                server.append(RecordQuery.Filter(field: slot, op: op, value: filter.value, radius: filter.radius))
+                server.append(ServerFilter(field: slot, op: op, value: filter.value, radius: filter.radius))
             }
         }
         return (server, client)
+    }
+
+    func serverSort(_ sort: [Sort], using definition: EntityDefinition) throws -> [ServerSort] {
+        try sort.map { sort in
+            guard case .slot(_, let slot)? = definition.fields(at: definition.version).first(where: { $0.name == sort.field })?.storage else {
+                throw SchemaError.unknownField(sort.field)
+            }
+            return ServerSort(field: slot, ascending: sort.ascending)
+        }
     }
 
     func matches(_ record: EntityRecord, _ filter: Filter) -> Bool {
@@ -174,15 +243,15 @@ extension EntityStore {
     // The pg_trgm technique: an `ngrams` shadow slot lets the server narrow substring and
     // wildcard scans to records containing every trigram of the needle. The trigram match
     // is necessary but not sufficient, so the exact client-side matcher still runs after.
-    private func ngramPrefilter(for needles: [String], of field: FieldDefinition, in fields: [FieldDefinition]) -> [RecordQuery.Filter] {
+    private func ngramPrefilter(for needles: [String], of field: FieldDefinition, in fields: [FieldDefinition]) -> [ServerFilter] {
         let shadow = fields.first { $0.derived == Derivation(source: field.name, transform: .ngrams) }
         guard case .slot(_, let slot)? = shadow?.storage else { return [] }
 
         return needles.flatMap { needle in
             let folded = needle.folded
-            guard folded.count >= 3 else { return [RecordQuery.Filter]() }
+            guard folded.count >= 3 else { return [ServerFilter]() }
             return EntityCoder.trigrams(of: folded).map {
-                RecordQuery.Filter(field: slot, op: .contains, value: .string($0))
+                ServerFilter(field: slot, op: .contains, value: .string($0))
             }
         }
     }

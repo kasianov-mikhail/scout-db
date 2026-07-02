@@ -5,14 +5,15 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
 import Foundation
 
 public struct Migrator: Sendable {
-    let database: any Database
+    let database: any CloudDatabase
     let registry: SchemaRegistry
     var keyProvider: (any EncryptionKeyProvider)?
 
-    init(database: any Database, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil) {
+    init(database: any CloudDatabase, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil) {
         self.database = database
         self.registry = registry
         self.keyProvider = keyProvider
@@ -20,20 +21,20 @@ public struct Migrator: Sendable {
 
     @discardableResult public func backfill(entity: String, transform: (inout EntityRecord) throws -> Void = { _ in }) async throws -> Int {
         let definition = try await registry.definition(for: entity)
-        let query = RecordQuery(
-            recordType: Item.self,
+        let query = ckQuery(
+            Item.recordType,
             filters: [
-                RecordQuery.Filter(field: "entity", op: .equals, value: .string(entity)),
-                RecordQuery.Filter(field: "schema_version", op: .lessThan, value: .int(Int64(definition.version))),
+                ServerFilter(field: "entity", op: .equals, value: .string(entity)),
+                ServerFilter(field: "schema_version", op: .lessThan, value: .int(Int64(definition.version))),
             ])
-        let outdated = try await database.readAll(matching: query, fields: nil)
+        let outdated = try await database.allRecords(matching: query)
 
         // Rewriting reuses the record IDs, so backends upsert in place. Slots freed by the
         // new version keep their old values on the server — correctness relies on the
         // registry invariant that a slot is never reassigned while old records exist.
         // Interrupted runs are safe to repeat: migrated records leave the query above.
         let coder = EntityCoder(keyProvider: keyProvider)
-        var migrated: [Record] = []
+        var migrated: [CKRecord] = []
         for record in outdated {
             let decoded = try coder.decode(record, using: definition)
             guard !decoded.deleted else { continue }

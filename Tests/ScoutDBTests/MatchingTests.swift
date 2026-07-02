@@ -5,6 +5,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
 import Foundation
 import Testing
 
@@ -44,7 +45,7 @@ struct MatchingTests {
     @Test("ENDSWITH runs server-side through the reversed shadow slot")
     func endsWithShadow() async throws {
         #expect(try await read("title", .endsWith, "World") == ["n-1"])
-        let item = try #require(database.records.first { $0.recordID == "n-1" })
+        let item = try #require(database.records.first { $0.recordID.recordName == "n-1" })
         #expect(item["s_01"] == "dlroW olleH")
     }
 
@@ -61,7 +62,7 @@ struct MatchingTests {
 
     @Test("The ngram shadow materializes trigrams of the folded source")
     func ngramShadow() async throws {
-        let item = try #require(database.records.first { $0.recordID == "n-1" })
+        let item = try #require(database.records.first { $0.recordID.recordName == "n-1" })
         let trigrams: [String] = try #require(item["ls_00"])
         #expect(trigrams.contains("hel"))
         #expect(trigrams.contains("o w"))
