@@ -16,7 +16,7 @@ extension EntityCoder {
     static func stage(_ data: Data, limit: Int = maxAssetSize) throws -> RecordValue {
         guard data.count <= limit else { throw SchemaError.invalidValue("asset") }
 
-        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        let digest = SHA256.hash(data: data).hexString
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ScoutDBAssets", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 

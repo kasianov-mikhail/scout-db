@@ -150,9 +150,10 @@ extension EntityStore {
         var server = [ServerFilter(field: "entity", op: .equals, value: .string(entity))]
         var client: [Filter] = []
         let fields = definition.fields(at: definition.version)
+        let byName = Dictionary(fields.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
 
         for filter in filters {
-            guard let field = fields.first(where: { $0.name == filter.field }) else {
+            guard let field = byName[filter.field] else {
                 throw SchemaError.unknownField(filter.field)
             }
             switch filter.op {

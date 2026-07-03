@@ -49,7 +49,8 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
             throw error
         }
         records.forEach(upsert)
-        self.records.removeAll { recordIDs.contains($0.recordID) }
+        let deleting = Set(recordIDs)
+        self.records.removeAll { deleting.contains($0.recordID) }
     }
 
     private func upsert(_ record: CKRecord) {
