@@ -12,15 +12,23 @@ let package = Package(
         .library(
             name: "ScoutDB",
             targets: ["ScoutDB"]
-        )
+        ),
+        .library(
+            name: "ScoutDBTesting",
+            targets: ["ScoutDBTesting"]
+        ),
     ],
     targets: [
         .target(
             name: "ScoutDB"
         ),
+        .target(
+            name: "ScoutDBTesting",
+            dependencies: ["ScoutDB"]
+        ),
         .testTarget(
             name: "ScoutDBTests",
-            dependencies: ["ScoutDB"]
+            dependencies: ["ScoutDB", "ScoutDBTesting"]
         ),
     ]
 )

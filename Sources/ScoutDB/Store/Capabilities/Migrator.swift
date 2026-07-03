@@ -13,7 +13,8 @@ public struct Migrator: Sendable {
     let registry: SchemaRegistry
     var keyProvider: (any EncryptionKeyProvider)?
 
-    init(database: any CloudDatabase, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil) {
+    /// Creates a migrator backed by any `CloudDatabase` implementation.
+    public init(database: any CloudDatabase, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil) {
         self.database = database
         self.registry = registry
         self.keyProvider = keyProvider

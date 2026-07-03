@@ -8,8 +8,7 @@
 import CloudKit
 import CoreLocation
 import Foundation
-
-@testable import ScoutDB
+import ScoutDB
 
 /// In-memory execution of the NSPredicate trees the store builds — the stub
 /// counterpart of the CloudKit server running the query for real.
@@ -17,8 +16,8 @@ import Foundation
 /// A record missing a compared field never matches, mirroring the server; the
 /// tri-state result lets `NOT (field IN ...)` stay false for missing fields too.
 ///
-enum PredicateEvaluator {
-    static func evaluate(_ predicate: NSPredicate, record: CKRecord) -> Bool? {
+public enum PredicateEvaluator {
+    public static func evaluate(_ predicate: NSPredicate, record: CKRecord) -> Bool? {
         if let compound = predicate as? NSCompoundPredicate {
             let results = (compound.subpredicates as? [NSPredicate] ?? []).map { evaluate($0, record: record) }
             switch compound.compoundPredicateType {
@@ -96,7 +95,7 @@ enum PredicateEvaluator {
         }
     }
 
-    static func compare(_ lhs: Any?, _ rhs: Any?) -> ComparisonResult {
+    public static func compare(_ lhs: Any?, _ rhs: Any?) -> ComparisonResult {
         switch (lhs, rhs) {
         case (nil, nil):
             return .orderedSame
