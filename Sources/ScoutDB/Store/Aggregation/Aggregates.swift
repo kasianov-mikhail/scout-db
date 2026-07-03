@@ -31,6 +31,13 @@ public struct AggregateRow: Equatable, Sendable {
     }
 }
 
+public struct AggregateSeriesPoint: Equatable, Sendable {
+    public let group: String
+    public let date: Date
+    public let count: Int
+    public let value: Double?
+}
+
 public struct AggregateTotal: Equatable, Sendable {
     public let group: String
     public let count: Int
@@ -79,6 +86,39 @@ extension EntityStore {
             }
             return AggregateRow(group: group, period: period, count: count, value: value, squares: squares)
         }.sorted { ($0.period, $0.group) < ($1.period, $1.group) }
+    }
+
+    /// Reads a view's grid at cell resolution — one point per non-empty bucket cell,
+    /// dated at the cell's position within its period (e.g. the hour of the day).
+    ///
+    public func series(entity: String, view viewName: String, from: Date? = nil, to: Date? = nil) async throws -> [AggregateSeriesPoint] {
+        let definition = try await registry.definition(for: entity)
+        guard let view = definition.views?.first(where: { $0.name == viewName }) else {
+            throw SchemaError.unknownField(viewName)
+        }
+        let bucket = view.bucket ?? .hour
+        let isStats = view.stats != nil
+        var points: [AggregateSeriesPoint] = []
+
+        for record in try await gridRecords(entity: entity, view: viewName, from: from, to: to) {
+            guard let period = record["date"] as? Date, let group = record["group_key"] as? String else { continue }
+            for index in 0..<(isStats ? 32 : 64) {
+                let count = Int(record[String(format: "c_%02d", index)] as? Int64 ?? 0)
+                let value = record[String(format: "f_%02d", index)] as? Double
+                guard count != 0 || value != nil else { continue }
+                points.append(AggregateSeriesPoint(group: group, date: Self.cellDate(bucket, period: period, index: index), count: count, value: value))
+            }
+        }
+        return points.sorted { ($0.date, $0.group) < ($1.date, $1.group) }
+    }
+
+    private static func cellDate(_ bucket: AggregateView.Bucket, period: Date, index: Int) -> Date {
+        switch bucket {
+        case .hour:
+            return EntityCoder.calendar.date(byAdding: .hour, value: index, to: period) ?? period
+        case .weekday, .day:
+            return EntityCoder.calendar.date(byAdding: .day, value: index, to: period) ?? period
+        }
     }
 
     public func totals(entity: String, view viewName: String, from: Date? = nil, to: Date? = nil, having: (AggregateTotal) -> Bool = { _ in true }) async throws
