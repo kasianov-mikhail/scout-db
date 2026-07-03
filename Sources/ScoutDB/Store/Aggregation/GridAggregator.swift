@@ -14,28 +14,59 @@ struct GridAggregator {
     let maxRetry = 3
 
     func record(_ entityRecord: EntityRecord, using definition: EntityDefinition) async throws {
-        guard entityRecord.deleted == false else { return }
-        guard let dateField = definition.envelopeDate, case .date(let date)? = entityRecord.values[dateField] else { return }
+        try await record([entityRecord], using: definition)
+    }
 
-        for view in definition.views ?? [] {
-            let group = view.groupBy.flatMap { entityRecord.values[$0]?.canonical } ?? ""
+    // Folds the whole batch into per-cell deltas first, so each touched grid
+    // record costs one lookup and one write no matter how many records feed it.
+    func record(_ batch: [EntityRecord], using definition: EntityDefinition) async throws {
+        var deltas: [GridSlot: [Int: CellDelta]] = [:]
 
-            if let histogram = view.histogram {
-                guard let value = entityRecord.values[histogram.field]?.scalar else { continue }
-                let period = EntityCoder.calendar.startOfDay(for: date)
-                let index = histogram.bounds.firstIndex { value < $0 } ?? histogram.bounds.count
-                try await bump(index: index, metric: nil, squares: nil, entity: entityRecord.entity, view: view.name, group: group, day: period)
-                continue
+        for entityRecord in batch {
+            guard entityRecord.deleted == false else { continue }
+            guard let dateField = definition.envelopeDate, case .date(let date)? = entityRecord.values[dateField] else { continue }
+
+            for view in definition.views ?? [] {
+                let group = view.groupBy.flatMap { entityRecord.values[$0]?.canonical } ?? ""
+
+                if let histogram = view.histogram {
+                    guard let value = entityRecord.values[histogram.field]?.scalar else { continue }
+                    let slot = GridSlot(entity: entityRecord.entity, view: view.name, group: group, day: EntityCoder.calendar.startOfDay(for: date))
+                    let index = histogram.bounds.firstIndex { value < $0 } ?? histogram.bounds.count
+                    deltas[slot, default: [:]][index, default: CellDelta()].count += 1
+                    continue
+                }
+
+                let (period, index) = Self.bucket(view.bucket ?? .hour, for: date)
+                let slot = GridSlot(entity: entityRecord.entity, view: view.name, group: group, day: period)
+                var delta = deltas[slot, default: [:]][index, default: CellDelta()]
+                delta.count += 1
+                if let (kind, field) = view.metric, let value = entityRecord.values[field]?.scalar {
+                    delta.value = (kind, delta.value.map { kind.combine($0.total, value) } ?? value)
+                }
+                if let scalar = view.stats.flatMap({ entityRecord.values[$0]?.scalar }) {
+                    delta.squares = (delta.squares ?? 0) + scalar * scalar
+                }
+                deltas[slot, default: [:]][index] = delta
             }
-
-            let (period, index) = Self.bucket(view.bucket ?? .hour, for: date)
-            var metric: (kind: AggregateView.Metric, value: Double)?
-            if let (kind, field) = view.metric, let value = entityRecord.values[field]?.scalar {
-                metric = (kind, value)
-            }
-            let squares = view.stats.flatMap { entityRecord.values[$0]?.scalar }.map { $0 * $0 }
-            try await bump(index: index, metric: metric, squares: squares, entity: entityRecord.entity, view: view.name, group: group, day: period)
         }
+
+        for (slot, cells) in deltas {
+            try await apply(cells, to: slot)
+        }
+    }
+
+    private struct GridSlot: Hashable {
+        let entity: String
+        let view: String
+        let group: String
+        let day: Date
+    }
+
+    private struct CellDelta {
+        var count: Int64 = 0
+        var value: (kind: AggregateView.Metric, total: Double)?
+        var squares: Double?
     }
 
     static func bucket(_ bucket: AggregateView.Bucket, for date: Date) -> (period: Date, index: Int) {
@@ -54,22 +85,21 @@ struct GridAggregator {
 
     // A stats view keeps the running sum in f_index and the sum of squares in
     // f_(index + 32); time buckets never exceed index 30, so the halves cannot clash.
-    private func bump(
-        index: Int, metric: (kind: AggregateView.Metric, value: Double)?, squares: Double?, entity: String, view: String, group: String, day: Date
-    ) async throws {
-        var record = try await lookup(entity: entity, view: view, group: group, day: day)
-        let countCell = String(format: "c_%02d", index)
-        let valueCell = String(format: "f_%02d", index)
-        let squareCell = String(format: "f_%02d", index + 32)
+    private func apply(_ cells: [Int: CellDelta], to slot: GridSlot) async throws {
+        var record = try await lookup(entity: slot.entity, view: slot.view, group: slot.group, day: slot.day)
 
         for _ in 0..<maxRetry {
-            record[countCell] = (record[countCell] as? Int64 ?? 0) + 1
-            if let (kind, value) = metric {
-                let combined = (record[valueCell] as? Double).map { kind.combine($0, value) } ?? value
-                record[valueCell] = combined
-            }
-            if let squares {
-                record[squareCell] = (record[squareCell] as? Double ?? 0) + squares
+            for (index, delta) in cells {
+                let countCell = String(format: "c_%02d", index)
+                record[countCell] = (record[countCell] as? Int64 ?? 0) + delta.count
+                if let (kind, total) = delta.value {
+                    let valueCell = String(format: "f_%02d", index)
+                    record[valueCell] = (record[valueCell] as? Double).map { kind.combine($0, total) } ?? total
+                }
+                if let squares = delta.squares {
+                    let squareCell = String(format: "f_%02d", index + 32)
+                    record[squareCell] = (record[squareCell] as? Double ?? 0) + squares
+                }
             }
             do {
                 try await database.write(record: record)

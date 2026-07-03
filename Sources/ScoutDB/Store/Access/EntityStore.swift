@@ -8,6 +8,17 @@
 import CloudKit
 import Foundation
 
+/// One record of a batched `EntityStore.write(_:entity:)` call.
+public struct EntityWrite: Sendable {
+    public let values: [String: RecordValue]
+    public let uuid: String
+
+    public init(values: [String: RecordValue], uuid: String = UUID().uuidString) {
+        self.values = values
+        self.uuid = uuid
+    }
+}
+
 public struct EntityStore: Sendable {
     let database: any CloudDatabase
     let registry: SchemaRegistry
@@ -62,14 +73,28 @@ public struct EntityStore: Sendable {
     }
 
     @discardableResult public func write(_ values: [String: RecordValue], entity: String, uuid: String = UUID().uuidString) async throws -> String {
+        try await write([EntityWrite(values: values, uuid: uuid)], entity: entity)[0]
+    }
+
+    /// Writes a batch of records of one entity in chunked saves, folding their
+    /// aggregate-view contributions into a single write per touched grid record.
+    ///
+    /// Returns the stored uuid of every record, in batch order.
+    ///
+    @discardableResult public func write(_ batch: [EntityWrite], entity: String) async throws -> [String] {
+        guard batch.count > 0 else { return [] }
         let definition = try await registry.definition(for: entity)
         let coder = EntityCoder(keyProvider: keyProvider)
-        let resolved = try coder.resolve(values, at: definition.version, using: definition)
-        let recordUUID = try coder.naturalUUID(for: resolved, using: definition) ?? uuid
-        let entityRecord = EntityRecord(entity: entity, uuid: recordUUID, schemaVersion: definition.version, values: resolved)
-        try await database.write(record: coder.encode(entityRecord, using: definition))
-        try await GridAggregator(database: database).record(entityRecord, using: definition)
-        return recordUUID
+
+        let entityRecords = try batch.map { entry in
+            let resolved = try coder.resolve(entry.values, at: definition.version, using: definition)
+            let uuid = try coder.naturalUUID(for: resolved, using: definition) ?? entry.uuid
+            return EntityRecord(entity: entity, uuid: uuid, schemaVersion: definition.version, values: resolved)
+        }
+
+        try await database.write(records: entityRecords.map { try coder.encode($0, using: definition) })
+        try await GridAggregator(database: database).record(entityRecords, using: definition)
+        return entityRecords.map(\.uuid)
     }
 
     public func delete(entity: String, uuid: String) async throws {

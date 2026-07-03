@@ -177,4 +177,44 @@ struct AggregatesTests {
             ], envelopeDate: "date", views: [AggregateView(name: "broken", sum: "amount", min: "amount")])
         #expect(throws: SchemaError.self) { try definition.validate() }
     }
+
+    @Test("A batched write aggregates like the equivalent single writes")
+    func batchAggregation() async throws {
+        try await publishPayment(views: [AggregateView(name: "revenue", groupBy: "product", bucket: .hour, sum: "amount")])
+        try await store.write(
+            [
+                EntityWrite(values: ["product": .string("app"), "amount": .double(2), "date": .date(noon)]),
+                EntityWrite(values: ["product": .string("app"), "amount": .double(3), "date": .date(noon)]),
+                EntityWrite(values: ["product": .string("app"), "amount": .double(10), "date": .date(noon.addingTimeInterval(3_600))]),
+            ], entity: "payment")
+
+        let points = try await store.series(entity: "payment", view: "revenue")
+
+        #expect(points.count == 2)
+        #expect(points.first == AggregateSeriesPoint(group: "app", date: noon, count: 2, value: 5))
+        #expect(points.last == AggregateSeriesPoint(group: "app", date: noon.addingTimeInterval(3_600), count: 1, value: 10))
+    }
+
+    @Test("A batched write folds MIN across the whole batch")
+    func batchMinFold() async throws {
+        try await publishPayment(views: [AggregateView(name: "low", min: "amount")])
+        try await store.write(
+            [5, 2, 8].map { EntityWrite(values: ["product": .string("app"), "amount": .double($0), "date": .date(noon)]) },
+            entity: "payment")
+
+        let rows = try await store.aggregate(entity: "payment", view: "low")
+        #expect(rows.count == 1)
+        #expect(rows.first?.count == 3)
+        #expect(rows.first?.value == 2)
+    }
+
+    @Test("A batched write touches each grid record once")
+    func batchGridWrites() async throws {
+        try await publishPayment(views: [AggregateView(name: "revenue", groupBy: "product", bucket: .hour, sum: "amount")])
+        try await store.write(
+            [1, 2, 3, 4].map { EntityWrite(values: ["product": .string("app"), "amount": .double($0), "date": .date(noon)]) },
+            entity: "payment")
+
+        #expect(database.records.filter { $0.recordType == "GridItem" }.count == 1)
+    }
 }
