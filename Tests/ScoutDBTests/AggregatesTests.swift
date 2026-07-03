@@ -41,6 +41,22 @@ struct AggregatesTests {
         }
     }
 
+    @Test("Series exposes cells at bucket resolution")
+    func series() async throws {
+        try await publishPayment(views: [AggregateView(name: "revenue", groupBy: "product", bucket: .hour, sum: "amount")])
+        try await writePayments([2, 3])
+        try await store.write(
+            ["product": .string("app"), "amount": .double(10), "date": .date(noon.addingTimeInterval(3_600))],
+            entity: "payment"
+        )
+
+        let points = try await store.series(entity: "payment", view: "revenue")
+
+        #expect(points.count == 2)
+        #expect(points.first == AggregateSeriesPoint(group: "app", date: noon, count: 2, value: 5))
+        #expect(points.last == AggregateSeriesPoint(group: "app", date: noon.addingTimeInterval(3_600), count: 1, value: 10))
+    }
+
     @Test("MIN view keeps the smallest value")
     func minView() async throws {
         try await publishPayment(views: [AggregateView(name: "low", min: "amount")])
