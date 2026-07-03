@@ -7,15 +7,16 @@
 
 import CloudKit
 import Foundation
+import ScoutDB
 
-@testable import ScoutDB
+public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
+    public var records: [CKRecord] = []
+    public var errors: [Error] = []
+    public var writeErrors: [Error] = []
 
-final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
-    var records: [CKRecord] = []
-    var errors: [Error] = []
-    var writeErrors: [Error] = []
+    public init() {}
 
-    func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+    public func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?
     ) {
         if let error = errors.popLast() {
@@ -29,13 +30,13 @@ final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         return (matched.map { ($0.recordID, .success($0)) }, nil)
     }
 
-    func records(continuingMatchFrom cursor: CKQueryOperation.Cursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+    public func records(continuingMatchFrom cursor: CKQueryOperation.Cursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?
     ) {
         ([], nil)
     }
 
-    func save(_ record: CKRecord) async throws -> CKRecord {
+    public func save(_ record: CKRecord) async throws -> CKRecord {
         if let error = writeErrors.popLast() ?? errors.popLast() {
             throw error
         }
@@ -43,7 +44,7 @@ final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         return record
     }
 
-    func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {
+    public func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {
         if let error = writeErrors.popLast() ?? errors.popLast() {
             throw error
         }

@@ -12,7 +12,8 @@ public actor SchemaRegistry {
     private let database: any CloudDatabase
     private var cache: [String: EntityDefinition] = [:]
 
-    init(database: any CloudDatabase) {
+    /// Creates a registry backed by any `CloudDatabase` implementation.
+    public init(database: any CloudDatabase) {
         self.database = database
     }
 

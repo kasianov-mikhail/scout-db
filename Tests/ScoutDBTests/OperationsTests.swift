@@ -7,6 +7,7 @@
 
 import CloudKit
 import Foundation
+import ScoutDBTesting
 import Testing
 
 @testable import ScoutDB
@@ -66,6 +67,25 @@ struct OperationsTests {
         let second = try await store.read(entity: "purchase", limit: 2, after: cursor)
         #expect(second.records.map(\.uuid) == ["p-0"])
         #expect(second.cursor == nil)
+    }
+
+    @Test("Fetch by identifier resolves the entity from the record")
+    func fetchByUUID() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+
+        let record = try await store.fetch(uuid: "p-1")
+
+        #expect(record?.entity == "purchase")
+        #expect(record?.values["quantity"] == makePurchase().values["quantity"])
+        #expect(try await store.fetch(uuid: "ghost") == nil)
+    }
+
+    @Test("Fetch by identifier hides tombstoned records")
+    func fetchByUUIDDeleted() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.delete(entity: "purchase", uuid: "p-1")
+
+        #expect(try await store.fetch(uuid: "p-1") == nil)
     }
 
     @Test("Reap tombstones expired records")

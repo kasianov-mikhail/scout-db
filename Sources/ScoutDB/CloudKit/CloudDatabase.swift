@@ -7,10 +7,12 @@
 
 import CloudKit
 
-// A test seam shaped exactly like the CKDatabase calls the store makes — not a
-// backend abstraction. CKDatabase conforms by forwarding; tests inject an
-// in-memory implementation that evaluates the same CKQuery.
-protocol CloudDatabase: Sendable {
+/// A seam shaped exactly like the CKDatabase calls the store makes — not a
+/// backend abstraction. `CKDatabase` conforms by forwarding; tests inject an
+/// in-memory implementation (see the `ScoutDBTesting` product) that evaluates
+/// the same `CKQuery`.
+///
+public protocol CloudDatabase: Sendable {
     func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?
     )
@@ -56,7 +58,7 @@ extension CloudDatabase {
 // bounded operation configuration; the in-memory test double bypasses both
 // since it never talks to the network.
 extension CKDatabase: CloudDatabase {
-    func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+    public func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?
     ) {
         try await throttled { database in
@@ -64,7 +66,7 @@ extension CKDatabase: CloudDatabase {
         }
     }
 
-    func records(continuingMatchFrom cursor: CKQueryOperation.Cursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+    public func records(continuingMatchFrom cursor: CKQueryOperation.Cursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?
     ) {
         try await throttled { database in
@@ -72,13 +74,13 @@ extension CKDatabase: CloudDatabase {
         }
     }
 
-    func save(_ record: CKRecord) async throws -> CKRecord {
+    public func save(_ record: CKRecord) async throws -> CKRecord {
         try await throttled { database in
             try await database.save(record)
         }
     }
 
-    func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {
+    public func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {
         try await throttled { database in
             _ = try await database.modifyRecords(saving: records, deleting: recordIDs, savePolicy: .allKeys, atomically: true)
         }

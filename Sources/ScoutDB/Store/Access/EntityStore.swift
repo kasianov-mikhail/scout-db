@@ -14,7 +14,8 @@ public struct EntityStore: Sendable {
     var keyProvider: (any EncryptionKeyProvider)?
     var trustedWriters: Set<String>?
 
-    init(database: any CloudDatabase, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil, trustedWriters: Set<String>? = nil) {
+    /// Creates a store backed by any `CloudDatabase` implementation.
+    public init(database: any CloudDatabase, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil, trustedWriters: Set<String>? = nil) {
         self.database = database
         self.registry = registry
         self.keyProvider = keyProvider

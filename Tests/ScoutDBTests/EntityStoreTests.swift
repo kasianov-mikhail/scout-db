@@ -8,6 +8,7 @@
 import CloudKit
 import CryptoKit
 import Foundation
+import ScoutDBTesting
 import Testing
 
 @testable import ScoutDB

@@ -141,6 +141,16 @@ extension EntityStore {
         return try decode(records, using: definition).filter { !$0.deleted }.sorted { $0.uuid < $1.uuid }
     }
 
+    /// Fetches a single record by its identifier, resolving the entity from the record itself.
+    public func fetch(uuid: String) async throws -> EntityRecord? {
+        let query = ckQuery(Item.recordType, filters: [ServerFilter(field: "uuid", op: .equals, value: .string(uuid))])
+        guard let record = try await database.allRecords(matching: query).first else { return nil }
+        guard let entity = record["entity"] as? String else { return nil }
+        let definition = try await registry.definition(for: entity)
+        let decoded = try decode([record], using: definition)
+        return decoded.first { !$0.deleted }
+    }
+
     func items(entity: String, uuids: [String]) async throws -> [CKRecord] {
         var records: [CKRecord] = []
         for chunk in uuids.chunked(into: 100) {

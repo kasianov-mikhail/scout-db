@@ -106,19 +106,23 @@ private nonisolated(unsafe) var modificationDateKey: UInt8 = 0
 private nonisolated(unsafe) var creatorKey: UInt8 = 0
 
 extension CKRecord {
-    var recordModificationDate: Date? {
+    /// The record's modification date, honoring a testing override.
+    public var recordModificationDate: Date? {
         objc_getAssociatedObject(self, &modificationDateKey) as? Date ?? modificationDate
     }
 
-    var recordCreator: String? {
+    /// The record's creator identifier, honoring a testing override.
+    public var recordCreator: String? {
         objc_getAssociatedObject(self, &creatorKey) as? String ?? creatorUserRecordID?.recordName
     }
 
-    func overrideModificationDate(_ date: Date) {
+    /// Injects a modification date underneath the read-only system field.
+    public func overrideModificationDate(_ date: Date) {
         objc_setAssociatedObject(self, &modificationDateKey, date, .OBJC_ASSOCIATION_RETAIN)
     }
 
-    func overrideCreator(_ name: String) {
+    /// Injects a creator identifier underneath the read-only system field.
+    public func overrideCreator(_ name: String) {
         objc_setAssociatedObject(self, &creatorKey, name, .OBJC_ASSOCIATION_RETAIN)
     }
 }
