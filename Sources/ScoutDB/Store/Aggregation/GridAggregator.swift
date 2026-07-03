@@ -22,8 +22,7 @@ struct GridAggregator {
     func record(_ batch: [EntityRecord], using definition: EntityDefinition) async throws {
         var deltas: [GridSlot: [Int: CellDelta]] = [:]
 
-        for entityRecord in batch {
-            guard entityRecord.deleted == false else { continue }
+        for entityRecord in batch where entityRecord.deleted == false {
             guard let dateField = definition.envelopeDate, case .date(let date)? = entityRecord.values[dateField] else { continue }
 
             for view in definition.views ?? [] {
