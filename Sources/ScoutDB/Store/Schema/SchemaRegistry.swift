@@ -60,6 +60,14 @@ public actor SchemaRegistry {
         return cache.count
     }
 
+    /// Seeds the registry with a definition embedded in the app, without touching
+    /// the database — reads and writes can proceed before `publish` lands in Meta.
+    ///
+    public func register(_ definition: EntityDefinition) throws {
+        try definition.validate()
+        cache[definition.entity] = definition
+    }
+
     public func publish(_ definition: EntityDefinition) async throws {
         try definition.validate()
         let record = CKRecord(recordType: MetaEntry.recordType, recordID: CKRecord.ID(recordName: "\(definition.entity)@\(definition.version)"))

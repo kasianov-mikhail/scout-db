@@ -34,6 +34,17 @@ struct EntityStoreTests {
         try await registry.publish(makePurchaseDefinition())
     }
 
+    @Test("Registered definition serves the store without touching Meta")
+    func register() async throws {
+        let registry = SchemaRegistry(database: InMemoryDatabase())
+        try await registry.register(makePurchaseDefinition())
+
+        let local = EntityStore(database: database, registry: registry)
+        try await local.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+
+        #expect(try await local.read(entity: "purchase").count == 1)
+    }
+
     @Test("Write persists a single Item record")
     func write() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
