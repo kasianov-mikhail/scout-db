@@ -8,13 +8,17 @@
 import CloudKit
 import Foundation
 
-public struct AggregateRow: Equatable, Sendable {
-    public let group: String
-    public let period: Date
-    public let count: Int
-    public let value: Double?
-    public var squares: Double?
+/// A metric total paired with its sum of squares, from which the mean and spread
+/// derive.
+///
+/// Grid rows and their per-group totals both expose it.
+public protocol AggregateStatistics {
+    var count: Int { get }
+    var value: Double? { get }
+    var squares: Double? { get }
+}
 
+extension AggregateStatistics {
     public var average: Double? {
         guard let value, count > 0 else { return nil }
         return value / Double(count)
@@ -29,6 +33,14 @@ public struct AggregateRow: Equatable, Sendable {
     public var standardDeviation: Double? {
         variance.map(sqrt)
     }
+}
+
+public struct AggregateRow: AggregateStatistics, Equatable, Sendable {
+    public let group: String
+    public let period: Date
+    public let count: Int
+    public let value: Double?
+    public var squares: Double?
 }
 
 public struct AggregateSeriesPoint: Equatable, Sendable {
@@ -38,26 +50,11 @@ public struct AggregateSeriesPoint: Equatable, Sendable {
     public let value: Double?
 }
 
-public struct AggregateTotal: Equatable, Sendable {
+public struct AggregateTotal: AggregateStatistics, Equatable, Sendable {
     public let group: String
     public let count: Int
     public let value: Double?
     public var squares: Double?
-
-    public var average: Double? {
-        guard let value, count > 0 else { return nil }
-        return value / Double(count)
-    }
-
-    public var variance: Double? {
-        guard let value, let squares, count > 0 else { return nil }
-        let mean = value / Double(count)
-        return Swift.max(0, squares / Double(count) - mean * mean)
-    }
-
-    public var standardDeviation: Double? {
-        variance.map(sqrt)
-    }
 }
 
 extension EntityStore {
@@ -76,8 +73,8 @@ extension EntityStore {
             var value: Double?
             var squares: Double?
             for index in 0..<64 {
-                count += Int(record[String(format: "c_%02d", index)] as? Int64 ?? 0)
-                guard let kind, let cell = record[String(format: "f_%02d", index)] as? Double else { continue }
+                count += Int(record[GridItem.countCell(index)] as? Int64 ?? 0)
+                guard let kind, let cell = record[GridItem.valueCell(index)] as? Double else { continue }
                 if isStats, index >= 32 {
                     squares = (squares ?? 0) + cell
                 } else {
@@ -103,8 +100,8 @@ extension EntityStore {
         for record in try await gridRecords(entity: entity, view: viewName, from: from, to: to) {
             guard let period = record["date"] as? Date, let group = record["group_key"] as? String else { continue }
             for index in 0..<(isStats ? 32 : 64) {
-                let count = Int(record[String(format: "c_%02d", index)] as? Int64 ?? 0)
-                let value = record[String(format: "f_%02d", index)] as? Double
+                let count = Int(record[GridItem.countCell(index)] as? Int64 ?? 0)
+                let value = record[GridItem.valueCell(index)] as? Double
                 guard count != 0 || value != nil else { continue }
                 points.append(AggregateSeriesPoint(group: group, date: Self.cellDate(bucket, period: period, index: index), count: count, value: value))
             }
@@ -146,7 +143,7 @@ extension EntityStore {
         var counts = [Double](repeating: 0, count: histogram.bounds.count + 1)
         for record in try await gridRecords(entity: entity, view: viewName, from: from, to: to) {
             for index in counts.indices {
-                counts[index] += Double(record[String(format: "c_%02d", index)] as? Int64 ?? 0)
+                counts[index] += Double(record[GridItem.countCell(index)] as? Int64 ?? 0)
             }
         }
 

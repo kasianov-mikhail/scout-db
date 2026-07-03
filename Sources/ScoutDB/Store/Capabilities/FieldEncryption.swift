@@ -29,7 +29,7 @@ extension EntityCoder {
 
     func surrogate(for canonical: String, keyID: String?) throws -> String {
         let mac = try HMAC<SHA256>.authenticationCode(for: Data(canonical.utf8), using: key(for: keyID))
-        return mac.map { String(format: "%02x", $0) }.joined()
+        return mac.hexString
     }
 
     private func key(for keyID: String?) throws -> SymmetricKey {

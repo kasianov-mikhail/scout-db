@@ -66,11 +66,12 @@ struct EntityCoder {
             return "\(name)=\(value.canonical)"
         }
         let digest = SHA256.hash(data: Data(key.joined(separator: "|").utf8))
-        return digest.map { String(format: "%02x", $0) }.joined()
+        return digest.hexString
     }
 
     func encode(_ entityRecord: EntityRecord, using definition: EntityDefinition, into base: CKRecord? = nil) throws -> CKRecord {
         let fields = definition.fields(at: entityRecord.schemaVersion)
+        let byName = Dictionary(fields.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
         let values = try resolve(entityRecord.values, at: entityRecord.schemaVersion, using: definition)
 
         let record = base ?? CKRecord(recordType: Item.recordType, recordID: CKRecord.ID(recordName: entityRecord.uuid))
@@ -84,7 +85,7 @@ struct EntityCoder {
 
         var payload: [String: RecordValue] = [:]
         for (name, value) in values {
-            guard let field = fields.first(where: { $0.name == name }) else { continue }
+            guard let field = byName[name] else { continue }
             switch field.storage {
             case .slot(_, let slot):
                 record.setScoutValue(value, forKey: slot)

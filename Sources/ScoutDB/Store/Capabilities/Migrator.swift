@@ -44,9 +44,7 @@ public struct Migrator: Sendable {
             migrated.append(try coder.encode(entityRecord, using: definition))
         }
 
-        for chunk in migrated.chunked(into: Self.maxBatchSize) {
-            try await database.write(records: chunk)
-        }
+        try await database.write(records: migrated)
         return migrated.count
     }
 
@@ -63,8 +61,4 @@ public struct Migrator: Sendable {
         }
         return values
     }
-}
-
-extension Migrator {
-    static var maxBatchSize: Int { 400 }
 }

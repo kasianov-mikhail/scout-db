@@ -101,9 +101,7 @@ extension EntityStore {
             try transform(&record)
             updated.append(try coder.encode(record, using: definition))
         }
-        for chunk in updated.chunked(into: 400) {
-            try await database.write(records: chunk)
-        }
+        try await database.write(records: updated)
         return updated.count
     }
 
@@ -111,9 +109,7 @@ extension EntityStore {
         let definition = try await registry.definition(for: entity)
         let victims = try await read(entity: entity, filters: filters)
         let tombstones = victims.map { Self.tombstone(entity: entity, uuid: $0.uuid, definition: definition) }
-        for chunk in tombstones.chunked(into: 400) {
-            try await database.write(records: chunk)
-        }
+        try await database.write(records: tombstones)
         return victims.count
     }
 
@@ -129,9 +125,7 @@ extension EntityStore {
         let expired = try await database.allRecords(matching: query).compactMap { $0["uuid"] as? String }
 
         let tombstones = expired.sorted().map { Self.tombstone(entity: entity, uuid: $0, definition: definition) }
-        for chunk in tombstones.chunked(into: 400) {
-            try await database.write(records: chunk)
-        }
+        try await database.write(records: tombstones)
         return expired.count
     }
 
