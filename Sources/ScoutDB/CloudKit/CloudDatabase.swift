@@ -57,6 +57,12 @@ extension CloudDatabase {
 // Routes every real CloudKit call through the shared concurrency limit and a
 // bounded operation configuration; the in-memory test double bypasses both
 // since it never talks to the network.
+//
+// The conformance bodies must never spell a call that matches a CloudDatabase
+// requirement's own signature: within this module such a call resolves back to
+// the conformance itself, not to CloudKit, and the resulting recursion eats one
+// limiter slot per level until every request deadlocks. Each body goes through
+// a CloudKit API whose shape differs from the requirement it implements.
 extension CKDatabase: CloudDatabase {
     public func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?
@@ -70,13 +76,21 @@ extension CKDatabase: CloudDatabase {
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?
     ) {
         try await throttled { database in
-            try await database.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+            try await withCheckedThrowingContinuation { continuation in
+                database.fetch(withCursor: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit) { result in
+                    continuation.resume(with: result)
+                }
+            }
         }
     }
 
     public func save(_ record: CKRecord) async throws -> CKRecord {
         try await throttled { database in
-            try await database.save(record)
+            let results = try await database.modifyRecords(saving: [record], deleting: [], savePolicy: .ifServerRecordUnchanged, atomically: true)
+            guard let result = results.saveResults[record.recordID] else {
+                throw CKError(.internalError)
+            }
+            return try result.get()
         }
     }
 
