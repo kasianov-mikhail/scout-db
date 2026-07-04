@@ -415,6 +415,7 @@ DEFINE SCHEMA
         definition      BYTES,
         status          STRING QUERYABLE SEARCHABLE SORTABLE,
         GRANT WRITE TO "_creator",
+        GRANT CREATE, WRITE TO "_icloud",
         GRANT READ TO "_world"
     );
 

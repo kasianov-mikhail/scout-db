@@ -44,6 +44,15 @@ let store = EntityStore(database: database, registry: registry, trustedWriters: 
 Grants cannot be narrowed after the fact, so this reader-side filter is the practical
 anti-vandalism tool for world-writable containers.
 
+## Public database grants
+
+The shipped `Schema` grants authenticated iCloud users (`_icloud`) `CREATE` and `WRITE` on
+`Item`, `GridItem`, and `Meta`, and `_world` `READ`. `Meta` needs the `_icloud` grant just
+like the data types: a client publishes its entity definitions to `Meta` on first run, and
+that write runs under the caller's own account rather than an admin role. Without it, schema
+publishing is rejected and no records sync. If you configure roles by hand instead of
+importing `Schema`, grant `_icloud` `CREATE, WRITE` on all three record types.
+
 ## Limits
 
 - Encrypted fields support exact-match lookups via the surrogate only — no ranges, no
