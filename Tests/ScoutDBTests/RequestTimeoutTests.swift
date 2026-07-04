@@ -25,4 +25,55 @@ struct RequestTimeoutTests {
             }
         }
     }
+
+    @Test("Times out on schedule even when the operation ignores cancellation")
+    func testEscapesStuckOperation() async {
+        let gate = Gate()
+        let clock = ContinuousClock()
+        let start = clock.now
+
+        await #expect(throws: RequestTimeoutError.self) {
+            try await withRequestTimeout(.milliseconds(20)) {
+                await gate.wait()
+            }
+        }
+
+        #expect(clock.now - start < .seconds(5))
+        await gate.open()
+    }
+
+    @Test("Rethrows the caller's cancellation instead of waiting out the timer")
+    func testPropagatesCallerCancellation() async {
+        let task = Task {
+            try await withRequestTimeout(.seconds(10)) {
+                try await Task.sleep(for: .seconds(10))
+            }
+        }
+
+        try? await Task.sleep(for: .milliseconds(50))
+        task.cancel()
+
+        await #expect(throws: CancellationError.self) {
+            try await task.value
+        }
+    }
+}
+
+// Parks callers on a plain continuation that ignores task cancellation, standing in
+// for a request stuck past the point where cancelling it helps.
+private actor Gate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        guard !isOpen else { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        while waiters.count > 0 {
+            waiters.removeFirst().resume()
+        }
+    }
 }

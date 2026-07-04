@@ -25,23 +25,48 @@ actor RequestLimiter {
     private let limit: Int
     private var running = 0
     private var isDraining = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var nextWaiterID = 0
+    private var waiters: [Waiter] = []
     private var drainWaiters: [CheckedContinuation<Void, Never>] = []
     private var drained: CheckedContinuation<Void, Never>?
+
+    private struct Waiter {
+        let id: Int
+        let continuation: CheckedContinuation<Void, any Error>
+    }
 
     init(limit: Int) {
         self.limit = limit
     }
 
     /// Waits until a request slot is free and claims it; pair with `release()`.
-    func acquire() async {
+    ///
+    /// Throws `CancellationError` without claiming a slot when the task is cancelled,
+    /// so an abandoned caller leaves the queue instead of parking until a slot frees.
+    ///
+    func acquire() async throws {
+        try Task.checkCancellation()
         if !isDraining && running < limit {
             running += 1
             return
         }
-        await withCheckedContinuation { continuation in
-            waiters.append(continuation)
+        let id = nextWaiterID
+        nextWaiterID += 1
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                waiters.append(Waiter(id: id, continuation: continuation))
+                // Cancellation may have fired before the waiter was registered,
+                // in which case the onCancel hop found nothing to remove.
+                if Task.isCancelled { cancelWaiter(id: id) }
+            }
+        } onCancel: {
+            Task { await self.cancelWaiter(id: id) }
         }
+    }
+
+    private func cancelWaiter(id: Int) {
+        guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+        waiters.remove(at: index).continuation.resume(throwing: CancellationError())
     }
 
     /// Frees the slot, handing it to the longest-waiting request if any.
@@ -92,13 +117,17 @@ actor RequestLimiter {
     private func resumeWaiters() {
         while running < limit, waiters.count > 0 {
             running += 1
-            waiters.removeFirst().resume()
+            waiters.removeFirst().continuation.resume(returning: ())
         }
     }
 
     /// Runs `body` while holding one request slot.
-    nonisolated func withSlot<R>(body: () async throws -> R) async rethrows -> R {
-        try await holding({ await acquire() }, until: { await release() }, body: body)
+    ///
+    /// Throws `CancellationError` without running `body` when the task is cancelled
+    /// while waiting for a slot.
+    ///
+    nonisolated func withSlot<R>(body: () async throws -> R) async throws -> R {
+        try await holding({ try await acquire() }, until: { await release() }, body: body)
     }
 
     /// Runs `body` while holding every slot, giving it exclusive access to CloudKit.
@@ -106,8 +135,8 @@ actor RequestLimiter {
         try await holding({ await acquireAll() }, until: { await releaseAll() }, body: body)
     }
 
-    nonisolated private func holding<R>(_ claim: () async -> Void, until free: () async -> Void, body: () async throws -> R) async rethrows -> R {
-        await claim()
+    nonisolated private func holding<R>(_ claim: () async throws -> Void, until free: () async -> Void, body: () async throws -> R) async rethrows -> R {
+        try await claim()
         do {
             let result = try await body()
             await free()
@@ -151,17 +180,50 @@ private struct UncheckedBox<T>: @unchecked Sendable {
     let value: T
 }
 
-// Races `operation` against a timer; the loser is cancelled, so a stuck request
-// throws `RequestTimeoutError` and frees its slot instead of stalling the pool.
+// Races `operation` against a timer; the loser is cancelled. Both racers run as
+// unstructured tasks so the timeout (or the caller's cancellation) surfaces
+// immediately even when the operation never honors its cancellation — a structured
+// group would swallow the timeout error until the stuck child resumed.
 func withRequestTimeout<R>(_ timeout: Duration, _ operation: @Sendable @escaping () async throws -> R) async throws -> R {
-    try await withThrowingTaskGroup(of: UncheckedBox<R>.self) { group in
-        group.addTask { UncheckedBox(value: try await operation()) }
-        group.addTask {
-            try await Task.sleep(for: timeout)
-            throw RequestTimeoutError(seconds: Int(timeout.components.seconds))
+    let relay = ResultRelay<UncheckedBox<R>>()
+    let operationTask = Task {
+        do {
+            await relay.finish(with: .success(UncheckedBox(value: try await operation())))
+        } catch {
+            await relay.finish(with: .failure(error))
         }
-        defer { group.cancelAll() }
-        return try await group.next()!.value
+    }
+    let timerTask = Task {
+        try await Task.sleep(for: timeout)
+        await relay.finish(with: .failure(RequestTimeoutError(seconds: Int(timeout.components.seconds))))
+    }
+    defer {
+        operationTask.cancel()
+        timerTask.cancel()
+    }
+    return try await withTaskCancellationHandler {
+        try await relay.value().value
+    } onCancel: {
+        Task { await relay.finish(with: .failure(CancellationError())) }
+    }
+}
+
+// Delivers whichever racer finishes first and drops the rest, letting the caller
+// abandon a loser that never finishes.
+private actor ResultRelay<T: Sendable> {
+    private var result: Result<T, any Error>?
+    private var continuation: CheckedContinuation<T, any Error>?
+
+    func finish(with result: Result<T, any Error>) {
+        guard self.result == nil else { return }
+        self.result = result
+        continuation?.resume(with: result)
+        continuation = nil
+    }
+
+    func value() async throws -> T {
+        if let result { return try result.get() }
+        return try await withCheckedThrowingContinuation { continuation = $0 }
     }
 }
 
