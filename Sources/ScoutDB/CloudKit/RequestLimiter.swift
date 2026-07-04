@@ -120,10 +120,48 @@ actor RequestLimiter {
 }
 
 extension CKDatabase {
-    @discardableResult func throttled<R>(body: @Sendable (CKDatabase) async throws -> R) async throws -> R {
+    @discardableResult func throttled<R>(body: @Sendable @escaping (CKDatabase) async throws -> R) async throws -> R {
         try await requestLimiter.withSlot {
-            try await configuredWith(configuration: .scoutDB, body: body)
+            try await withRequestTimeout(requestTimeout) {
+                try await self.configuredWith(configuration: .scoutDB, body: body)
+            }
         }
+    }
+}
+
+/// Thrown when a CloudKit request outlives the scout-db backstop timeout and is
+/// cancelled, freeing its request slot instead of stalling the whole pool.
+public struct RequestTimeoutError: LocalizedError {
+    /// The elapsed limit, in seconds, the request exceeded before cancellation.
+    public let seconds: Int
+
+    public var errorDescription: String? {
+        "The CloudKit request exceeded the \(seconds)s scout-db timeout and was cancelled."
+    }
+}
+
+// A backstop above CloudKit's own 10s request/resource timeout: a write can stall
+// server-side without that timeout firing, so this cancels the operation and frees
+// its request slot rather than letting a single stuck call starve the pool.
+private let requestTimeout: Duration = .seconds(30)
+
+// Carries a request result across the timeout task boundary even when the payload
+// (e.g. CKRecord) is not Sendable; only one task ever produces it.
+private struct UncheckedBox<T>: @unchecked Sendable {
+    let value: T
+}
+
+// Races `operation` against a timer; the loser is cancelled, so a stuck request
+// throws `RequestTimeoutError` and frees its slot instead of stalling the pool.
+func withRequestTimeout<R>(_ timeout: Duration, _ operation: @Sendable @escaping () async throws -> R) async throws -> R {
+    try await withThrowingTaskGroup(of: UncheckedBox<R>.self) { group in
+        group.addTask { UncheckedBox(value: try await operation()) }
+        group.addTask {
+            try await Task.sleep(for: timeout)
+            throw RequestTimeoutError(seconds: Int(timeout.components.seconds))
+        }
+        defer { group.cancelAll() }
+        return try await group.next()!.value
     }
 }
 
