@@ -9,11 +9,11 @@ import Testing
 
 @testable import ScoutDB
 
-@Suite("RequestLimiter")
-struct RequestLimiterTests {
+@Suite("AsyncSemaphore")
+struct AsyncSemaphoreTests {
     @Test("Acquires up to the limit without suspending")
     func testAcquiresUpToLimit() async throws {
-        let limiter = RequestLimiter(limit: 3)
+        let limiter = AsyncSemaphore(limit: 3)
 
         // Would hang here if the limiter blocked before reaching its limit.
         for _ in 0..<3 {
@@ -25,7 +25,7 @@ struct RequestLimiterTests {
 
     @Test("Never exceeds the limit under contention")
     func testCapsConcurrency() async throws {
-        let limiter = RequestLimiter(limit: 3)
+        let limiter = AsyncSemaphore(limit: 3)
         let tracker = Tracker()
 
         try await withThrowingTaskGroup(of: Void.self) { group in
@@ -47,7 +47,7 @@ struct RequestLimiterTests {
 
     @Test("Release hands the slot to a waiter")
     func testWaiterResumes() async throws {
-        let limiter = RequestLimiter(limit: 1)
+        let limiter = AsyncSemaphore(limit: 1)
         try await limiter.acquire()
 
         let waiter = Task {
@@ -64,7 +64,7 @@ struct RequestLimiterTests {
 
     @Test("A cancelled waiter throws instead of staying parked")
     func testCancelledWaiterThrows() async throws {
-        let limiter = RequestLimiter(limit: 1)
+        let limiter = AsyncSemaphore(limit: 1)
         try await limiter.acquire()
 
         let waiter = Task {
@@ -86,7 +86,7 @@ struct RequestLimiterTests {
 
     @Test("Release hands the slot past a cancelled waiter to the next one")
     func testReleaseSkipsCancelledWaiter() async throws {
-        let limiter = RequestLimiter(limit: 1)
+        let limiter = AsyncSemaphore(limit: 1)
         try await limiter.acquire()
 
         let cancelled = Task {
@@ -112,7 +112,7 @@ struct RequestLimiterTests {
 
     @Test("Acquire throws on an already-cancelled task without taking a slot")
     func testAlreadyCancelledAcquireThrows() async throws {
-        let limiter = RequestLimiter(limit: 1)
+        let limiter = AsyncSemaphore(limit: 1)
 
         let task = Task {
             try? await Task.sleep(for: .seconds(60))
@@ -131,7 +131,7 @@ struct RequestLimiterTests {
 
     @Test("acquireAll blocks new requests until releaseAll")
     func testAcquireAllBlocksUntilReleaseAll() async throws {
-        let limiter = RequestLimiter(limit: 2)
+        let limiter = AsyncSemaphore(limit: 2)
         await limiter.acquireAll()
 
         let entered = Box(false)
@@ -152,7 +152,7 @@ struct RequestLimiterTests {
 
     @Test("Concurrent acquireAll calls serialize instead of deadlocking")
     func testConcurrentAcquireAllSerializes() async throws {
-        let limiter = RequestLimiter(limit: 4)
+        let limiter = AsyncSemaphore(limit: 4)
         try await limiter.acquire()
 
         let drains = [
