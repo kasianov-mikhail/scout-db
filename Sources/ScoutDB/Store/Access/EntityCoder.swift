@@ -93,6 +93,14 @@ struct EntityCoder {
                 payload[name] = field.encrypted == true ? try seal(value, keyID: definition.keyID) : value
             }
         }
+        // A keyless read leaves encrypted fields absent (decode cannot open them without a
+        // key), so a read-modify-write would otherwise drop their ciphertext. Carry the
+        // untouched ciphertext over verbatim from the base record's payload.
+        if let base, let data = base["payload"] as? Data, let existing = try? JSONDecoder().decode([String: RecordValue].self, from: data) {
+            for field in fields where field.encrypted == true && payload[field.name] == nil {
+                payload[field.name] = existing[field.name]
+            }
+        }
         if payload.count > 0 {
             record["payload"] = try JSONEncoder().encode(payload)
         }
