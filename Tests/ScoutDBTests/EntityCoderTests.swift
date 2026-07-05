@@ -169,6 +169,23 @@ struct EntityCoderTests {
         #expect(decoded.values["times"] == .dates([]))
     }
 
+    @Test("A derivation whose source is a later-declared derivation still resolves")
+    func chainedDerivations() throws {
+        let definition = makeDefinition(
+            entity: "log",
+            fields: [
+                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
+                // Declared before its source `name_folded`, so a single declaration-order pass would miss it.
+                FieldDefinition(
+                    name: "name_ngrams", type: .stringList, storage: .slot(.stringList, "ls_00"),
+                    derived: Derivation(source: "name_folded", transform: .ngrams)),
+                FieldDefinition(name: "name_folded", type: .string, storage: .slot(.string, "s_01"), derived: Derivation(source: "name", transform: .fold)),
+            ])
+        let resolved = try coder.resolve(["name": .string("Café")], at: 2, using: definition)
+        #expect(resolved["name_folded"] == .string("cafe"))
+        #expect(resolved["name_ngrams"] == .strings(["caf", "afe"]))
+    }
+
     @Test("Natural key produces a deterministic uuid")
     func naturalKey() throws {
         let definition = makeDefinition(

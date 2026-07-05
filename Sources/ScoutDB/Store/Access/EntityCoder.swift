@@ -35,9 +35,21 @@ struct EntityCoder {
                 break
             }
         }
-        for field in fields {
-            guard let derived = field.derived else { continue }
-            resolved[field.name] = try derive(derived, from: resolved[derived.source], keyID: definition.keyID)
+        // Derivations can chain — one derived field's source may itself be a derived
+        // field declared later. Iterate to a fixpoint instead of relying on declaration
+        // order; a DAG settles within one pass per link, and the bound caps a bad cycle.
+        let derivations = fields.filter { $0.derived != nil }
+        for _ in 0...derivations.count {
+            var changed = false
+            for field in derivations {
+                guard let derived = field.derived else { continue }
+                let value = try derive(derived, from: resolved[derived.source], keyID: definition.keyID)
+                if value != resolved[field.name] {
+                    resolved[field.name] = value
+                    changed = true
+                }
+            }
+            if !changed { break }
         }
         for field in fields {
             guard let value = resolved[field.name] else {
