@@ -69,7 +69,7 @@ extension EntityStore {
         }
         let (server, client) = try split(pageFilters, entity: entity, using: definition)
         let serverFilters = server + [ServerFilter(field: "deleted", op: .equals, value: .int(0))]
-        let query = ckQuery(Item.recordType, filters: serverFilters, sort: try serverSort([Sort(field: dateField)], using: definition))
+        let query = ckQuery(Entity.recordType, filters: serverFilters, sort: try serverSort([Sort(field: dateField)], using: definition))
 
         var collected: [EntityRecord] = []
         var (batch, token) = try await database.records(matching: query, desiredKeys: nil, resultsLimit: limit)
