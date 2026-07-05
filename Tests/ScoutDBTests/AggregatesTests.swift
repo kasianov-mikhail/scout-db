@@ -60,6 +60,45 @@ struct AggregatesTests {
         #expect(try await store.totals(entity: "visit", view: "daily").map(\.count) == [1])
     }
 
+    @Test("Deleting a record reverses its aggregate contribution")
+    func deleteReversesAggregate() async throws {
+        try await publishPayment(views: [AggregateView(name: "revenue", sum: "amount")])
+        try await store.write(["product": .string("app"), "amount": .double(2), "date": .date(noon)], entity: "payment", uuid: "p1")
+        try await store.write(["product": .string("app"), "amount": .double(3), "date": .date(noon)], entity: "payment", uuid: "p2")
+
+        try await store.delete(entity: "payment", uuid: "p1")
+
+        let rows = try await store.aggregate(entity: "payment", view: "revenue")
+        #expect(rows.first?.count == 1)
+        #expect(rows.first?.value == 3)
+    }
+
+    @Test("Updating a record rebalances a sum view")
+    func updateRebalancesAggregate() async throws {
+        try await publishPayment(views: [AggregateView(name: "revenue", sum: "amount")])
+        try await store.write(["product": .string("app"), "amount": .double(2), "date": .date(noon)], entity: "payment", uuid: "p1")
+
+        try await store.update(entity: "payment", uuid: "p1") { $0.values["amount"] = .double(10) }
+
+        let rows = try await store.aggregate(entity: "payment", view: "revenue")
+        #expect(rows.first?.count == 1)
+        #expect(rows.first?.value == 10)
+    }
+
+    @Test("Deleting a record decrements the count of a min view even though the extremum stays")
+    func deleteHoldsMinExtremum() async throws {
+        try await publishPayment(views: [AggregateView(name: "low", min: "amount")])
+        try await store.write(["product": .string("app"), "amount": .double(2), "date": .date(noon)], entity: "payment", uuid: "p1")
+        try await store.write(["product": .string("app"), "amount": .double(8), "date": .date(noon)], entity: "payment", uuid: "p2")
+
+        try await store.delete(entity: "payment", uuid: "p1")
+
+        let rows = try await store.aggregate(entity: "payment", view: "low")
+        #expect(rows.first?.count == 1)
+        // The extremum cannot be un-applied without a rescan, so it stays at the deleted min.
+        #expect(rows.first?.value == 2)
+    }
+
     @Test("Series exposes cells at bucket resolution")
     func series() async throws {
         try await publishPayment(views: [AggregateView(name: "revenue", groupBy: "product", bucket: .hour, sum: "amount")])

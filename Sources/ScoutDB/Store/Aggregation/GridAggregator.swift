@@ -17,9 +17,24 @@ struct GridAggregator {
         try await record([entityRecord], using: definition)
     }
 
-    // Folds the whole batch into per-cell deltas first, so each touched grid
-    // record costs one lookup and one write no matter how many records feed it.
+    // Adds the batch's contributions to the views: every write increments its cells.
     func record(_ batch: [EntityRecord], using definition: EntityDefinition) async throws {
+        try await apply(deltas(for: batch, using: definition, adding: true))
+    }
+
+    // Removes the batch's contributions when records are deleted or updated. Count, sum,
+    // stats (Σx, Σx²) and histogram cells reverse exactly; a min/max extremum cannot be
+    // un-applied without rescanning, so its value cell is left untouched (best-effort) even
+    // though its count still decrements. See docs/aggregation.md.
+    func remove(_ batch: [EntityRecord], using definition: EntityDefinition) async throws {
+        try await apply(deltas(for: batch, using: definition, adding: false))
+    }
+
+    // Folds the whole batch into per-cell deltas first, so each touched grid record costs
+    // one lookup and one write no matter how many records feed it. `adding` flips every
+    // reversible delta's sign; a min/max value only accumulates when adding.
+    private func deltas(for batch: [EntityRecord], using definition: EntityDefinition, adding: Bool) -> [GridSlot: [Int: CellDelta]] {
+        let sign: Int64 = adding ? 1 : -1
         var deltas: [GridSlot: [Int: CellDelta]] = [:]
 
         for entityRecord in batch where entityRecord.deleted == false {
@@ -32,24 +47,31 @@ struct GridAggregator {
                     guard let value = entityRecord.values[histogram.field]?.scalar else { continue }
                     let slot = GridSlot(entity: entityRecord.entity, view: view.name, group: group, day: EntityCoder.calendar.startOfDay(for: date))
                     let index = histogram.bounds.firstIndex { value < $0 } ?? histogram.bounds.count
-                    deltas[slot, default: [:]][index, default: CellDelta()].count += 1
+                    deltas[slot, default: [:]][index, default: CellDelta()].count += sign
                     continue
                 }
 
                 let (period, index) = Self.bucket(view.bucket ?? .hour, for: date)
                 let slot = GridSlot(entity: entityRecord.entity, view: view.name, group: group, day: period)
                 var delta = deltas[slot, default: [:]][index, default: CellDelta()]
-                delta.count += 1
+                delta.count += sign
                 if let (kind, field) = view.metric, let value = entityRecord.values[field]?.scalar {
-                    delta.value = (kind, delta.value.map { kind.combine($0.total, value) } ?? value)
+                    if adding {
+                        delta.value = (kind, delta.value.map { kind.combine($0.total, value) } ?? value)
+                    } else if kind == .sum {
+                        delta.value = (.sum, (delta.value?.total ?? 0) - value)
+                    }
                 }
                 if let scalar = view.stats.flatMap({ entityRecord.values[$0]?.scalar }) {
-                    delta.squares = (delta.squares ?? 0) + scalar * scalar
+                    delta.squares = (delta.squares ?? 0) + Double(sign) * scalar * scalar
                 }
                 deltas[slot, default: [:]][index] = delta
             }
         }
+        return deltas
+    }
 
+    private func apply(_ deltas: [GridSlot: [Int: CellDelta]]) async throws {
         for (slot, cells) in deltas {
             try await apply(cells, to: slot)
         }

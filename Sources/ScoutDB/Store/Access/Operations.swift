@@ -33,16 +33,23 @@ extension EntityStore {
             guard let existing = try await items(entity: entity, uuids: [uuid]).first else {
                 throw SchemaError.notFound(uuid)
             }
-            var entityRecord = try coder.decode(existing, using: definition)
+            let previous = try coder.decode(existing, using: definition)
+            var entityRecord = previous
             try transform(&entityRecord)
             let encoded = try coder.encode(entityRecord, using: definition, into: existing)
             do {
                 try await database.write(record: encoded)
-                return
             } catch let conflict as RecordConflictError {
                 attempt += 1
                 guard attempt < maxRetry else { throw conflict }
+                continue
             }
+            // Rebalance the views outside the CAS loop: drop the stored record's old
+            // contribution, add the new one. A grid conflict here must not retry the update.
+            let aggregator = GridAggregator(database: database)
+            try await aggregator.remove([previous], using: definition)
+            try await aggregator.record([entityRecord], using: definition)
+            return
         }
     }
 
@@ -114,12 +121,20 @@ extension EntityStore {
         let definition = try await registry.definition(for: entity)
         let coder = EntityCoder(keyProvider: keyProvider)
 
+        var previous: [EntityRecord] = []
+        var next: [EntityRecord] = []
         var updated: [CKRecord] = []
         for var record in try await read(entity: entity, filters: filters) {
+            previous.append(record)
             try transform(&record)
+            next.append(record)
             updated.append(try coder.encode(record, using: definition))
         }
         try await database.write(records: updated)
+        // Rebalance the views: drop the old contributions, add the new ones.
+        let aggregator = GridAggregator(database: database)
+        try await aggregator.remove(previous, using: definition)
+        try await aggregator.record(next, using: definition)
         return updated.count
     }
 
@@ -128,6 +143,7 @@ extension EntityStore {
         let victims = try await read(entity: entity, filters: filters)
         let tombstones = victims.map { Self.tombstone(entity: entity, uuid: $0.uuid, definition: definition) }
         try await database.write(records: tombstones)
+        try await GridAggregator(database: database).remove(victims, using: definition)
         return victims.count
     }
 
@@ -140,10 +156,11 @@ extension EntityStore {
                 ServerFilter(field: "expires", op: .lessThan, value: .date(asOf)),
                 ServerFilter(field: "deleted", op: .equals, value: .int(0)),
             ])
-        let expired = try await database.allRecords(matching: query).compactMap { $0["uuid"] as? String }
+        let expired = try decode(try await database.allRecords(matching: query), using: definition).filter { !$0.deleted }
 
-        let tombstones = expired.sorted().map { Self.tombstone(entity: entity, uuid: $0, definition: definition) }
+        let tombstones = expired.map(\.uuid).sorted().map { Self.tombstone(entity: entity, uuid: $0, definition: definition) }
         try await database.write(records: tombstones)
+        try await GridAggregator(database: database).remove(expired, using: definition)
         return expired.count
     }
 
