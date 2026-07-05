@@ -149,6 +149,26 @@ struct EntityCoderTests {
         #expect(resolved["day"] == .date(Date(timeIntervalSince1970: 86_400)))
     }
 
+    @Test("Empty typed lists in slots keep their declared kind through a round-trip")
+    func emptyTypedLists() throws {
+        let definition = makeDefinition(
+            entity: "lists",
+            fields: [
+                FieldDefinition(name: "tags", type: .stringList, storage: .slot(.stringList, "ls_00")),
+                FieldDefinition(name: "counts", type: .intList, storage: .slot(.intList, "li_00")),
+                FieldDefinition(name: "ratios", type: .doubleList, storage: .slot(.doubleList, "ld_00")),
+                FieldDefinition(name: "times", type: .timestampList, storage: .slot(.timestampList, "lt_00")),
+            ])
+        let record = EntityRecord(
+            entity: "lists", uuid: "l-1", schemaVersion: 2,
+            values: ["tags": .strings([]), "counts": .ints([]), "ratios": .doubles([]), "times": .dates([])])
+        let decoded = try coder.decode(try coder.encode(record, using: definition), using: definition)
+        #expect(decoded.values["tags"] == .strings([]))
+        #expect(decoded.values["counts"] == .ints([]))
+        #expect(decoded.values["ratios"] == .doubles([]))
+        #expect(decoded.values["times"] == .dates([]))
+    }
+
     @Test("Natural key produces a deterministic uuid")
     func naturalKey() throws {
         let definition = makeDefinition(

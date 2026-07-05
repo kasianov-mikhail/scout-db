@@ -116,7 +116,13 @@ struct EntityCoder {
         for field in definition.fields(at: Int(version)) {
             switch field.storage {
             case .slot(_, let slot):
-                values[field.name] = record.scoutValue(forKey: slot)
+                var value = record.scoutValue(forKey: slot)
+                // CloudKit erases the element type of an empty array, so an empty typed
+                // list bridges back as `.strings([])`. Restore the field's declared kind.
+                if let decoded = value, field.type.isList, decoded.isEmptyList {
+                    value = field.type.emptyList
+                }
+                values[field.name] = value
             case .payload:
                 if field.encrypted == true {
                     values[field.name] = keyProvider == nil ? nil : try payload[field.name].map { try open($0, keyID: definition.keyID) }
@@ -202,6 +208,18 @@ extension RecordValue {
         case .int(let value): Double(value)
         case .double(let value): value
         default: nil
+        }
+    }
+
+    var isEmptyList: Bool {
+        switch self {
+        case .strings(let value): value.isEmpty
+        case .ints(let value): value.isEmpty
+        case .doubles(let value): value.isEmpty
+        case .dates(let value): value.isEmpty
+        case .locations(let value): value.isEmpty
+        case .assets(let value): value.isEmpty
+        default: false
         }
     }
 }
