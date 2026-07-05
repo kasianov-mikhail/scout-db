@@ -269,6 +269,18 @@ public enum FieldType: String, Codable, Equatable, Sendable {
         }
     }
 
+    var emptyList: RecordValue? {
+        switch self {
+        case .stringList: .strings([])
+        case .intList: .ints([])
+        case .doubleList: .doubles([])
+        case .timestampList: .dates([])
+        case .locationList: .locations([])
+        case .assetList: .assets([])
+        default: nil
+        }
+    }
+
     func matches(_ value: RecordValue) -> Bool {
         switch (self, value) {
         case (.string, .string), (.text, .string), (.int, .int), (.double, .double),
