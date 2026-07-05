@@ -73,8 +73,8 @@ extension EntityStore {
             var value: Double?
             var squares: Double?
             for index in 0..<64 {
-                count += Int(record[GridItem.countCell(index)] as? Int64 ?? 0)
-                guard let kind, let cell = record[GridItem.valueCell(index)] as? Double else { continue }
+                count += Int(record[Aggregate.countCell(index)] as? Int64 ?? 0)
+                guard let kind, let cell = record[Aggregate.valueCell(index)] as? Double else { continue }
                 if isStats, index >= 32 {
                     squares = (squares ?? 0) + cell
                 } else {
@@ -100,8 +100,8 @@ extension EntityStore {
         for record in try await gridRecords(entity: entity, view: viewName, from: from, to: to) {
             guard let period = record["date"] as? Date, let group = record["group_key"] as? String else { continue }
             for index in 0..<(isStats ? 32 : 64) {
-                let count = Int(record[GridItem.countCell(index)] as? Int64 ?? 0)
-                let value = record[GridItem.valueCell(index)] as? Double
+                let count = Int(record[Aggregate.countCell(index)] as? Int64 ?? 0)
+                let value = record[Aggregate.valueCell(index)] as? Double
                 guard count != 0 || value != nil else { continue }
                 points.append(AggregateSeriesPoint(group: group, date: Self.cellDate(bucket, period: period, index: index), count: count, value: value))
             }
@@ -143,7 +143,7 @@ extension EntityStore {
         var counts = [Double](repeating: 0, count: histogram.bounds.count + 1)
         for record in try await gridRecords(entity: entity, view: viewName, from: from, to: to) {
             for index in counts.indices {
-                counts[index] += Double(record[GridItem.countCell(index)] as? Int64 ?? 0)
+                counts[index] += Double(record[Aggregate.countCell(index)] as? Int64 ?? 0)
             }
         }
 
@@ -188,6 +188,6 @@ extension EntityStore {
         if let to {
             filters.append(ServerFilter(field: "date", op: .lessThan, value: .date(to)))
         }
-        return try await database.allRecords(matching: ckQuery(GridItem.recordType, filters: filters))
+        return try await database.allRecords(matching: ckQuery(Aggregate.recordType, filters: filters))
     }
 }

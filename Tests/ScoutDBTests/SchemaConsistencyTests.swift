@@ -23,7 +23,7 @@ struct SchemaConsistencyTests {
 
     @Test("Every pool declares exactly its capacity, contiguously", arguments: Pool.allCases)
     func poolCapacity(pool: Pool) throws {
-        let slots = Self.fields(of: "Item").filter { $0.name.hasPrefix("\(pool.rawValue)_") }
+        let slots = Self.fields(of: "Entity").filter { $0.name.hasPrefix("\(pool.rawValue)_") }
         #expect(slots.count == pool.capacity)
 
         let indices = slots.compactMap { Int($0.name.dropFirst(pool.rawValue.count + 1)) }.sorted()
@@ -50,36 +50,36 @@ struct SchemaConsistencyTests {
             case .locationList: "LIST<LOCATION> QUERYABLE"
             case .assetList: "LIST<ASSET>"
             }
-        let slots = Self.fields(of: "Item").filter { $0.name.hasPrefix("\(pool.rawValue)_") }
+        let slots = Self.fields(of: "Entity").filter { $0.name.hasPrefix("\(pool.rawValue)_") }
         #expect(slots.allSatisfy { $0.spec == expected })
     }
 
-    @Test("Item carries the envelope the coder stamps")
+    @Test("Entity carries the envelope the coder stamps")
     func itemEnvelope() {
-        let names = Set(Self.fields(of: "Item").map(\.name))
+        let names = Set(Self.fields(of: "Entity").map(\.name))
         for field in ["entity", "schema_version", "uuid", "deleted", "expires", "payload"] {
-            #expect(names.contains(field), "Item is missing '\(field)'")
+            #expect(names.contains(field), "Entity is missing '\(field)'")
         }
     }
 
-    @Test("GridItem cells match the aggregator addressing")
+    @Test("Aggregate cells match the aggregator addressing")
     func gridCells() {
-        let fields = Self.fields(of: "GridItem")
+        let fields = Self.fields(of: "Aggregate")
         #expect(fields.filter { $0.name.hasPrefix("c_") }.count == 64)
         #expect(fields.filter { $0.name.hasPrefix("f_") }.count == 64)
         let names = Set(fields.map(\.name))
         for field in ["entity", "view", "group_key", "date", "schema_version"] {
-            #expect(names.contains(field), "GridItem is missing '\(field)'")
+            #expect(names.contains(field), "Aggregate is missing '\(field)'")
         }
     }
 
-    @Test("Meta carries the registry fields")
+    @Test("SchemaDescriptor carries the registry fields")
     func metaFields() {
-        let names = Set(Self.fields(of: "Meta").map(\.name))
+        let names = Set(Self.fields(of: "SchemaDescriptor").map(\.name))
         #expect(names.isSuperset(of: ["entity", "entity_version", "definition", "status"]))
     }
 
-    @Test("The change feed cursor is queryable", arguments: ["Item", "GridItem", "Meta"])
+    @Test("The change feed cursor is queryable", arguments: ["Entity", "Aggregate", "SchemaDescriptor"])
     func modTimeIndexed(type: String) {
         let modTime = Self.fields(of: type).first { $0.name == "\"___modTime\"" }
         #expect(modTime?.spec == "TIMESTAMP QUERYABLE SORTABLE")

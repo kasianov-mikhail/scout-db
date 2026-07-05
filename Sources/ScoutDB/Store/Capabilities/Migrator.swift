@@ -23,7 +23,7 @@ public struct Migrator: Sendable {
     @discardableResult public func backfill(entity: String, transform: (inout EntityRecord) throws -> Void = { _ in }) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         let query = ckQuery(
-            Item.recordType,
+            Entity.recordType,
             filters: [
                 ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                 ServerFilter(field: "schema_version", op: .lessThan, value: .int(Int64(definition.version))),

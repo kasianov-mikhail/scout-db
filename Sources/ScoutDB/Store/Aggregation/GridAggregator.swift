@@ -89,14 +89,14 @@ struct GridAggregator {
 
         for _ in 0..<maxRetry {
             for (index, delta) in cells {
-                let countCell = GridItem.countCell(index)
+                let countCell = Aggregate.countCell(index)
                 record[countCell] = (record[countCell] as? Int64 ?? 0) + delta.count
                 if let (kind, total) = delta.value {
-                    let valueCell = GridItem.valueCell(index)
+                    let valueCell = Aggregate.valueCell(index)
                     record[valueCell] = (record[valueCell] as? Double).map { kind.combine($0, total) } ?? total
                 }
                 if let squares = delta.squares {
-                    let squareCell = GridItem.valueCell(index + 32)
+                    let squareCell = Aggregate.valueCell(index + 32)
                     record[squareCell] = (record[squareCell] as? Double ?? 0) + squares
                 }
             }
@@ -112,7 +112,7 @@ struct GridAggregator {
 
     private func lookup(entity: String, view: String, group: String, day: Date) async throws -> CKRecord {
         let query = ckQuery(
-            GridItem.recordType,
+            Aggregate.recordType,
             filters: [
                 ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                 ServerFilter(field: "view", op: .equals, value: .string(view)),
@@ -125,7 +125,7 @@ struct GridAggregator {
 
         let key = "\(entity)|\(view)|\(group)|\(day.millisecondsSince1970)"
         let digest = SHA256.hash(data: Data(key.utf8))
-        let record = CKRecord(recordType: GridItem.recordType, recordID: CKRecord.ID(recordName: "grid-" + digest.hexString))
+        let record = CKRecord(recordType: Aggregate.recordType, recordID: CKRecord.ID(recordName: "grid-" + digest.hexString))
         record["entity"] = entity
         record["view"] = view
         record["group_key"] = group
@@ -134,8 +134,8 @@ struct GridAggregator {
     }
 }
 
-enum GridItem {
-    static let recordType = "GridItem"
+enum Aggregate {
+    static let recordType = "Aggregate"
 
     // Per-cell field names. Count cells hold occurrence counts; value cells hold the
     // metric total, with a stats view's sum of squares living 32 cells above its value.

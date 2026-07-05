@@ -34,7 +34,7 @@ struct EntityStoreTests {
         try await registry.publish(makePurchaseDefinition())
     }
 
-    @Test("Registered definition serves the store without touching Meta")
+    @Test("Registered definition serves the store without touching SchemaDescriptor")
     func register() async throws {
         let registry = SchemaRegistry(database: InMemoryDatabase())
         try await registry.register(makePurchaseDefinition())
@@ -45,13 +45,13 @@ struct EntityStoreTests {
         #expect(try await local.read(entity: "purchase").count == 1)
     }
 
-    @Test("Write persists a single Item record")
+    @Test("Write persists a single Entity record")
     func write() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        #expect(database.records.filter { $0.recordType == "Item" }.count == 1)
+        #expect(database.records.filter { $0.recordType == "Entity" }.count == 1)
     }
 
-    @Test("A batched write persists every Item and returns uuids in batch order")
+    @Test("A batched write persists every Entity and returns uuids in batch order")
     func batchWrite() async throws {
         let uuids = try await store.write(
             [
@@ -61,14 +61,14 @@ struct EntityStoreTests {
             ], entity: "purchase")
 
         #expect(uuids == ["p-1", "p-2", "p-3"])
-        #expect(database.records.filter { $0.recordType == "Item" }.count == 3)
+        #expect(database.records.filter { $0.recordType == "Entity" }.count == 3)
     }
 
     @Test("An empty batch writes nothing")
     func emptyBatch() async throws {
         let uuids = try await store.write([], entity: "purchase")
         #expect(uuids.count == 0)
-        #expect(database.records.filter { $0.recordType == "Item" }.count == 0)
+        #expect(database.records.filter { $0.recordType == "Entity" }.count == 0)
     }
 
     @Test("Read restores entity records")
@@ -357,7 +357,7 @@ struct EntityStoreTests {
         try await store.write(["name": .string("open"), "date": .date(date)], entity: "tap")
         try await store.write(["name": .string("open"), "date": .date(date)], entity: "tap")
 
-        let grids = database.records.filter { $0.recordType == "GridItem" }
+        let grids = database.records.filter { $0.recordType == "Aggregate" }
         #expect(grids.count == 1)
         #expect(grids.first?["c_10"] == Int64(2))
         #expect(grids.first?["group_key"] == "open")
@@ -377,7 +377,7 @@ struct EntityStoreTests {
         try await store.write(["amount": .double(2.5), "date": .date(date)], entity: "payment")
         try await store.write(["amount": .double(1.5), "date": .date(date)], entity: "payment")
 
-        let grids = database.records.filter { $0.recordType == "GridItem" }
+        let grids = database.records.filter { $0.recordType == "Aggregate" }
         #expect(grids.count == 1)
         #expect(grids.first?["c_10"] == Int64(2))
         #expect(grids.first?["f_10"] == 4.0)
@@ -413,7 +413,7 @@ struct EntityStoreTests {
         let thursday = Date(timeIntervalSince1970: 36_000)
         try await store.write(["date": .date(thursday)], entity: "visit")
 
-        let grids = database.records.filter { $0.recordType == "GridItem" }
+        let grids = database.records.filter { $0.recordType == "Aggregate" }
         #expect(grids.first?["c_04"] == Int64(1))
     }
 
@@ -484,7 +484,7 @@ struct EntityStoreTests {
     }
 
     private func stampModTime(uuid: String, at date: Date) {
-        for record in database.records where record.recordType == "Item" && record.recordID.recordName == uuid {
+        for record in database.records where record.recordType == "Entity" && record.recordID.recordName == uuid {
             record.overrideModificationDate(date)
         }
     }

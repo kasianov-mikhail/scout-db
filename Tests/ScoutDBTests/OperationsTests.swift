@@ -37,7 +37,7 @@ struct OperationsTests {
     @Test("CAS update retries after a conflict")
     func updateConflict() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        database.writeErrors = [RecordConflictError(serverRecord: CKRecord(recordType: "Item", recordID: CKRecord.ID(recordName: "p-1")))]
+        database.writeErrors = [RecordConflictError(serverRecord: CKRecord(recordType: "Entity", recordID: CKRecord.ID(recordName: "p-1")))]
         try await store.update(entity: "purchase", uuid: "p-1") { record in
             record.values["quantity"] = .int(9)
         }
@@ -289,7 +289,7 @@ struct OperationsTests {
     }
 
     private func stampCreator(uuid: String, creator: String) {
-        for record in database.records where record.recordType == "Item" && record.recordID.recordName == uuid {
+        for record in database.records where record.recordType == "Entity" && record.recordID.recordName == uuid {
             record.overrideCreator(creator)
         }
     }

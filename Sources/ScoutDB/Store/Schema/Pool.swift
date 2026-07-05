@@ -30,6 +30,6 @@ public enum Pool: String, Codable, CaseIterable, Sendable {
     public var capacity: Int { 16 }
 }
 
-enum Item {
-    static let recordType = "Item"
+enum Entity {
+    static let recordType = "Entity"
 }

@@ -19,7 +19,7 @@ struct EntityCoderTests {
     @Test("Encode packs the record into typed slots and the envelope")
     func encode() throws {
         let record = try coder.encode(makePurchase(), using: definition)
-        #expect(record.recordType == "Item")
+        #expect(record.recordType == "Entity")
         #expect(record.recordID.recordName == "p-1")
         #expect(record["entity"] == "purchase")
         #expect(record["schema_version"] == Int64(2))
@@ -74,7 +74,7 @@ struct EntityCoderTests {
 
     @Test("Decode refuses records newer than the definition")
     func staleSchema() throws {
-        let record = CKRecord(recordType: "Item", recordID: CKRecord.ID(recordName: "p-3"))
+        let record = CKRecord(recordType: "Entity", recordID: CKRecord.ID(recordName: "p-3"))
         record["entity"] = "purchase"
         record["schema_version"] = Int64(3)
         record["uuid"] = "p-3"
