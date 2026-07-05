@@ -117,7 +117,16 @@ public struct EntityStore: Sendable {
 
     public func delete(entity: String, uuid: String) async throws {
         let definition = try await registry.definition(for: entity)
+        let removed = try await liveRecords(entity: entity, uuids: [uuid], using: definition)
         try await database.write(record: Self.tombstone(entity: entity, uuid: uuid, definition: definition))
+        try await GridAggregator(database: database).remove(removed, using: definition)
+    }
+
+    // The live records behind a set of uuids, used to reverse their aggregate contributions
+    // before tombstoning them. Skips the read when the entity has no views.
+    func liveRecords(entity: String, uuids: [String], using definition: EntityDefinition) async throws -> [EntityRecord] {
+        guard definition.views?.isEmpty == false else { return [] }
+        return try decode(try await items(entity: entity, uuids: uuids), using: definition).filter { !$0.deleted }
     }
 
     static func tombstone(entity: String, uuid: String, definition: EntityDefinition) -> CKRecord {

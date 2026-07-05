@@ -56,3 +56,8 @@ for large entities.
 - **Write amplification.** Each view adds one counter update per write.
 - Aggregates update by compare-and-swap on the grid record's change tag, so concurrent
   writers merge instead of overwriting each other.
+- **Deletes and updates rebalance the views.** `delete`, `deleteAll`, `reap`, `update`, and
+  `updateAll` reverse the removed record's contribution, so `count`, `sum`, `stats`, and
+  `histogram` views stay accurate as records change. A `min`/`max` extremum is the exception:
+  it cannot be recomputed without rescanning, so its value is left as-is when a record leaves
+  (the count still decrements). Backfill a `min`/`max` view if you need it exact after deletes.
