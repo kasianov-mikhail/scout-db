@@ -204,23 +204,24 @@ extension EntityStore {
     // once per read hoists regex construction for `like` and `matches` out of the
     // per-record loop.
     static func matcher(for filter: Filter) -> (EntityRecord) -> Bool {
+        let field = filter.field
         switch filter.op {
         case .isNull:
-            return { $0.values[filter.field] == nil }
+            return { $0.values[field] == nil }
         case .isNotNull:
-            return { $0.values[filter.field] != nil }
+            return { $0.values[field] != nil }
         case .contains:
             guard case .string(let needle) = filter.value else { return { _ in false } }
-            return stringMatcher(filter.field) { $0.contains(needle) }
+            return stringMatcher(field) { $0.contains(needle) }
         case .endsWith:
             guard case .string(let suffix) = filter.value else { return { _ in false } }
-            return stringMatcher(filter.field) { $0.hasSuffix(suffix) }
+            return stringMatcher(field) { $0.hasSuffix(suffix) }
         case .like:
             guard case .string(let pattern) = filter.value, let regex = try? Regex(wildcardPattern(pattern)) else { return { _ in false } }
-            return stringMatcher(filter.field) { $0.wholeMatch(of: regex) != nil }
+            return stringMatcher(field) { $0.wholeMatch(of: regex) != nil }
         case .matches:
             guard case .string(let pattern) = filter.value, let regex = try? Regex(pattern) else { return { _ in false } }
-            return stringMatcher(filter.field) { $0.wholeMatch(of: regex) != nil }
+            return stringMatcher(field) { $0.wholeMatch(of: regex) != nil }
         default:
             return { _ in false }
         }
