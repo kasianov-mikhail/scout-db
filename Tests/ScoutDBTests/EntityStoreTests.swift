@@ -448,6 +448,28 @@ struct EntityStoreTests {
         #expect(blind.first { $0.uuid == "a-1" }?.values["email"] == nil)
     }
 
+    @Test("A keyless update preserves the ciphertext of encrypted fields it cannot read")
+    func keylessUpdateKeepsCiphertext() async throws {
+        let provider = StaticKeyProvider(keys: ["k1": SymmetricKey(size: .bits256)])
+        let secure = EntityStore(database: database, registry: registry, keyProvider: provider)
+        try await registry.publish(
+            makeDefinition(
+                entity: "account",
+                fields: [
+                    FieldDefinition(name: "email", type: .string, storage: .payload, encrypted: true),
+                    FieldDefinition(name: "status", type: .string, storage: .slot(.string, "s_00")),
+                ], keyID: "k1"))
+
+        try await secure.write(["email": .string("alice@example.com"), "status": .string("new")], entity: "account", uuid: "a-1")
+
+        // `store` has no key provider, so it reads the encrypted field back as nil.
+        try await store.update(entity: "account", uuid: "a-1") { $0.values["status"] = .string("active") }
+
+        let reread = try #require(try await secure.read(entity: "account").first { $0.uuid == "a-1" })
+        #expect(reread.values["status"] == .string("active"))
+        #expect(reread.values["email"] == .string("alice@example.com"))
+    }
+
     @Test("Writing an encrypted entity without a key fails")
     func encryptionWithoutKey() async throws {
         try await registry.publish(
