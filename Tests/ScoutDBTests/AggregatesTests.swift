@@ -41,6 +41,25 @@ struct AggregatesTests {
         }
     }
 
+    @Test("A unique-key upsert counts once in aggregate views")
+    func upsertCountsOnce() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "visit",
+                fields: [
+                    FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
+                ], envelopeDate: "date", unique: ["user"], views: [AggregateView(name: "daily", bucket: .day)]))
+
+        // Same unique key twice: the second write upserts the same record, so the grid
+        // must count one occurrence, not two.
+        try await store.write(["user": .string("u1"), "date": .date(noon)], entity: "visit")
+        try await store.write(["user": .string("u1"), "date": .date(noon)], entity: "visit")
+
+        #expect(try await store.read(entity: "visit").count == 1)
+        #expect(try await store.totals(entity: "visit", view: "daily").map(\.count) == [1])
+    }
+
     @Test("Series exposes cells at bucket resolution")
     func series() async throws {
         try await publishPayment(views: [AggregateView(name: "revenue", groupBy: "product", bucket: .hour, sum: "amount")])

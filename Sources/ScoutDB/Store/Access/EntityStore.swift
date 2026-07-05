@@ -92,9 +92,27 @@ public struct EntityStore: Sendable {
             return EntityRecord(entity: entity, uuid: uuid, schemaVersion: definition.version, values: resolved)
         }
 
+        // Views count occurrences on first write. A re-write of the same record — a
+        // unique-key upsert or an explicit repeat uuid — must not inflate the grid, so fold
+        // only records with no live row yet into the aggregate views. Skip the lookup
+        // entirely when the entity declares no views.
+        let fresh = try await freshForAggregation(entityRecords, using: definition)
+
         try await database.write(records: entityRecords.map { try coder.encode($0, using: definition) })
-        try await GridAggregator(database: database).record(entityRecords, using: definition)
+        try await GridAggregator(database: database).record(fresh, using: definition)
         return entityRecords.map(\.uuid)
+    }
+
+    // The records a batch write should fold into aggregate views: those with no live row
+    // yet, deduplicated within the batch. Returns nothing when the entity has no views, so
+    // a viewless write never pays for the lookup.
+    private func freshForAggregation(_ records: [EntityRecord], using definition: EntityDefinition) async throws -> [EntityRecord] {
+        guard definition.views?.isEmpty == false else { return [] }
+        var seen = Set(
+            try await items(entity: definition.entity, uuids: records.map(\.uuid))
+                .filter { ($0["deleted"] as? Int64 ?? 0) == 0 }
+                .compactMap { $0["uuid"] as? String })
+        return records.filter { seen.insert($0.uuid).inserted }
     }
 
     public func delete(entity: String, uuid: String) async throws {
