@@ -51,24 +51,42 @@ extension EntityStore {
         guard let dateField = definition.envelopeDate else {
             throw SchemaError.invalidDefinition("Pagination requires an envelope date")
         }
+        let records = try await page(entity: entity, filters: filters, dateField: dateField, cursor: cursor, limit: limit, using: definition)
+        let next = records.count == limit ? records.last.map { EntityCursor(date: Self.pageKey($0, dateField).0, uuid: $0.uuid) } : nil
+        return EntityPage(records: records, cursor: next)
+    }
 
+    // Reads one keyset page. The envelope date is sorted and bounded server-side, and the
+    // query cursor is followed only until `limit` post-filter rows are in hand — so a page
+    // read costs about one page of records, not the whole result set the way a full scan
+    // through `read(entity:filters:)` would. Ties on the date are broken by uuid here.
+    private func page(entity: String, filters: [Filter], dateField: String, cursor: EntityCursor?, limit: Int, using definition: EntityDefinition) async throws
+        -> [EntityRecord]
+    {
         var pageFilters = filters
         if let cursor {
             pageFilters.append(Filter(field: dateField, op: .greaterThanOrEquals, value: .date(cursor.date)))
         }
+        let (server, client) = try split(pageFilters, entity: entity, using: definition)
+        let serverFilters = server + [ServerFilter(field: "deleted", op: .equals, value: .int(0))]
+        let query = ckQuery(Item.recordType, filters: serverFilters, sort: try serverSort([Sort(field: dateField)], using: definition))
 
-        let key: (EntityRecord) -> (Date, String) = { record in
-            guard case .date(let date)? = record.values[dateField] else { return (.distantPast, record.uuid) }
-            return (date, record.uuid)
+        var collected: [EntityRecord] = []
+        var (batch, token) = try await database.records(matching: query, desiredKeys: nil, resultsLimit: limit)
+        while true {
+            for record in try decode(batch.map { try $0.1.get() }, using: definition) where !record.deleted && client.allSatisfy({ matches(record, $0) }) {
+                if let cursor, Self.pageKey(record, dateField) <= (cursor.date, cursor.uuid) { continue }
+                collected.append(record)
+            }
+            guard collected.count < limit, let nextCursor = token else { break }
+            (batch, token) = try await database.records(continuingMatchFrom: nextCursor, desiredKeys: nil, resultsLimit: limit)
         }
-        var records = try await read(entity: entity, filters: pageFilters).sorted { key($0) < key($1) }
-        if let cursor {
-            records.removeAll { key($0) <= (cursor.date, cursor.uuid) }
-        }
-        records = Array(records.prefix(limit))
+        return Array(collected.sorted { Self.pageKey($0, dateField) < Self.pageKey($1, dateField) }.prefix(limit))
+    }
 
-        let next = records.count == limit ? records.last.map { EntityCursor(date: key($0).0, uuid: $0.uuid) } : nil
-        return EntityPage(records: records, cursor: next)
+    private static func pageKey(_ record: EntityRecord, _ dateField: String) -> (Date, String) {
+        guard case .date(let date)? = record.values[dateField] else { return (.distantPast, record.uuid) }
+        return (date, record.uuid)
     }
 
     public func stream(entity: String, filters: [Filter] = [], pageSize: Int = 100) -> AsyncThrowingStream<EntityRecord, any Error> {

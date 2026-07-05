@@ -140,6 +140,28 @@ struct OperationsTests {
         #expect(plan.description.contains("SERVER s_00 equals sku-42"))
     }
 
+    @Test("Paginated reads apply client-side filters across pages")
+    func paginationWithClientFilter() async throws {
+        for index in 0..<4 {
+            var values = makePurchase().values
+            values["date"] = .date(Date(timeIntervalSince1970: TimeInterval(index * 1_000)))
+            values["comment"] = .string(index % 2 == 0 ? "gift" : "other")
+            try await store.write(values, entity: "purchase", uuid: "p-\(index)")
+        }
+
+        // `contains` on a payload field is a client-side matcher, so the page reader has to
+        // keep fetching until each page holds `limit` records that survive the filter.
+        let filter = EntityStore.Filter(field: "comment", op: .contains, value: .string("gif"))
+        var uuids: [String] = []
+        var cursor: EntityCursor?
+        repeat {
+            let page = try await store.read(entity: "purchase", filters: [filter], limit: 1, after: cursor)
+            uuids += page.records.map(\.uuid)
+            cursor = page.cursor
+        } while cursor != nil
+        #expect(uuids == ["p-0", "p-2"])
+    }
+
     @Test("Stream pages through every record in order")
     func stream() async throws {
         for index in 0..<5 {
