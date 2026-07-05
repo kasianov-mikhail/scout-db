@@ -36,6 +36,7 @@ extension EntityStore {
             let previous = try coder.decode(existing, using: definition)
             var entityRecord = previous
             try transform(&entityRecord)
+            entityRecord.values = try coder.resolve(entityRecord.values, at: entityRecord.schemaVersion, using: definition)
             let encoded = try coder.encode(entityRecord, using: definition, into: existing)
             do {
                 try await database.write(record: encoded)
@@ -75,18 +76,14 @@ extension EntityStore {
             pageFilters.append(Filter(field: dateField, op: .greaterThanOrEquals, value: .date(cursor.date)))
         }
         let (server, client) = try split(pageFilters, entity: entity, using: definition)
+        let matchers = client.map(Self.matcher(for:))
         let serverFilters = server + [ServerFilter(field: "deleted", op: .equals, value: .int(0))]
         let query = ckQuery(Entity.recordType, filters: serverFilters, sort: try serverSort([Sort(field: dateField)], using: definition))
 
-        var collected: [EntityRecord] = []
-        var (batch, token) = try await database.records(matching: query, desiredKeys: nil, resultsLimit: limit)
-        while true {
-            for record in try decode(batch.map { try $0.1.get() }, using: definition) where !record.deleted && client.allSatisfy({ matches(record, $0) }) {
-                if let cursor, Self.pageKey(record, dateField) <= (cursor.date, cursor.uuid) { continue }
-                collected.append(record)
-            }
-            guard collected.count < limit, let nextCursor = token else { break }
-            (batch, token) = try await database.records(continuingMatchFrom: nextCursor, desiredKeys: nil, resultsLimit: limit)
+        let collected = try await boundedRecords(matching: query, desiredKeys: nil, limit: limit, using: definition) { record in
+            guard !record.deleted, matchers.allSatisfy({ $0(record) }) else { return false }
+            guard let cursor else { return true }
+            return Self.pageKey(record, dateField) > (cursor.date, cursor.uuid)
         }
         return Array(collected.sorted { Self.pageKey($0, dateField) < Self.pageKey($1, dateField) }.prefix(limit))
     }
@@ -127,6 +124,7 @@ extension EntityStore {
         for var record in try await read(entity: entity, filters: filters) {
             previous.append(record)
             try transform(&record)
+            record.values = try coder.resolve(record.values, at: record.schemaVersion, using: definition)
             next.append(record)
             updated.append(try coder.encode(record, using: definition))
         }

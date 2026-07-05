@@ -111,24 +111,3 @@ extension RecordValue: Codable {
         }
     }
 }
-
-extension RecordValue {
-    init?(any value: Any) {
-        switch value {
-        case let value as String:
-            self = .string(value)
-        case let value as Date:
-            self = .date(value)
-        case let value as Data:
-            self = .bytes(value)
-        case let value as [String]:
-            self = .strings(value)
-        case let value as NSNumber where CFNumberIsFloatType(value):
-            self = .double(value.doubleValue)
-        case let value as NSNumber:
-            self = .int(value.int64Value)
-        default:
-            return nil
-        }
-    }
-}

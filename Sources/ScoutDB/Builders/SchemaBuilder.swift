@@ -163,9 +163,7 @@ public struct SchemaBuilder {
         if let storage {
             resolved = storage
         } else if declaration.wantsSlot {
-            guard let pool = declaration.type.pool else {
-                throw SchemaError.invalidDefinition("Field '\(declaration.name)' of type '\(declaration.type.rawValue)' cannot occupy a slot")
-            }
+            let pool = declaration.type.pool
             resolved = .slot(pool, try allocator.next(in: pool))
         } else {
             resolved = .payload
@@ -203,7 +201,7 @@ private struct SlotAllocator {
 
     mutating func next(in pool: Pool) throws -> String {
         for index in 0..<pool.capacity {
-            let slot = "\(pool.rawValue)_\(String(format: "%02d", index))"
+            let slot = pool.slotName(index)
             if used[pool, default: []].contains(slot) { continue }
             used[pool, default: []].insert(slot)
             return slot
