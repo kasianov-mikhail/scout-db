@@ -103,7 +103,7 @@ public struct EntityStore: Sendable {
     }
 
     static func tombstone(entity: String, uuid: String, definition: EntityDefinition) -> CKRecord {
-        let record = CKRecord(recordType: Item.recordType, recordID: CKRecord.ID(recordName: uuid))
+        let record = CKRecord(recordType: Entity.recordType, recordID: CKRecord.ID(recordName: uuid))
         record["entity"] = entity
         record["schema_version"] = Int64(definition.version)
         record["uuid"] = uuid
@@ -115,7 +115,7 @@ public struct EntityStore: Sendable {
         let definition = try await registry.definition(for: entity)
         var (server, client) = try split(filters, entity: entity, using: definition)
         server.append(ServerFilter(field: "deleted", op: .equals, value: .int(0)))
-        let query = ckQuery(Item.recordType, filters: server, sort: try serverSort(sort, using: definition))
+        let query = ckQuery(Entity.recordType, filters: server, sort: try serverSort(sort, using: definition))
         let keys = try fields.map { try desiredKeys($0 + filters.map(\.field), using: definition) }
         let records = try await database.allRecords(matching: query, desiredKeys: keys)
         return try decode(records, using: definition).filter { record in
@@ -157,7 +157,7 @@ public struct EntityStore: Sendable {
         if let cursor {
             filters.append(ServerFilter(field: "modificationDate", op: .greaterThan, value: .date(cursor)))
         }
-        let query = ckQuery(Item.recordType, filters: filters)
+        let query = ckQuery(Entity.recordType, filters: filters)
         let records = try await database.allRecords(matching: query)
         let next = records.compactMap(\.recordModificationDate).max() ?? cursor
         return (try decode(records, using: definition), next)

@@ -2,21 +2,21 @@
 
 Production CloudKit schemas are append-only: fields, record types, and index modifiers can
 never be removed or retyped. ScoutDB inverts the problem — the physical schema knows nothing
-about your domain and is uploaded exactly once. Everything mutable lives in versioned `Meta`
+about your domain and is uploaded exactly once. Everything mutable lives in versioned `SchemaDescriptor`
 records interpreted at runtime.
 
 ## Record types
 
 | Type | Purpose |
 |---|---|
-| `Item` | every logical record of every entity |
-| `GridItem` | materialized aggregate cells |
-| `Meta` | the registry: one immutable record per entity version |
-| `Users` | dashboard roles |
+| `Entity` | every logical record of every entity |
+| `Aggregate` | materialized aggregate cells |
+| `SchemaDescriptor` | the registry: one immutable record per entity version |
+| `User` | dashboard roles |
 
 ## Slot pools
 
-A logical record is exactly one `Item` record. Typed slot pools live side by side, so any
+A logical record is exactly one `Entity` record. Typed slot pools live side by side, so any
 combination of filters runs as a single server query and writes are atomic. Every CloudKit
 field type gets an equal pool of 16 (there is no list of `BYTES` or `REFERENCE` in CloudKit):
 
@@ -50,7 +50,7 @@ append — but it spends from that reserve, so it is not unlimited.
 
 ## Envelope
 
-Every `Item` carries `entity`, `schema_version`, `uuid`, `deleted`, and `expires`. The
+Every `Entity` carries `entity`, `schema_version`, `uuid`, `deleted`, and `expires`. The
 `schema_version` selects which view of the entity's fields decodes the record; `deleted` and
 `expires` implement soft deletion and TTL.
 

@@ -2,7 +2,7 @@
 
 CloudKit has no server-side `SUM` or `GROUP BY` — a query returns records, never computed
 values. ScoutDB materializes aggregates at write time instead: declare `views` on an entity,
-and every write updates counters in `GridItem` cells, so reads never scan raw records.
+and every write updates counters in `Aggregate` cells, so reads never scan raw records.
 
 ```swift
 try await store.schema("payment")

@@ -86,7 +86,7 @@ struct EntityCoder {
         let byName = Dictionary(fields.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
         let values = try resolve(entityRecord.values, at: entityRecord.schemaVersion, using: definition)
 
-        let record = base ?? CKRecord(recordType: Item.recordType, recordID: CKRecord.ID(recordName: entityRecord.uuid))
+        let record = base ?? CKRecord(recordType: Entity.recordType, recordID: CKRecord.ID(recordName: entityRecord.uuid))
         record["entity"] = entityRecord.entity
         record["schema_version"] = Int64(entityRecord.schemaVersion)
         record["uuid"] = entityRecord.uuid

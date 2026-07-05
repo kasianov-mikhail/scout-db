@@ -116,7 +116,7 @@ extension EntityStore {
     @discardableResult public func reap(entity: String, asOf: Date) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         let query = ckQuery(
-            Item.recordType,
+            Entity.recordType,
             filters: [
                 ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                 ServerFilter(field: "expires", op: .lessThan, value: .date(asOf)),
@@ -137,7 +137,7 @@ extension EntityStore {
 
     /// Fetches a single record by its identifier, resolving the entity from the record itself.
     public func fetch(uuid: String) async throws -> EntityRecord? {
-        let query = ckQuery(Item.recordType, filters: [ServerFilter(field: "uuid", op: .equals, value: .string(uuid))])
+        let query = ckQuery(Entity.recordType, filters: [ServerFilter(field: "uuid", op: .equals, value: .string(uuid))])
         guard let record = try await database.allRecords(matching: query).first else { return nil }
         guard let entity = record["entity"] as? String else { return nil }
         let definition = try await registry.definition(for: entity)
@@ -149,7 +149,7 @@ extension EntityStore {
         var records: [CKRecord] = []
         for chunk in uuids.chunked(into: 100) {
             let query = ckQuery(
-                Item.recordType,
+                Entity.recordType,
                 filters: [
                     ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                     ServerFilter(field: "uuid", op: .in, value: .strings(chunk)),

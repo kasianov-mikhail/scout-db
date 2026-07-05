@@ -18,7 +18,7 @@ import Foundation
 /// Prints one line per round and a summary table. Use it to re-tune
 /// `cloudKitParallelismLimit` if CloudKit's own concurrency behavior changes.
 ///
-public func benchmarkCloudKitParallelism(container: CKContainer, recordType: String = "Item", counts: [Int] = [1, 2, 4, 8, 16], rounds: Int = 2) async {
+public func benchmarkCloudKitParallelism(container: CKContainer, recordType: String = "Entity", counts: [Int] = [1, 2, 4, 8, 16], rounds: Int = 2) async {
     let counts = counts.filter { $0 > 0 }
 
     print("[ScoutDBBench] concurrency sweep \(counts), \(rounds) round(s) each, record type \(recordType)")
@@ -70,7 +70,7 @@ private func runSweep(_ database: CKDatabase, recordType: String, counts: [Int],
 
 /// Verifies that `cloudKitParallelismLimit` is still the right ceiling: that
 /// requests scale cleanly up to the limit and stop scaling past it.
-@discardableResult public func verifyParallelismBenchmark(container: CKContainer, recordType: String = "Item") async -> Bool {
+@discardableResult public func verifyParallelismBenchmark(container: CKContainer, recordType: String = "Entity") async -> Bool {
     print("[ScoutDBVerify] checking that \(cloudKitParallelismLimit) in-flight CloudKit requests is still the right limit")
 
     return await requestLimiter.withAllSlots {

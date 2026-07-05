@@ -215,6 +215,6 @@ struct AggregatesTests {
             [1, 2, 3, 4].map { EntityWrite(values: ["product": .string("app"), "amount": .double($0), "date": .date(noon)]) },
             entity: "payment")
 
-        #expect(database.records.filter { $0.recordType == "GridItem" }.count == 1)
+        #expect(database.records.filter { $0.recordType == "Aggregate" }.count == 1)
     }
 }

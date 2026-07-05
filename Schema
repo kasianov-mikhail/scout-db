@@ -1,6 +1,6 @@
 DEFINE SCHEMA
 
-    RECORD TYPE Item (
+    RECORD TYPE Entity (
         "___createTime" TIMESTAMP,
         "___createdBy"  REFERENCE,
         "___etag"       STRING,
@@ -258,7 +258,7 @@ DEFINE SCHEMA
         GRANT READ TO "_world"
     );
 
-    RECORD TYPE GridItem (
+    RECORD TYPE Aggregate (
         "___createTime" TIMESTAMP,
         "___createdBy"  REFERENCE,
         "___etag"       STRING,
@@ -403,7 +403,7 @@ DEFINE SCHEMA
         GRANT READ TO "_world"
     );
 
-    RECORD TYPE Meta (
+    RECORD TYPE SchemaDescriptor (
         "___createTime" TIMESTAMP,
         "___createdBy"  REFERENCE,
         "___etag"       STRING,
@@ -419,7 +419,7 @@ DEFINE SCHEMA
         GRANT READ TO "_world"
     );
 
-    RECORD TYPE Users (
+    RECORD TYPE User (
         "___createTime" TIMESTAMP,
         "___createdBy"  REFERENCE,
         "___etag"       STRING,

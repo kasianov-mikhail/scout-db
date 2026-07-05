@@ -21,7 +21,7 @@ public actor SchemaRegistry {
         if let cached = cache[entity] {
             return cached
         }
-        let entries = try await database.allRecords(matching: metaQuery(entity: entity)).map(MetaEntry.init)
+        let entries = try await database.allRecords(matching: metaQuery(entity: entity)).map(SchemaDescriptorEntry.init)
         guard let definition = try latest(of: entries) else {
             throw SchemaError.unknownEntity(entity)
         }
@@ -47,11 +47,11 @@ public actor SchemaRegistry {
 
     @discardableResult public func preload() async throws -> Int {
         let query = ckQuery(
-            MetaEntry.recordType,
+            SchemaDescriptorEntry.recordType,
             filters: [
                 ServerFilter(field: "status", op: .equals, value: .string("active"))
             ])
-        let entries = try await database.allRecords(matching: query).map(MetaEntry.init)
+        let entries = try await database.allRecords(matching: query).map(SchemaDescriptorEntry.init)
         for (entity, entries) in Dictionary(grouping: entries, by: \.entity) {
             if let definition = try latest(of: entries) {
                 cache[entity] = definition
@@ -61,7 +61,7 @@ public actor SchemaRegistry {
     }
 
     /// Seeds the registry with a definition embedded in the app, without touching
-    /// the database — reads and writes can proceed before `publish` lands in Meta.
+    /// the database — reads and writes can proceed before `publish` lands in SchemaDescriptor.
     ///
     public func register(_ definition: EntityDefinition) throws {
         try definition.validate()
@@ -70,7 +70,7 @@ public actor SchemaRegistry {
 
     public func publish(_ definition: EntityDefinition) async throws {
         try definition.validate()
-        let record = CKRecord(recordType: MetaEntry.recordType, recordID: CKRecord.ID(recordName: "\(definition.entity)@\(definition.version)"))
+        let record = CKRecord(recordType: SchemaDescriptorEntry.recordType, recordID: CKRecord.ID(recordName: "\(definition.entity)@\(definition.version)"))
         record["entity"] = definition.entity
         record["entity_version"] = Int64(definition.version)
         record["status"] = "active"
@@ -79,7 +79,7 @@ public actor SchemaRegistry {
         cache[definition.entity] = definition
     }
 
-    private func latest(of entries: [MetaEntry]) throws -> EntityDefinition? {
+    private func latest(of entries: [SchemaDescriptorEntry]) throws -> EntityDefinition? {
         guard let entry = entries.max(by: { $0.version < $1.version }) else { return nil }
         let definition = try JSONDecoder().decode(EntityDefinition.self, from: entry.definition)
         try definition.validate()
@@ -88,7 +88,7 @@ public actor SchemaRegistry {
 
     private func metaQuery(entity: String) -> CKQuery {
         ckQuery(
-            MetaEntry.recordType,
+            SchemaDescriptorEntry.recordType,
             filters: [
                 ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                 ServerFilter(field: "status", op: .equals, value: .string("active")),
@@ -96,8 +96,8 @@ public actor SchemaRegistry {
     }
 }
 
-struct MetaEntry {
-    static let recordType = "Meta"
+struct SchemaDescriptorEntry {
+    static let recordType = "SchemaDescriptor"
 
     let entity: String
     let version: Int
@@ -105,7 +105,7 @@ struct MetaEntry {
 
     init(record: CKRecord) throws {
         guard let entity = record["entity"] as? String, let version = record["entity_version"] as? Int64, let definition = record["definition"] as? Data else {
-            throw SchemaError.invalidDefinition("Malformed Meta record '\(record.recordID.recordName)'")
+            throw SchemaError.invalidDefinition("Malformed SchemaDescriptor record '\(record.recordID.recordName)'")
         }
         self.entity = entity
         self.version = Int(version)

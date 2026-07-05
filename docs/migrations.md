@@ -1,6 +1,6 @@
 # Migrations
 
-Every entity is described by a versioned `EntityDefinition` stored as a `Meta` record.
+Every entity is described by a versioned `EntityDefinition` stored as a `SchemaDescriptor` record.
 Definitions are immutable: a change is always a new version, published as a new record. A
 record stores the `schema_version` it was written with, and the definition describes every
 version at once (`since`/`until` bounds on fields) — so any record ever written stays
@@ -88,7 +88,7 @@ a forward migration actually erased.
 
 ## Invariants
 
-1. `Meta` versions are immutable — a change is always a new `entity_version`.
+1. `SchemaDescriptor` versions are immutable — a change is always a new `entity_version`.
 2. A slot is never reassigned while records of versions that used it still exist (the slot
    allocator and the definition validator both enforce this).
 3. The physical `Schema` file never changes — see [Schema](schema.md).
