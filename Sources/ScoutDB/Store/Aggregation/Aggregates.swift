@@ -60,7 +60,7 @@ public struct AggregateTotal: AggregateStatistics, Equatable, Sendable {
 extension EntityStore {
     public func aggregate(entity: String, view viewName: String, from: Date? = nil, to: Date? = nil) async throws -> [AggregateRow] {
         let definition = try await registry.definition(for: entity)
-        guard let view = definition.views?.first(where: { $0.name == viewName }) else {
+        guard let view = definition.view(named: viewName) else {
             throw SchemaError.unknownField(viewName)
         }
         let records = try await gridRecords(entity: entity, view: viewName, from: from, to: to)
@@ -72,10 +72,10 @@ extension EntityStore {
             var count = 0
             var value: Double?
             var squares: Double?
-            for index in 0..<64 {
+            for index in 0..<Aggregate.cellCount {
                 count += Int(record[Aggregate.countCell(index)] as? Int64 ?? 0)
                 guard let kind, let cell = record[Aggregate.valueCell(index)] as? Double else { continue }
-                if isStats, index >= 32 {
+                if isStats, index >= Aggregate.squareOffset {
                     squares = (squares ?? 0) + cell
                 } else {
                     value = value.map { kind.combine($0, cell) } ?? cell
@@ -90,7 +90,7 @@ extension EntityStore {
     ///
     public func series(entity: String, view viewName: String, from: Date? = nil, to: Date? = nil) async throws -> [AggregateSeriesPoint] {
         let definition = try await registry.definition(for: entity)
-        guard let view = definition.views?.first(where: { $0.name == viewName }) else {
+        guard let view = definition.view(named: viewName) else {
             throw SchemaError.unknownField(viewName)
         }
         let bucket = view.bucket ?? .hour
@@ -99,7 +99,7 @@ extension EntityStore {
 
         for record in try await gridRecords(entity: entity, view: viewName, from: from, to: to) {
             guard let period = record["date"] as? Date, let group = record["group_key"] as? String else { continue }
-            for index in 0..<(isStats ? 32 : 64) {
+            for index in 0..<(isStats ? Aggregate.squareOffset : Aggregate.cellCount) {
                 let count = Int(record[Aggregate.countCell(index)] as? Int64 ?? 0)
                 let value = record[Aggregate.valueCell(index)] as? Double
                 guard count != 0 || value != nil else { continue }
@@ -122,7 +122,7 @@ extension EntityStore {
         -> [AggregateTotal]
     {
         let definition = try await registry.definition(for: entity)
-        let kind = definition.views?.first { $0.name == viewName }?.metric?.kind
+        let kind = definition.view(named: viewName)?.metric?.kind
         let rows = try await aggregate(entity: entity, view: viewName, from: from, to: to)
 
         return Dictionary(grouping: rows, by: \.group).map { group, rows in
@@ -136,7 +136,7 @@ extension EntityStore {
 
     public func percentile(_ p: Double, entity: String, view viewName: String, from: Date? = nil, to: Date? = nil) async throws -> Double? {
         let definition = try await registry.definition(for: entity)
-        guard let histogram = definition.views?.first(where: { $0.name == viewName })?.histogram else {
+        guard let histogram = definition.view(named: viewName)?.histogram else {
             throw SchemaError.invalidValue(viewName)
         }
 

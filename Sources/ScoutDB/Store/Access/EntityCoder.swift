@@ -6,7 +6,6 @@
 // https://opensource.org/licenses/MIT.
 
 import CloudKit
-import CryptoKit
 import Foundation
 
 struct EntityCoder {
@@ -77,14 +76,16 @@ struct EntityCoder {
             guard let value = values[name] else { throw SchemaError.missingField(name) }
             return "\(name)=\(value.canonical)"
         }
-        let digest = SHA256.hash(data: Data(key.joined(separator: "|").utf8))
-        return digest.hexString
+        return contentDigest(of: key)
     }
 
+    // The record's values must already be resolved (defaults filled, derivations
+    // applied, constraints validated) — callers run `resolve` once and encode the
+    // result, so the derivation fixpoint never runs twice per write.
     func encode(_ entityRecord: EntityRecord, using definition: EntityDefinition, into base: CKRecord? = nil) throws -> CKRecord {
         let fields = definition.fields(at: entityRecord.schemaVersion)
-        let byName = Dictionary(fields.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
-        let values = try resolve(entityRecord.values, at: entityRecord.schemaVersion, using: definition)
+        let byName = definition.fieldsByName(at: entityRecord.schemaVersion)
+        let values = entityRecord.values
 
         let record = base ?? CKRecord(recordType: Entity.recordType, recordID: CKRecord.ID(recordName: entityRecord.uuid))
         record["entity"] = entityRecord.entity

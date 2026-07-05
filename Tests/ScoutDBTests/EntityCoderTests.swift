@@ -54,21 +54,21 @@ struct EntityCoderTests {
         #expect(decoded.values["quantity"] == nil)
     }
 
-    @Test("Encode rejects a value of the wrong type")
+    @Test("Resolve rejects a value of the wrong type")
     func typeMismatch() {
         var purchase = makePurchase()
         purchase.values["quantity"] = .string("three")
         #expect(throws: SchemaError.typeMismatch("quantity")) {
-            try coder.encode(purchase, using: definition)
+            try coder.resolve(purchase.values, at: purchase.schemaVersion, using: definition)
         }
     }
 
-    @Test("Encode rejects a field missing from the definition")
+    @Test("Resolve rejects a field missing from the definition")
     func unknownField() {
         var purchase = makePurchase()
         purchase.values["color"] = .string("red")
         #expect(throws: SchemaError.unknownField("color")) {
-            try coder.encode(purchase, using: definition)
+            try coder.resolve(purchase.values, at: purchase.schemaVersion, using: definition)
         }
     }
 

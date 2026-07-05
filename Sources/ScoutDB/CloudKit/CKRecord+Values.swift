@@ -10,11 +10,6 @@ import CoreLocation
 import ObjectiveC
 
 extension CKRecord {
-    subscript<T: RecordValueConvertible>(scout key: String) -> T? {
-        get { scoutValue(forKey: key).flatMap(T.init(recordValue:)) }
-        set { self[key] = newValue?.recordValue.ckValue }
-    }
-
     func scoutValue(forKey key: String) -> RecordValue? {
         self[key].flatMap(RecordValue.init(native:))
     }

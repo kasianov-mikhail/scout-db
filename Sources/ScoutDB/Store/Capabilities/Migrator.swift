@@ -41,6 +41,7 @@ public struct Migrator: Sendable {
             guard !decoded.deleted else { continue }
             var entityRecord = EntityRecord(entity: entity, uuid: decoded.uuid, schemaVersion: definition.version, values: rekey(decoded, using: definition))
             try transform(&entityRecord)
+            entityRecord.values = try coder.resolve(entityRecord.values, at: definition.version, using: definition)
             migrated.append(try coder.encode(entityRecord, using: definition))
         }
 

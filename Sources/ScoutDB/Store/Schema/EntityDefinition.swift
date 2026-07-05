@@ -35,6 +35,20 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
         fields.filter { $0.isActive(at: version) }
     }
 
+    /// The active field with the given name, resolving duplicate historical names
+    /// in favor of the first declaration — the one shared tie-break policy.
+    public func field(named name: String, at version: Int) -> FieldDefinition? {
+        fields(at: version).first { $0.name == name }
+    }
+
+    func fieldsByName(at version: Int) -> [String: FieldDefinition] {
+        Dictionary(fields(at: version).map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    func view(named name: String) -> AggregateView? {
+        views?.first { $0.name == name }
+    }
+
     public func validate() throws {
         let names = Set(fields.map(\.name))
         for field in fields {
@@ -43,7 +57,7 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
                     throw SchemaError.invalidDefinition(
                         "Field '\(field.name)' of type '\(field.type.rawValue)' cannot live in the '\(pool.rawValue)' pool")
                 }
-                guard slot.hasPrefix("\(pool.rawValue)_"), let index = Int(slot.dropFirst(pool.rawValue.count + 1)), index >= 0 else {
+                guard let index = pool.slotIndex(slot) else {
                     throw SchemaError.invalidDefinition("Slot '\(slot)' does not belong to the '\(pool.rawValue)' pool")
                 }
                 guard index < pool.capacity else {
@@ -248,7 +262,7 @@ public enum FieldType: String, Codable, Equatable, Sendable {
     case string, text, int, double, timestamp, bytes, location, reference, asset
     case stringList, intList, doubleList, timestampList, locationList, assetList
 
-    var pool: Pool? {
+    var pool: Pool {
         switch self {
         case .string: .string
         case .text: .text
@@ -310,7 +324,7 @@ extension Storage: Codable {
         let raw = try decoder.singleValueContainer().decode(String.self)
         if raw == "payload" {
             self = .payload
-        } else if let separator = raw.firstIndex(of: "_"), let pool = Pool(rawValue: String(raw[..<separator])) {
+        } else if let pool = Pool.pool(forSlot: raw) {
             self = .slot(pool, raw)
         } else {
             throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Unknown storage '\(raw)'"))

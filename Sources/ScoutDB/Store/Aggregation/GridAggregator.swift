@@ -6,16 +6,11 @@
 // https://opensource.org/licenses/MIT.
 
 import CloudKit
-import CryptoKit
 import Foundation
 
 struct GridAggregator {
     let database: any CloudDatabase
     let maxRetry = 3
-
-    func record(_ entityRecord: EntityRecord, using definition: EntityDefinition) async throws {
-        try await record([entityRecord], using: definition)
-    }
 
     // Adds the batch's contributions to the views: every write increments its cells.
     func record(_ batch: [EntityRecord], using definition: EntityDefinition) async throws {
@@ -71,9 +66,14 @@ struct GridAggregator {
         return deltas
     }
 
+    // Touched grid slots are distinct records, so their read-modify-write cycles run
+    // concurrently; the shared request limiter still bounds the actual CloudKit fan-out.
     private func apply(_ deltas: [GridSlot: [Int: CellDelta]]) async throws {
-        for (slot, cells) in deltas {
-            try await apply(cells, to: slot)
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for (slot, cells) in deltas {
+                group.addTask { try await apply(cells, to: slot) }
+            }
+            try await group.waitForAll()
         }
     }
 
@@ -118,7 +118,7 @@ struct GridAggregator {
                     record[valueCell] = (record[valueCell] as? Double).map { kind.combine($0, total) } ?? total
                 }
                 if let squares = delta.squares {
-                    let squareCell = Aggregate.valueCell(index + 32)
+                    let squareCell = Aggregate.squareCell(index)
                     record[squareCell] = (record[squareCell] as? Double ?? 0) + squares
                 }
             }
@@ -145,9 +145,8 @@ struct GridAggregator {
             return existing
         }
 
-        let key = "\(entity)|\(view)|\(group)|\(day.millisecondsSince1970)"
-        let digest = SHA256.hash(data: Data(key.utf8))
-        let record = CKRecord(recordType: Aggregate.recordType, recordID: CKRecord.ID(recordName: "grid-" + digest.hexString))
+        let digest = contentDigest(of: [entity, view, group, "\(day.millisecondsSince1970)"])
+        let record = CKRecord(recordType: Aggregate.recordType, recordID: CKRecord.ID(recordName: "grid-" + digest))
         record["entity"] = entity
         record["view"] = view
         record["group_key"] = group
@@ -159,8 +158,19 @@ struct GridAggregator {
 enum Aggregate {
     static let recordType = "Aggregate"
 
+    // Grid layout: 64 cells per record. Time buckets never exceed index 30 and a
+    // stats view keeps its sum of squares `squareOffset` cells above its value, so
+    // the two halves cannot clash.
+    static let cellCount = 64
+    static let squareOffset = 32
+
     // Per-cell field names. Count cells hold occurrence counts; value cells hold the
-    // metric total, with a stats view's sum of squares living 32 cells above its value.
-    static func countCell(_ index: Int) -> String { String(format: "c_%02d", index) }
-    static func valueCell(_ index: Int) -> String { String(format: "f_%02d", index) }
+    // metric total. Precomputed once — analytics reads touch them up to 128 times
+    // per grid record.
+    private static let countCells = (0..<cellCount).map { String(format: "c_%02d", $0) }
+    private static let valueCells = (0..<cellCount).map { String(format: "f_%02d", $0) }
+
+    static func countCell(_ index: Int) -> String { countCells[index] }
+    static func valueCell(_ index: Int) -> String { valueCells[index] }
+    static func squareCell(_ index: Int) -> String { valueCells[index + squareOffset] }
 }

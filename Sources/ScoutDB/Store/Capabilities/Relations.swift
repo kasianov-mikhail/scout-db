@@ -10,7 +10,7 @@ import Foundation
 extension EntityStore {
     public func join(entity: String, records: [EntityRecord], field: String) async throws -> [String: EntityRecord] {
         let definition = try await registry.definition(for: entity)
-        guard let parent = definition.fields(at: definition.version).first(where: { $0.name == field })?.references else {
+        guard let parent = definition.field(named: field, at: definition.version)?.references else {
             throw SchemaError.unknownField(field)
         }
         let keys = Set(

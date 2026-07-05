@@ -150,7 +150,7 @@ extension EntityStore {
         var server = [ServerFilter(field: "entity", op: .equals, value: .string(entity))]
         var client: [Filter] = []
         let fields = definition.fields(at: definition.version)
-        let byName = Dictionary(fields.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        let byName = definition.fieldsByName(at: definition.version)
 
         for filter in filters {
             guard let field = byName[filter.field] else {
@@ -193,48 +193,55 @@ extension EntityStore {
 
     func serverSort(_ sort: [Sort], using definition: EntityDefinition) throws -> [ServerSort] {
         try sort.map { sort in
-            guard case .slot(_, let slot)? = definition.fields(at: definition.version).first(where: { $0.name == sort.field })?.storage else {
+            guard case .slot(_, let slot)? = definition.field(named: sort.field, at: definition.version)?.storage else {
                 throw SchemaError.unknownField(sort.field)
             }
             return ServerSort(field: slot, ascending: sort.ascending)
         }
     }
 
-    func matches(_ record: EntityRecord, _ filter: Filter) -> Bool {
-        let value = record.values[filter.field]
+    // Compiles a client-side filter into a record predicate. Building the predicate
+    // once per read hoists regex construction for `like` and `matches` out of the
+    // per-record loop.
+    static func matcher(for filter: Filter) -> (EntityRecord) -> Bool {
         switch filter.op {
         case .isNull:
-            return value == nil
+            return { $0.values[filter.field] == nil }
         case .isNotNull:
-            return value != nil
+            return { $0.values[filter.field] != nil }
         case .contains:
-            guard case .string(let text)? = value, case .string(let needle) = filter.value else { return false }
-            return text.contains(needle)
+            guard case .string(let needle) = filter.value else { return { _ in false } }
+            return stringMatcher(filter.field) { $0.contains(needle) }
         case .endsWith:
-            guard case .string(let text)? = value, case .string(let suffix) = filter.value else { return false }
-            return text.hasSuffix(suffix)
+            guard case .string(let suffix) = filter.value else { return { _ in false } }
+            return stringMatcher(filter.field) { $0.hasSuffix(suffix) }
         case .like:
-            guard case .string(let text)? = value, case .string(let pattern) = filter.value else { return false }
-            return Self.wildcard(pattern, matches: text)
+            guard case .string(let pattern) = filter.value, let regex = try? Regex(wildcardPattern(pattern)) else { return { _ in false } }
+            return stringMatcher(filter.field) { $0.wholeMatch(of: regex) != nil }
         case .matches:
-            guard case .string(let text)? = value, case .string(let pattern) = filter.value else { return false }
-            guard let regex = try? Regex(pattern) else { return false }
-            return text.wholeMatch(of: regex) != nil
+            guard case .string(let pattern) = filter.value, let regex = try? Regex(pattern) else { return { _ in false } }
+            return stringMatcher(filter.field) { $0.wholeMatch(of: regex) != nil }
         default:
-            return false
+            return { _ in false }
         }
     }
 
-    static func wildcard(_ pattern: String, matches text: String) -> Bool {
-        let escaped = pattern.map { character -> String in
+    private static func stringMatcher(_ field: String, _ predicate: @escaping (String) -> Bool) -> (EntityRecord) -> Bool {
+        { record in
+            guard case .string(let text)? = record.values[field] else { return false }
+            return predicate(text)
+        }
+    }
+
+    // Translates `*`/`?` wildcards into an anchored regex pattern.
+    static func wildcardPattern(_ pattern: String) -> String {
+        pattern.map { character -> String in
             switch character {
             case "*": ".*"
             case "?": "."
             default: NSRegularExpression.escapedPattern(for: String(character))
             }
         }.joined()
-        guard let regex = try? Regex(escaped) else { return false }
-        return text.wholeMatch(of: regex) != nil
     }
 
     private func reversedShadow(of field: FieldDefinition, in fields: [FieldDefinition]) -> FieldDefinition? {

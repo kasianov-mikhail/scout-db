@@ -108,10 +108,7 @@ public struct EntityStore: Sendable {
     // a viewless write never pays for the lookup.
     private func freshForAggregation(_ records: [EntityRecord], using definition: EntityDefinition) async throws -> [EntityRecord] {
         guard definition.views?.isEmpty == false else { return [] }
-        var seen = Set(
-            try await items(entity: definition.entity, uuids: records.map(\.uuid))
-                .filter { ($0["deleted"] as? Int64 ?? 0) == 0 }
-                .compactMap { $0["uuid"] as? String })
+        var seen = Set(try await liveRecords(entity: definition.entity, uuids: records.map(\.uuid), using: definition).map(\.uuid))
         return records.filter { seen.insert($0.uuid).inserted }
     }
 
@@ -138,22 +135,46 @@ public struct EntityStore: Sendable {
         return record
     }
 
-    public func read(entity: String, filters: [Filter] = [], sort: [Sort] = [], fields: [String]? = nil) async throws -> [EntityRecord] {
+    public func read(entity: String, filters: [Filter] = [], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil) async throws -> [EntityRecord] {
         let definition = try await registry.definition(for: entity)
         var (server, client) = try split(filters, entity: entity, using: definition)
         server.append(ServerFilter(field: "deleted", op: .equals, value: .int(0)))
         let query = ckQuery(Entity.recordType, filters: server, sort: try serverSort(sort, using: definition))
         let keys = try fields.map { try desiredKeys($0 + filters.map(\.field), using: definition) }
-        let records = try await database.allRecords(matching: query, desiredKeys: keys)
-        return try decode(records, using: definition).filter { record in
-            !record.deleted && client.allSatisfy { matches(record, $0) }
+        let matchers = client.map(Self.matcher(for:))
+        let included: (EntityRecord) -> Bool = { record in
+            !record.deleted && matchers.allSatisfy { $0(record) }
         }
+        // A capped read stops following the cursor once enough rows are in hand. The
+        // sort ran server-side, so the first `limit` post-filter rows in arrival order
+        // are the same records a full scan would keep after `prefix(limit)`.
+        if let limit {
+            return Array(try await boundedRecords(matching: query, desiredKeys: keys, limit: limit, using: definition, where: included).prefix(limit))
+        }
+        return try decode(try await database.allRecords(matching: query, desiredKeys: keys), using: definition).filter(included)
+    }
+
+    // Pages through the query, following the cursor only until `limit` post-filter
+    // rows are collected — so a bounded read costs about one page of records, not
+    // the whole result set. May return slightly more than `limit` (the tail of the
+    // final batch); callers trim.
+    func boundedRecords(
+        matching query: CKQuery, desiredKeys: [String]?, limit: Int, using definition: EntityDefinition, where included: (EntityRecord) -> Bool
+    ) async throws -> [EntityRecord] {
+        var collected: [EntityRecord] = []
+        var (batch, token) = try await database.records(matching: query, desiredKeys: desiredKeys, resultsLimit: limit)
+        while true {
+            collected += try decode(batch.map { try $0.1.get() }, using: definition).filter(included)
+            guard collected.count < limit, let cursor = token else { break }
+            (batch, token) = try await database.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: limit)
+        }
+        return collected
     }
 
     private func desiredKeys(_ fields: [String], using definition: EntityDefinition) throws -> [String] {
         var keys = ["entity", "schema_version", "uuid", "deleted"]
         for name in Set(fields) {
-            guard let field = definition.fields(at: definition.version).first(where: { $0.name == name }) else {
+            guard let field = definition.field(named: name, at: definition.version) else {
                 throw SchemaError.unknownField(name)
             }
             switch field.storage {
@@ -166,16 +187,24 @@ public struct EntityStore: Sendable {
         return keys
     }
 
-    public func read(entity: String, any branches: [[Filter]], sort: [Sort] = []) async throws -> [EntityRecord] {
+    public func read(entity: String, any branches: [[Filter]], sort: [Sort] = [], limit: Int? = nil) async throws -> [EntityRecord] {
+        // A sorted union must rank every branch's records before capping, so only an
+        // unsorted union can bound its branch reads and stop early. A branch holding
+        // `limit` matching rows always fills the union to `limit` on its own (dupes
+        // it skips are already counted), so capped branches never under-collect.
+        let branchLimit = sort.isEmpty ? limit : nil
         var seen: Set<String> = []
         var union: [EntityRecord] = []
         for branch in branches {
-            for record in try await read(entity: entity, filters: branch) where seen.insert(record.uuid).inserted {
+            for record in try await read(entity: entity, filters: branch, limit: branchLimit) where seen.insert(record.uuid).inserted {
                 union.append(record)
+                if let limit, sort.isEmpty, union.count == limit { return union }
             }
         }
         guard sort.count > 0 else { return union }
-        return union.sorted { Self.ordered($0, $1, by: sort) }
+        let ranked = union.sorted { Self.ordered($0, $1, by: sort) }
+        guard let limit else { return ranked }
+        return Array(ranked.prefix(limit))
     }
 
     public func changes(entity: String, since cursor: Date? = nil) async throws -> (records: [EntityRecord], cursor: Date?) {

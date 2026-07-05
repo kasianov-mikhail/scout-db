@@ -91,17 +91,14 @@ public struct QueryBuilder {
     }
 
     /// Runs the query and returns every matching record.
+    ///
+    /// A ``limit(_:)`` bounds the fetch server-side: the store stops following the
+    /// query cursor as soon as enough records are in hand.
     public func all() async throws -> [EntityRecord] {
-        var records: [EntityRecord]
         if groups.count > 0 {
-            records = try await store.read(entity: entity, any: branches(), sort: sorts)
-        } else {
-            records = try await store.read(entity: entity, filters: filters, sort: sorts, fields: projection)
+            return try await store.read(entity: entity, any: branches(), sort: sorts, limit: ceiling)
         }
-        if let ceiling {
-            records = Array(records.prefix(ceiling))
-        }
-        return records
+        return try await store.read(entity: entity, filters: filters, sort: sorts, fields: projection, limit: ceiling)
     }
 
     /// Runs the query and returns the first matching record.
@@ -109,9 +106,11 @@ public struct QueryBuilder {
         try await limit(1).all().first
     }
 
-    /// Runs the query and returns the number of matching records.
+    /// Runs the query and returns the number of matching records, fetching only the
+    /// envelope and the filtered fields rather than full payloads.
     public func count() async throws -> Int {
-        try await all().count
+        guard groups.isEmpty else { return try await all().count }
+        return try await store.read(entity: entity, filters: filters, sort: sorts, fields: [], limit: ceiling).count
     }
 
     /// Returns one page of results ordered by the envelope date.
