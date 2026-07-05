@@ -57,10 +57,10 @@ struct EntityCoder {
                 continue
             }
             guard field.type.matches(value) else { throw SchemaError.typeMismatch(field.name) }
-            if let allowed = field.allowed, case .string(let raw) = value, !allowed.contains(raw) {
+            if let allowed = field.allowed, !value.strings.allSatisfy(allowed.contains) {
                 throw SchemaError.invalidValue(field.name)
             }
-            if let scalar = value.scalar {
+            for scalar in value.scalars {
                 if let minimum = field.minimum, scalar < minimum { throw SchemaError.invalidValue(field.name) }
                 if let maximum = field.maximum, scalar > maximum { throw SchemaError.invalidValue(field.name) }
             }
@@ -240,6 +240,28 @@ extension RecordValue {
         case .locations(let value): value.isEmpty
         case .assets(let value): value.isEmpty
         default: false
+        }
+    }
+
+    // The string members an `allowed` domain constrains: the scalar for a string, every
+    // element for a string list, and none (a vacuous pass) for any other kind.
+    var strings: [String] {
+        switch self {
+        case .string(let value): [value]
+        case .strings(let value): value
+        default: []
+        }
+    }
+
+    // The numeric members a `minimum`/`maximum` bound constrains: the scalar for an int or
+    // double, every element for an int or double list, and none for any other kind.
+    var scalars: [Double] {
+        switch self {
+        case .int(let value): [Double(value)]
+        case .double(let value): [value]
+        case .ints(let value): value.map(Double.init)
+        case .doubles(let value): value
+        default: []
         }
     }
 }

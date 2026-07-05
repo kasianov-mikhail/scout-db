@@ -186,6 +186,32 @@ struct EntityCoderTests {
         #expect(resolved["name_ngrams"] == .strings(["caf", "afe"]))
     }
 
+    @Test("allowed constrains every element of a string list")
+    func allowedList() throws {
+        let definition = makeDefinition(
+            entity: "post",
+            fields: [
+                FieldDefinition(name: "tags", type: .stringList, storage: .slot(.stringList, "ls_00"), allowed: ["red", "green"])
+            ])
+        #expect(throws: SchemaError.invalidValue("tags")) {
+            try coder.resolve(["tags": .strings(["red", "blue"])], at: 2, using: definition)
+        }
+        let ok = try coder.resolve(["tags": .strings(["red", "green"])], at: 2, using: definition)
+        #expect(ok["tags"] == .strings(["red", "green"]))
+    }
+
+    @Test("Numeric bounds constrain every element of a number list")
+    func boundedList() {
+        let definition = makeDefinition(
+            entity: "sample",
+            fields: [
+                FieldDefinition(name: "counts", type: .intList, storage: .slot(.intList, "li_00"), minimum: 0)
+            ])
+        #expect(throws: SchemaError.invalidValue("counts")) {
+            try coder.resolve(["counts": .ints([1, -1, 2])], at: 2, using: definition)
+        }
+    }
+
     @Test("Natural key produces a deterministic uuid")
     func naturalKey() throws {
         let definition = makeDefinition(

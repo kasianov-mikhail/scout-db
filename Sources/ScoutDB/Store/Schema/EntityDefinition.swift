@@ -68,6 +68,12 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
             if field.references != nil, field.type != .string {
                 throw SchemaError.invalidDefinition("Reference field '\(field.name)' must be a string uuid")
             }
+            if field.allowed != nil, ![.string, .text, .stringList].contains(field.type) {
+                throw SchemaError.invalidDefinition("Field '\(field.name)' of type '\(field.type.rawValue)' cannot constrain 'allowed'")
+            }
+            if field.minimum != nil || field.maximum != nil, ![.int, .double, .intList, .doubleList].contains(field.type) {
+                throw SchemaError.invalidDefinition("Field '\(field.name)' of type '\(field.type.rawValue)' cannot constrain 'minimum'/'maximum'")
+            }
         }
         for lhs in fields {
             for rhs in fields where lhs.name != rhs.name || lhs.since != rhs.since {

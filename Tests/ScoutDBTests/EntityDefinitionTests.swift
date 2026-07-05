@@ -163,6 +163,24 @@ struct EntityDefinitionTests {
             ], unique: ["user_id"])
         #expect(throws: SchemaError.self) { try definition.validate() }
     }
+
+    @Test("Validation rejects an allowed domain on a non-string field")
+    func allowedWrongType() {
+        let definition = makeDefinition(
+            fields: [
+                FieldDefinition(name: "count", type: .int, storage: .slot(.int, "i_00"), allowed: ["1", "2"])
+            ])
+        #expect(throws: SchemaError.self) { try definition.validate() }
+    }
+
+    @Test("Validation rejects a numeric bound on a non-numeric field")
+    func boundWrongType() {
+        let definition = makeDefinition(
+            fields: [
+                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"), minimum: 0)
+            ])
+        #expect(throws: SchemaError.self) { try definition.validate() }
+    }
 }
 
 func makeDefinition(
