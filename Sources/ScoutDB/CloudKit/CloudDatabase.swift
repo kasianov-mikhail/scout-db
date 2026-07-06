@@ -7,11 +7,12 @@
 
 import CloudKit
 
-/// Continuation token for a paginated query. `CKQueryOperation.Cursor` has no
-/// public initializer, so a protocol that traffics in it directly forces every
-/// test double into single-page reads. Real CloudKit pages carry the opaque
-/// cursor; in-memory implementations carry the query plus how many matches the
-/// previous pages already delivered.
+/// Continuation token for a paginated query.
+///
+/// `CKQueryOperation.Cursor` has no public initializer, so a protocol that
+/// traffics in it directly forces every test double into single-page reads.
+/// Real CloudKit pages carry the opaque cursor; in-memory implementations
+/// carry the query plus how many matches the previous pages already delivered.
 public enum QueryCursor: @unchecked Sendable {
     case cloudKit(CKQueryOperation.Cursor)
     case offset(query: CKQuery, offset: Int)
