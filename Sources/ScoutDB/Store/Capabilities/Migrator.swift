@@ -38,7 +38,8 @@ public struct Migrator: Sendable {
         let coder = EntityCoder(keyProvider: keyProvider)
         let migrated = try outdated.map { record in
             try coder.rewrite(record, using: definition) { entityRecord in
-                entityRecord = EntityRecord(entity: entity, uuid: entityRecord.uuid, schemaVersion: definition.version, values: rekey(entityRecord, using: definition))
+                entityRecord = EntityRecord(
+                    entity: entity, uuid: entityRecord.uuid, schemaVersion: definition.version, values: rekey(entityRecord, using: definition))
                 try transform(&entityRecord)
             }
         }
