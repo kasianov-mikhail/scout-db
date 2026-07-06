@@ -168,7 +168,7 @@ extension EntityStore {
     public func distinct(entity: String, field: String, filters: [Filter] = []) async throws -> [RecordValue] {
         var seen: Set<String> = []
         var values: [RecordValue] = []
-        for record in try await read(entity: entity, filters: filters) {
+        for record in try await read(entity: entity, filters: filters, fields: [field]) {
             guard let value = record.values[field] else { continue }
             if seen.insert(value.canonical).inserted {
                 values.append(value)

@@ -96,7 +96,7 @@ public struct QueryBuilder {
     /// query cursor as soon as enough records are in hand.
     public func all() async throws -> [EntityRecord] {
         if groups.count > 0 {
-            return try await store.read(entity: entity, any: branches(), sort: sorts, limit: ceiling)
+            return try await store.read(entity: entity, any: branches(), sort: sorts, fields: projection, limit: ceiling)
         }
         return try await store.read(entity: entity, filters: filters, sort: sorts, fields: projection, limit: ceiling)
     }
@@ -109,7 +109,9 @@ public struct QueryBuilder {
     /// Runs the query and returns the number of matching records, fetching only the
     /// envelope and the filtered fields rather than full payloads.
     public func count() async throws -> Int {
-        guard groups.isEmpty else { return try await all().count }
+        if groups.count > 0 {
+            return try await store.read(entity: entity, any: branches(), sort: sorts, fields: [], limit: ceiling).count
+        }
         return try await store.read(entity: entity, filters: filters, sort: sorts, fields: [], limit: ceiling).count
     }
 

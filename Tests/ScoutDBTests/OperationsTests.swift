@@ -37,7 +37,9 @@ struct OperationsTests {
     @Test("CAS update retries after a conflict")
     func updateConflict() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        database.writeErrors = [RecordConflictError(serverRecord: CKRecord(recordType: "Entity", recordID: CKRecord.ID(recordName: "p-1")))]
+        // A real conflict carries the winning server record; the retry transforms it.
+        let server = try #require(database.records.first { $0["uuid"] as? String == "p-1" })
+        database.writeErrors = [RecordConflictError(serverRecord: server)]
         try await store.update(entity: "purchase", uuid: "p-1") { record in
             record.values["quantity"] = .int(9)
         }

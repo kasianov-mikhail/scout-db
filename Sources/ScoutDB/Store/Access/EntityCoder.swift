@@ -11,11 +11,25 @@ import Foundation
 struct EntityCoder {
     var keyProvider: (any EncryptionKeyProvider)?
 
+    // One coder pair per store operation instead of one per record — payload
+    // encoding and decoding run once for every record in a batch.
+    let jsonEncoder = JSONEncoder()
+    let jsonDecoder = JSONDecoder()
+
+    /// The envelope keys `encode` writes on every record; projections always fetch them.
+    static let envelopeKeys = ["entity", "schema_version", "uuid", "deleted"]
+
     static let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
         return calendar
     }()
+
+    // The canonical calendar-period truncation. Derived date fields and grid slot
+    // keys both build on it, so the two always line up.
+    static func periodStart(of component: Calendar.Component, for date: Date) -> Date {
+        calendar.dateInterval(of: component, for: date)?.start ?? date
+    }
 
     func resolve(_ values: [String: RecordValue], at version: Int, using definition: EntityDefinition) throws -> [String: RecordValue] {
         let fields = definition.fields(at: version)
@@ -109,13 +123,13 @@ struct EntityCoder {
         // A keyless read leaves encrypted fields absent (decode cannot open them without a
         // key), so a read-modify-write would otherwise drop their ciphertext. Carry the
         // untouched ciphertext over verbatim from the base record's payload.
-        if let base, let data = base["payload"] as? Data, let existing = try? JSONDecoder().decode([String: RecordValue].self, from: data) {
+        if let base, let data = base["payload"] as? Data, let existing = try? jsonDecoder.decode([String: RecordValue].self, from: data) {
             for field in fields where field.encrypted == true && payload[field.name] == nil {
                 payload[field.name] = existing[field.name]
             }
         }
         if payload.count > 0 {
-            record["payload"] = try JSONEncoder().encode(payload)
+            record["payload"] = try jsonEncoder.encode(payload)
         }
         return record
     }
@@ -130,7 +144,7 @@ struct EntityCoder {
 
         var payload: [String: RecordValue] = [:]
         if let data = record["payload"] as? Data {
-            payload = try JSONDecoder().decode([String: RecordValue].self, from: data)
+            payload = try jsonDecoder.decode([String: RecordValue].self, from: data)
         }
 
         var values: [String: RecordValue] = [:]
@@ -185,13 +199,13 @@ struct EntityCoder {
         case (.hmac, let value?):
             return .string(try surrogate(for: value.canonical, keyID: keyID))
         case (.hour, .date(let value)?):
-            return .date(Self.calendar.dateInterval(of: .hour, for: value)?.start ?? value)
+            return .date(Self.periodStart(of: .hour, for: value))
         case (.day, .date(let value)?):
-            return .date(Self.calendar.startOfDay(for: value))
+            return .date(Self.periodStart(of: .day, for: value))
         case (.week, .date(let value)?):
-            return .date(Self.calendar.dateInterval(of: .weekOfYear, for: value)?.start ?? value)
+            return .date(Self.periodStart(of: .weekOfYear, for: value))
         case (.month, .date(let value)?):
-            return .date(Self.calendar.dateInterval(of: .month, for: value)?.start ?? value)
+            return .date(Self.periodStart(of: .month, for: value))
         default:
             return nil
         }

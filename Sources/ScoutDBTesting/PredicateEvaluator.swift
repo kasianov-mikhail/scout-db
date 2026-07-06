@@ -104,9 +104,9 @@ public enum PredicateEvaluator {
         case (_, nil):
             return .orderedDescending
         case (let lhs as String, let rhs as String):
-            return lhs == rhs ? .orderedSame : (lhs < rhs ? .orderedAscending : .orderedDescending)
+            return order(lhs, rhs)
         case (let lhs as Date, let rhs as Date):
-            return lhs == rhs ? .orderedSame : (lhs < rhs ? .orderedAscending : .orderedDescending)
+            return order(lhs, rhs)
         case (let lhs as Data, let rhs as Data):
             return lhs == rhs ? .orderedSame : .orderedDescending
         case (let lhs as NSNumber, let rhs as NSNumber):
@@ -114,5 +114,9 @@ public enum PredicateEvaluator {
         default:
             return .orderedDescending
         }
+    }
+
+    private static func order<T: Comparable>(_ lhs: T, _ rhs: T) -> ComparisonResult {
+        lhs == rhs ? .orderedSame : (lhs < rhs ? .orderedAscending : .orderedDescending)
     }
 }
