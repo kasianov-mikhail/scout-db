@@ -7,6 +7,17 @@
 
 import CloudKit
 
+/// Continuation token for a paginated query.
+///
+/// `CKQueryOperation.Cursor` has no public initializer, so a protocol that
+/// traffics in it directly forces every test double into single-page reads.
+/// Real CloudKit pages carry the opaque cursor; in-memory implementations
+/// carry the query plus how many matches the previous pages already delivered.
+public enum QueryCursor: @unchecked Sendable {
+    case cloudKit(CKQueryOperation.Cursor)
+    case offset(query: CKQuery, offset: Int)
+}
+
 /// A seam shaped exactly like the CKDatabase calls the store makes — not a
 /// backend abstraction. `CKDatabase` conforms by forwarding; tests inject an
 /// in-memory implementation (see the `ScoutDBTesting` product) that evaluates
@@ -14,10 +25,10 @@ import CloudKit
 ///
 public protocol CloudDatabase: Sendable {
     func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
-        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?
+        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     )
-    func records(continuingMatchFrom cursor: CKQueryOperation.Cursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
-        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?
+    func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     )
     func save(_ record: CKRecord) async throws -> CKRecord
     func modifyRecords(saving: [CKRecord], deleting: [CKRecord.ID]) async throws
@@ -65,22 +76,28 @@ extension CloudDatabase {
 // a CloudKit API whose shape differs from the requirement it implements.
 extension CKDatabase: CloudDatabase {
     public func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
-        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?
+        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
         try await throttled { database in
-            try await database.records(matching: query, inZoneWith: nil, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+            let (results, cursor) = try await database.records(matching: query, inZoneWith: nil, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+            return (results, cursor.map(QueryCursor.cloudKit))
         }
     }
 
-    public func records(continuingMatchFrom cursor: CKQueryOperation.Cursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
-        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?
+    public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        try await throttled { database in
-            try await withCheckedThrowingContinuation { continuation in
-                database.fetch(withCursor: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit) { result in
-                    continuation.resume(with: result)
+        // An offset cursor can only come from a test double; feeding it back into
+        // real CloudKit is a caller bug.
+        guard case .cloudKit(let cursor) = cursor else { throw CKError(.invalidArguments) }
+        return try await throttled { database in
+            let (results, next): (matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?) =
+                try await withCheckedThrowingContinuation { continuation in
+                    database.fetch(withCursor: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit) { result in
+                        continuation.resume(with: result)
+                    }
                 }
-            }
+            return (results, next.map(QueryCursor.cloudKit))
         }
     }
 
