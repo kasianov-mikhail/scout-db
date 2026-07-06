@@ -14,7 +14,7 @@ struct GridAggregator {
 
     // Adds the batch's contributions to the views: every write increments its cells.
     func record(_ batch: [EntityRecord], using definition: EntityDefinition) async throws {
-        try await apply(deltas(for: batch, using: definition, adding: true))
+        try await rebalance(removing: [], adding: batch, using: definition)
     }
 
     // Removes the batch's contributions when records are deleted or updated. Count, sum,
@@ -22,7 +22,39 @@ struct GridAggregator {
     // un-applied without rescanning, so its value cell is left untouched (best-effort) even
     // though its count still decrements. See docs/aggregation.md.
     func remove(_ batch: [EntityRecord], using definition: EntityDefinition) async throws {
-        try await apply(deltas(for: batch, using: definition, adding: false))
+        try await rebalance(removing: batch, adding: [], using: definition)
+    }
+
+    // Rebalances an update in one pass: the removed and the added contributions fold
+    // into a single delta map, so each touched grid record still costs one lookup and
+    // one write, and cells whose deltas cancel out skip the network entirely.
+    func rebalance(removing old: [EntityRecord], adding new: [EntityRecord], using definition: EntityDefinition) async throws {
+        var merged = deltas(for: old, using: definition, adding: false)
+        for (slot, cells) in deltas(for: new, using: definition, adding: true) {
+            for (index, delta) in cells {
+                merged[slot, default: [:]][index] = merged[slot]?[index].map { Self.merge($0, delta) } ?? delta
+            }
+        }
+        try await apply(
+            merged.compactMapValues { cells in
+                let live = cells.filter { !$0.value.isNoop }
+                return live.isEmpty ? nil : live
+            })
+    }
+
+    // Folds two deltas of one cell together. The value halves always carry the same
+    // view's metric kind, and a removal only sets a value for `sum` — so `combine`
+    // is the right merge for every kind.
+    private static func merge(_ lhs: CellDelta, _ rhs: CellDelta) -> CellDelta {
+        var merged = lhs
+        merged.count += rhs.count
+        if let squares = rhs.squares {
+            merged.squares = (merged.squares ?? 0) + squares
+        }
+        if let (kind, total) = rhs.value {
+            merged.value = (kind, merged.value.map { kind.combine($0.total, total) } ?? total)
+        }
+        return merged
     }
 
     // Folds the whole batch into per-cell deltas first, so each touched grid record costs
@@ -40,7 +72,7 @@ struct GridAggregator {
 
                 if let histogram = view.histogram {
                     guard let value = entityRecord.values[histogram.field]?.scalar else { continue }
-                    let slot = GridSlot(entity: entityRecord.entity, view: view.name, group: group, day: EntityCoder.calendar.startOfDay(for: date))
+                    let slot = GridSlot(entity: entityRecord.entity, view: view.name, group: group, day: EntityCoder.periodStart(of: .day, for: date))
                     let index = histogram.bounds.firstIndex { value < $0 } ?? histogram.bounds.count
                     deltas[slot, default: [:]][index, default: CellDelta()].count += sign
                     continue
@@ -88,19 +120,24 @@ struct GridAggregator {
         var count: Int64 = 0
         var value: (kind: AggregateView.Metric, total: Double)?
         var squares: Double?
+
+        // True when applying the delta cannot change the grid record: counts and
+        // squares cancelled out and the value is absent or a zero sum. A min/max
+        // value always applies — combining an extremum is never a no-op.
+        var isNoop: Bool {
+            count == 0 && (squares ?? 0) == 0 && (value.map { $0.kind == .sum && $0.total == 0 } ?? true)
+        }
     }
 
     static func bucket(_ bucket: AggregateView.Bucket, for date: Date) -> (period: Date, index: Int) {
         let calendar = EntityCoder.calendar
         switch bucket {
         case .hour:
-            return (calendar.startOfDay(for: date), calendar.component(.hour, from: date))
+            return (EntityCoder.periodStart(of: .day, for: date), calendar.component(.hour, from: date))
         case .weekday:
-            let week = calendar.dateInterval(of: .weekOfYear, for: date)?.start ?? date
-            return (week, calendar.component(.weekday, from: date) - 1)
+            return (EntityCoder.periodStart(of: .weekOfYear, for: date), calendar.component(.weekday, from: date) - 1)
         case .day:
-            let month = calendar.dateInterval(of: .month, for: date)?.start ?? date
-            return (month, calendar.component(.day, from: date) - 1)
+            return (EntityCoder.periodStart(of: .month, for: date), calendar.component(.day, from: date) - 1)
         }
     }
 

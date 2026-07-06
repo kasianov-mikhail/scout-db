@@ -28,24 +28,26 @@ extension EntityStore {
         let definition = try await registry.definition(for: entity)
         let coder = EntityCoder(keyProvider: keyProvider)
         var attempt = 0
+        var existing = try await items(entity: entity, uuids: [uuid]).first
 
         while true {
-            guard let existing = try await items(entity: entity, uuids: [uuid]).first else {
+            guard let stored = existing else {
                 throw SchemaError.notFound(uuid)
             }
-            let rewrite = try coder.rewrite(existing, using: definition, transform: transform)
+            let rewrite = try coder.rewrite(stored, using: definition, transform: transform)
             do {
                 try await database.write(record: rewrite.record)
             } catch let conflict as RecordConflictError {
                 attempt += 1
                 guard attempt < maxRetry else { throw conflict }
+                // The conflict already carries the winning record — retry against it
+                // instead of re-querying.
+                existing = conflict.serverRecord
                 continue
             }
             // Rebalance the views outside the CAS loop: drop the stored record's old
             // contribution, add the new one. A grid conflict here must not retry the update.
-            let aggregator = GridAggregator(database: database)
-            try await aggregator.remove([rewrite.previous], using: definition)
-            try await aggregator.record([rewrite.next], using: definition)
+            try await GridAggregator(database: database).rebalance(removing: [rewrite.previous], adding: [rewrite.next], using: definition)
             return
         }
     }
@@ -71,13 +73,10 @@ extension EntityStore {
         if let cursor {
             pageFilters.append(Filter(field: dateField, op: .greaterThanOrEquals, value: .date(cursor.date)))
         }
-        let (server, client) = try split(pageFilters, entity: entity, using: definition)
-        let matchers = client.map(Self.matcher(for:))
-        let serverFilters = server + [ServerFilter(field: "deleted", op: .equals, value: .int(0))]
-        let query = ckQuery(Entity.recordType, filters: serverFilters, sort: try serverSort([Sort(field: dateField)], using: definition))
+        let (query, included) = try liveQuery(pageFilters, entity: entity, sort: try serverSort([Sort(field: dateField)], using: definition), using: definition)
 
         let collected = try await boundedRecords(matching: query, desiredKeys: nil, limit: limit, using: definition) { record in
-            guard !record.deleted, matchers.allSatisfy({ $0(record) }) else { return false }
+            guard included(record) else { return false }
             guard let cursor else { return true }
             return Self.pageKey(record, dateField) > (cursor.date, cursor.uuid)
         }
@@ -118,32 +117,27 @@ extension EntityStore {
         }
         try await database.write(records: rewrites.map(\.record))
         // Rebalance the views: drop the old contributions, add the new ones.
-        let aggregator = GridAggregator(database: database)
-        try await aggregator.remove(rewrites.map(\.previous), using: definition)
-        try await aggregator.record(rewrites.map(\.next), using: definition)
+        try await GridAggregator(database: database).rebalance(removing: rewrites.map(\.previous), adding: rewrites.map(\.next), using: definition)
         return rewrites.count
     }
 
     // The live stored records behind a filtered read, kept as CKRecords rather than
     // decoded — a rewrite must encode back into the source record, which `read` discards.
     func matchedItems(entity: String, filters: [Filter], using definition: EntityDefinition) async throws -> [CKRecord] {
-        var (server, client) = try split(filters, entity: entity, using: definition)
-        server.append(ServerFilter(field: "deleted", op: .equals, value: .int(0)))
-        let matchers = client.map(Self.matcher(for:))
+        let (query, included) = try liveQuery(filters, entity: entity, using: definition)
         let coder = EntityCoder(keyProvider: keyProvider)
-        return try await database.allRecords(matching: ckQuery(Entity.recordType, filters: server)).filter { record in
+        return try await database.allRecords(matching: query).filter { record in
             if let trustedWriters {
                 guard let creator = record.recordCreator, trustedWriters.contains(creator) else { return false }
             }
-            let decoded = try coder.decode(record, using: definition)
-            return !decoded.deleted && matchers.allSatisfy { $0(decoded) }
+            return included(try coder.decode(record, using: definition))
         }
     }
 
     @discardableResult public func deleteAll(entity: String, filters: [Filter] = []) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         let victims = try await read(entity: entity, filters: filters)
-        let tombstones = victims.map { Self.tombstone(entity: entity, uuid: $0.uuid, definition: definition) }
+        let tombstones = try victims.map { try Self.tombstone(entity: entity, uuid: $0.uuid, definition: definition) }
         try await database.write(records: tombstones)
         try await GridAggregator(database: database).remove(victims, using: definition)
         return victims.count
@@ -160,7 +154,7 @@ extension EntityStore {
             ])
         let expired = try decode(try await database.allRecords(matching: query), using: definition).filter { !$0.deleted }
 
-        let tombstones = expired.map(\.uuid).sorted().map { Self.tombstone(entity: entity, uuid: $0, definition: definition) }
+        let tombstones = try expired.map(\.uuid).sorted().map { try Self.tombstone(entity: entity, uuid: $0, definition: definition) }
         try await database.write(records: tombstones)
         try await GridAggregator(database: database).remove(expired, using: definition)
         return expired.count
@@ -182,17 +176,34 @@ extension EntityStore {
         return decoded.first { !$0.deleted }
     }
 
+    // Chunk lookups are independent, so they run concurrently; the shared request
+    // limiter still bounds the actual CloudKit fan-out.
     func items(entity: String, uuids: [String]) async throws -> [CKRecord] {
-        var records: [CKRecord] = []
-        for chunk in uuids.chunked(into: 100) {
-            let query = ckQuery(
-                Entity.recordType,
-                filters: [
-                    ServerFilter(field: "entity", op: .equals, value: .string(entity)),
-                    ServerFilter(field: "uuid", op: .in, value: .strings(chunk)),
-                ])
-            records += try await database.allRecords(matching: query)
+        // CKRecord gains its Sendable annotation above this deployment target; each
+        // chunk's records are freshly fetched and handed over whole, never shared
+        // between tasks.
+        struct Chunk: @unchecked Sendable {
+            let index: Int
+            let records: [CKRecord]
         }
-        return records
+        let database = database
+        return try await withThrowingTaskGroup(of: Chunk.self) { group in
+            for (index, chunk) in uuids.chunked(into: 100).enumerated() {
+                group.addTask {
+                    let query = ckQuery(
+                        Entity.recordType,
+                        filters: [
+                            ServerFilter(field: "entity", op: .equals, value: .string(entity)),
+                            ServerFilter(field: "uuid", op: .in, value: .strings(chunk)),
+                        ])
+                    return Chunk(index: index, records: try await database.allRecords(matching: query))
+                }
+            }
+            var chunks: [Int: [CKRecord]] = [:]
+            for try await chunk in group {
+                chunks[chunk.index] = chunk.records
+            }
+            return chunks.sorted { $0.key < $1.key }.flatMap(\.value)
+        }
     }
 }

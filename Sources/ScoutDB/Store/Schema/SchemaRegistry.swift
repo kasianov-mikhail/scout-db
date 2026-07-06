@@ -29,18 +29,6 @@ public actor SchemaRegistry {
         return definition
     }
 
-    public func definition(for entity: String, version: Int) async throws -> EntityDefinition {
-        var definition = try await definition(for: entity)
-        if definition.version < version {
-            cache[entity] = nil
-            definition = try await self.definition(for: entity)
-        }
-        guard definition.version >= version else {
-            throw SchemaError.staleSchema(entity: entity, version: version)
-        }
-        return definition
-    }
-
     public func definitions() -> [EntityDefinition] {
         Array(cache.values)
     }

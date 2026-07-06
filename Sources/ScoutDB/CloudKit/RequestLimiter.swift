@@ -49,9 +49,7 @@ struct CloudKitRequestLimiter {
 extension CKDatabase {
     @discardableResult func throttled<R>(body: @Sendable @escaping (CKDatabase) async throws -> R) async throws -> R {
         try await requestLimiter.withSlot {
-            try await withRequestTimeout(requestTimeout) {
-                try await self.configuredWith(configuration: .scoutDB, body: body)
-            }
+            try await self.configuredWith(configuration: .scoutDB, body: body)
         }
     }
 }

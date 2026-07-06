@@ -133,13 +133,17 @@ extension EntityStore {
         case (_, nil):
             return .orderedDescending
         case (.string(let lhs)?, .string(let rhs)?):
-            return lhs == rhs ? .orderedSame : (lhs < rhs ? .orderedAscending : .orderedDescending)
+            return order(lhs, rhs)
         case (.date(let lhs)?, .date(let rhs)?):
-            return lhs == rhs ? .orderedSame : (lhs < rhs ? .orderedAscending : .orderedDescending)
+            return order(lhs, rhs)
         default:
             guard let lhs = lhs?.scalar, let rhs = rhs?.scalar else { return .orderedSame }
-            return lhs == rhs ? .orderedSame : (lhs < rhs ? .orderedAscending : .orderedDescending)
+            return order(lhs, rhs)
         }
+    }
+
+    private static func order<T: Comparable>(_ lhs: T, _ rhs: T) -> ComparisonResult {
+        lhs == rhs ? .orderedSame : (lhs < rhs ? .orderedAscending : .orderedDescending)
     }
 
     // Splits logical filters into predicates CloudKit can run and matchers the
