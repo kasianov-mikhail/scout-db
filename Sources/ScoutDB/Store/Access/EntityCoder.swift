@@ -79,6 +79,27 @@ struct EntityCoder {
         return contentDigest(of: key)
     }
 
+    // One rewritten record: the decoded state before the transform, the state
+    // after, and the CKRecord encoded back into the source.
+    struct Rewrite {
+        let previous: EntityRecord
+        let next: EntityRecord
+        let record: CKRecord
+    }
+
+    // The one read-modify-write pipeline: decode the stored record, apply the
+    // transform, resolve, and encode back into the source CKRecord. Encoding into
+    // the source is what carries the untouched ciphertext of encrypted fields
+    // across a keyless rewrite, so every rewrite path — update, updateAll,
+    // backfill — must come through here instead of encoding a fresh record.
+    func rewrite(_ record: CKRecord, using definition: EntityDefinition, transform: (inout EntityRecord) throws -> Void) throws -> Rewrite {
+        let previous = try decode(record, using: definition)
+        var next = previous
+        try transform(&next)
+        next.values = try resolve(next.values, at: next.schemaVersion, using: definition)
+        return Rewrite(previous: previous, next: next, record: try encode(next, using: definition, into: record))
+    }
+
     // The record's values must already be resolved (defaults filled, derivations
     // applied, constraints validated) — callers run `resolve` once and encode the
     // result, so the derivation fixpoint never runs twice per write.
