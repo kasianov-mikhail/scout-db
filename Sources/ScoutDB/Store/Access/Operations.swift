@@ -34,13 +34,9 @@ extension EntityStore {
             guard let stored = existing else {
                 throw SchemaError.notFound(uuid)
             }
-            let previous = try coder.decode(stored, using: definition)
-            var entityRecord = previous
-            try transform(&entityRecord)
-            entityRecord.values = try coder.resolve(entityRecord.values, at: entityRecord.schemaVersion, using: definition)
-            let encoded = try coder.encode(entityRecord, using: definition, into: stored)
+            let rewrite = try coder.rewrite(stored, using: definition, transform: transform)
             do {
-                try await database.write(record: encoded)
+                try await database.write(record: rewrite.record)
             } catch let conflict as RecordConflictError {
                 attempt += 1
                 guard attempt < maxRetry else { throw conflict }
@@ -51,7 +47,7 @@ extension EntityStore {
             }
             // Rebalance the views outside the CAS loop: drop the stored record's old
             // contribution, add the new one. A grid conflict here must not retry the update.
-            try await GridAggregator(database: database).rebalance(removing: [previous], adding: [entityRecord], using: definition)
+            try await GridAggregator(database: database).rebalance(removing: [rewrite.previous], adding: [rewrite.next], using: definition)
             return
         }
     }
@@ -116,21 +112,26 @@ extension EntityStore {
     @discardableResult public func updateAll(entity: String, filters: [Filter] = [], transform: (inout EntityRecord) throws -> Void) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         let coder = EntityCoder(keyProvider: keyProvider)
-
-        var previous: [EntityRecord] = []
-        var next: [EntityRecord] = []
-        var updated: [CKRecord] = []
-        for var record in try await read(entity: entity, filters: filters) {
-            previous.append(record)
-            try transform(&record)
-            record.values = try coder.resolve(record.values, at: record.schemaVersion, using: definition)
-            next.append(record)
-            updated.append(try coder.encode(record, using: definition))
+        let rewrites = try await matchedItems(entity: entity, filters: filters, using: definition).map {
+            try coder.rewrite($0, using: definition, transform: transform)
         }
-        try await database.write(records: updated)
+        try await database.write(records: rewrites.map(\.record))
         // Rebalance the views: drop the old contributions, add the new ones.
-        try await GridAggregator(database: database).rebalance(removing: previous, adding: next, using: definition)
-        return updated.count
+        try await GridAggregator(database: database).rebalance(removing: rewrites.map(\.previous), adding: rewrites.map(\.next), using: definition)
+        return rewrites.count
+    }
+
+    // The live stored records behind a filtered read, kept as CKRecords rather than
+    // decoded — a rewrite must encode back into the source record, which `read` discards.
+    func matchedItems(entity: String, filters: [Filter], using definition: EntityDefinition) async throws -> [CKRecord] {
+        let (query, included) = try liveQuery(filters, entity: entity, using: definition)
+        let coder = EntityCoder(keyProvider: keyProvider)
+        return try await database.allRecords(matching: query).filter { record in
+            if let trustedWriters {
+                guard let creator = record.recordCreator, trustedWriters.contains(creator) else { return false }
+            }
+            return included(try coder.decode(record, using: definition))
+        }
     }
 
     @discardableResult public func deleteAll(entity: String, filters: [Filter] = []) async throws -> Int {

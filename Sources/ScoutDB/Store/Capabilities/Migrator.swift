@@ -27,25 +27,24 @@ public struct Migrator: Sendable {
             filters: [
                 ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                 ServerFilter(field: "schema_version", op: .lessThan, value: .int(Int64(definition.version))),
+                ServerFilter(field: "deleted", op: .equals, value: .int(0)),
             ])
         let outdated = try await database.allRecords(matching: query)
 
-        // Rewriting reuses the record IDs, so backends upsert in place. Slots freed by the
-        // new version keep their old values on the server — correctness relies on the
-        // registry invariant that a slot is never reassigned while old records exist.
+        // Rewriting goes back into the stored records, so backends upsert in place. Slots
+        // freed by the new version keep their old values on the server — correctness relies
+        // on the registry invariant that a slot is never reassigned while old records exist.
         // Interrupted runs are safe to repeat: migrated records leave the query above.
         let coder = EntityCoder(keyProvider: keyProvider)
-        var migrated: [CKRecord] = []
-        for record in outdated {
-            let decoded = try coder.decode(record, using: definition)
-            guard !decoded.deleted else { continue }
-            var entityRecord = EntityRecord(entity: entity, uuid: decoded.uuid, schemaVersion: definition.version, values: rekey(decoded, using: definition))
-            try transform(&entityRecord)
-            entityRecord.values = try coder.resolve(entityRecord.values, at: definition.version, using: definition)
-            migrated.append(try coder.encode(entityRecord, using: definition))
+        let migrated = try outdated.map { record in
+            try coder.rewrite(record, using: definition) { entityRecord in
+                entityRecord = EntityRecord(
+                    entity: entity, uuid: entityRecord.uuid, schemaVersion: definition.version, values: rekey(entityRecord, using: definition))
+                try transform(&entityRecord)
+            }
         }
 
-        try await database.write(records: migrated)
+        try await database.write(records: migrated.map(\.record))
         return migrated.count
     }
 
