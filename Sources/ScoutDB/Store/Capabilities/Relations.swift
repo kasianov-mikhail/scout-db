@@ -34,13 +34,24 @@ extension EntityStore {
     public func delete(entity: String, uuid: String, cascade: Bool) async throws {
         try await delete(entity: entity, uuid: uuid)
         guard cascade else { return }
+        try await cascadeDelete(entity: entity, uuids: [uuid])
+    }
 
+    // Tombstones every record referencing the deleted parents, level by level: each
+    // referencing entity costs one chunked read, one batched tombstone write, and one
+    // aggregate pass — not a per-record delete.
+    private func cascadeDelete(entity: String, uuids: [String]) async throws {
         for child in await registry.definitions() {
             for field in child.fields(at: child.version) where field.references == entity {
-                let filter = Filter(field: field.name, op: .equals, value: .string(uuid))
-                for record in try await read(entity: child.entity, filters: [filter]) {
-                    try await delete(entity: child.entity, uuid: record.uuid, cascade: true)
+                var victims: [EntityRecord] = []
+                for chunk in uuids.chunked(into: 100) {
+                    victims += try await read(entity: child.entity, filters: [Filter(field: field.name, op: .in, value: .strings(chunk))])
                 }
+                guard victims.count > 0 else { continue }
+                let tombstones = try victims.map { try Self.tombstone(entity: child.entity, uuid: $0.uuid, definition: child) }
+                try await database.write(records: tombstones)
+                try await GridAggregator(database: database).remove(victims, using: child)
+                try await cascadeDelete(entity: child.entity, uuids: victims.map(\.uuid))
             }
         }
     }

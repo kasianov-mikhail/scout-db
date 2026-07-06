@@ -46,9 +46,9 @@ extension EntityStore {
 
         let uuid = UUID().uuidString
         let steps = try JSONEncoder().encode(draft.steps)
-        try await write(["status": .string("pending"), "date": .date(Date()), "steps": .bytes(steps)], entity: Self.transactionEntity, uuid: uuid)
+        try await writeTransaction(status: "pending", steps: steps, uuid: uuid)
         try await apply(draft.steps)
-        try await write(["status": .string("committed"), "date": .date(Date()), "steps": .bytes(steps)], entity: Self.transactionEntity, uuid: uuid)
+        try await writeTransaction(status: "committed", steps: steps, uuid: uuid)
         return uuid
     }
 
@@ -65,15 +65,30 @@ extension EntityStore {
         for transaction in pending {
             guard case .bytes(let data)? = transaction.values["steps"] else { continue }
             try await apply(try JSONDecoder().decode([TransactionStep].self, from: data))
-            try await write(
-                ["status": .string("committed"), "date": .date(Date()), "steps": .bytes(data)], entity: Self.transactionEntity, uuid: transaction.uuid)
+            try await writeTransaction(status: "committed", steps: data, uuid: transaction.uuid)
         }
         return pending.count
     }
 
+    // The transaction envelope record, written once as "pending" and again as "committed".
+    private func writeTransaction(status: String, steps: Data, uuid: String) async throws {
+        try await write(["status": .string(status), "date": .date(Date()), "steps": .bytes(steps)], entity: Self.transactionEntity, uuid: uuid)
+    }
+
+    // Consecutive steps on one entity flush as a single batched write — order across
+    // entities is preserved, and a repeated uuid starts a new batch so later steps
+    // still overwrite earlier ones the way sequential writes did.
     private func apply(_ steps: [TransactionStep]) async throws {
-        for step in steps {
-            try await write(step.values, entity: step.entity, uuid: step.uuid)
+        var index = 0
+        while index < steps.count {
+            let entity = steps[index].entity
+            var uuids: Set<String> = []
+            var batch: [EntityWrite] = []
+            while index < steps.count, steps[index].entity == entity, uuids.insert(steps[index].uuid).inserted {
+                batch.append(EntityWrite(values: steps[index].values, uuid: steps[index].uuid))
+                index += 1
+            }
+            try await write(batch, entity: entity)
         }
     }
 }
