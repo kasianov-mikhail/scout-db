@@ -11,13 +11,8 @@ dependencies: [
 ## Upload the schema
 
 The physical CloudKit schema ships as the [`Schema`](../Schema) file at the repository root.
-Upload it once per container:
-
-```sh
-xcrun cktool import-schema \
-    --team-id <team> --container-id <container> \
-    --environment development --file Schema
-```
+Upload it once per container through the CloudKit Console: select your container, open
+**Schema**, and use **Import Schema** to upload the file to the Development environment.
 
 Deploy to Production from the CloudKit Console when ready. After that the file is frozen —
 every schema change in your app is a data change, not a re-import.
