@@ -45,15 +45,12 @@ dependencies: [
 ]
 ```
 
-Upload the [`Schema`](Schema) file to your CloudKit container once:
+Upload the [`Schema`](Schema) file to your CloudKit container once, via the
+[CloudKit Console](https://icloud.developer.apple.com/dashboard/): select your container,
+open **Schema**, and use **Import Schema** to upload the file to the Development environment.
 
-```sh
-xcrun cktool import-schema --team-id <team> --container-id <container> \
-    --environment development --file Schema
-```
-
-Deploy it to Production from the [CloudKit Console](https://icloud.developer.apple.com/dashboard/)
-when ready — this is the only schema upload the container will ever need.
+Deploy it to Production from the console when ready — this is the only schema upload the
+container will ever need.
 
 ## Usage
 
