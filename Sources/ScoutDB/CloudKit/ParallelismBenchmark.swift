@@ -5,10 +5,6 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 //
-// Maintenance tooling for `cloudKitParallelismLimit`. Both functions talk to
-// CloudKit directly, bypassing the limiter, so concurrency levels above the
-// configured limit are actually exercised.
-//
 
 import CloudKit
 import Foundation
