@@ -33,7 +33,9 @@ private struct UncheckedBox<T>: @unchecked Sendable {
 // `onSettled` runs once the operation itself finishes, even when the caller was
 // already unblocked by the timeout or its own cancellation; resources tied to the
 // request (like a limiter slot) stay claimed for as long as it is actually in flight.
-func withRequestTimeout<R>(_ timeout: Duration, _ operation: @Sendable @escaping () async throws -> R, onSettled: (@Sendable () async -> Void)? = nil) async throws -> R {
+func withRequestTimeout<R>(
+    _ timeout: Duration, _ operation: @Sendable @escaping () async throws -> R, onSettled: (@Sendable () async -> Void)? = nil
+) async throws -> R {
     let relay = ResultRelay<UncheckedBox<R>>()
     let operationTask = Task {
         do {

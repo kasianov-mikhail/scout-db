@@ -43,9 +43,11 @@ struct CloudKitRequestLimiter {
         // The slot is freed when the request settles, not when the caller is
         // unblocked, so an abandoned request cannot push real parallelism past
         // the limit - and a drain waits for true quiescence.
-        return try await withRequestTimeout(timeout, body, onSettled: { [semaphore] in
-            await semaphore.release()
-        })
+        return try await withRequestTimeout(
+            timeout, body,
+            onSettled: { [semaphore] in
+                await semaphore.release()
+            })
     }
 
     func withAllSlots<R>(body: () async throws -> R) async throws -> R {
