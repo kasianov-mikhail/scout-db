@@ -20,7 +20,9 @@ struct AsyncSemaphoreTests {
             try await limiter.acquire()
         }
 
-        await limiter.releaseAll()
+        for _ in 0..<3 {
+            await limiter.release()
+        }
     }
 
     @Test("Never exceeds the limit under contention")
@@ -132,7 +134,7 @@ struct AsyncSemaphoreTests {
     @Test("acquireAll blocks new requests until releaseAll")
     func testAcquireAllBlocksUntilReleaseAll() async throws {
         let limiter = AsyncSemaphore(limit: 2)
-        await limiter.acquireAll()
+        try await limiter.acquireAll()
 
         let entered = Box(false)
         let waiter = Task {
@@ -157,10 +159,10 @@ struct AsyncSemaphoreTests {
 
         let drains = [
             Task {
-                await limiter.withAllSlots { true }
+                try await limiter.withAllSlots { true }
             },
             Task {
-                await limiter.withAllSlots { true }
+                try await limiter.withAllSlots { true }
             },
         ]
 
@@ -170,8 +172,154 @@ struct AsyncSemaphoreTests {
         await limiter.release()
 
         for drain in drains {
-            #expect(await drain.value)
+            #expect(try await drain.value)
         }
+    }
+
+    @Test("acquireAll throws on an already-cancelled task without claiming the drain")
+    func testAlreadyCancelledAcquireAllThrows() async throws {
+        let limiter = AsyncSemaphore(limit: 1)
+
+        let task = Task {
+            try? await Task.sleep(for: .seconds(60))
+            try await limiter.acquireAll()
+        }
+        task.cancel()
+
+        await #expect(throws: CancellationError.self) {
+            try await task.value
+        }
+
+        // Would hang here if the cancelled task had claimed the drain.
+        try await limiter.acquire()
+        await limiter.release()
+    }
+
+    @Test("A cancelled queued drain throws and the chain continues past it")
+    func testCancelledDrainWaiterThrows() async throws {
+        let limiter = AsyncSemaphore(limit: 1)
+        try await limiter.acquireAll()
+
+        let cancelled = Task {
+            try await limiter.acquireAll()
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+        cancelled.cancel()
+
+        await #expect(throws: CancellationError.self) {
+            try await cancelled.value
+        }
+
+        await limiter.releaseAll()
+        // Would hang here if the drain had been handed to the cancelled caller.
+        try await limiter.acquire()
+        await limiter.release()
+    }
+
+    @Test("Cancelling a drain that is waiting out a slot hands the semaphore back")
+    func testCancelledDrainOwnerHandsBack() async throws {
+        let limiter = AsyncSemaphore(limit: 1)
+        try await limiter.acquire()
+
+        let drain = Task {
+            try await limiter.acquireAll()
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+        drain.cancel()
+
+        await #expect(throws: CancellationError.self) {
+            try await drain.value
+        }
+
+        await limiter.release()
+        // Would hang here if the abandoned drain still blocked new requests.
+        try await limiter.acquire()
+        await limiter.release()
+    }
+
+    @Test("A queued drain takes ownership before queued single-slot waiters")
+    func testDrainHandOffPrecedesWaiters() async throws {
+        let limiter = AsyncSemaphore(limit: 2)
+        try await limiter.acquireAll()
+
+        let events = Events()
+        let waiter = Task {
+            try await limiter.acquire()
+            await events.append("acquire")
+            await limiter.release()
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+
+        let drain = Task {
+            try await limiter.withAllSlots {
+                await events.append("drain")
+            }
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+
+        await limiter.releaseAll()
+        try await drain.value
+        try await waiter.value
+
+        #expect(await events.log == ["drain", "acquire"])
+    }
+}
+
+@Suite("CloudKitRequestLimiter")
+struct CloudKitRequestLimiterTests {
+    @Test("The backstop clock starts when the slot is granted, not when the request queues")
+    func testTimeoutExcludesQueueTime() async throws {
+        let limiter = CloudKitRequestLimiter(limit: 1, timeout: .milliseconds(500))
+
+        // Back to back the two requests take ~600ms of wall time - past the
+        // 500ms backstop; the second would spuriously time out if its clock
+        // covered the time it spends queued behind the first.
+        async let first: Void = limiter.withSlot {
+            try? await Task.sleep(for: .milliseconds(300))
+        }
+        async let second: Void = limiter.withSlot {
+            try? await Task.sleep(for: .milliseconds(300))
+        }
+        try await first
+        try await second
+    }
+
+    @Test("A timed-out request keeps its slot until it actually settles")
+    func testAbandonedRequestHoldsSlot() async throws {
+        let limiter = CloudKitRequestLimiter(limit: 1, timeout: .milliseconds(50))
+        let settled = Box(false)
+
+        let stuck = Task {
+            try await limiter.withSlot {
+                // A request that ignores cancellation: detached work resumes
+                // the continuation on its own schedule, like a stalled
+                // CloudKit call that outlives the backstop.
+                await withCheckedContinuation { continuation in
+                    Task.detached {
+                        try? await Task.sleep(for: .milliseconds(200))
+                        settled.value = true
+                        continuation.resume()
+                    }
+                }
+            }
+        }
+        await #expect(throws: RequestTimeoutError.self) {
+            try await stuck.value
+        }
+
+        // The next request must wait for the abandoned one to settle instead
+        // of running alongside it past the parallelism limit.
+        try await limiter.withSlot {
+            #expect(settled.value)
+        }
+    }
+}
+
+private actor Events {
+    private(set) var log: [String] = []
+
+    func append(_ event: String) {
+        log.append(event)
     }
 }
 

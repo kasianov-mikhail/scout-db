@@ -19,8 +19,12 @@ public func benchmarkCloudKitParallelism(container: CKContainer, recordType: Str
 
     print("[ScoutDBBench] concurrency sweep \(counts), \(rounds) round(s) each, record type \(recordType)")
 
-    await requestLimiter.withAllSlots {
-        await runSweep(container.publicCloudDatabase, recordType: recordType, counts: counts, rounds: rounds)
+    do {
+        try await requestLimiter.withAllSlots {
+            await runSweep(container.publicCloudDatabase, recordType: recordType, counts: counts, rounds: rounds)
+        }
+    } catch {
+        print("[ScoutDBBench] cancelled while waiting for exclusive CloudKit access")
     }
 }
 
@@ -69,8 +73,13 @@ private func runSweep(_ database: CKDatabase, recordType: String, counts: [Int],
 @discardableResult public func verifyParallelismBenchmark(container: CKContainer, recordType: String = "Entity") async -> Bool {
     print("[ScoutDBVerify] checking that \(cloudKitParallelismLimit) in-flight CloudKit requests is still the right limit")
 
-    return await requestLimiter.withAllSlots {
-        await runVerification(container.publicCloudDatabase, recordType: recordType)
+    do {
+        return try await requestLimiter.withAllSlots {
+            await runVerification(container.publicCloudDatabase, recordType: recordType)
+        }
+    } catch {
+        print("[ScoutDBVerify] cancelled while waiting for exclusive CloudKit access")
+        return false
     }
 }
 
@@ -121,10 +130,13 @@ private func makeQuery(_ recordType: String) -> CKQuery {
 }
 
 /// A single query against CloudKit, bypassing the limiter (but with the same
-/// operation configuration as every throttled call).
+/// operation configuration and backstop timeout as every throttled call - a
+/// silent server-side stall here would otherwise pin every claimed slot).
 private func rawRead(_ database: CKDatabase, recordType: String) async throws {
-    _ = try await database.configuredWith(configuration: .scoutDB) { database in
-        try await database.records(matching: makeQuery(recordType), desiredKeys: [], resultsLimit: resultsLimit)
+    _ = try await withRequestTimeout(requestTimeout) {
+        try await database.configuredWith(configuration: .scoutDB) { database in
+            try await database.records(matching: makeQuery(recordType), desiredKeys: [], resultsLimit: resultsLimit)
+        }
     }
 }
 
