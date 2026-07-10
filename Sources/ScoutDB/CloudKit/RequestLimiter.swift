@@ -15,9 +15,12 @@ public let cloudKitParallelismLimit = 8
 let requestLimiter = CloudKitRequestLimiter(limit: cloudKitParallelismLimit, timeout: requestTimeout)
 
 // A backstop above CloudKit's own 10s request/resource timeout: a write can stall
-// server-side without that timeout firing, so this cancels the operation and frees
-// its request slot rather than letting a single stuck call starve the pool.
-private let requestTimeout: Duration = .seconds(30)
+// server-side without that timeout firing, so this cancels the operation and
+// unblocks the caller rather than letting a single stuck call starve everyone.
+// The request slot itself stays claimed until the operation actually finishes,
+// keeping real in-flight parallelism inside the limit even while a stuck request
+// lingers on the wire.
+let requestTimeout: Duration = .seconds(30)
 
 /// Applies ScoutDB's CloudKit request policy: bounded parallelism plus a backstop timeout.
 ///
@@ -36,12 +39,16 @@ struct CloudKitRequestLimiter {
     }
 
     func withSlot<R>(body: @Sendable @escaping () async throws -> R) async throws -> R {
-        try await semaphore.withSlot {
-            try await withRequestTimeout(timeout, body)
-        }
+        try await semaphore.acquire()
+        // The slot is freed when the request settles, not when the caller is
+        // unblocked, so an abandoned request cannot push real parallelism past
+        // the limit - and a drain waits for true quiescence.
+        return try await withRequestTimeout(timeout, body, onSettled: { [semaphore] in
+            await semaphore.release()
+        })
     }
 
-    func withAllSlots<R>(body: () async throws -> R) async rethrows -> R {
+    func withAllSlots<R>(body: () async throws -> R) async throws -> R {
         try await semaphore.withAllSlots(body: body)
     }
 }

@@ -12,12 +12,23 @@ actor AsyncSemaphore {
     private var isDraining = false
     private var nextWaiterID = 0
     private var waiters: [Waiter] = []
-    private var drainWaiters: [CheckedContinuation<Void, Never>] = []
-    private var drained: CheckedContinuation<Void, Never>?
+    private var drainWaiters: [Waiter] = []
+    private var drained: Waiter?
 
     private struct Waiter {
         let id: Int
         let continuation: CheckedContinuation<Void, any Error>
+    }
+
+    // The three places a caller can be parked, all sharing the same
+    // registration and cancellation handling.
+    private enum Spot {
+        /// Waiting for a single slot to free up.
+        case slot
+        /// Waiting to be handed ownership of the drain.
+        case drain
+        /// Owning the drain, waiting for in-flight operations to finish.
+        case drained
     }
 
     init(limit: Int) {
@@ -26,8 +37,9 @@ actor AsyncSemaphore {
 
     /// Waits until a slot is free and claims it; pair with `release()`.
     ///
-    /// Throws `CancellationError` without claiming a slot when the task is cancelled,
-    /// so an abandoned caller leaves the queue instead of parking until a slot frees.
+    /// Throws `CancellationError` without holding a slot when the task is cancelled,
+    /// so an abandoned caller leaves the queue instead of parking until a slot frees;
+    /// a slot granted in the same instant cancellation lands is handed on.
     ///
     func acquire() async throws {
         try Task.checkCancellation()
@@ -35,32 +47,21 @@ actor AsyncSemaphore {
             running += 1
             return
         }
-        let id = nextWaiterID
-        nextWaiterID += 1
-        try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                waiters.append(Waiter(id: id, continuation: continuation))
-                // Cancellation may have fired before the waiter was registered,
-                // in which case the onCancel hop found nothing to remove.
-                if Task.isCancelled { cancelWaiter(id: id) }
-            }
-        } onCancel: {
-            Task { await self.cancelWaiter(id: id) }
+        try await park(in: .slot)
+        if Task.isCancelled {
+            release()
+            throw CancellationError()
         }
-    }
-
-    private func cancelWaiter(id: Int) {
-        guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
-        waiters.remove(at: index).continuation.resume(throwing: CancellationError())
     }
 
     /// Frees the slot, handing it to the longest-waiting request if any.
     func release() {
+        precondition(running > 0, "release() without a matching acquire()")
         running -= 1
         if isDraining {
-            if running == 0 {
-                drained?.resume()
+            if running == 0, let owner = drained {
                 drained = nil
+                owner.continuation.resume(returning: ())
             }
             return
         }
@@ -71,32 +72,81 @@ actor AsyncSemaphore {
     ///
     /// Waits out in-flight operations and blocks new ones until `releaseAll()`.
     /// Drains are atomic: concurrent callers queue up instead of deadlocking on each
-    /// other's partially claimed slots.
+    /// other's partially claimed slots, and ownership passes directly from one drain
+    /// to the next so no `acquire()` can barge in between them.
     ///
-    func acquireAll() async {
-        while isDraining {
-            await withCheckedContinuation { continuation in
-                drainWaiters.append(continuation)
-            }
+    /// Throws `CancellationError` without holding the drain when the task is
+    /// cancelled, handing a partially claimed drain to the next queued caller.
+    ///
+    func acquireAll() async throws {
+        try Task.checkCancellation()
+        if isDraining {
+            try await park(in: .drain)
+        } else {
+            isDraining = true
         }
-        isDraining = true
-        if running > 0 {
-            await withCheckedContinuation { continuation in
-                drained = continuation
+        do {
+            if running > 0 {
+                try await park(in: .drained)
             }
+            try Task.checkCancellation()
+        } catch {
+            handOffDrain()
+            throw error
         }
-        running = limit
     }
 
-    /// Releases all slots claimed by `acquireAll()`.
+    /// Releases the drain claimed by `acquireAll()`.
     func releaseAll() {
-        running = 0
-        isDraining = false
+        precondition(isDraining, "releaseAll() without a matching acquireAll()")
+        handOffDrain()
+    }
+
+    // Passes drain ownership to the next queued drain, or reopens the slots.
+    // Ownership transfers while `isDraining` stays true, so no acquire() can
+    // slip in between two drains.
+    private func handOffDrain() {
         if drainWaiters.count > 0 {
-            drainWaiters.removeFirst().resume()
+            drainWaiters.removeFirst().continuation.resume(returning: ())
             return
         }
+        isDraining = false
         resumeWaiters()
+    }
+
+    private func park(in spot: Spot) async throws {
+        let id = nextWaiterID
+        nextWaiterID += 1
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let waiter = Waiter(id: id, continuation: continuation)
+                switch spot {
+                case .slot: waiters.append(waiter)
+                case .drain: drainWaiters.append(waiter)
+                case .drained: drained = waiter
+                }
+                // Cancellation may have fired before the waiter was registered,
+                // in which case the onCancel hop found nothing to remove.
+                if Task.isCancelled { cancel(waiterID: id, in: spot) }
+            }
+        } onCancel: {
+            Task { await self.cancel(waiterID: id, in: spot) }
+        }
+    }
+
+    private func cancel(waiterID id: Int, in spot: Spot) {
+        switch spot {
+        case .slot:
+            guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+            waiters.remove(at: index).continuation.resume(throwing: CancellationError())
+        case .drain:
+            guard let index = drainWaiters.firstIndex(where: { $0.id == id }) else { return }
+            drainWaiters.remove(at: index).continuation.resume(throwing: CancellationError())
+        case .drained:
+            guard let owner = drained, owner.id == id else { return }
+            drained = nil
+            owner.continuation.resume(throwing: CancellationError())
+        }
     }
 
     private func resumeWaiters() {
@@ -106,28 +156,19 @@ actor AsyncSemaphore {
         }
     }
 
-    /// Runs `body` while holding one slot.
+    /// Runs `body` while holding every slot.
     ///
     /// Throws `CancellationError` without running `body` when the task is cancelled
-    /// while waiting for a slot.
+    /// while waiting for the drain.
     ///
-    nonisolated func withSlot<R>(body: () async throws -> R) async throws -> R {
-        try await holding({ try await acquire() }, until: { await release() }, body: body)
-    }
-
-    /// Runs `body` while holding every slot.
-    nonisolated func withAllSlots<R>(body: () async throws -> R) async rethrows -> R {
-        try await holding({ await acquireAll() }, until: { await releaseAll() }, body: body)
-    }
-
-    nonisolated private func holding<R>(_ claim: () async throws -> Void, until free: () async -> Void, body: () async throws -> R) async rethrows -> R {
-        try await claim()
+    nonisolated func withAllSlots<R>(body: () async throws -> R) async throws -> R {
+        try await acquireAll()
         do {
             let result = try await body()
-            await free()
+            await releaseAll()
             return result
         } catch {
-            await free()
+            await releaseAll()
             throw error
         }
     }

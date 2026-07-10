@@ -7,8 +7,9 @@
 
 import Foundation
 
-/// Thrown when a CloudKit request outlives the scout-db backstop timeout and is
-/// cancelled, freeing its request slot instead of stalling the whole pool.
+/// Thrown when a CloudKit request outlives the scout-db backstop timeout; the
+/// caller is unblocked immediately while the request is cancelled and abandoned
+/// to finish in the background.
 public struct RequestTimeoutError: LocalizedError {
     /// The elapsed limit, in seconds, the request exceeded before cancellation.
     public let seconds: Int
@@ -28,13 +29,23 @@ private struct UncheckedBox<T>: @unchecked Sendable {
 // unstructured tasks so the timeout (or the caller's cancellation) surfaces
 // immediately even when the operation never honors its cancellation - a structured
 // group would swallow the timeout error until the stuck child resumed.
-func withRequestTimeout<R>(_ timeout: Duration, _ operation: @Sendable @escaping () async throws -> R) async throws -> R {
+//
+// `onSettled` runs once the operation itself finishes, even when the caller was
+// already unblocked by the timeout or its own cancellation; resources tied to the
+// request (like a limiter slot) stay claimed for as long as it is actually in flight.
+func withRequestTimeout<R>(_ timeout: Duration, _ operation: @Sendable @escaping () async throws -> R, onSettled: (@Sendable () async -> Void)? = nil) async throws -> R {
     let relay = ResultRelay<UncheckedBox<R>>()
     let operationTask = Task {
         do {
             await relay.finish(with: .success(UncheckedBox(value: try await operation())))
         } catch {
             await relay.finish(with: .failure(error))
+        }
+    }
+    if let onSettled {
+        Task {
+            await operationTask.value
+            await onSettled()
         }
     }
     let timerTask = Task {
