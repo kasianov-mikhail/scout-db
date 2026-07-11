@@ -353,3 +353,19 @@ public enum SchemaError: Error, Equatable {
     case staleSchema(entity: String, version: Int)
     case invalidDefinition(String)
 }
+
+extension SchemaError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .unknownEntity(let name): "Unknown entity '\(name)'"
+        case .unknownField(let name): "Unknown field '\(name)'"
+        case .typeMismatch(let name): "Type mismatch for field '\(name)'"
+        case .missingField(let name): "Missing required field '\(name)'"
+        case .invalidValue(let name): "Invalid value for field '\(name)'"
+        case .missingKey(let name): "Missing key '\(name)'"
+        case .notFound(let name): "Not found: '\(name)'"
+        case .staleSchema(let entity, let version): "Stale schema for entity '\(entity)' at version \(version)"
+        case .invalidDefinition(let message): "Invalid definition: \(message)"
+        }
+    }
+}
