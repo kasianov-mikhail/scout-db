@@ -66,7 +66,13 @@ struct SchemaConsistencyTests {
     func gridCells() {
         let fields = Self.fields(of: "Aggregate")
         #expect(fields.filter { $0.name.hasPrefix("c_") }.count == 64)
-        #expect(fields.filter { $0.name.hasPrefix("f_") }.count == 64)
+
+        // Value cells hold bucket totals at 0...30 (time buckets never exceed index 30)
+        // and sums of squares `squareOffset` above, at 32...62 — f_31 and f_63 are
+        // unaddressable, so the schema omits them.
+        let buckets = 0...30
+        let expected = Set(buckets.map(Aggregate.valueCell) + buckets.map(Aggregate.squareCell))
+        #expect(Set(fields.map(\.name).filter { $0.hasPrefix("f_") }) == expected)
         let names = Set(fields.map(\.name))
         for field in ["entity", "view", "group_key", "date", "schema_version"] {
             #expect(names.contains(field), "Aggregate is missing '\(field)'")

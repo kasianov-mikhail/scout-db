@@ -365,7 +365,6 @@ DEFINE SCHEMA
         f_28            DOUBLE QUERYABLE SORTABLE,
         f_29            DOUBLE QUERYABLE SORTABLE,
         f_30            DOUBLE QUERYABLE SORTABLE,
-        f_31            DOUBLE QUERYABLE SORTABLE,
         f_32            DOUBLE QUERYABLE SORTABLE,
         f_33            DOUBLE QUERYABLE SORTABLE,
         f_34            DOUBLE QUERYABLE SORTABLE,
@@ -397,7 +396,6 @@ DEFINE SCHEMA
         f_60            DOUBLE QUERYABLE SORTABLE,
         f_61            DOUBLE QUERYABLE SORTABLE,
         f_62            DOUBLE QUERYABLE SORTABLE,
-        f_63            DOUBLE QUERYABLE SORTABLE,
         GRANT WRITE TO "_creator",
         GRANT CREATE, WRITE TO "_icloud",
         GRANT READ TO "_world"
