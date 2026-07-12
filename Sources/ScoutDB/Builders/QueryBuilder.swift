@@ -51,6 +51,24 @@ public struct QueryBuilder {
         filter(EntityStore.Filter(field: field, op: method, value: value, radius: radius))
     }
 
+    /// Excludes the records matching the filter — a `NOT` over one predicate.
+    ///
+    /// The complement is evaluated client-side after decoding, so a record
+    /// missing the field is kept; `near` and `search` cannot be negated.
+    ///
+    public func exclude(_ filter: EntityStore.Filter) -> Self {
+        var negated = filter
+        negated.negated = true
+        var builder = self
+        builder.filters.append(negated)
+        return builder
+    }
+
+    /// Excludes from the filter's parts: `.exclude("status", .equals, "archived")`.
+    public func exclude(_ field: String, _ method: EntityStore.Match, _ value: RecordValue) -> Self {
+        exclude(EntityStore.Filter(field: field, op: method, value: value))
+    }
+
     /// Adds a group of alternatives combined with `OR`.
     ///
     /// The group as a whole is `AND`-ed with the other filters. An alternative
