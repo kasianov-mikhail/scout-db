@@ -807,6 +807,47 @@ struct OperationsTests {
         #expect(joined["publisher_id"]?["pub-1"]?.values["name"] == .string("Salt"))
     }
 
+    @Test("A path join walks the reference chain level by level")
+    func pathJoin() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "agency",
+                fields: [
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
+                ]))
+        try await registry.publish(
+            makeDefinition(
+                entity: "author",
+                fields: [
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "agency_id", type: .string, storage: .slot(.string, "s_01"), references: "agency"),
+                ]))
+        try await registry.publish(
+            makeDefinition(
+                entity: "book",
+                fields: [
+                    FieldDefinition(name: "title", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "author_ids", type: .stringList, storage: .slot(.stringList, "ls_00"), references: "author"),
+                ]))
+
+        try await store.write(["name": .string("Salt")], entity: "agency", uuid: "g-1")
+        try await store.write(["name": .string("Twain"), "agency_id": .string("g-1")], entity: "author", uuid: "a-1")
+        try await store.write(["name": .string("Verne"), "agency_id": .string("g-1")], entity: "author", uuid: "a-2")
+        try await store.write(["title": .string("Duo"), "author_ids": .strings(["a-1", "a-2"])], entity: "book", uuid: "b-1")
+
+        let books = try await store.read(entity: "book")
+        let levels = try await store.join(entity: "book", records: books, path: ["author_ids", "agency_id"])
+
+        #expect(levels.count == 2)
+        #expect(levels[0].keys.sorted() == ["a-1", "a-2"])
+        #expect(levels[1]["g-1"]?.values["name"] == .string("Salt"))
+
+        // A hop through a non-reference field fails loudly.
+        await #expect(throws: SchemaError.unknownField("name")) {
+            _ = try await store.join(entity: "book", records: books, path: ["author_ids", "name"])
+        }
+    }
+
     @Test("Generated Swift source mirrors the definition")
     func codegen() {
         let source = DefinitionCodeGenerator().source(for: makePurchaseDefinition())
