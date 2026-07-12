@@ -146,6 +146,39 @@ struct OperationsTests {
         }
     }
 
+    @Test("Filters on payload fields fall back to client-side matching")
+    func payloadFilters() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "profile",
+                fields: [
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "score", type: .int, storage: .payload),
+                    FieldDefinition(name: "tags", type: .stringList, storage: .payload),
+                    FieldDefinition(name: "spot", type: .location, storage: .payload),
+                ]))
+        try await store.write(["name": .string("Ada"), "score": .int(10), "tags": .strings(["swift", "db"])], entity: "profile", uuid: "u-1")
+        try await store.write(["name": .string("Bo"), "score": .int(5), "tags": .strings(["db"])], entity: "profile", uuid: "u-2")
+        try await store.write(["name": .string("Cy")], entity: "profile", uuid: "u-3")
+
+        func uuids(_ filters: [EntityStore.Filter]) async throws -> [String] {
+            try await store.read(entity: "profile", filters: filters).map(\.uuid).sorted()
+        }
+
+        #expect(try await uuids([.init(field: "score", op: .equals, value: .int(10))]) == ["u-1"])
+        #expect(try await uuids([.init(field: "score", op: .greaterThan, value: .int(4))]) == ["u-1", "u-2"])
+        #expect(try await uuids([.init(field: "score", op: .lessThanOrEquals, value: .int(5))]) == ["u-2"])
+        #expect(try await uuids([.init(field: "score", op: .in, value: .ints([5, 7]))]) == ["u-2"])
+        #expect(try await uuids([.init(field: "tags", op: .contains, value: .string("swift"))]) == ["u-1"])
+        // A record missing the field never matches, mirroring the server.
+        #expect(try await uuids([.init(field: "score", op: .notEquals, value: .int(10))]) == ["u-2"])
+        #expect(try await uuids([.init(field: "score", op: .notIn, value: .ints([10]))]) == ["u-2"])
+
+        await #expect(throws: SchemaError.invalidValue("spot")) {
+            _ = try await store.read(entity: "profile", filters: [.init(field: "spot", op: .near, value: .location(latitude: 0, longitude: 0), radius: 10)])
+        }
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")

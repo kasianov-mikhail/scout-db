@@ -115,8 +115,16 @@ extension EntityStore {
                 }
                 server.append(ServerFilter(field: slot, op: .search, value: filter.value))
             default:
-                guard let op = filter.op.serverOperator, case .slot(_, let slot) = field.storage else {
+                guard let op = filter.op.serverOperator else {
                     throw SchemaError.unknownField(filter.field)
+                }
+                guard case .slot(_, let slot) = field.storage else {
+                    // A payload field has no queryable slot, so every comparison the
+                    // store can express post-decode falls back to a client matcher.
+                    // Distance needs the server and keeps requiring a slot.
+                    guard filter.op != .near else { throw SchemaError.invalidValue(filter.field) }
+                    client.append(filter)
+                    continue
                 }
                 server.append(ServerFilter(field: slot, op: op, value: filter.value, radius: filter.radius))
             }
@@ -135,7 +143,7 @@ extension EntityStore {
 
     // Compiles a client-side filter into a record predicate. Building the predicate
     // once per read hoists regex construction for `like` and `matches` out of the
-    // per-record loop.
+    // per-record loop. A record missing the field never matches, mirroring the server.
     static func matcher(for filter: Filter) -> (EntityRecord) -> Bool {
         let field = filter.field
         switch filter.op {
@@ -143,9 +151,30 @@ extension EntityStore {
             return { $0.values[field] == nil }
         case .isNotNull:
             return { $0.values[field] != nil }
+        case .equals:
+            return { $0.values[field] == filter.value }
+        case .notEquals:
+            return { $0.values[field].map { $0 != filter.value } ?? false }
+        case .greaterThan, .greaterThanOrEquals, .lessThan, .lessThanOrEquals:
+            return comparisonMatcher(for: filter)
+        case .in:
+            let options = options(of: filter.value)
+            return { $0.values[field].map(options.contains) ?? false }
+        case .notIn:
+            let options = options(of: filter.value)
+            return { record in record.values[field].map { !options.contains($0) } ?? false }
+        case .beginsWith:
+            guard case .string(let prefix) = filter.value else { return { _ in false } }
+            return stringMatcher(field) { $0.hasPrefix(prefix) }
         case .contains:
             guard case .string(let needle) = filter.value else { return { _ in false } }
-            return stringMatcher(field) { $0.contains(needle) }
+            return { record in
+                switch record.values[field] {
+                case .string(let text)?: text.contains(needle)
+                case .strings(let members)?: members.contains(needle)
+                default: false
+                }
+            }
         case .endsWith:
             guard case .string(let suffix) = filter.value else { return { _ in false } }
             return stringMatcher(field) { $0.hasSuffix(suffix) }
@@ -157,6 +186,40 @@ extension EntityStore {
             return stringMatcher(field) { $0.wholeMatch(of: regex) != nil }
         default:
             return { _ in false }
+        }
+    }
+
+    // Ranking two values of different kinds is not meaningful, so a comparison
+    // matches only comparable pairs: strings, dates, or numeric scalars.
+    private static func comparisonMatcher(for filter: Filter) -> (EntityRecord) -> Bool {
+        let field = filter.field
+        return { record in
+            guard let value = record.values[field], comparable(value, filter.value) else { return false }
+            return switch (filter.op, rank(value, filter.value)) {
+            case (.greaterThan, .orderedDescending), (.lessThan, .orderedAscending): true
+            case (.greaterThanOrEquals, .orderedDescending), (.greaterThanOrEquals, .orderedSame): true
+            case (.lessThanOrEquals, .orderedAscending), (.lessThanOrEquals, .orderedSame): true
+            default: false
+            }
+        }
+    }
+
+    private static func comparable(_ lhs: RecordValue, _ rhs: RecordValue) -> Bool {
+        switch (lhs, rhs) {
+        case (.string, .string), (.date, .date): true
+        default: lhs.scalar != nil && rhs.scalar != nil
+        }
+    }
+
+    // The candidates of an `in`/`notIn` filter: the elements of a list value, or
+    // the value itself as the single option.
+    private static func options(of value: RecordValue) -> [RecordValue] {
+        switch value {
+        case .strings(let values): values.map(RecordValue.string)
+        case .ints(let values): values.map(RecordValue.int)
+        case .doubles(let values): values.map(RecordValue.double)
+        case .dates(let values): values.map(RecordValue.date)
+        default: [value]
         }
     }
 
