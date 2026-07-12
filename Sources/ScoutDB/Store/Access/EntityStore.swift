@@ -89,10 +89,20 @@ public struct EntityStore: Sendable {
     public struct Sort: Equatable, Sendable {
         public let field: String
         public var ascending = true
+        /// A `.location` origin turns the clause into a nearest-first distance
+        /// sort of a location field.
+        public var origin: RecordValue?
 
         public init(field: String, ascending: Bool = true) {
             self.field = field
             self.ascending = ascending
+        }
+
+        /// Sorts nearest-first by the location field's distance from the point.
+        public static func distance(from field: String, latitude: Double, longitude: Double) -> Sort {
+            var sort = Sort(field: field)
+            sort.origin = .location(latitude: latitude, longitude: longitude)
+            return sort
         }
     }
 

@@ -192,7 +192,16 @@ extension [CKRecord] {
         return sorted { lhs, rhs in
             for descriptor in descriptors {
                 guard let key = descriptor.key else { continue }
-                let order = PredicateEvaluator.compare(lhs[key], rhs[key])
+                let order: ComparisonResult
+                if let location = descriptor as? CKLocationSortDescriptor {
+                    // Distance sorting, the way the server runs CKLocationSortDescriptor;
+                    // records without the location rank last.
+                    let near = (lhs[key] as? CLLocation)?.distance(from: location.relativeLocation) ?? .greatestFiniteMagnitude
+                    let far = (rhs[key] as? CLLocation)?.distance(from: location.relativeLocation) ?? .greatestFiniteMagnitude
+                    order = PredicateEvaluator.compare(near as NSNumber, far as NSNumber)
+                } else {
+                    order = PredicateEvaluator.compare(lhs[key], rhs[key])
+                }
                 guard order != .orderedSame else { continue }
                 return descriptor.ascending ? order == .orderedAscending : order == .orderedDescending
             }
