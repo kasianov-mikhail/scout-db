@@ -6,6 +6,7 @@
 // https://opensource.org/licenses/MIT.
 
 import CloudKit
+import CoreLocation
 import Foundation
 
 public struct QueryPlan: Equatable, Sendable, CustomStringConvertible {
@@ -64,6 +65,7 @@ struct ServerFilter: Equatable, Sendable {
 struct ServerSort: Equatable, Sendable {
     let field: String
     let ascending: Bool
+    var origin: RecordValue?
 }
 
 func ckQuery(_ recordType: String, filters: [ServerFilter], sort: [ServerSort] = []) -> CKQuery {
@@ -73,7 +75,12 @@ func ckQuery(_ recordType: String, filters: [ServerFilter], sort: [ServerSort] =
         : NSCompoundPredicate(type: .and, subpredicates: filters.map(\.predicate))
     let query = CKQuery(recordType: recordType, predicate: predicate)
     if sort.count > 0 {
-        query.sortDescriptors = sort.map { NSSortDescriptor(key: $0.field, ascending: $0.ascending) }
+        query.sortDescriptors = sort.map { clause in
+            if case .location(let latitude, let longitude)? = clause.origin {
+                return CKLocationSortDescriptor(key: clause.field, relativeLocation: CLLocation(latitude: latitude, longitude: longitude))
+            }
+            return NSSortDescriptor(key: clause.field, ascending: clause.ascending)
+        }
     }
     return query
 }

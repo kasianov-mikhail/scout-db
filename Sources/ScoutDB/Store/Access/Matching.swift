@@ -5,6 +5,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CoreLocation
 import Foundation
 
 extension EntityStore {
@@ -46,11 +47,26 @@ extension EntityStore {
 
     static func ordered(_ lhs: EntityRecord, _ rhs: EntityRecord, by sorts: [Sort]) -> Bool {
         for sort in sorts {
-            let order = rank(lhs.values[sort.field], rhs.values[sort.field])
+            let order: ComparisonResult
+            if case .location(let latitude, let longitude)? = sort.origin {
+                order = rankDistance(lhs.values[sort.field], rhs.values[sort.field], from: CLLocation(latitude: latitude, longitude: longitude))
+            } else {
+                order = rank(lhs.values[sort.field], rhs.values[sort.field])
+            }
             guard order != .orderedSame else { continue }
             return sort.ascending ? order == .orderedAscending : order == .orderedDescending
         }
         return false
+    }
+
+    // Distance ranking for a nearest-first sort; a record without the location
+    // ranks last, mirroring the server pushing unlocatable rows to the end.
+    private static func rankDistance(_ lhs: RecordValue?, _ rhs: RecordValue?, from origin: CLLocation) -> ComparisonResult {
+        func distance(_ value: RecordValue?) -> Double {
+            guard case .location(let latitude, let longitude)? = value else { return .greatestFiniteMagnitude }
+            return CLLocation(latitude: latitude, longitude: longitude).distance(from: origin)
+        }
+        return order(distance(lhs), distance(rhs))
     }
 
     static func rank(_ lhs: RecordValue?, _ rhs: RecordValue?) -> ComparisonResult {
@@ -147,10 +163,13 @@ extension EntityStore {
 
     func serverSort(_ sort: [Sort], using definition: EntityDefinition) throws -> [ServerSort] {
         try sort.map { sort in
-            guard case .slot(_, let slot)? = definition.field(named: sort.field, at: definition.version)?.storage else {
+            guard let field = definition.field(named: sort.field, at: definition.version), case .slot(_, let slot) = field.storage else {
                 throw SchemaError.unknownField(sort.field)
             }
-            return ServerSort(field: slot, ascending: sort.ascending)
+            if sort.origin != nil, field.type != .location {
+                throw SchemaError.invalidValue(sort.field)
+            }
+            return ServerSort(field: slot, ascending: sort.ascending, origin: sort.origin)
         }
     }
 

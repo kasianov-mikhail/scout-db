@@ -96,6 +96,13 @@ public struct QueryBuilder {
         return builder
     }
 
+    /// Sorts nearest-first by a location field's distance from the point.
+    public func nearest(_ field: String, latitude: Double, longitude: Double) -> Self {
+        var builder = self
+        builder.sorts.append(EntityStore.Sort.distance(from: field, latitude: latitude, longitude: longitude))
+        return builder
+    }
+
     /// Fetches only the named fields; filtered fields are included automatically.
     public func fields(_ fields: String...) -> Self {
         var builder = self

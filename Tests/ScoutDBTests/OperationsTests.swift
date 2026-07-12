@@ -447,6 +447,32 @@ struct OperationsTests {
         #expect(database.storedSubscriptions.isEmpty)
     }
 
+    @Test("A distance sort ranks nearest-first, missing locations last")
+    func distanceSort() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "place",
+                fields: [
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "spot", type: .location, storage: .slot(.location, "g_00")),
+                ]))
+        try await store.write(["name": .string("near"), "spot": .location(latitude: 0.01, longitude: 0.01)], entity: "place", uuid: "l-near")
+        try await store.write(["name": .string("far"), "spot": .location(latitude: 10, longitude: 10)], entity: "place", uuid: "l-far")
+        try await store.write(["name": .string("nowhere")], entity: "place", uuid: "l-none")
+
+        let ranked = try await store.read(entity: "place", sort: [.distance(from: "spot", latitude: 0, longitude: 0)])
+        #expect(ranked.map(\.uuid) == ["l-near", "l-far", "l-none"])
+
+        // The builder sugar reads the same, from another origin.
+        let closest = try await store.query("place").nearest("spot", latitude: 9, longitude: 9).first()
+        #expect(closest?.uuid == "l-far")
+
+        // Distance only orders location fields.
+        await #expect(throws: SchemaError.invalidValue("name")) {
+            _ = try await store.read(entity: "place", sort: [.distance(from: "name", latitude: 0, longitude: 0)])
+        }
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
