@@ -19,13 +19,38 @@ import Foundation
 ///
 public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     private let backing: any CloudDatabase
+    private let storeURL: URL?
     private let lock = NSLock()
     private var snapshots: [String: [CKRecord]] = [:]
     private var queuedSaves: [CKRecord] = []
     private var queuedDeletes: [CKRecord.ID] = []
 
-    public init(backing: any CloudDatabase) {
+    /// With a `storeURL`, snapshots and the write queue persist across launches:
+    /// every mutation archives the state to the file (best-effort — a failed
+    /// write costs freshness, not correctness), and init restores it.
+    public init(backing: any CloudDatabase, storeURL: URL? = nil) {
         self.backing = backing
+        self.storeURL = storeURL
+        if let storeURL, let data = try? Data(contentsOf: storeURL) {
+            restore(from: data)
+        }
+    }
+
+    private func restore(from data: Data) {
+        let classes = [NSDictionary.self, NSArray.self, NSString.self, CKRecord.self, CKRecord.ID.self]
+        guard let root = try? NSKeyedUnarchiver.unarchivedObject(ofClasses: classes, from: data) as? [String: Any] else { return }
+        snapshots = root["snapshots"] as? [String: [CKRecord]] ?? [:]
+        queuedSaves = root["saves"] as? [CKRecord] ?? []
+        queuedDeletes = root["deletes"] as? [CKRecord.ID] ?? []
+    }
+
+    // Callers hold the lock; the archive is a full rewrite, small by design
+    // (complete query snapshots plus the pending queue).
+    private func persistLocked() {
+        guard let storeURL else { return }
+        let root: [String: Any] = ["snapshots": snapshots, "saves": queuedSaves, "deletes": queuedDeletes]
+        guard let data = try? NSKeyedArchiver.archivedData(withRootObject: root, requiringSecureCoding: true) else { return }
+        try? data.write(to: storeURL, options: .atomic)
     }
 
     /// The writes waiting for `flush`, in arrival order.
@@ -47,6 +72,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         lock.withLock {
             queuedSaves.removeFirst(saves.count)
             queuedDeletes.removeFirst(deletes.count)
+            persistLocked()
         }
         return saves.count + deletes.count
     }
@@ -73,7 +99,10 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
             // page served offline would silently truncate the result set.
             if response.queryCursor == nil {
                 let page = response.matchResults.compactMap { try? $0.1.get() }
-                lock.withLock { snapshots[key] = page }
+                lock.withLock {
+                    snapshots[key] = page
+                    persistLocked()
+                }
             }
             return response
         } catch  where Self.isOffline(error) {
@@ -94,7 +123,10 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         do {
             return try await backing.save(record)
         } catch  where Self.isOffline(error) {
-            lock.withLock { queuedSaves.append(record) }
+            lock.withLock {
+                queuedSaves.append(record)
+                persistLocked()
+            }
             return record
         }
     }
@@ -106,6 +138,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
             lock.withLock {
                 queuedSaves.append(contentsOf: records)
                 queuedDeletes.append(contentsOf: recordIDs)
+                persistLocked()
             }
         }
     }
