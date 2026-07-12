@@ -102,6 +102,24 @@ struct EntityDefinitionTests {
         #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
+    @Test("Validation accepts string and string-list references, rejects other types")
+    func referenceTypes() throws {
+        try makeDefinition(fields: [
+            FieldDefinition(name: "author_id", type: .string, storage: .slot(.string, "s_00"), references: "author")
+        ]).validate()
+        try makeDefinition(fields: [
+            FieldDefinition(name: "author_ids", type: .stringList, storage: .slot(.stringList, "ls_00"), references: "author")
+        ]).validate()
+        let scalar = makeDefinition(fields: [
+            FieldDefinition(name: "author_no", type: .int, storage: .slot(.int, "i_00"), references: "author")
+        ])
+        #expect(throws: SchemaError.self) { try scalar.validate() }
+        let list = makeDefinition(fields: [
+            FieldDefinition(name: "author_nos", type: .intList, storage: .slot(.intList, "li_00"), references: "author")
+        ])
+        #expect(throws: SchemaError.self) { try list.validate() }
+    }
+
     @Test("Validation rejects a non-timestamp envelope date")
     func envelopeDateType() {
         let definition = makeDefinition(
