@@ -155,6 +155,31 @@ public struct QueryBuilder {
         try await store.aggregate(.average, of: field, entity: entity, any: branches())
     }
 
+    /// Sums a numeric field per distinct value of the grouping field.
+    public func sum(_ field: String, by group: String) async throws -> [String: Double] {
+        try await store.aggregate(.sum, of: field, by: group, entity: entity, any: branches())
+    }
+
+    /// The smallest value of a numeric field per distinct value of the grouping field.
+    public func minimum(_ field: String, by group: String) async throws -> [String: Double] {
+        try await store.aggregate(.minimum, of: field, by: group, entity: entity, any: branches())
+    }
+
+    /// The largest value of a numeric field per distinct value of the grouping field.
+    public func maximum(_ field: String, by group: String) async throws -> [String: Double] {
+        try await store.aggregate(.maximum, of: field, by: group, entity: entity, any: branches())
+    }
+
+    /// The mean of a numeric field per distinct value of the grouping field.
+    public func average(_ field: String, by group: String) async throws -> [String: Double] {
+        try await store.aggregate(.average, of: field, by: group, entity: entity, any: branches())
+    }
+
+    /// Counts the matching records per distinct value of the grouping field.
+    public func count(by group: String) async throws -> [String: Int] {
+        try await store.counts(by: group, entity: entity, any: branches())
+    }
+
     /// Returns one page of results ordered by the envelope date.
     ///
     /// Keyset pagination is ordered by the envelope date alone, so combining it

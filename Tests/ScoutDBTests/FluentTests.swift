@@ -190,6 +190,29 @@ struct FluentTests {
         }
     }
 
+    @Test("Grouped folds bucket by the grouping field's value")
+    func groupedFolds() async throws {
+        try await store.write(
+            [
+                "product_id": .string("sku-0"),
+                "quantity": .int(5),
+                "amount": .double(50),
+                "date": .date(Date(timeIntervalSince1970: 4_000)),
+            ], entity: "purchase", uuid: "p-3")
+
+        #expect(try await store.query("purchase").sum("quantity", by: "product_id") == ["sku-0": 8, "sku-1": 1, "sku-2": 2])
+        #expect(try await store.query("purchase").count(by: "product_id") == ["sku-0": 2, "sku-1": 1, "sku-2": 1])
+        #expect(try await store.query("purchase").maximum("amount", by: "product_id") == ["sku-0": 50, "sku-1": 10, "sku-2": 20])
+        #expect(try await store.query("purchase").filter("quantity" > 1).average("amount", by: "product_id") == ["sku-0": 40, "sku-2": 20])
+
+        await #expect(throws: SchemaError.invalidValue("product_id")) {
+            _ = try await store.query("purchase").sum("product_id", by: "quantity")
+        }
+        await #expect(throws: SchemaError.unknownField("ghost")) {
+            _ = try await store.query("purchase").count(by: "ghost")
+        }
+    }
+
     @Test("Pagination and streaming honor OR groups")
     func groupPagination() async throws {
         func query() -> QueryBuilder {
