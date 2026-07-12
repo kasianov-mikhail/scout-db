@@ -84,17 +84,18 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         return [.networkUnavailable, .networkFailure, .serviceUnavailable].contains(error.code)
     }
 
-    private func cacheKey(_ query: CKQuery, _ desiredKeys: [CKRecord.FieldKey]?, _ limit: Int) -> String {
+    private func cacheKey(_ query: CKQuery, _ zoneID: CKRecordZone.ID?, _ desiredKeys: [CKRecord.FieldKey]?, _ limit: Int) -> String {
         let sorts = (query.sortDescriptors ?? []).map { "\($0.key ?? "")\($0.ascending ? "+" : "-")" }.joined(separator: ",")
-        return "\(query.recordType)|\(query.predicate.predicateFormat)|\(sorts)|\(desiredKeys?.joined(separator: ",") ?? "*")|\(limit)"
+        let zone = zoneID.map { "\($0.zoneName)@\($0.ownerName)" } ?? "*"
+        return "\(query.recordType)|\(zone)|\(query.predicate.predicateFormat)|\(sorts)|\(desiredKeys?.joined(separator: ",") ?? "*")|\(limit)"
     }
 
-    public func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+    public func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        let key = cacheKey(query, desiredKeys, resultsLimit)
+        let key = cacheKey(query, zoneID, desiredKeys, resultsLimit)
         do {
-            let response = try await backing.records(matching: query, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+            let response = try await backing.records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
             // Only a complete response can stand in for the query later; a first
             // page served offline would silently truncate the result set.
             if response.queryCursor == nil {

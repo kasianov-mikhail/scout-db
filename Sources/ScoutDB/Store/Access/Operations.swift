@@ -291,7 +291,7 @@ extension EntityStore {
     func matchedItems(entity: String, filters: [Filter], using definition: EntityDefinition) async throws -> [CKRecord] {
         let (query, included) = try liveQuery(filters, entity: entity, using: definition)
         let coder = EntityCoder(keyProvider: keyProvider)
-        return try await database.allRecords(matching: query).filter { record in
+        return try await database.allRecords(matching: query, inZone: zoneID).filter { record in
             if let trustedWriters {
                 guard let creator = record.recordCreator, trustedWriters.contains(creator) else { return false }
             }
@@ -322,7 +322,7 @@ extension EntityStore {
                 ServerFilter(field: "expires", op: .lessThan, value: .date(asOf)),
                 ServerFilter(field: "deleted", op: .equals, value: .int(0)),
             ])
-        let expired = try decode(try await database.allRecords(matching: query), using: definition).filter { !$0.deleted }
+        let expired = try decode(try await database.allRecords(matching: query, inZone: zoneID), using: definition).filter { !$0.deleted }
 
         let tombstones = try expired.map(\.uuid).sorted().map { try tombstone(entity: entity, uuid: $0, definition: definition) }
         try await database.write(records: tombstones)
@@ -339,7 +339,7 @@ extension EntityStore {
     /// Fetches a single record by its identifier, resolving the entity from the record itself.
     public func fetch(uuid: String) async throws -> EntityRecord? {
         let query = ckQuery(Entity.recordType, filters: [ServerFilter(field: "uuid", op: .equals, value: .string(uuid))])
-        guard let record = try await database.allRecords(matching: query).first else { return nil }
+        guard let record = try await database.allRecords(matching: query, inZone: zoneID).first else { return nil }
         guard let entity = record["entity"] as? String else { return nil }
         let definition = try await registry.definition(for: entity)
         let decoded = try decode([record], using: definition)
@@ -366,7 +366,7 @@ extension EntityStore {
                             ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                             ServerFilter(field: "uuid", op: .in, value: .strings(chunk)),
                         ])
-                    return Chunk(index: index, records: try await database.allRecords(matching: query))
+                    return Chunk(index: index, records: try await database.allRecords(matching: query, inZone: zoneID))
                 }
             }
             var chunks: [Int: [CKRecord]] = [:]

@@ -15,7 +15,7 @@ import CloudKit
 /// carry the query plus how many matches the previous pages already delivered.
 public enum QueryCursor: @unchecked Sendable {
     case cloudKit(CKQueryOperation.Cursor)
-    case offset(query: CKQuery, offset: Int)
+    case offset(query: CKQuery, zoneID: CKRecordZone.ID?, offset: Int)
 }
 
 /// A seam shaped exactly like the CKDatabase calls the store makes — not a
@@ -24,7 +24,8 @@ public enum QueryCursor: @unchecked Sendable {
 /// the same `CKQuery`.
 ///
 public protocol CloudDatabase: Sendable {
-    func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+    /// Runs a query, in one zone when `zoneID` is given, across all zones otherwise.
+    func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     )
     func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
@@ -48,8 +49,14 @@ public protocol CloudDatabase: Sendable {
 extension CloudDatabase {
     static var maxBatchSize: Int { 400 }
 
-    func allRecords(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]? = nil) async throws -> [CKRecord] {
-        var (results, cursor) = try await records(matching: query, desiredKeys: desiredKeys, resultsLimit: CKQueryOperation.maximumResults)
+    func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
+    ) {
+        try await records(matching: query, inZone: nil, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+    }
+
+    func allRecords(matching query: CKQuery, inZone zoneID: CKRecordZone.ID? = nil, desiredKeys: [CKRecord.FieldKey]? = nil) async throws -> [CKRecord] {
+        var (results, cursor) = try await records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: CKQueryOperation.maximumResults)
         while let token = cursor {
             let page = try await records(continuingMatchFrom: token, desiredKeys: desiredKeys, resultsLimit: CKQueryOperation.maximumResults)
             results += page.matchResults
@@ -108,11 +115,11 @@ extension CloudDatabase {
 // limiter slot per level until every request deadlocks. Each body goes through
 // a CloudKit API whose shape differs from the requirement it implements.
 extension CKDatabase: CloudDatabase {
-    public func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+    public func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
         try await throttled { database in
-            let (results, cursor) = try await database.records(matching: query, inZoneWith: nil, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+            let (results, cursor) = try await database.records(matching: query, inZoneWith: zoneID, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
             return (results, cursor.map(QueryCursor.cloudKit))
         }
     }
