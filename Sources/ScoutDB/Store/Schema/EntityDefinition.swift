@@ -79,8 +79,8 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
             if field.encrypted == true || field.derived?.transform == .hmac, keyID == nil {
                 throw SchemaError.invalidDefinition("Field '\(field.name)' needs a keyID on the definition")
             }
-            if field.references != nil, field.type != .string {
-                throw SchemaError.invalidDefinition("Reference field '\(field.name)' must be a string uuid")
+            if field.references != nil, ![.string, .stringList].contains(field.type) {
+                throw SchemaError.invalidDefinition("Reference field '\(field.name)' must be a string uuid or a string list of uuids")
             }
             if field.allowed != nil, ![.string, .text, .stringList].contains(field.type) {
                 throw SchemaError.invalidDefinition("Field '\(field.name)' of type '\(field.type.rawValue)' cannot constrain 'allowed'")

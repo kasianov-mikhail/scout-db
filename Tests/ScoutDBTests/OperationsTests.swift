@@ -303,6 +303,44 @@ struct OperationsTests {
         #expect(remaining.map(\.uuid) == ["b-2"])
     }
 
+    @Test("List references join across parents, report orphans, and detach on cascade delete")
+    func manyToMany() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "author",
+                fields: [
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
+                ]))
+        try await registry.publish(
+            makeDefinition(
+                entity: "book",
+                fields: [
+                    FieldDefinition(name: "title", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "author_ids", type: .stringList, storage: .slot(.stringList, "ls_00"), references: "author"),
+                ]))
+
+        try await store.write(["name": .string("Twain")], entity: "author", uuid: "a-1")
+        try await store.write(["name": .string("Verne")], entity: "author", uuid: "a-2")
+        try await store.write(["title": .string("Duo"), "author_ids": .strings(["a-1", "a-2"])], entity: "book", uuid: "b-1")
+        try await store.write(["title": .string("Solo"), "author_ids": .strings(["a-2"])], entity: "book", uuid: "b-2")
+        try await store.write(["title": .string("Lost"), "author_ids": .strings(["a-2", "a-9"])], entity: "book", uuid: "b-3")
+
+        let books = try await store.read(entity: "book")
+        let parents = try await store.join(entity: "book", records: books, field: "author_ids")
+        #expect(parents.keys.sorted() == ["a-1", "a-2"])
+
+        let orphans = try await store.orphans(entity: "book", field: "author_ids")
+        #expect(orphans.map(\.uuid) == ["b-3"])
+
+        try await store.delete(entity: "author", uuid: "a-2", cascade: true)
+        let remaining = try await store.read(entity: "book")
+        #expect(Set(remaining.map(\.uuid)) == ["b-1", "b-2", "b-3"])
+        let values = Dictionary(uniqueKeysWithValues: remaining.map { ($0.uuid, $0.values["author_ids"]) })
+        #expect(values["b-1"] == .strings(["a-1"]))
+        #expect(values["b-2"] == .strings([]))
+        #expect(values["b-3"] == .strings(["a-9"]))
+    }
+
     @Test("Generated Swift source mirrors the definition")
     func codegen() {
         let source = DefinitionCodeGenerator().source(for: makePurchaseDefinition())

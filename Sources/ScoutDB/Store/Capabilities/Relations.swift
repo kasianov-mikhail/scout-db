@@ -13,11 +13,7 @@ extension EntityStore {
         guard let parent = definition.field(named: field, at: definition.version)?.references else {
             throw SchemaError.unknownField(field)
         }
-        let keys = Set(
-            records.compactMap { record -> String? in
-                guard case .string(let key)? = record.values[field] else { return nil }
-                return key
-            })
+        let keys = Set(records.flatMap { Self.referencedKeys($0.values[field]) })
         let parents = try await fetch(entity: parent, uuids: keys.sorted())
         return Dictionary(uniqueKeysWithValues: parents.map { ($0.uuid, $0) })
     }
@@ -26,8 +22,17 @@ extension EntityStore {
         let records = try await read(entity: entity)
         let parents = try await join(entity: entity, records: records, field: field)
         return records.filter { record in
-            guard case .string(let key)? = record.values[field] else { return false }
-            return parents[key] == nil
+            Self.referencedKeys(record.values[field]).contains { parents[$0] == nil }
+        }
+    }
+
+    // A scalar reference names one parent, a list reference names many — the
+    // many-to-many shape, where several records share several parents.
+    private static func referencedKeys(_ value: RecordValue?) -> [String] {
+        switch value {
+        case .string(let key): [key]
+        case .strings(let keys): keys
+        default: []
         }
     }
 
@@ -39,10 +44,15 @@ extension EntityStore {
 
     // Tombstones every record referencing the deleted parents, level by level: each
     // referencing entity costs one chunked read, one batched tombstone write, and one
-    // aggregate pass — not a per-record delete.
+    // aggregate pass — not a per-record delete. A list reference is a many-to-many
+    // link, so its records are detached instead of deleted and the cascade stops there.
     private func cascadeDelete(entity: String, uuids: [String]) async throws {
         for child in await registry.definitions() {
             for field in child.fields(at: child.version) where field.references == entity {
+                guard !field.type.isList else {
+                    try await detach(entity: child.entity, field: field.name, uuids: uuids)
+                    continue
+                }
                 var victims: [EntityRecord] = []
                 for chunk in uuids.chunked(into: 100) {
                     victims += try await read(entity: child.entity, filters: [Filter(field: field.name, op: .in, value: .strings(chunk))])
@@ -52,6 +62,19 @@ extension EntityStore {
                 try await database.write(records: tombstones)
                 try await GridAggregator(database: database).remove(victims, using: child)
                 try await cascadeDelete(entity: child.entity, uuids: victims.map(\.uuid))
+            }
+        }
+    }
+
+    // Strips the deleted parents' keys out of every list reference naming them. One
+    // filtered rewrite per deleted parent, but each rewrite drops every dead key it
+    // touches, so later passes only match records the earlier ones missed.
+    private func detach(entity: String, field: String, uuids: [String]) async throws {
+        let dead = Set(uuids)
+        for uuid in uuids {
+            try await updateAll(entity: entity, filters: [Filter(field: field, op: .contains, value: .string(uuid))]) { record in
+                guard case .strings(let keys)? = record.values[field] else { return }
+                record.values[field] = .strings(keys.filter { !dead.contains($0) })
             }
         }
     }
