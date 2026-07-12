@@ -160,6 +160,7 @@ public struct EntityStore: Sendable {
         let removed = try decode(try await items(entity: entity, uuids: [uuid]), using: definition).filter { !$0.deleted }
         try await database.write(record: tombstone(entity: entity, uuid: uuid, definition: definition, values: removed.first?.values ?? [:]))
         try await GridAggregator(database: database).remove(removed, using: definition)
+        try await recordRevisions(removed, using: definition)
     }
 
     // The live records behind a set of uuids, used to reverse their aggregate contributions

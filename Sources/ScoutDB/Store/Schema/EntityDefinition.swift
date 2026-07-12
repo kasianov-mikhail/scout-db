@@ -16,10 +16,13 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
     public var views: [AggregateView]?
     public var keyID: String?
     public var ttl: Double?
+    /// An audited entity appends a revision record on every update and delete;
+    /// publish `EntityStore.revisionDefinition` before enabling it.
+    public var audited: Bool?
 
     public init(
         entity: String, version: Int, fields: [FieldDefinition], envelopeDate: String? = nil, unique: [String]? = nil, views: [AggregateView]? = nil,
-        keyID: String? = nil, ttl: Double? = nil
+        keyID: String? = nil, ttl: Double? = nil, audited: Bool? = nil
     ) {
         self.entity = entity
         self.version = version
@@ -29,6 +32,7 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
         self.views = views
         self.keyID = keyID
         self.ttl = ttl
+        self.audited = audited
     }
 
     public func fields(at version: Int) -> [FieldDefinition] {
