@@ -19,6 +19,7 @@ public enum SchemaError: Error, Equatable {
     case invalidDefinition(String)
     case brokenReference(field: String, key: String)
     case duplicateReference(field: String, key: String)
+    case leaseHeld(owner: String, until: Date)
 }
 
 extension SchemaError: LocalizedError {
@@ -35,6 +36,7 @@ extension SchemaError: LocalizedError {
         case .invalidDefinition(let message): "Invalid definition: \(message)"
         case .brokenReference(let field, let key): "Reference field '\(field)' names a missing record '\(key)'"
         case .duplicateReference(let field, let key): "Exclusive field '\(field)' already references '\(key)'"
+        case .leaseHeld(let owner, let until): "Leased by '\(owner)' until \(until)"
         }
     }
 }

@@ -673,6 +673,43 @@ struct OperationsTests {
         }
     }
 
+    @Test("A lease admits one holder, renews, expires, and releases")
+    func recordLeases() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+
+        let granted = try await store.lease(entity: "purchase", uuid: "p-1", owner: "alice", for: 60)
+        #expect(try await store.leaseHolder(entity: "purchase", uuid: "p-1") == granted)
+
+        // A second suitor is turned away; the holder renews freely.
+        await #expect(throws: SchemaError.self) {
+            try await store.lease(entity: "purchase", uuid: "p-1", owner: "bob", for: 60)
+        }
+        _ = try await store.lease(entity: "purchase", uuid: "p-1", owner: "alice", for: 120)
+
+        // A foreign release is a no-op; the owner's release frees the record.
+        try await store.release(entity: "purchase", uuid: "p-1", owner: "bob")
+        #expect(try await store.leaseHolder(entity: "purchase", uuid: "p-1") != nil)
+        try await store.release(entity: "purchase", uuid: "p-1", owner: "alice")
+        #expect(try await store.leaseHolder(entity: "purchase", uuid: "p-1") == nil)
+
+        // An expired lease is taken over.
+        _ = try await store.lease(entity: "purchase", uuid: "p-1", owner: "alice", for: -1)
+        #expect(try await store.leaseHolder(entity: "purchase", uuid: "p-1") == nil)
+        _ = try await store.lease(entity: "purchase", uuid: "p-1", owner: "bob", for: 60)
+        #expect(try await store.leaseHolder(entity: "purchase", uuid: "p-1")?.owner == "bob")
+
+        // The lease is advisory: the store's own writes proceed regardless.
+        try await store.update(entity: "purchase", uuid: "p-1") { record in
+            record.values["quantity"] = .int(9)
+        }
+        #expect(try await store.read(entity: "purchase").first?.values["quantity"] == .int(9))
+        #expect(try await store.leaseHolder(entity: "purchase", uuid: "p-1")?.owner == "bob")
+
+        await #expect(throws: SchemaError.notFound("ghost")) {
+            try await store.lease(entity: "purchase", uuid: "ghost", owner: "alice", for: 60)
+        }
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
