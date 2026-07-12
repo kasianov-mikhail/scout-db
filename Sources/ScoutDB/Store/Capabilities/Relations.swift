@@ -18,6 +18,19 @@ extension EntityStore {
         return Dictionary(uniqueKeysWithValues: parents.map { ($0.uuid, $0) })
     }
 
+    /// Reads every record of `entity` whose reference `field` names the parent.
+    ///
+    /// The reverse of `join`: a scalar reference matches by equality, a list
+    /// reference by membership.
+    ///
+    public func children(entity: String, of parent: String, via field: String) async throws -> [EntityRecord] {
+        let definition = try await registry.definition(for: entity)
+        guard let reference = definition.field(named: field, at: definition.version), reference.references != nil else {
+            throw SchemaError.unknownField(field)
+        }
+        return try await read(entity: entity, filters: [Filter(field: field, op: reference.type.isList ? .contains : .equals, value: .string(parent))])
+    }
+
     public func orphans(entity: String, field: String) async throws -> [EntityRecord] {
         let records = try await read(entity: entity)
         let parents = try await join(entity: entity, records: records, field: field)
