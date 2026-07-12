@@ -89,6 +89,16 @@ extension EntityStore {
             guard let field = byName[filter.field] else {
                 throw SchemaError.unknownField(filter.field)
             }
+            // A negation runs as the complement of the client matcher; the ngram
+            // and shadow-slot narrowings below only ever shrink the positive set,
+            // so they must not apply to a negated filter.
+            if filter.negated {
+                guard filter.op != .near, filter.op != .search else {
+                    throw SchemaError.invalidValue(filter.field)
+                }
+                client.append(filter)
+                continue
+            }
             switch filter.op {
             case .isNull, .isNotNull, .matches:
                 client.append(filter)

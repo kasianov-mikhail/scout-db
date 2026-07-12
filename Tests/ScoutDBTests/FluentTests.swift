@@ -101,6 +101,29 @@ struct FluentTests {
         #expect(try await store.query("purchase").count() == 1)
     }
 
+    @Test("Exclude negates a predicate and keeps records without the field")
+    func excludeFilters() async throws {
+        let records = try await store.query("purchase")
+            .exclude("product_id", .equals, "sku-1")
+            .sort("date")
+            .all()
+        #expect(records.map(\.uuid) == ["p-0", "p-2"])
+
+        // The complement composes with positive filters and other client ops.
+        #expect(try await store.query("purchase").filter("quantity" > 1).exclude("quantity", .equals, 3).count() == 1)
+        #expect(try await store.query("purchase").exclude("product_id", .contains, "ku-").count() == 0)
+
+        // No record carries a comment, so excluding by it keeps them all.
+        #expect(try await store.query("purchase").exclude("comment", .equals, "gift").count() == 3)
+
+        // Distance cannot be negated.
+        await #expect(throws: SchemaError.invalidValue("product_id")) {
+            _ = try await store.query("purchase")
+                .exclude(.init(field: "product_id", op: .near, value: .location(latitude: 0, longitude: 0), radius: 10))
+                .all()
+        }
+    }
+
     @Test("A compound alternative requires all of its filters at once")
     func compoundAlternative() async throws {
         // quantities: p-0 → 3, p-1 → 1, p-2 → 2

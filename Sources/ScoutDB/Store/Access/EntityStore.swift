@@ -58,12 +58,16 @@ public struct EntityStore: Sendable {
         public let op: Match
         public let value: RecordValue
         public var radius: Double?
+        /// A negated filter keeps the records its predicate does NOT match; it
+        /// always runs client-side, so a record missing the field is kept.
+        public var negated = false
 
-        public init(field: String, op: Match, value: RecordValue, radius: Double? = nil) {
+        public init(field: String, op: Match, value: RecordValue, radius: Double? = nil, negated: Bool = false) {
             self.field = field
             self.op = op
             self.value = value
             self.radius = radius
+            self.negated = negated
         }
 
         public static func between(_ field: String, _ lower: RecordValue, _ upper: RecordValue) -> [Filter] {
@@ -181,7 +185,10 @@ public struct EntityStore: Sendable {
     {
         var (server, client) = try split(filters, entity: entity, using: definition)
         server.append(ServerFilter(field: "deleted", op: .equals, value: .int(0)))
-        let matchers = client.map(Self.matcher(for:))
+        let matchers = client.map { filter in
+            let base = Self.matcher(for: filter)
+            return filter.negated ? { !base($0) } : base
+        }
         return (
             ckQuery(Entity.recordType, filters: server, sort: sort),
             { record in !record.deleted && matchers.allSatisfy { $0(record) } }
