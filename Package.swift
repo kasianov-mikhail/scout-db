@@ -17,6 +17,10 @@ let package = Package(
             name: "ScoutDBTesting",
             targets: ["ScoutDBTesting"]
         ),
+        .plugin(
+            name: "ScoutDBCodegenPlugin",
+            targets: ["ScoutDBCodegenPlugin"]
+        ),
     ],
     targets: [
         .target(
@@ -25,6 +29,15 @@ let package = Package(
         .target(
             name: "ScoutDBTesting",
             dependencies: ["ScoutDB"]
+        ),
+        .executableTarget(
+            name: "scoutdb-codegen",
+            dependencies: ["ScoutDB"]
+        ),
+        .plugin(
+            name: "ScoutDBCodegenPlugin",
+            capability: .buildTool(),
+            dependencies: ["scoutdb-codegen"]
         ),
         .testTarget(
             name: "ScoutDBTests",
