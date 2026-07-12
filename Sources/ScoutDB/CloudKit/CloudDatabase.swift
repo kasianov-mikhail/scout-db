@@ -41,6 +41,8 @@ public protocol CloudDatabase: Sendable {
     func save(zone: CKRecordZone) async throws
     /// The record behind an ID, or nil when the server has none.
     func fetchRecord(id: CKRecord.ID) async throws -> CKRecord?
+    /// One pass of a zone's change feed from an opaque continuation token.
+    func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?) async throws -> (changed: [CKRecord], deleted: [CKRecord.ID], token: Data?)
 }
 
 extension CloudDatabase {
@@ -177,6 +179,58 @@ extension CKDatabase: CloudDatabase {
                 return try await database.records(for: [id])[id]?.get()
             } catch let error as CKError where error.code == .unknownItem {
                 return nil
+            }
+        }
+    }
+
+    public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?) async throws -> (changed: [CKRecord], deleted: [CKRecord.ID], token: Data?) {
+        let previous = try token.map { data in
+            guard let unarchived = try NSKeyedUnarchiver.unarchivedObject(ofClass: CKServerChangeToken.self, from: data) else {
+                throw CKError(.invalidArguments)
+            }
+            return unarchived
+        }
+        return try await throttled { database in
+            var configuration = CKFetchRecordZoneChangesOperation.ZoneConfiguration()
+            configuration.previousServerChangeToken = previous
+
+            // The operation reports through callbacks on its own queue, one at a
+            // time; the box only bridges that serial stream into the continuation.
+            final class Collector: @unchecked Sendable {
+                var changed: [CKRecord] = []
+                var deleted: [CKRecord.ID] = []
+                var latest: CKServerChangeToken?
+            }
+            let collector = Collector()
+
+            return try await withCheckedThrowingContinuation { continuation in
+                let operation = CKFetchRecordZoneChangesOperation(recordZoneIDs: [zoneID], configurationsByRecordZoneID: [zoneID: configuration])
+                operation.recordWasChangedBlock = { _, result in
+                    if case .success(let record) = result {
+                        collector.changed.append(record)
+                    }
+                }
+                operation.recordWithIDWasDeletedBlock = { id, _ in
+                    collector.deleted.append(id)
+                }
+                operation.recordZoneChangeTokensUpdatedBlock = { _, token, _ in
+                    collector.latest = token
+                }
+                operation.recordZoneFetchResultBlock = { _, result in
+                    if case .success((let token, _, _)) = result {
+                        collector.latest = token
+                    }
+                }
+                operation.fetchRecordZoneChangesResultBlock = { result in
+                    switch result {
+                    case .success:
+                        let data = collector.latest.flatMap { try? NSKeyedArchiver.archivedData(withRootObject: $0, requiringSecureCoding: true) }
+                        continuation.resume(returning: (collector.changed, collector.deleted, data))
+                    case .failure(let error):
+                        continuation.resume(throwing: error)
+                    }
+                }
+                database.add(operation)
             }
         }
     }
