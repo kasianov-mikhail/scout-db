@@ -272,6 +272,34 @@ struct OperationsTests {
         }
     }
 
+    @Test("Zone delta sync walks the change feed across entities by token")
+    func zoneDeltaSync() async throws {
+        let zone = CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName)
+        let zoned = EntityStore(database: database, registry: registry, zoneID: zone)
+        try await zoned.ensureZone()
+
+        try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        let first = try await zoned.zoneChanges()
+        #expect(first.records.map(\.uuid) == ["p-1"])
+        #expect(first.deleted.isEmpty)
+
+        // Nothing new: the token fences off what the first pass already served.
+        let idle = try await zoned.zoneChanges(since: first.token)
+        #expect(idle.records.isEmpty)
+
+        // A tombstone arrives as a changed record with `deleted` set.
+        try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-2")
+        try await zoned.delete(entity: "purchase", uuid: "p-1")
+        let second = try await zoned.zoneChanges(since: first.token)
+        #expect(Set(second.records.map(\.uuid)) == ["p-1", "p-2"])
+        #expect(second.records.first { $0.uuid == "p-1" }?.deleted == true)
+
+        // A store without a custom zone cannot delta-sync.
+        await #expect(throws: SchemaError.self) {
+            _ = try await store.zoneChanges()
+        }
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")

@@ -13,6 +13,8 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     public var records: [CKRecord] = []
     public var storedSubscriptions: [CKSubscription] = []
     public var zones: [CKRecordZone.ID] = []
+    private var changeLog: [(sequence: Int64, id: CKRecord.ID, deleted: Bool)] = []
+    private var sequence: Int64 = 0
     public var errors: [Error] = []
     public var writeErrors: [Error] = []
 
@@ -75,6 +77,10 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         records.forEach(upsert)
         let deleting = Set(recordIDs)
         self.records.removeAll { deleting.contains($0.recordID) }
+        for id in recordIDs {
+            sequence += 1
+            changeLog.append((sequence, id, true))
+        }
     }
 
     public func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
@@ -124,6 +130,21 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         return records.first { $0.recordID == id }?.copy() as? CKRecord
     }
 
+    public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?) async throws -> (changed: [CKRecord], deleted: [CKRecord.ID], token: Data?) {
+        if let error = errors.popLast() {
+            throw error
+        }
+        let floor = token.flatMap { Int64(String(decoding: $0, as: UTF8.self)) } ?? 0
+        // Latest state per record wins, mirroring the server's coalesced feed.
+        var latest: [CKRecord.ID: Bool] = [:]
+        for entry in changeLog where entry.sequence > floor && entry.id.zoneID == zoneID {
+            latest[entry.id] = entry.deleted
+        }
+        let changed = latest.filter { !$0.value }.keys.compactMap { id in records.first { $0.recordID == id }?.copy() as? CKRecord }
+        let deleted = latest.filter(\.value).keys.sorted { $0.recordName < $1.recordName }
+        return (changed.sorted { $0.recordID.recordName < $1.recordID.recordName }, Array(deleted), Data("\(sequence)".utf8))
+    }
+
     public func save(zone: CKRecordZone) async throws {
         if let error = writeErrors.popLast() ?? errors.popLast() {
             throw error
@@ -136,6 +157,8 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     private func upsert(_ record: CKRecord) {
         records.removeAll { $0.recordType == record.recordType && $0.recordID == record.recordID }
         records.append(record)
+        sequence += 1
+        changeLog.append((sequence, record.recordID, false))
     }
 
     // Every response hands out a copy, the way the server returns a fresh record

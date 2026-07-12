@@ -135,4 +135,8 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     public func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
         try await backing.fetchRecord(id: id)
     }
+
+    public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?) async throws -> (changed: [CKRecord], deleted: [CKRecord.ID], token: Data?) {
+        try await backing.zoneChanges(zoneID: zoneID, since: token)
+    }
 }
