@@ -8,14 +8,29 @@
 import Foundation
 
 public struct TransactionStep: Codable, Equatable, Sendable {
+    public enum Kind: String, Codable, Sendable {
+        case write, delete
+    }
+
+    public let kind: Kind
     public let entity: String
     public let uuid: String
     public let values: [String: RecordValue]
 
-    public init(entity: String, uuid: String, values: [String: RecordValue]) {
+    public init(kind: Kind = .write, entity: String, uuid: String, values: [String: RecordValue] = [:]) {
+        self.kind = kind
         self.entity = entity
         self.uuid = uuid
         self.values = values
+    }
+
+    // Steps persisted before deletes existed carry no kind; they are writes.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try container.decodeIfPresent(Kind.self, forKey: .kind) ?? .write
+        entity = try container.decode(String.self, forKey: .entity)
+        uuid = try container.decode(String.self, forKey: .uuid)
+        values = try container.decode([String: RecordValue].self, forKey: .values)
     }
 }
 
@@ -24,6 +39,10 @@ public struct TransactionDraft {
 
     public mutating func write(_ values: [String: RecordValue], entity: String, uuid: String = UUID().uuidString) {
         steps.append(TransactionStep(entity: entity, uuid: uuid, values: values))
+    }
+
+    public mutating func delete(entity: String, uuid: String) {
+        steps.append(TransactionStep(kind: .delete, entity: entity, uuid: uuid))
     }
 }
 
@@ -75,16 +94,22 @@ extension EntityStore {
         try await write(["status": .string(status), "date": .date(Date()), "steps": .bytes(steps)], entity: Self.transactionEntity, uuid: uuid)
     }
 
-    // Consecutive steps on one entity flush as a single batched write — order across
-    // entities is preserved, and a repeated uuid starts a new batch so later steps
-    // still overwrite earlier ones the way sequential writes did.
+    // Consecutive write steps on one entity flush as a single batched write — order
+    // across entities and kinds is preserved, and a repeated uuid starts a new batch
+    // so later steps still overwrite earlier ones the way sequential writes did.
+    // Deletes tombstone one by one; replaying a tombstone is idempotent.
     private func apply(_ steps: [TransactionStep]) async throws {
         var index = 0
         while index < steps.count {
+            guard steps[index].kind == .write else {
+                try await delete(entity: steps[index].entity, uuid: steps[index].uuid)
+                index += 1
+                continue
+            }
             let entity = steps[index].entity
             var uuids: Set<String> = []
             var batch: [EntityWrite] = []
-            while index < steps.count, steps[index].entity == entity, uuids.insert(steps[index].uuid).inserted {
+            while index < steps.count, steps[index].kind == .write, steps[index].entity == entity, uuids.insert(steps[index].uuid).inserted {
                 batch.append(EntityWrite(values: steps[index].values, uuid: steps[index].uuid))
                 index += 1
             }
