@@ -21,15 +21,32 @@ public struct DefinitionCodeGenerator {
         lines.append("")
         lines.append("    init(record: EntityRecord) {")
         for field in fields {
-            if field.type == .location || field.type == .asset {
+            if Self.opaque(field.type) {
                 lines.append("        \(camel(field.name)) = record.values[\"\(field.name)\"]")
             } else {
                 lines.append("        \(camel(field.name)) = record[\"\(field.name)\"]")
             }
         }
         lines.append("    }")
+        lines.append("")
+        lines.append("    var recordValues: [String: RecordValue] {")
+        lines.append("        var values: [String: RecordValue] = [:]")
+        for field in fields {
+            if Self.opaque(field.type) {
+                lines.append("        values[\"\(field.name)\"] = \(camel(field.name))")
+            } else {
+                lines.append("        values[\"\(field.name)\"] = \(camel(field.name))?.recordValue")
+            }
+        }
+        lines.append("        return values")
+        lines.append("    }")
         lines.append("}")
         return lines.joined(separator: "\n")
+    }
+
+    // The kinds with no native Swift counterpart stay as raw `RecordValue`s.
+    private static func opaque(_ type: FieldType) -> Bool {
+        [.location, .asset, .locationList, .assetList].contains(type)
     }
 
     private func swiftType(of type: FieldType) -> String {

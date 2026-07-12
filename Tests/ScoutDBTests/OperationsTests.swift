@@ -713,6 +713,34 @@ struct OperationsTests {
         #expect(source.contains("var productId: String?"))
         #expect(source.contains("productId = record[\"product_id\"]"))
         #expect(source.contains("var date: Date?"))
+        #expect(source.contains("var recordValues: [String: RecordValue] {"))
+        #expect(source.contains("values[\"product_id\"] = productId?.recordValue"))
+    }
+
+    @Test("Typed lists round-trip through the record subscript")
+    func typedListSubscript() {
+        var record = EntityRecord(entity: "profile", uuid: "u-1", schemaVersion: 1, values: [:])
+        record["tags"] = ["a", "b"]
+        record["counts"] = [Int64(1), 2]
+        record["rates"] = [1.5, 2.5]
+        record["days"] = [Date(timeIntervalSince1970: 0)]
+
+        #expect(record.values["tags"] == .strings(["a", "b"]))
+        #expect(record.values["counts"] == .ints([1, 2]))
+        #expect(record.values["rates"] == .doubles([1.5, 2.5]))
+        #expect(record.values["days"] == .dates([Date(timeIntervalSince1970: 0)]))
+
+        let counts: [Int64]? = record["counts"]
+        #expect(counts == [1, 2])
+        let plain: [Int]? = record["counts"]
+        #expect(plain == [1, 2])
+        let rates: [Double]? = record["rates"]
+        #expect(rates == [1.5, 2.5])
+        let days: [Date]? = record["days"]
+        #expect(days == [Date(timeIntervalSince1970: 0)])
+        // A kind mismatch reads back as nil, same as the scalar subscript.
+        let mismatched: [Int64]? = record["tags"]
+        #expect(mismatched == nil)
     }
 
     private func stampCreator(uuid: String, creator: String) {
