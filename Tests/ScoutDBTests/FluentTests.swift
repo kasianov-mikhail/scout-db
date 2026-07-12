@@ -101,6 +101,27 @@ struct FluentTests {
         #expect(try await store.query("purchase").count() == 1)
     }
 
+    @Test("A compound alternative requires all of its filters at once")
+    func compoundAlternative() async throws {
+        // quantities: p-0 → 3, p-1 → 1, p-2 → 2
+        let records = try await store.query("purchase")
+            .group {
+                $0.filter("product_id", .equals, "sku-1")
+                $0.all("quantity" > 1, "quantity" < 3)
+            }
+            .sort("date")
+            .all()
+        #expect(records.map(\.uuid) == ["p-1", "p-2"])
+
+        // The compound alternative distributes into the other operations too.
+        let count = try await store.query("purchase")
+            .group {
+                $0.all("quantity" > 1, "amount" < 25)
+            }
+            .count()
+        #expect(count == 1)
+    }
+
     @Test("Builder update and delete honor OR groups")
     func groupMutation() async throws {
         try await store.query("purchase")
