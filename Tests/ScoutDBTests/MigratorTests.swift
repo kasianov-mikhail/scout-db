@@ -100,6 +100,41 @@ struct MigratorTests {
         #expect(migrated == 0)
     }
 
+    @Test("Key rotation re-encrypts records and republishes the definition")
+    func keyRotation() async throws {
+        let provider = StaticKeyProvider(keys: ["k1": SymmetricKey(size: .bits256), "k2": SymmetricKey(size: .bits256)])
+        try await registry.publish(makeSecureRenameDefinition(version: 1))
+        let store = EntityStore(database: database, registry: registry, keyProvider: provider)
+        try await store.write(["email": .string("alice@example.com"), "status": .string("new")], entity: "account", uuid: "a-1")
+        let sealed = try #require(database.records.first { $0.recordType == "Entity" }?["payload"] as? Data)
+
+        let rotating = Migrator(database: database, registry: registry, keyProvider: provider)
+        let rotated = try await rotating.rotateKey(entity: "account", to: "k2")
+        #expect(rotated == 1)
+
+        // The definition now names the new key, the ciphertext changed, and a
+        // provider-backed store still reads the plaintext.
+        #expect(try await registry.definition(for: "account").keyID == "k2")
+        let resealed = try #require(database.records.first { $0.recordType == "Entity" }?["payload"] as? Data)
+        #expect(resealed != sealed)
+        let reread = try #require(try await store.read(entity: "account").first)
+        #expect(reread.values["email"] == .string("alice@example.com"))
+
+        // An interrupted run repeats safely: with the old-key definition still
+        // around, the fallback decode picks up records already sealed under the
+        // new key and re-seals them.
+        var stale = try await registry.definition(for: "account")
+        stale.keyID = "k1"
+        try await registry.register(stale)
+        #expect(try await rotating.rotateKey(entity: "account", to: "k2") == 1)
+        #expect(try await store.read(entity: "account").first?.values["email"] == .string("alice@example.com"))
+
+        // Rotating to the key already in place is a caller error.
+        await #expect(throws: SchemaError.missingKey("k2")) {
+            try await rotating.rotateKey(entity: "account", to: "k2")
+        }
+    }
+
     @Test("A keyless backfill preserves the ciphertext of encrypted fields it cannot read")
     func keylessBackfillKeepsCiphertext() async throws {
         try await registry.publish(makeSecureRenameDefinition(version: 1))
