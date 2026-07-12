@@ -503,6 +503,31 @@ struct OperationsTests {
         }
     }
 
+    @Test("Restore lifts a tombstone with its values, compact purges old tombstones")
+    func restoreAndCompact() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.delete(entity: "purchase", uuid: "p-1")
+        #expect(try await store.read(entity: "purchase").isEmpty)
+
+        // The tombstone kept the values, so the restored record is whole.
+        let restored = try await store.restore(entity: "purchase", uuid: "p-1")
+        #expect(restored.values["product_id"] == .string("sku-42"))
+        #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-1"])
+
+        // Restoring a live record is a no-op.
+        #expect(try await store.restore(entity: "purchase", uuid: "p-1").deleted == false)
+
+        // Compact removes tombstones past the cutoff — and only those.
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
+        try await store.delete(entity: "purchase", uuid: "p-1")
+        #expect(try await store.compact(entity: "purchase", olderThan: Date(timeIntervalSince1970: 0)) == 0)
+        #expect(try await store.compact(entity: "purchase", olderThan: Date().addingTimeInterval(60)) == 1)
+        #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-2"])
+        await #expect(throws: SchemaError.notFound("p-1")) {
+            try await store.restore(entity: "purchase", uuid: "p-1")
+        }
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")

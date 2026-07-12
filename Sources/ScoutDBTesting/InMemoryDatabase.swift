@@ -158,6 +158,10 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     private func upsert(_ record: CKRecord) {
         records.removeAll { $0.recordType == record.recordType && $0.recordID == record.recordID }
         records.append(record)
+        // Stamp the save time the way the server does, so `modificationDate`
+        // predicates and change feeds behave in tests; explicit overrides win
+        // because they are applied after the write.
+        record.overrideModificationDate(Date())
         sequence += 1
         changeLog.append((sequence, record.recordID, false))
     }

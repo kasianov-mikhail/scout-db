@@ -307,7 +307,7 @@ extension EntityStore {
     @discardableResult public func deleteAll(entity: String, any branches: [[Filter]]) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         let victims = try await read(entity: entity, any: branches)
-        let tombstones = try victims.map { try tombstone(entity: entity, uuid: $0.uuid, definition: definition) }
+        let tombstones = try victims.map { try tombstone(entity: entity, uuid: $0.uuid, definition: definition, values: $0.values) }
         try await database.write(records: tombstones)
         try await GridAggregator(database: database).remove(victims, using: definition)
         return victims.count
@@ -324,7 +324,8 @@ extension EntityStore {
             ])
         let expired = try decode(try await database.allRecords(matching: query, inZone: zoneID), using: definition).filter { !$0.deleted }
 
-        let tombstones = try expired.map(\.uuid).sorted().map { try tombstone(entity: entity, uuid: $0, definition: definition) }
+        let tombstones = try expired.sorted { $0.uuid < $1.uuid }
+            .map { try tombstone(entity: entity, uuid: $0.uuid, definition: definition, values: $0.values) }
         try await database.write(records: tombstones)
         try await GridAggregator(database: database).remove(expired, using: definition)
         return expired.count

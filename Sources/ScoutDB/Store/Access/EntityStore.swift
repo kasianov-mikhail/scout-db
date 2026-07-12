@@ -155,8 +155,10 @@ public struct EntityStore: Sendable {
 
     public func delete(entity: String, uuid: String) async throws {
         let definition = try await registry.definition(for: entity)
-        let removed = try await liveRecords(entity: entity, uuids: [uuid], using: definition)
-        try await database.write(record: tombstone(entity: entity, uuid: uuid, definition: definition))
+        // The read is unconditional now: the tombstone keeps the record's values
+        // so `restore` can lift it later.
+        let removed = try decode(try await items(entity: entity, uuids: [uuid]), using: definition).filter { !$0.deleted }
+        try await database.write(record: tombstone(entity: entity, uuid: uuid, definition: definition, values: removed.first?.values ?? [:]))
         try await GridAggregator(database: database).remove(removed, using: definition)
     }
 
@@ -167,12 +169,13 @@ public struct EntityStore: Sendable {
         return try decode(try await items(entity: entity, uuids: uuids), using: definition).filter { !$0.deleted }
     }
 
-    // A tombstone is the record envelope with `deleted` set and no values; encoding
-    // it through the coder keeps the envelope defined in one place — and, like any
-    // write, in the store's zone.
-    func tombstone(entity: String, uuid: String, definition: EntityDefinition) throws -> CKRecord {
-        try EntityCoder(zoneID: zoneID)
-            .encode(EntityRecord(entity: entity, uuid: uuid, schemaVersion: definition.version, values: [:], deleted: true), using: definition)
+    // A tombstone is the record envelope with `deleted` set, carrying the values
+    // it retired so a restore can bring them back; encoding it through the coder
+    // keeps the envelope defined in one place — and, like any write, in the
+    // store's zone.
+    func tombstone(entity: String, uuid: String, definition: EntityDefinition, values: [String: RecordValue] = [:]) throws -> CKRecord {
+        try EntityCoder(keyProvider: keyProvider, zoneID: zoneID)
+            .encode(EntityRecord(entity: entity, uuid: uuid, schemaVersion: definition.version, values: values, deleted: true), using: definition)
     }
 
     public func read(entity: String, filters: [Filter] = [], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil) async throws -> [EntityRecord] {
