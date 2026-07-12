@@ -348,6 +348,43 @@ struct OperationsTests {
         #expect(try await store.record(for: deleted) == nil)
     }
 
+    @Test("The sync coordinator advances its token, persists it, and flushes the offline queue")
+    func syncCoordinator() async throws {
+        let zone = CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName)
+        let tokenURL = FileManager.default.temporaryDirectory.appendingPathComponent("scout-token-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tokenURL) }
+
+        let cache = OfflineCache(backing: database)
+        let zoned = EntityStore(database: cache, registry: registry, zoneID: zone)
+        try await zoned.ensureZone()
+        let coordinator = SyncCoordinator(store: zoned, cache: cache, tokenURL: tokenURL)
+
+        try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        #expect(try await coordinator.sync().records.map(\.uuid) == ["p-1"])
+        #expect(try await coordinator.sync().records.isEmpty)
+
+        // A push triggers a pass; a foreign payload does not.
+        try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-2")
+        let pushed = try await coordinator.handlePush(["ck": ["nid": "n", "qry": ["sid": "scout-purchase", "fo": 1]]])
+        #expect(pushed?.records.map(\.uuid) == ["p-2"])
+        #expect(try await coordinator.handlePush(["aps": ["alert": "hi"]]) == nil)
+
+        // The token survives a relaunch; reset replays the zone.
+        let relaunched = SyncCoordinator(store: zoned, cache: cache, tokenURL: tokenURL)
+        #expect(try await relaunched.sync().records.isEmpty)
+        relaunched.reset()
+        #expect(try await relaunched.sync().records.count == 2)
+
+        // An offline write queues in the cache; the next pass replays it first,
+        // so the delta already carries it.
+        database.writeErrors = [CKError(.networkFailure)]
+        try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-3")
+        #expect(cache.pendingWrites == 1)
+        let delta = try await coordinator.sync()
+        #expect(cache.pendingWrites == 0)
+        #expect(delta.records.map(\.uuid).contains("p-3"))
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
