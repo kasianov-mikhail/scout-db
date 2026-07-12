@@ -236,6 +236,33 @@ struct FluentTests {
         #expect(streamed == ["p-0", "p-2"])
     }
 
+    @Test("The builder pages by its sort clause, honoring OR groups")
+    func fieldPage() async throws {
+        // quantities: p-0 → 3, p-1 → 1, p-2 → 2
+        let first = try await store.query("purchase").sort("quantity").page(size: 2)
+        #expect(first.records.map(\.uuid) == ["p-1", "p-2"])
+        let second = try await store.query("purchase").sort("quantity").page(size: 2, after: try #require(first.cursor))
+        #expect(second.records.map(\.uuid) == ["p-0"])
+        #expect(second.cursor == nil)
+
+        func grouped() -> QueryBuilder {
+            store.query("purchase")
+                .group {
+                    $0.filter("product_id", .equals, "sku-0")
+                    $0.filter("product_id", .equals, "sku-1")
+                }
+                .sort("quantity", .descending)
+        }
+        let top = try await grouped().page(size: 1)
+        #expect(top.records.map(\.uuid) == ["p-0"])
+        let rest = try await grouped().page(size: 1, after: try #require(top.cursor))
+        #expect(rest.records.map(\.uuid) == ["p-1"])
+
+        await #expect(throws: SchemaError.self) {
+            _ = try await store.query("purchase").page(size: 1)
+        }
+    }
+
     @Test("Pagination with a sort clause throws instead of ignoring it")
     func paginateSortThrows() async throws {
         await #expect(throws: SchemaError.self) {

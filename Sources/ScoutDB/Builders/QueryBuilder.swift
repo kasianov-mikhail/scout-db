@@ -191,6 +191,18 @@ public struct QueryBuilder {
         return try await store.read(entity: entity, any: branches(), limit: size, after: cursor)
     }
 
+    /// Returns one keyset page ordered by the builder's sort clause.
+    ///
+    /// Requires exactly one `sort(_:_:)` clause on a slot-backed scalar field;
+    /// OR groups are honored. Envelope-date pages stay with `paginate(size:after:)`.
+    ///
+    public func page(size: Int, after cursor: FieldCursor? = nil) async throws -> FieldPage {
+        guard sorts.count == 1, let sort = sorts.first else {
+            throw SchemaError.invalidDefinition("A field-ordered page requires exactly one sort clause")
+        }
+        return try await store.read(entity: entity, any: branches(), orderedBy: sort.field, descending: !sort.ascending, limit: size, after: cursor)
+    }
+
     /// Streams every matching record page by page.
     public func stream(pageSize: Int = 100) -> AsyncThrowingStream<EntityRecord, any Error> {
         store.stream(entity: entity, any: branches(), pageSize: pageSize)
