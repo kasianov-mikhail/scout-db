@@ -27,6 +27,7 @@ public struct QueryBuilder: Sendable {
     private var sorts: [EntityStore.Sort] = []
     private var projection: [String]?
     private var ceiling: Int?
+    private var creator: String?
 
     init(entity: String, store: EntityStore) {
         self.entity = entity
@@ -117,15 +118,23 @@ public struct QueryBuilder: Sendable {
         return builder
     }
 
+    /// Keeps only the records a given user created — the public-database
+    /// scoping, applied server-side through `creatorUserRecordID`.
+    public func createdBy(_ user: String) -> Self {
+        var builder = self
+        builder.creator = user
+        return builder
+    }
+
     /// Runs the query and returns every matching record.
     ///
     /// A ``limit(_:)`` bounds the fetch server-side: the store stops following the
     /// query cursor as soon as enough records are in hand.
     public func all() async throws -> [EntityRecord] {
         if groups.count > 0 {
-            return try await store.read(entity: entity, any: branches(), sort: sorts, fields: projection, limit: ceiling)
+            return try await store.read(entity: entity, any: branches(), sort: sorts, fields: projection, limit: ceiling, createdBy: creator)
         }
-        return try await store.read(entity: entity, filters: filters, sort: sorts, fields: projection, limit: ceiling)
+        return try await store.read(entity: entity, filters: filters, sort: sorts, fields: projection, limit: ceiling, createdBy: creator)
     }
 
     /// Runs the query and returns the first matching record.
@@ -137,9 +146,9 @@ public struct QueryBuilder: Sendable {
     /// envelope and the filtered fields rather than full payloads.
     public func count() async throws -> Int {
         if groups.count > 0 {
-            return try await store.read(entity: entity, any: branches(), sort: sorts, fields: [], limit: ceiling).count
+            return try await store.read(entity: entity, any: branches(), sort: sorts, fields: [], limit: ceiling, createdBy: creator).count
         }
-        return try await store.read(entity: entity, filters: filters, sort: sorts, fields: [], limit: ceiling).count
+        return try await store.read(entity: entity, filters: filters, sort: sorts, fields: [], limit: ceiling, createdBy: creator).count
     }
 
     /// Sums a numeric field across the matching records, fetching only that field.

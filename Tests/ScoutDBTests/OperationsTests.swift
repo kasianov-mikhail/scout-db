@@ -710,6 +710,33 @@ struct OperationsTests {
         }
     }
 
+    @Test("Reads scope to a creator, the public-database pattern")
+    func createdByScope() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
+        var big = makePurchase().values
+        big["quantity"] = .int(9)
+        try await store.write(big, entity: "purchase", uuid: "p-3")
+        stampCreator(uuid: "p-1", creator: "user-a")
+        stampCreator(uuid: "p-2", creator: "user-b")
+        stampCreator(uuid: "p-3", creator: "user-a")
+
+        #expect(Set(try await store.read(entity: "purchase", createdBy: "user-a").map(\.uuid)) == ["p-1", "p-3"])
+        #expect(try await store.read(entity: "purchase", createdBy: "user-b").map(\.uuid) == ["p-2"])
+        #expect(try await store.read(entity: "purchase", createdBy: "ghost").isEmpty)
+
+        // The builder composes the scope with filters and groups.
+        #expect(try await store.query("purchase").createdBy("user-a").filter("quantity" > 5).count() == 1)
+        let grouped = try await store.query("purchase")
+            .createdBy("user-a")
+            .group {
+                $0.filter("quantity", .equals, 3)
+                $0.filter("quantity", .equals, 9)
+            }
+            .all()
+        #expect(Set(grouped.map(\.uuid)) == ["p-1", "p-3"])
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
