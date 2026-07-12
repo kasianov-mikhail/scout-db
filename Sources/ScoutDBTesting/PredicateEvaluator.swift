@@ -48,7 +48,12 @@ public enum PredicateEvaluator {
 
         let key = comparison.leftExpression.keyPath
         let target = comparison.rightExpression.constantValue
-        let value: Any? = key == "modificationDate" ? record.recordModificationDate : record[key]
+        let value: Any? =
+            switch key {
+            case "modificationDate": record.recordModificationDate
+            case "creatorUserRecordID": record.recordCreator
+            default: record[key]
+            }
         guard let value else { return nil }
 
         switch comparison.predicateOperatorType {
@@ -109,6 +114,9 @@ public enum PredicateEvaluator {
             return .orderedDescending
         case (let lhs as String, let rhs as String):
             return order(lhs, rhs)
+        case (let lhs as String, let rhs as CKRecord.Reference):
+            // The creator's server value is a reference; the double stores the name.
+            return order(lhs, rhs.recordID.recordName)
         case (let lhs as Date, let rhs as Date):
             return order(lhs, rhs)
         case (let lhs as Data, let rhs as Data):

@@ -181,18 +181,21 @@ public struct EntityStore: Sendable {
             .encode(EntityRecord(entity: entity, uuid: uuid, schemaVersion: definition.version, values: values, deleted: true), using: definition)
     }
 
-    public func read(entity: String, filters: [Filter] = [], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil) async throws -> [EntityRecord] {
+    public func read(
+        entity: String, filters: [Filter] = [], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil, createdBy creator: String? = nil
+    ) async throws -> [EntityRecord] {
         let definition = try await registry.definition(for: entity)
         // A payload field has no sortable slot, so a sort touching one ranks
         // client-side — every key together, to keep the total order coherent.
         // The scan is unbounded: a cap can only apply after the ranking.
         if try clientRanked(sort, using: definition) {
             let projection = fields.map { $0 + sort.map(\.field) }
-            let ranked = try await read(entity: entity, filters: filters, fields: projection).sorted { Self.ordered($0, $1, by: sort) }
+            let ranked = try await read(entity: entity, filters: filters, fields: projection, createdBy: creator)
+                .sorted { Self.ordered($0, $1, by: sort) }
             guard let limit else { return ranked }
             return Array(ranked.prefix(limit))
         }
-        let (query, included) = try liveQuery(filters, entity: entity, sort: try serverSort(sort, using: definition), using: definition)
+        let (query, included) = try liveQuery(filters, entity: entity, sort: try serverSort(sort, using: definition), createdBy: creator, using: definition)
         let keys = try fields.map { try desiredKeys($0 + filters.map(\.field), using: definition) }
         // A capped read stops following the cursor once enough rows are in hand. The
         // sort ran server-side, so the first `limit` post-filter rows in arrival order
@@ -205,11 +208,17 @@ public struct EntityStore: Sendable {
 
     // Assembles the pieces every live read shares: tombstones excluded server-side and
     // re-checked after decode, client-side matchers reapplied to each decoded record.
-    func liveQuery(_ filters: [Filter], entity: String, sort: [ServerSort] = [], using definition: EntityDefinition) throws
+    // A creator scopes the query server-side — the public-database pattern, where
+    // every user's records share one database and rows are personal by creator.
+    func liveQuery(_ filters: [Filter], entity: String, sort: [ServerSort] = [], createdBy creator: String? = nil, using definition: EntityDefinition)
+        throws
         -> (query: CKQuery, included: (EntityRecord) -> Bool)
     {
         var (server, client) = try split(filters, entity: entity, using: definition)
         server.append(ServerFilter(field: "deleted", op: .equals, value: .int(0)))
+        if let creator {
+            server.append(ServerFilter(field: "creatorUserRecordID", op: .equals, value: .reference(creator)))
+        }
         let matchers = client.map { filter in
             let base = Self.matcher(for: filter)
             return filter.negated ? { !base($0) } : base
@@ -265,7 +274,9 @@ public struct EntityStore: Sendable {
         return keys
     }
 
-    public func read(entity: String, any branches: [[Filter]], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil) async throws -> [EntityRecord] {
+    public func read(
+        entity: String, any branches: [[Filter]], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil, createdBy creator: String? = nil
+    ) async throws -> [EntityRecord] {
         // Sort fields join the projection so the client-side ranking below has values
         // to rank on.
         let branchFields = fields.map { $0 + sort.map(\.field) }
@@ -277,7 +288,8 @@ public struct EntityStore: Sendable {
             var seen: Set<String> = []
             var union: [EntityRecord] = []
             for branch in branches {
-                for record in try await read(entity: entity, filters: branch, fields: branchFields, limit: limit) where seen.insert(record.uuid).inserted {
+                let page = try await read(entity: entity, filters: branch, fields: branchFields, limit: limit, createdBy: creator)
+                for record in page where seen.insert(record.uuid).inserted {
                     union.append(record)
                     if union.count == limit { return union }
                 }
@@ -288,7 +300,7 @@ public struct EntityStore: Sendable {
         // the union then dedupes in branch order.
         let results = try await withThrowingTaskGroup(of: (Int, [EntityRecord]).self) { group in
             for (index, branch) in branches.enumerated() {
-                group.addTask { (index, try await self.read(entity: entity, filters: branch, fields: branchFields)) }
+                group.addTask { (index, try await self.read(entity: entity, filters: branch, fields: branchFields, createdBy: creator)) }
             }
             var collected: [Int: [EntityRecord]] = [:]
             for try await (index, records) in group {
