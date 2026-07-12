@@ -558,6 +558,35 @@ struct OperationsTests {
         #expect(try await store.history(entity: "purchase", uuid: "p-2").isEmpty)
     }
 
+    @Test("An export round-trips into another store's import")
+    func exportImport() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        var second = makePurchase().values
+        second["quantity"] = .int(7)
+        try await store.write(second, entity: "purchase", uuid: "p-2")
+        try await store.delete(entity: "purchase", uuid: "p-2")
+
+        // Tombstoned records stay out of the dump.
+        let dump = try await store.export(entity: "purchase")
+
+        let target = InMemoryDatabase()
+        let targetRegistry = SchemaRegistry(database: target)
+        try await targetRegistry.publish(makePurchaseDefinition())
+        let targetStore = EntityStore(database: target, registry: targetRegistry)
+        #expect(try await targetStore.importRecords(dump, entity: "purchase") == 1)
+        let imported = try await targetStore.read(entity: "purchase")
+        #expect(imported.map(\.uuid) == ["p-1"])
+        #expect(imported.first?.values["product_id"] == .string("sku-42"))
+
+        // A record of a foreign entity is rejected before anything is written.
+        await #expect(throws: SchemaError.invalidValue("purchase")) {
+            _ = try await targetStore.importRecords(dump, entity: "profile")
+        }
+        // A repeated import upserts instead of duplicating.
+        #expect(try await targetStore.importRecords(dump, entity: "purchase") == 1)
+        #expect(try await targetStore.read(entity: "purchase").count == 1)
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
