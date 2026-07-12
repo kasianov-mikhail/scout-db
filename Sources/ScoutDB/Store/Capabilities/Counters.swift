@@ -52,4 +52,52 @@ extension EntityStore {
         }
         return result
     }
+
+    /// Atomically adds elements to a string-list field, keeping it a set.
+    ///
+    /// Duplicates are dropped, existing order is preserved, new elements append
+    /// in the given order. A lost race re-applies the union to the winning list,
+    /// so two writers inserting different elements both survive — the merge that
+    /// a whole-value rewrite silently loses. Returns the resulting list.
+    ///
+    @discardableResult public func insert(_ elements: [String], into field: String, entity: String, uuid: String) async throws -> [String] {
+        try await mutateList(field: field, entity: entity, uuid: uuid) { current in
+            var merged = current
+            for element in elements where !merged.contains(element) {
+                merged.append(element)
+            }
+            return merged
+        }
+    }
+
+    /// Atomically removes elements from a string-list field.
+    ///
+    /// Same race-safe semantics as `insert`; returns the resulting list.
+    ///
+    @discardableResult public func remove(_ elements: [String], from field: String, entity: String, uuid: String) async throws -> [String] {
+        let dropped = Set(elements)
+        return try await mutateList(field: field, entity: entity, uuid: uuid) { current in
+            current.filter { !dropped.contains($0) }
+        }
+    }
+
+    private func mutateList(field: String, entity: String, uuid: String, transform: @escaping ([String]) -> [String]) async throws -> [String] {
+        let definition = try await registry.definition(for: entity)
+        guard let target = definition.field(named: field, at: definition.version) else {
+            throw SchemaError.unknownField(field)
+        }
+        guard target.type == .stringList else {
+            throw SchemaError.invalidValue(field)
+        }
+        var result: [String] = []
+        try await update(entity: entity, uuid: uuid) { record in
+            var current: [String] = []
+            if case .strings(let values)? = record.values[field] {
+                current = values
+            }
+            result = transform(current)
+            record.values[field] = .strings(result)
+        }
+        return result
+    }
 }
