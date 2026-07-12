@@ -156,7 +156,7 @@ extension EntityStore {
                     victims += try await read(entity: child.entity, filters: [Filter(field: field.name, op: .in, value: .strings(chunk))])
                 }
                 guard victims.count > 0 else { continue }
-                let tombstones = try victims.map { try tombstone(entity: child.entity, uuid: $0.uuid, definition: child) }
+                let tombstones = try victims.map { try tombstone(entity: child.entity, uuid: $0.uuid, definition: child, values: $0.values) }
                 try await database.write(records: tombstones)
                 try await GridAggregator(database: database).remove(victims, using: child)
                 try await cascadeDelete(entity: child.entity, uuids: victims.map(\.uuid))
