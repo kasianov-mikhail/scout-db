@@ -123,6 +123,36 @@ struct FluentTests {
         #expect(remaining.map(\.uuid) == ["p-1"])
     }
 
+    @Test("Pagination and streaming honor OR groups")
+    func groupPagination() async throws {
+        func query() -> QueryBuilder {
+            store.query("purchase").group {
+                $0.filter("product_id", .equals, "sku-0")
+                $0.filter("product_id", .equals, "sku-2")
+            }
+        }
+
+        let first = try await query().paginate(size: 1)
+        #expect(first.records.map(\.uuid) == ["p-0"])
+        let cursor = try #require(first.cursor)
+
+        let second = try await query().paginate(size: 1, after: cursor)
+        #expect(second.records.map(\.uuid) == ["p-2"])
+
+        var streamed: [String] = []
+        for try await record in query().stream(pageSize: 1) {
+            streamed.append(record.uuid)
+        }
+        #expect(streamed == ["p-0", "p-2"])
+    }
+
+    @Test("Pagination with a sort clause throws instead of ignoring it")
+    func paginateSortThrows() async throws {
+        await #expect(throws: SchemaError.self) {
+            _ = try await store.query("purchase").sort("quantity").paginate(size: 2)
+        }
+    }
+
     @Test("A record matching several OR branches is transformed once")
     func overlappingBranches() async throws {
         try await store.query("purchase")
