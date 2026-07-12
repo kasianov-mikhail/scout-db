@@ -96,6 +96,38 @@ struct OperationsTests {
         #expect(records.first { $0.uuid == "p-1" }?.values["quantity"] != .int(9))
     }
 
+    @Test("Non-overlapping edits merge on conflict without re-running the transform")
+    func conflictFieldMerge() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+
+        // The winner changed product_id (s_00); this side changes quantity.
+        let winner = try #require(database.records.first { $0["uuid"] as? String == "p-1" }?.copy() as? CKRecord)
+        winner["s_00"] = "sku-99"
+        database.writeErrors = [RecordConflictError(serverRecord: winner)]
+        var runs = 0
+        try await store.update(entity: "purchase", uuid: "p-1") { record in
+            runs += 1
+            record.values["quantity"] = .int(9)
+        }
+        #expect(runs == 1)
+        let merged = try #require(try await store.read(entity: "purchase").first)
+        #expect(merged.values["quantity"] == .int(9))
+        #expect(merged.values["product_id"] == .string("sku-99"))
+
+        // Overlapping edits still re-run the transform on the winner.
+        let overlap = try #require(database.records.first { $0["uuid"] as? String == "p-1" }?.copy() as? CKRecord)
+        overlap["i_01"] = Int64(100)
+        database.writeErrors = [RecordConflictError(serverRecord: overlap)]
+        var reruns = 0
+        try await store.update(entity: "purchase", uuid: "p-1") { record in
+            reruns += 1
+            guard case .int(let quantity)? = record.values["quantity"] else { return }
+            record.values["quantity"] = .int(quantity + 1)
+        }
+        #expect(reruns == 2)
+        #expect(try await store.read(entity: "purchase").first?.values["quantity"] == .int(101))
+    }
+
     @Test("CAS update of a missing record fails")
     func updateMissing() async throws {
         await #expect(throws: SchemaError.notFound("ghost")) {

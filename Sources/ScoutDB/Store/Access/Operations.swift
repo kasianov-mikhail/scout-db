@@ -47,20 +47,39 @@ extension EntityStore {
         let coder = EntityCoder(keyProvider: keyProvider)
         var attempt = 0
         var existing = try await items(entity: entity, uuids: [uuid]).first
+        var prepared: EntityCoder.Rewrite?
 
         while true {
-            guard let stored = existing else {
-                throw SchemaError.notFound(uuid)
+            let rewrite: EntityCoder.Rewrite
+            if let merged = prepared {
+                rewrite = merged
+                prepared = nil
+            } else {
+                guard let stored = existing else {
+                    throw SchemaError.notFound(uuid)
+                }
+                rewrite = try coder.rewrite(stored, using: definition, transform: transform)
             }
-            let rewrite = try coder.rewrite(stored, using: definition, transform: transform)
             do {
                 try await database.write(record: rewrite.record)
             } catch let conflict as RecordConflictError {
                 attempt += 1
                 guard attempt < maxRetry else { throw conflict }
-                // The conflict already carries the winning record — retry against it
-                // instead of re-querying.
-                existing = conflict.serverRecord
+                // The conflict already carries the winning record. When the two
+                // sides edited disjoint fields, graft this side's changes onto the
+                // winner instead of re-running the transform — nothing to re-decide.
+                let winner = try coder.decode(conflict.serverRecord, using: definition)
+                let mine = Self.changedFields(from: rewrite.previous, to: rewrite.next)
+                let theirs = Self.changedFields(from: rewrite.previous, to: winner)
+                if rewrite.previous.deleted == rewrite.next.deleted, Set(mine.keys).isDisjoint(with: theirs.keys) {
+                    prepared = try coder.rewrite(conflict.serverRecord, using: definition) { record in
+                        for (field, value) in mine {
+                            record.values[field] = value
+                        }
+                    }
+                } else {
+                    existing = conflict.serverRecord
+                }
                 continue
             }
             // Rebalance the views outside the CAS loop: drop the stored record's old
@@ -70,6 +89,16 @@ extension EntityStore {
             noteChange(entity: entity)
             return
         }
+    }
+
+    // The fields whose values differ between two states of one record; a field
+    // the later state removed carries nil.
+    private static func changedFields(from base: EntityRecord, to next: EntityRecord) -> [String: RecordValue?] {
+        var changes: [String: RecordValue?] = [:]
+        for field in Set(base.values.keys).union(next.values.keys) where base.values[field] != next.values[field] {
+            changes.updateValue(next.values[field], forKey: field)
+        }
+        return changes
     }
 
     public func read(entity: String, filters: [Filter] = [], limit: Int, after cursor: EntityCursor? = nil) async throws -> EntityPage {
