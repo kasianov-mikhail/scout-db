@@ -528,6 +528,36 @@ struct OperationsTests {
         }
     }
 
+    @Test("An audited entity appends a revision on every update and delete")
+    func revisionLog() async throws {
+        try await registry.publish(EntityStore.revisionDefinition)
+        var audited = makePurchaseDefinition()
+        audited.audited = true
+        try await registry.publish(audited)
+
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.update(entity: "purchase", uuid: "p-1") { record in
+            record.values["quantity"] = .int(9)
+        }
+        try await store.updateAll(entity: "purchase") { record in
+            record.values["quantity"] = .int(11)
+        }
+        try await store.delete(entity: "purchase", uuid: "p-1")
+
+        // Three overwrites, three revisions — each the state right before it.
+        let history = try await store.history(entity: "purchase", uuid: "p-1")
+        #expect(history.map { $0.values["quantity"] } == [.int(3), .int(9), .int(11)])
+        #expect(history.allSatisfy { $0.uuid == "p-1" })
+
+        // An unaudited sibling writes no revisions.
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
+        var plain = makePurchaseDefinition()
+        plain.audited = nil
+        try await registry.publish(plain)
+        try await store.delete(entity: "purchase", uuid: "p-2")
+        #expect(try await store.history(entity: "purchase", uuid: "p-2").isEmpty)
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
