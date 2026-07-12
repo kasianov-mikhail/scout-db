@@ -110,10 +110,21 @@ extension EntityStore {
     }
 
     @discardableResult public func updateAll(entity: String, filters: [Filter] = [], transform: (inout EntityRecord) throws -> Void) async throws -> Int {
+        try await updateAll(entity: entity, any: [filters], transform: transform)
+    }
+
+    /// Rewrites every record matching any of the OR branches; a record matching
+    /// several branches is transformed once.
+    @discardableResult public func updateAll(entity: String, any branches: [[Filter]], transform: (inout EntityRecord) throws -> Void) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         let coder = EntityCoder(keyProvider: keyProvider)
-        let rewrites = try await matchedItems(entity: entity, filters: filters, using: definition).map {
-            try coder.rewrite($0, using: definition, transform: transform)
+        var seen: Set<String> = []
+        var rewrites: [EntityCoder.Rewrite] = []
+        for branch in branches {
+            for item in try await matchedItems(entity: entity, filters: branch, using: definition) {
+                guard let uuid = item["uuid"] as? String, seen.insert(uuid).inserted else { continue }
+                rewrites.append(try coder.rewrite(item, using: definition, transform: transform))
+            }
         }
         try await database.write(records: rewrites.map(\.record))
         // Rebalance the views: drop the old contributions, add the new ones.
@@ -135,8 +146,13 @@ extension EntityStore {
     }
 
     @discardableResult public func deleteAll(entity: String, filters: [Filter] = []) async throws -> Int {
+        try await deleteAll(entity: entity, any: [filters])
+    }
+
+    /// Tombstones every record matching any of the OR branches.
+    @discardableResult public func deleteAll(entity: String, any branches: [[Filter]]) async throws -> Int {
         let definition = try await registry.definition(for: entity)
-        let victims = try await read(entity: entity, filters: filters)
+        let victims = try await read(entity: entity, any: branches)
         let tombstones = try victims.map { try Self.tombstone(entity: entity, uuid: $0.uuid, definition: definition) }
         try await database.write(records: tombstones)
         try await GridAggregator(database: database).remove(victims, using: definition)

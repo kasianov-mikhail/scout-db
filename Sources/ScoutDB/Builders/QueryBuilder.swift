@@ -127,12 +127,12 @@ public struct QueryBuilder {
 
     /// Rewrites every matching record through the transform.
     @discardableResult public func update(_ transform: (inout EntityRecord) throws -> Void) async throws -> Int {
-        try await store.updateAll(entity: entity, filters: filters, transform: transform)
+        try await store.updateAll(entity: entity, any: branches(), transform: transform)
     }
 
     /// Tombstones every matching record.
     @discardableResult public func delete() async throws -> Int {
-        try await store.deleteAll(entity: entity, filters: filters)
+        try await store.deleteAll(entity: entity, any: branches())
     }
 
     /// Explains how the query splits into server predicates and client matchers.
