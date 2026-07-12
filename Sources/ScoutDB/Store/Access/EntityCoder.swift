@@ -119,7 +119,6 @@ struct EntityCoder {
     // result, so the derivation fixpoint never runs twice per write.
     func encode(_ entityRecord: EntityRecord, using definition: EntityDefinition, into base: CKRecord? = nil) throws -> CKRecord {
         let fields = definition.fields(at: entityRecord.schemaVersion)
-        let byName = definition.fieldsByName(at: entityRecord.schemaVersion)
         let values = entityRecord.values
 
         let record = base ?? CKRecord(recordType: Entity.recordType, recordID: CKRecord.ID(recordName: entityRecord.uuid))
@@ -131,14 +130,20 @@ struct EntityCoder {
             record["expires"] = date.addingTimeInterval(ttl)
         }
 
+        // Walk the declared fields, not the present values: a field the transform
+        // cleared must nil out its slot on the base record, or the old value would
+        // survive the rewrite as a stale read.
         var payload: [String: RecordValue] = [:]
-        for (name, value) in values {
-            guard let field = byName[name] else { continue }
+        for field in fields {
+            guard let value = values[field.name] else {
+                if case .slot(_, let slot) = field.storage { record[slot] = nil }
+                continue
+            }
             switch field.storage {
             case .slot(_, let slot):
                 record.setScoutValue(value, forKey: slot)
             case .payload:
-                payload[name] = field.encrypted == true ? try seal(value, keyID: definition.keyID) : value
+                payload[field.name] = field.encrypted == true ? try seal(value, keyID: definition.keyID) : value
             }
         }
         // A keyless read leaves encrypted fields absent (decode cannot open them without a
@@ -149,9 +154,9 @@ struct EntityCoder {
                 payload[field.name] = existing[field.name]
             }
         }
-        if payload.count > 0 {
-            record["payload"] = try jsonEncoder.encode(payload)
-        }
+        // The payload blob is rebuilt from scratch, so an emptied one must clear the
+        // key rather than leave the base record's old blob behind.
+        record["payload"] = payload.count > 0 ? try jsonEncoder.encode(payload) : nil
         return record
     }
 

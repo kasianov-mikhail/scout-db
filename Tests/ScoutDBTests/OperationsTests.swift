@@ -47,6 +47,19 @@ struct OperationsTests {
         #expect(records.first?.values["quantity"] == .int(9))
     }
 
+    @Test("A transform that clears fields clears their stored slot and payload values")
+    func updateClears() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.update(entity: "purchase", uuid: "p-1") { record in
+            record.values["quantity"] = nil
+            record.values["comment"] = nil
+        }
+        let record = try #require(try await store.read(entity: "purchase").first)
+        #expect(record.values["quantity"] == nil)
+        #expect(record.values["comment"] == nil)
+        #expect(record.values["product_id"] == .string("sku-42"))
+    }
+
     @Test("Bulk update retries records that lost their save race")
     func updateAllConflict() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
