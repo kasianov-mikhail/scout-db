@@ -285,6 +285,28 @@ struct FluentTests {
         #expect(records.map { $0.values["quantity"] } == [.int(4), .int(1), .int(3)])
     }
 
+    @Test("Typed queries filter, sort, and decode through key paths")
+    func typedQueries() async throws {
+        let cheap = try await store.query(TypedPurchase.self)
+            .filter(\.quantity > 1)
+            .sort(\.quantity)
+            .all()
+        #expect(cheap.map(\.quantity) == [2, 3])
+        #expect(cheap.map(\.productId) == ["sku-2", "sku-0"])
+
+        let rest = try await store.query(TypedPurchase.self)
+            .exclude(\.productId == "sku-0")
+            .sort(\.amount, .descending)
+            .first()
+        #expect(rest?.productId == "sku-2")
+        #expect(try await store.query(TypedPurchase.self).filter(\.amount <= 20).count() == 2)
+
+        // A key path outside the field map fails loudly instead of matching nothing.
+        await #expect(throws: SchemaError.self) {
+            _ = try await store.query(TypedPurchase.self).filter(\.untracked == "x").all()
+        }
+    }
+
     @Test("Schema update keeps slots, closes removed fields, allocates new ones")
     func schemaUpdate() async throws {
         try await store.schema("purchase")
@@ -324,5 +346,39 @@ struct FluentTests {
 
         try await store.write(["title": .string("hi")], entity: "note", uuid: "n-1")
         #expect(try await store.query("note").count() == 1)
+    }
+}
+
+// The shape scoutdb-codegen emits, written by hand for the typed-query tests;
+// `untracked` deliberately stays out of the field map.
+private struct TypedPurchase: EntityRepresentable {
+    static let entityName = "purchase"
+
+    static func fieldName(for keyPath: PartialKeyPath<TypedPurchase>) -> String? {
+        switch keyPath {
+        case \TypedPurchase.productId: "product_id"
+        case \TypedPurchase.quantity: "quantity"
+        case \TypedPurchase.amount: "amount"
+        default: nil
+        }
+    }
+
+    var productId: String?
+    var quantity: Int64?
+    var amount: Double?
+    var untracked: String?
+
+    init(record: EntityRecord) {
+        productId = record["product_id"]
+        quantity = record["quantity"]
+        amount = record["amount"]
+    }
+
+    var recordValues: [String: RecordValue] {
+        var values: [String: RecordValue] = [:]
+        values["product_id"] = productId?.recordValue
+        values["quantity"] = quantity?.recordValue
+        values["amount"] = amount?.recordValue
+        return values
     }
 }

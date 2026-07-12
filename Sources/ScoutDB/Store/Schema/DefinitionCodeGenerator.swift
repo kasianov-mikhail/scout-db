@@ -24,7 +24,18 @@ public struct DefinitionCodeGenerator {
         let typeName = camel(definition.entity, capitalized: true)
         let fields = definition.fields(at: definition.version)
 
-        var lines = ["struct \(typeName) {"]
+        var lines = ["struct \(typeName): EntityRepresentable {"]
+        lines.append("    static let entityName = \"\(definition.entity)\"")
+        lines.append("")
+        lines.append("    static func fieldName(for keyPath: PartialKeyPath<\(typeName)>) -> String? {")
+        lines.append("        switch keyPath {")
+        for field in fields {
+            lines.append("        case \\\(typeName).\(camel(field.name)): \"\(field.name)\"")
+        }
+        lines.append("        default: nil")
+        lines.append("        }")
+        lines.append("    }")
+        lines.append("")
         for field in fields {
             lines.append("    var \(camel(field.name)): \(swiftType(of: field.type))?")
         }
