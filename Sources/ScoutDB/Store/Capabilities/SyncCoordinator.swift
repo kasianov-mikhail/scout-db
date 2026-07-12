@@ -57,6 +57,10 @@ public final class SyncCoordinator: @unchecked Sendable {
                 try? token.write(to: tokenURL, options: .atomic)
             }
         }
+        // Applied remote changes tick this process's live queries too.
+        for entity in Set(delta.records.map(\.entity)) {
+            store.noteChange(entity: entity)
+        }
         return delta
     }
 

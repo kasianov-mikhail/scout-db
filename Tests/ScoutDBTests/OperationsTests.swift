@@ -587,6 +587,31 @@ struct OperationsTests {
         #expect(try await targetStore.read(entity: "purchase").count == 1)
     }
 
+    @Test("A live query re-yields on every local mutation")
+    func liveQuery() async throws {
+        var live = store.observe(entity: "purchase", sort: [.init(field: "date")]).makeAsyncIterator()
+        #expect(try await live.next() == [])
+
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        #expect(try await live.next()?.map(\.uuid) == ["p-1"])
+
+        try await store.update(entity: "purchase", uuid: "p-1") { record in
+            record.values["quantity"] = .int(9)
+        }
+        #expect(try await live.next()?.first?.values["quantity"] == .int(9))
+
+        try await store.delete(entity: "purchase", uuid: "p-1")
+        #expect(try await live.next() == [])
+
+        // The builder variant re-runs the full query, filters included.
+        var filtered = store.query("purchase").filter("quantity" > 5).observe().makeAsyncIterator()
+        #expect(try await filtered.next() == [])
+        var big = makePurchase().values
+        big["quantity"] = .int(9)
+        try await store.write(big, entity: "purchase", uuid: "p-2")
+        #expect(try await filtered.next()?.map(\.uuid) == ["p-2"])
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")

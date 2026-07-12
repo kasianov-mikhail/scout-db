@@ -67,6 +67,7 @@ extension EntityStore {
             // contribution, add the new one. A grid conflict here must not retry the update.
             try await GridAggregator(database: database).rebalance(removing: [rewrite.previous], adding: [rewrite.next], using: definition)
             try await recordRevisions([rewrite.previous], using: definition)
+            noteChange(entity: entity)
             return
         }
     }
@@ -282,6 +283,9 @@ extension EntityStore {
         // contributions, add the new ones.
         try await GridAggregator(database: database).rebalance(removing: applied.map(\.previous), adding: applied.map(\.next), using: definition)
         try await recordRevisions(applied.map(\.previous), using: definition)
+        if applied.count > 0 {
+            noteChange(entity: entity)
+        }
         if let unresolved {
             throw RecordConflictError(serverRecord: unresolved)
         }
@@ -313,6 +317,9 @@ extension EntityStore {
         try await database.write(records: tombstones)
         try await GridAggregator(database: database).remove(victims, using: definition)
         try await recordRevisions(victims, using: definition)
+        if victims.count > 0 {
+            noteChange(entity: entity)
+        }
         return victims.count
     }
 
@@ -331,6 +338,9 @@ extension EntityStore {
             .map { try tombstone(entity: entity, uuid: $0.uuid, definition: definition, values: $0.values) }
         try await database.write(records: tombstones)
         try await GridAggregator(database: database).remove(expired, using: definition)
+        if expired.count > 0 {
+            noteChange(entity: entity)
+        }
         return expired.count
     }
 
