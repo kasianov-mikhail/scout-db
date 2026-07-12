@@ -53,6 +53,27 @@ struct MigratorTests {
         #expect(records.map(\.uuid) == ["u-2"])
     }
 
+    @Test("Rename carries a value into a field with a fresh slot")
+    func renameAcrossSlots() async throws {
+        try await registry.publish(makeReslotDefinition(version: 1))
+        let store = EntityStore(database: database, registry: registry)
+        try await store.write(["user": .string("dana")], entity: "member", uuid: "u-4")
+
+        try await registry.publish(makeReslotDefinition(version: 2))
+        let migrated = try await migrator.rename(entity: "member", from: "user", to: "handle")
+        #expect(migrated == 1)
+
+        let records = try await store.read(entity: "member")
+        #expect(records.map(\.schemaVersion) == [2])
+        #expect(records.first?.values["handle"] == .string("dana"))
+        #expect(records.first?.values["user"] == nil)
+
+        // A plain backfill would have dropped the value: the slots differ.
+        await #expect(throws: SchemaError.unknownField("ghost")) {
+            try await migrator.rename(entity: "member", from: "user", to: "ghost")
+        }
+    }
+
     @Test("Backfill applies the transform for type changes")
     func typeChange() async throws {
         try await registry.publish(makeRetypeDefinition(version: 1))
@@ -115,6 +136,15 @@ func makeSecureRenameDefinition(version: Int) -> EntityDefinition {
             FieldDefinition(name: "status", type: .string, storage: .slot(.string, "s_00"), until: 2),
             FieldDefinition(name: "state", type: .string, storage: .slot(.string, "s_00"), since: 2),
         ], keyID: "k1")
+}
+
+func makeReslotDefinition(version: Int) -> EntityDefinition {
+    makeDefinition(
+        entity: "member", version: version,
+        fields: [
+            FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_00"), until: 2),
+            FieldDefinition(name: "handle", type: .string, storage: .slot(.string, "s_01"), since: 2),
+        ])
 }
 
 func makeRetypeDefinition(version: Int) -> EntityDefinition {
