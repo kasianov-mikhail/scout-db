@@ -39,6 +39,8 @@ public protocol CloudDatabase: Sendable {
     func deleteSubscription(id: CKSubscription.ID) async throws
     func subscriptions() async throws -> [CKSubscription]
     func save(zone: CKRecordZone) async throws
+    /// The record behind an ID, or nil when the server has none.
+    func fetchRecord(id: CKRecord.ID) async throws -> CKRecord?
 }
 
 extension CloudDatabase {
@@ -166,6 +168,16 @@ extension CKDatabase: CloudDatabase {
         try await throttled { database in
             let results = try await database.modifySubscriptions(saving: [], deleting: [id])
             _ = try results.deleteResults[id]?.get()
+        }
+    }
+
+    public func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
+        try await throttled { database in
+            do {
+                return try await database.records(for: [id])[id]?.get()
+            } catch let error as CKError where error.code == .unknownItem {
+                return nil
+            }
         }
     }
 
