@@ -757,7 +757,7 @@ struct OperationsTests {
             try await store.write(["email": .string("bo@example.com"), "codes": .strings(["ABC", "nope"])], entity: "account", uuid: "a-3")
         }
         await #expect(throws: SchemaError.invalidValue("email")) {
-            try await store.write(["email": .string("x ada@example.com")], entity: "account", uuid: "a-4")
+            try await store.write(["email": .string("ada@example.com !!")], entity: "account", uuid: "a-4")
         }
 
         // The schema rejects patterns on non-string fields and malformed regexes.
