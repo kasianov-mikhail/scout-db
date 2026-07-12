@@ -53,13 +53,34 @@ extension EntityStore {
     }
 
     public func read(entity: String, filters: [Filter] = [], limit: Int, after cursor: EntityCursor? = nil) async throws -> EntityPage {
+        try await read(entity: entity, any: [filters], limit: limit, after: cursor)
+    }
+
+    /// Reads one keyset page of the records matching any of the OR branches.
+    ///
+    /// Every branch reads its own page from the shared cursor concurrently; the
+    /// union's first `limit` rows in key order are exactly the page a single scan
+    /// over the disjunction would produce, since a row the union keeps is in its
+    /// own branch's top `limit` too.
+    ///
+    public func read(entity: String, any branches: [[Filter]], limit: Int, after cursor: EntityCursor? = nil) async throws -> EntityPage {
         let definition = try await registry.definition(for: entity)
         guard let dateField = definition.envelopeDate else {
             throw SchemaError.invalidDefinition("Pagination requires an envelope date")
         }
-        let records = try await page(entity: entity, filters: filters, dateField: dateField, cursor: cursor, limit: limit, using: definition)
+        let pages = try await withThrowingTaskGroup(of: [EntityRecord].self) { group in
+            for branch in branches {
+                group.addTask { try await self.page(entity: entity, filters: branch, dateField: dateField, cursor: cursor, limit: limit, using: definition) }
+            }
+            return try await group.reduce(into: [[EntityRecord]]()) { $0.append($1) }
+        }
+        var seen: Set<String> = []
+        let records = pages.flatMap { $0 }
+            .sorted { Self.pageKey($0, dateField) < Self.pageKey($1, dateField) }
+            .filter { seen.insert($0.uuid).inserted }
+            .prefix(limit)
         let next = records.count == limit ? records.last.map { EntityCursor(date: Self.pageKey($0, dateField).0, uuid: $0.uuid) } : nil
-        return EntityPage(records: records, cursor: next)
+        return EntityPage(records: Array(records), cursor: next)
     }
 
     // Reads one keyset page. The envelope date is sorted and bounded server-side, and the
@@ -89,12 +110,17 @@ extension EntityStore {
     }
 
     public func stream(entity: String, filters: [Filter] = [], pageSize: Int = 100) -> AsyncThrowingStream<EntityRecord, any Error> {
+        stream(entity: entity, any: [filters], pageSize: pageSize)
+    }
+
+    /// Streams every record matching any of the OR branches, page by page.
+    public func stream(entity: String, any branches: [[Filter]], pageSize: Int = 100) -> AsyncThrowingStream<EntityRecord, any Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 var cursor: EntityCursor?
                 do {
                     repeat {
-                        let page = try await read(entity: entity, filters: filters, limit: pageSize, after: cursor)
+                        let page = try await read(entity: entity, any: branches, limit: pageSize, after: cursor)
                         for record in page.records {
                             continuation.yield(record)
                         }

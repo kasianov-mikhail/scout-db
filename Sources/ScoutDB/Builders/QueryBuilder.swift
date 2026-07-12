@@ -116,13 +116,19 @@ public struct QueryBuilder {
     }
 
     /// Returns one page of results ordered by the envelope date.
+    ///
+    /// Keyset pagination is ordered by the envelope date alone, so combining it
+    /// with ``sort(_:_:)`` throws instead of silently ignoring the clause.
     public func paginate(size: Int, after cursor: EntityCursor? = nil) async throws -> EntityPage {
-        try await store.read(entity: entity, filters: filters, limit: size, after: cursor)
+        guard sorts.isEmpty else {
+            throw SchemaError.invalidDefinition("Pagination is ordered by the envelope date and cannot honor sort clauses")
+        }
+        return try await store.read(entity: entity, any: branches(), limit: size, after: cursor)
     }
 
     /// Streams every matching record page by page.
     public func stream(pageSize: Int = 100) -> AsyncThrowingStream<EntityRecord, any Error> {
-        store.stream(entity: entity, filters: filters, pageSize: pageSize)
+        store.stream(entity: entity, any: branches(), pageSize: pageSize)
     }
 
     /// Rewrites every matching record through the transform.
