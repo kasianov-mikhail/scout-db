@@ -416,6 +416,38 @@ struct OperationsTests {
         #expect(values["b-3"] == .strings(["a-9"]))
     }
 
+    @Test("Children reads the records referencing a parent, scalar and list alike")
+    func children() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "author",
+                fields: [
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
+                ]))
+        try await registry.publish(
+            makeDefinition(
+                entity: "book",
+                fields: [
+                    FieldDefinition(name: "title", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "author_id", type: .string, storage: .slot(.string, "s_01"), references: "author"),
+                    FieldDefinition(name: "editor_ids", type: .stringList, storage: .slot(.stringList, "ls_00"), references: "author"),
+                ]))
+
+        try await store.write(["name": .string("Twain")], entity: "author", uuid: "a-1")
+        try await store.write(["title": .string("Tom"), "author_id": .string("a-1"), "editor_ids": .strings(["a-2"])], entity: "book", uuid: "b-1")
+        try await store.write(["title": .string("Huck"), "author_id": .string("a-2"), "editor_ids": .strings(["a-1", "a-2"])], entity: "book", uuid: "b-2")
+
+        let written = try await store.children(entity: "book", of: "a-1", via: "author_id")
+        #expect(written.map(\.uuid) == ["b-1"])
+
+        let edited = try await store.children(entity: "book", of: "a-1", via: "editor_ids")
+        #expect(edited.map(\.uuid) == ["b-2"])
+
+        await #expect(throws: SchemaError.unknownField("title")) {
+            _ = try await store.children(entity: "book", of: "a-1", via: "title")
+        }
+    }
+
     @Test("Generated Swift source mirrors the definition")
     func codegen() {
         let source = DefinitionCodeGenerator().source(for: makePurchaseDefinition())
