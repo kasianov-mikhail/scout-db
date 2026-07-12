@@ -73,6 +73,46 @@ public struct Migrator: Sendable {
         return migrated.count
     }
 
+    /// Re-encrypts every live record of an entity under a new key and republishes
+    /// the definition with the new keyID.
+    ///
+    /// The migrator's provider must serve both keys. An interrupted run is safe to
+    /// repeat: a record already sealed under the new key fails to open with the old
+    /// one and is decoded — and re-sealed — with the new key instead. Quiesce other
+    /// readers for the duration; until the republished definition reaches them,
+    /// rotated records fail to decrypt with the old key.
+    ///
+    @discardableResult public func rotateKey(entity: String, to newKeyID: String) async throws -> Int {
+        let definition = try await registry.definition(for: entity)
+        guard let oldKeyID = definition.keyID, oldKeyID != newKeyID else {
+            throw SchemaError.missingKey(newKeyID)
+        }
+        var rotated = definition
+        rotated.keyID = newKeyID
+
+        let query = ckQuery(
+            Entity.recordType,
+            filters: [
+                ServerFilter(field: "entity", op: .equals, value: .string(entity)),
+                ServerFilter(field: "deleted", op: .equals, value: .int(0)),
+            ])
+        let coder = EntityCoder(keyProvider: keyProvider)
+        let rewritten = try await database.allRecords(matching: query).map { record -> CKRecord in
+            let decoded: EntityRecord
+            do {
+                decoded = try coder.decode(record, using: definition)
+            } catch {
+                decoded = try coder.decode(record, using: rotated)
+            }
+            var next = decoded
+            next.values = try coder.resolve(next.values, at: next.schemaVersion, using: rotated)
+            return try coder.encode(next, using: rotated, into: record)
+        }
+        try await database.write(records: rewritten)
+        try await registry.publish(rotated)
+        return rewritten.count
+    }
+
     private func rekey(_ decoded: EntityRecord, using definition: EntityDefinition) -> [String: RecordValue] {
         let oldFields = definition.fields(at: decoded.schemaVersion)
         var values: [String: RecordValue] = [:]
