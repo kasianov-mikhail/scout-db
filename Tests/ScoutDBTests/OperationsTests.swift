@@ -612,6 +612,35 @@ struct OperationsTests {
         #expect(try await filtered.next()?.map(\.uuid) == ["p-2"])
     }
 
+    @Test("List insert and remove are set operations that survive a race")
+    func atomicLists() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "profile",
+                fields: [
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "tags", type: .stringList, storage: .slot(.stringList, "ls_00")),
+                ]))
+        try await store.write(["name": .string("Ada")], entity: "profile", uuid: "u-1")
+
+        // Insert creates the list, dedupes, and keeps order.
+        #expect(try await store.insert(["swift", "db"], into: "tags", entity: "profile", uuid: "u-1") == ["swift", "db"])
+        #expect(try await store.insert(["db", "ck"], into: "tags", entity: "profile", uuid: "u-1") == ["swift", "db", "ck"])
+        #expect(try await store.remove(["db", "ghost"], from: "tags", entity: "profile", uuid: "u-1") == ["swift", "ck"])
+
+        // A lost race re-applies the union to the winning list.
+        let server = try #require(database.records.first { $0["uuid"] as? String == "u-1" })
+        database.writeErrors = [RecordConflictError(serverRecord: server.copy() as! CKRecord)]
+        #expect(try await store.insert(["new"], into: "tags", entity: "profile", uuid: "u-1") == ["swift", "ck", "new"])
+
+        await #expect(throws: SchemaError.invalidValue("name")) {
+            try await store.insert(["x"], into: "name", entity: "profile", uuid: "u-1")
+        }
+        await #expect(throws: SchemaError.unknownField("ghost")) {
+            try await store.remove(["x"], from: "ghost", entity: "profile", uuid: "u-1")
+        }
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
