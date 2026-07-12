@@ -12,6 +12,7 @@ import ScoutDB
 public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     public var records: [CKRecord] = []
     public var storedSubscriptions: [CKSubscription] = []
+    public var zones: [CKRecordZone.ID] = []
     public var errors: [Error] = []
     public var writeErrors: [Error] = []
 
@@ -114,6 +115,15 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
             throw error
         }
         return storedSubscriptions
+    }
+
+    public func save(zone: CKRecordZone) async throws {
+        if let error = writeErrors.popLast() ?? errors.popLast() {
+            throw error
+        }
+        if !zones.contains(zone.zoneID) {
+            zones.append(zone.zoneID)
+        }
     }
 
     private func upsert(_ record: CKRecord) {

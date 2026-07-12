@@ -127,4 +127,8 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     public func subscriptions() async throws -> [CKSubscription] {
         try await backing.subscriptions()
     }
+
+    public func save(zone: CKRecordZone) async throws {
+        try await backing.save(zone: zone)
+    }
 }

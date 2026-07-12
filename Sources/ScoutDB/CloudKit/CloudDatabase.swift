@@ -38,6 +38,7 @@ public protocol CloudDatabase: Sendable {
     func save(subscription: CKSubscription) async throws
     func deleteSubscription(id: CKSubscription.ID) async throws
     func subscriptions() async throws -> [CKSubscription]
+    func save(zone: CKRecordZone) async throws
 }
 
 extension CloudDatabase {
@@ -165,6 +166,13 @@ extension CKDatabase: CloudDatabase {
         try await throttled { database in
             let results = try await database.modifySubscriptions(saving: [], deleting: [id])
             _ = try results.deleteResults[id]?.get()
+        }
+    }
+
+    public func save(zone: CKRecordZone) async throws {
+        try await throttled { database in
+            let results = try await database.modifyRecordZones(saving: [zone], deleting: [])
+            _ = try results.saveResults[zone.zoneID]?.get()
         }
     }
 

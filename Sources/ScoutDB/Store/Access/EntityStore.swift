@@ -25,21 +25,32 @@ public struct EntityStore: Sendable {
     var keyProvider: (any EncryptionKeyProvider)?
     var trustedWriters: Set<String>?
     var enforceReferences = false
+    var zoneID: CKRecordZone.ID?
 
     /// Creates a store backed by any `CloudDatabase` implementation.
     ///
     /// With `enforceReferences` on, every write checks that its reference fields
     /// name live parent records and throws `SchemaError.brokenReference` otherwise.
+    /// With a `zoneID`, entity records live in that custom zone — the shape CKShare
+    /// and zone-scoped sync build on; schema and aggregate bookkeeping stay in the
+    /// default zone. Call `ensureZone()` once before the first zoned write.
     ///
     public init(
         database: any CloudDatabase, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil, trustedWriters: Set<String>? = nil,
-        enforceReferences: Bool = false
+        enforceReferences: Bool = false, zoneID: CKRecordZone.ID? = nil
     ) {
         self.database = database
         self.registry = registry
         self.keyProvider = keyProvider
         self.trustedWriters = trustedWriters
         self.enforceReferences = enforceReferences
+        self.zoneID = zoneID
+    }
+
+    /// Creates the store's custom zone if one is configured; safe to repeat.
+    public func ensureZone() async throws {
+        guard let zoneID else { return }
+        try await database.save(zone: CKRecordZone(zoneID: zoneID))
     }
 
     public struct Filter: Equatable, Sendable {
@@ -93,7 +104,7 @@ public struct EntityStore: Sendable {
     @discardableResult public func write(_ batch: [EntityWrite], entity: String) async throws -> [String] {
         guard batch.count > 0 else { return [] }
         let definition = try await registry.definition(for: entity)
-        let coder = EntityCoder(keyProvider: keyProvider)
+        let coder = EntityCoder(keyProvider: keyProvider, zoneID: zoneID)
 
         let entityRecords = try batch.map { entry in
             let resolved = try coder.resolve(entry.values, at: definition.version, using: definition)
@@ -131,7 +142,7 @@ public struct EntityStore: Sendable {
     public func delete(entity: String, uuid: String) async throws {
         let definition = try await registry.definition(for: entity)
         let removed = try await liveRecords(entity: entity, uuids: [uuid], using: definition)
-        try await database.write(record: Self.tombstone(entity: entity, uuid: uuid, definition: definition))
+        try await database.write(record: tombstone(entity: entity, uuid: uuid, definition: definition))
         try await GridAggregator(database: database).remove(removed, using: definition)
     }
 
@@ -143,9 +154,11 @@ public struct EntityStore: Sendable {
     }
 
     // A tombstone is the record envelope with `deleted` set and no values; encoding
-    // it through the coder keeps the envelope defined in one place.
-    static func tombstone(entity: String, uuid: String, definition: EntityDefinition) throws -> CKRecord {
-        try EntityCoder().encode(EntityRecord(entity: entity, uuid: uuid, schemaVersion: definition.version, values: [:], deleted: true), using: definition)
+    // it through the coder keeps the envelope defined in one place — and, like any
+    // write, in the store's zone.
+    func tombstone(entity: String, uuid: String, definition: EntityDefinition) throws -> CKRecord {
+        try EntityCoder(zoneID: zoneID)
+            .encode(EntityRecord(entity: entity, uuid: uuid, schemaVersion: definition.version, values: [:], deleted: true), using: definition)
     }
 
     public func read(entity: String, filters: [Filter] = [], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil) async throws -> [EntityRecord] {
