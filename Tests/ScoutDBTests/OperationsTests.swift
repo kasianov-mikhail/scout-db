@@ -385,6 +385,33 @@ struct OperationsTests {
         #expect(delta.records.map(\.uuid).contains("p-3"))
     }
 
+    @Test("Share participants and the public permission are managed through the store")
+    func shareParticipants() async throws {
+        let zone = CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName)
+        let zoned = EntityStore(database: database, registry: registry, zoneID: zone)
+        try await zoned.ensureZone()
+
+        // Unshared: no participants, and permission changes fail loudly.
+        #expect(try await zoned.shareParticipants().isEmpty)
+        await #expect(throws: SchemaError.notFound(CKRecordNameZoneWideShare)) {
+            try await zoned.setSharePublicPermission(.readOnly)
+        }
+
+        try await zoned.shareZone(title: "Purchases")
+        let participants = try await zoned.shareParticipants()
+        #expect(participants.count == 1)
+        #expect(participants.first?.role == .owner)
+
+        try await zoned.setSharePublicPermission(.readOnly)
+        #expect(try await zoned.zoneShare()?.publicPermission == .readOnly)
+
+        // The owner cannot be removed — a plain error, not CloudKit's exception.
+        await #expect(throws: SchemaError.invalidValue("owner")) {
+            try await zoned.removeShareParticipant(try #require(participants.first))
+        }
+        #expect(try await zoned.shareParticipants().count == 1)
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
