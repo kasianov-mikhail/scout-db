@@ -56,6 +56,24 @@ public actor SchemaRegistry {
         cache[definition.entity] = definition
     }
 
+    /// Retires an entity: every one of its schema descriptors leaves the active
+    /// set, so lookups and preloads stop seeing it and fail with `unknownEntity`.
+    ///
+    /// Publishing the entity again reactivates it — the descriptor records are
+    /// keyed by entity and version, so a republish flips them back to active.
+    ///
+    public func retire(entity: String) async throws {
+        let descriptors = try await database.allRecords(matching: metaQuery(entity: entity))
+        guard descriptors.count > 0 else {
+            throw SchemaError.unknownEntity(entity)
+        }
+        for descriptor in descriptors {
+            descriptor["status"] = "retired"
+        }
+        try await database.write(records: descriptors)
+        cache[entity] = nil
+    }
+
     public func publish(_ definition: EntityDefinition) async throws {
         try definition.validate()
         let record = CKRecord(recordType: SchemaDescriptorEntry.recordType, recordID: CKRecord.ID(recordName: "\(definition.entity)@\(definition.version)"))

@@ -222,6 +222,31 @@ struct OperationsTests {
         #expect(descriptor.recordID.zoneID != zone)
     }
 
+    @Test("Drop tombstones the records and retires the schema; a republish revives the entity")
+    func dropEntity() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
+
+        let dropped = try await store.drop(entity: "purchase")
+        #expect(dropped == 2)
+        await #expect(throws: SchemaError.unknownEntity("purchase")) {
+            _ = try await store.read(entity: "purchase")
+        }
+
+        // A fresh registry no longer preloads the retired entity.
+        let fresh = SchemaRegistry(database: database)
+        try await fresh.preload()
+        #expect(await fresh.definitions().isEmpty)
+
+        // Republishing reactivates the schema, without the dropped records.
+        try await registry.publish(makePurchaseDefinition())
+        #expect(try await store.read(entity: "purchase").isEmpty)
+
+        await #expect(throws: SchemaError.unknownEntity("ghost")) {
+            try await registry.retire(entity: "ghost")
+        }
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
