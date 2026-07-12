@@ -179,6 +179,26 @@ struct OperationsTests {
         }
     }
 
+    @Test("Subscriptions register a server predicate and can be removed")
+    func changeSubscriptions() async throws {
+        let id = try await store.subscribe(entity: "purchase", filters: [.init(field: "quantity", op: .greaterThan, value: .int(1))])
+        #expect(id == "scout-purchase")
+
+        let stored = try #require(database.storedSubscriptions.first as? CKQuerySubscription)
+        #expect(stored.predicate.predicateFormat.contains("entity == \"purchase\""))
+        #expect(stored.predicate.predicateFormat.contains("i_01"))
+        #expect(stored.notificationInfo?.shouldSendContentAvailable == true)
+        #expect(try await store.subscriptions().count == 1)
+
+        // A filter that only runs client-side cannot narrow a push subscription.
+        await #expect(throws: SchemaError.invalidValue("product_id")) {
+            try await store.subscribe(entity: "purchase", filters: [.init(field: "product_id", op: .like, value: .string("sku*"))])
+        }
+
+        try await store.unsubscribe(id: id)
+        #expect(database.storedSubscriptions.isEmpty)
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")

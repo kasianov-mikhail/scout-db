@@ -35,6 +35,9 @@ public protocol CloudDatabase: Sendable {
     /// Saves each record only if it is unchanged on the server, non-atomically;
     /// returns the outcome of every record.
     func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)]
+    func save(subscription: CKSubscription) async throws
+    func deleteSubscription(id: CKSubscription.ID) async throws
+    func subscriptions() async throws -> [CKSubscription]
 }
 
 extension CloudDatabase {
@@ -147,6 +150,37 @@ extension CKDatabase: CloudDatabase {
             let results = try await database.modifyRecords(saving: records, deleting: [], savePolicy: .ifServerRecordUnchanged, atomically: false)
             return records.map { record in
                 (record.recordID, results.saveResults[record.recordID] ?? .failure(CKError(.internalError)))
+            }
+        }
+    }
+
+    public func save(subscription: CKSubscription) async throws {
+        try await throttled { database in
+            let results = try await database.modifySubscriptions(saving: [subscription], deleting: [])
+            _ = try results.saveResults[subscription.subscriptionID]?.get()
+        }
+    }
+
+    public func deleteSubscription(id: CKSubscription.ID) async throws {
+        try await throttled { database in
+            let results = try await database.modifySubscriptions(saving: [], deleting: [id])
+            _ = try results.deleteResults[id]?.get()
+        }
+    }
+
+    public func subscriptions() async throws -> [CKSubscription] {
+        try await throttled { database in
+            // Fetching by an empty ID list returns nothing, so the conformance goes
+            // through the all-subscriptions operation; its shape differs from the
+            // requirement, keeping the call out of the conformance itself.
+            try await withCheckedThrowingContinuation { continuation in
+                database.fetchAllSubscriptions { subscriptions, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume(returning: subscriptions ?? [])
+                    }
+                }
             }
         }
     }
