@@ -47,6 +47,42 @@ struct OperationsTests {
         #expect(records.first?.values["quantity"] == .int(9))
     }
 
+    @Test("Bulk update retries records that lost their save race")
+    func updateAllConflict() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
+        let server = try #require(database.records.first { $0["uuid"] as? String == "p-1" })
+        database.writeErrors = [RecordConflictError(serverRecord: server)]
+
+        let updated = try await store.updateAll(entity: "purchase") { record in
+            record.values["quantity"] = .int(9)
+        }
+
+        #expect(updated == 2)
+        let records = try await store.read(entity: "purchase")
+        #expect(records.allSatisfy { $0.values["quantity"] == .int(9) })
+    }
+
+    @Test("Bulk update surfaces a conflict that outlives the retries, keeping the saves that landed")
+    func updateAllConflictExhausted() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
+        let server = try #require(database.records.first { $0["uuid"] as? String == "p-1" })
+        // Each conflict carries its own copy of the winning record, the way the
+        // server materializes one per response.
+        database.writeErrors = (0..<3).map { _ in RecordConflictError(serverRecord: server.copy() as! CKRecord) }
+
+        await #expect(throws: RecordConflictError.self) {
+            try await store.updateAll(entity: "purchase") { record in
+                record.values["quantity"] = .int(9)
+            }
+        }
+
+        let records = try await store.read(entity: "purchase")
+        #expect(records.first { $0.uuid == "p-2" }?.values["quantity"] == .int(9))
+        #expect(records.first { $0.uuid == "p-1" }?.values["quantity"] != .int(9))
+    }
+
     @Test("CAS update of a missing record fails")
     func updateMissing() async throws {
         await #expect(throws: SchemaError.notFound("ghost")) {

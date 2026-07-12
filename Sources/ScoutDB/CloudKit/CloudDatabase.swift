@@ -32,6 +32,9 @@ public protocol CloudDatabase: Sendable {
     )
     func save(_ record: CKRecord) async throws -> CKRecord
     func modifyRecords(saving: [CKRecord], deleting: [CKRecord.ID]) async throws
+    /// Saves each record only if it is unchanged on the server, non-atomically;
+    /// returns the outcome of every record.
+    func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)]
 }
 
 extension CloudDatabase {
@@ -62,6 +65,28 @@ extension CloudDatabase {
         for chunk in records.chunked(into: Self.maxBatchSize) {
             try await modifyRecords(saving: chunk, deleting: [])
         }
+    }
+
+    // The CAS counterpart of `write(records:)`: attempts every record under the
+    // if-unchanged policy and returns the winning server records of the saves that
+    // lost their race; any failure that is not a lost race throws.
+    func writeIfUnchanged(records: [CKRecord]) async throws -> [CKRecord] {
+        var conflicts: [CKRecord] = []
+        for chunk in records.chunked(into: Self.maxBatchSize) {
+            for (_, result) in try await saveIfUnchanged(chunk) {
+                guard case .failure(let error) = result else { continue }
+                if let conflict = error as? RecordConflictError {
+                    conflicts.append(conflict.serverRecord)
+                } else if let error = error as? CKError, error.code == .serverRecordChanged,
+                    let server = error.userInfo[CKRecordChangedErrorServerRecordKey] as? CKRecord
+                {
+                    conflicts.append(server)
+                } else {
+                    throw error
+                }
+            }
+        }
+        return conflicts
     }
 }
 
@@ -116,11 +141,24 @@ extension CKDatabase: CloudDatabase {
             _ = try await database.modifyRecords(saving: records, deleting: recordIDs, savePolicy: .allKeys, atomically: true)
         }
     }
+
+    public func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
+        try await throttled { database in
+            let results = try await database.modifyRecords(saving: records, deleting: [], savePolicy: .ifServerRecordUnchanged, atomically: false)
+            return records.map { record in
+                (record.recordID, results.saveResults[record.recordID] ?? .failure(CKError(.internalError)))
+            }
+        }
+    }
 }
 
 /// Thrown when a write loses a compare-and-swap race; carries the winning record.
 public struct RecordConflictError: LocalizedError {
-    let serverRecord: CKRecord
+    public let serverRecord: CKRecord
+
+    public init(serverRecord: CKRecord) {
+        self.serverRecord = serverRecord
+    }
 
     public let errorDescription: String? = "The record was changed on the server"
 }

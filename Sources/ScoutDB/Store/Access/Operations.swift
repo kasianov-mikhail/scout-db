@@ -109,27 +109,57 @@ extension EntityStore {
         }
     }
 
-    @discardableResult public func updateAll(entity: String, filters: [Filter] = [], transform: (inout EntityRecord) throws -> Void) async throws -> Int {
-        try await updateAll(entity: entity, any: [filters], transform: transform)
+    @discardableResult public func updateAll(entity: String, filters: [Filter] = [], maxRetry: Int = 3, transform: (inout EntityRecord) throws -> Void)
+        async throws -> Int
+    {
+        try await updateAll(entity: entity, any: [filters], maxRetry: maxRetry, transform: transform)
     }
 
     /// Rewrites every record matching any of the OR branches; a record matching
     /// several branches is transformed once.
-    @discardableResult public func updateAll(entity: String, any branches: [[Filter]], transform: (inout EntityRecord) throws -> Void) async throws -> Int {
+    ///
+    /// Each save is conditional on the record being unchanged on the server; a
+    /// record that lost its race is re-transformed from the winning record and
+    /// retried, like a single `update`. Exhausting `maxRetry` throws the conflict
+    /// after the records that did land are accounted for.
+    ///
+    @discardableResult public func updateAll(entity: String, any branches: [[Filter]], maxRetry: Int = 3, transform: (inout EntityRecord) throws -> Void)
+        async throws -> Int
+    {
         let definition = try await registry.definition(for: entity)
         let coder = EntityCoder(keyProvider: keyProvider)
         var seen: Set<String> = []
-        var rewrites: [EntityCoder.Rewrite] = []
+        var pending: [EntityCoder.Rewrite] = []
         for branch in branches {
             for item in try await matchedItems(entity: entity, filters: branch, using: definition) {
                 guard let uuid = item["uuid"] as? String, seen.insert(uuid).inserted else { continue }
-                rewrites.append(try coder.rewrite(item, using: definition, transform: transform))
+                pending.append(try coder.rewrite(item, using: definition, transform: transform))
             }
         }
-        try await database.write(records: rewrites.map(\.record))
-        // Rebalance the views: drop the old contributions, add the new ones.
-        try await GridAggregator(database: database).rebalance(removing: rewrites.map(\.previous), adding: rewrites.map(\.next), using: definition)
-        return rewrites.count
+
+        var applied: [EntityCoder.Rewrite] = []
+        var attempt = 0
+        var unresolved: CKRecord?
+        while pending.count > 0 {
+            let conflicts = try await database.writeIfUnchanged(records: pending.map(\.record))
+            let losers = Set(conflicts.map(\.recordID))
+            applied += pending.filter { !losers.contains($0.record.recordID) }
+            attempt += 1
+            guard attempt < maxRetry else {
+                unresolved = conflicts.first
+                break
+            }
+            // The conflicts already carry the winning records — retry against them
+            // instead of re-querying.
+            pending = try conflicts.map { try coder.rewrite($0, using: definition, transform: transform) }
+        }
+        // Rebalance the views for the records that landed: drop the old
+        // contributions, add the new ones.
+        try await GridAggregator(database: database).rebalance(removing: applied.map(\.previous), adding: applied.map(\.next), using: definition)
+        if let unresolved {
+            throw RecordConflictError(serverRecord: unresolved)
+        }
+        return applied.count
     }
 
     // The live stored records behind a filtered read, kept as CKRecords rather than

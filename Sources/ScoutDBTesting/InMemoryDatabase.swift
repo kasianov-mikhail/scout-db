@@ -75,16 +75,42 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         self.records.removeAll { deleting.contains($0.recordID) }
     }
 
+    public func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
+        if let error = writeErrors.popLast() ?? errors.popLast() {
+            // A queued conflict fails only the record it names, mirroring the
+            // per-record results of a non-atomic CloudKit save; anything else
+            // fails the whole call the way `save` does.
+            guard let conflict = error as? RecordConflictError else { throw error }
+            return records.map { record in
+                guard record.recordID == conflict.serverRecord.recordID else {
+                    upsert(record)
+                    return (record.recordID, .success(record))
+                }
+                return (record.recordID, .failure(conflict))
+            }
+        }
+        records.forEach(upsert)
+        return records.map { ($0.recordID, .success($0)) }
+    }
+
     private func upsert(_ record: CKRecord) {
         records.removeAll { $0.recordType == record.recordType && $0.recordID == record.recordID }
         records.append(record)
     }
 
+    // Every response hands out a copy, the way the server returns a fresh record
+    // per fetch — mutating a query result must not silently edit the store. The
+    // envelope overrides live outside the record's own coding, so they are
+    // carried over by hand.
     private func project(_ record: CKRecord, keys: [CKRecord.FieldKey]?) -> CKRecord {
-        guard let keys else { return record }
-        let projected = CKRecord(recordType: record.recordType, recordID: record.recordID)
-        for key in record.allKeys() where keys.contains(key) {
-            projected[key] = record[key]
+        let projected: CKRecord
+        if let keys {
+            projected = CKRecord(recordType: record.recordType, recordID: record.recordID)
+            for key in record.allKeys() where keys.contains(key) {
+                projected[key] = record[key]
+            }
+        } else {
+            projected = record.copy() as! CKRecord
         }
         if let date = record.recordModificationDate {
             projected.overrideModificationDate(date)
