@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/github/license/kasianov-mikhail/scout-db)](LICENSE)
 
 ## Description
-ScoutDB adds entities, migrations, and structured queries on top of CloudKit. Define entities
+[ScoutDB](https://github.com/kasianov-mikhail/scout-db) adds entities, migrations, and structured queries on top of CloudKit. Define entities
 in code, query them with filters and sorting, aggregate without scanning, and evolve your
 schema freely — the CloudKit schema is uploaded once and never touched again.
 
