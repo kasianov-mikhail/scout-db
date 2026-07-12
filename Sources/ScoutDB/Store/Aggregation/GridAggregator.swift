@@ -65,20 +65,26 @@ struct GridAggregator {
         var deltas: [GridSlot: [Int: CellDelta]] = [:]
 
         for entityRecord in batch where entityRecord.deleted == false {
-            guard let dateField = definition.envelopeDate, case .date(let date)? = entityRecord.values[dateField] else { continue }
+            // A lifetime view needs no envelope date; every other bucket does.
+            var envelope: Date?
+            if let dateField = definition.envelopeDate, case .date(let date)? = entityRecord.values[dateField] {
+                envelope = date
+            }
 
             for view in definition.views ?? [] {
                 let group = view.groupBy.flatMap { entityRecord.values[$0]?.canonical } ?? ""
 
                 if let histogram = view.histogram {
-                    guard let value = entityRecord.values[histogram.field]?.scalar else { continue }
+                    guard let date = envelope, let value = entityRecord.values[histogram.field]?.scalar else { continue }
                     let slot = GridSlot(entity: entityRecord.entity, view: view.name, group: group, day: EntityCoder.periodStart(of: .day, for: date))
                     let index = histogram.bounds.firstIndex { value < $0 } ?? histogram.bounds.count
                     deltas[slot, default: [:]][index, default: CellDelta()].count += sign
                     continue
                 }
 
-                let (period, index) = Self.bucket(view.bucket ?? .hour, for: date)
+                let bucket = view.bucket ?? .hour
+                guard let date = envelope ?? (bucket == .lifetime ? Date(timeIntervalSince1970: 0) : nil) else { continue }
+                let (period, index) = Self.bucket(bucket, for: date)
                 let slot = GridSlot(entity: entityRecord.entity, view: view.name, group: group, day: period)
                 var delta = deltas[slot, default: [:]][index, default: CellDelta()]
                 delta.count += sign
@@ -138,6 +144,10 @@ struct GridAggregator {
             return (EntityCoder.periodStart(of: .weekOfYear, for: date), calendar.component(.weekday, from: date) - 1)
         case .day:
             return (EntityCoder.periodStart(of: .month, for: date), calendar.component(.day, from: date) - 1)
+        case .lifetime:
+            // One period for everything: a single grid record per group holds
+            // the running total.
+            return (Date(timeIntervalSince1970: 0), 0)
         }
     }
 

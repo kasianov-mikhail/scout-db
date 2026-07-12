@@ -275,4 +275,40 @@ struct AggregatesTests {
 
         #expect(database.records.filter { $0.recordType == "Aggregate" }.count == 1)
     }
+
+    @Test("A lifetime view keeps one running total per category, without an envelope date")
+    func lifetimeView() async throws {
+        // No envelope date: only a lifetime view can aggregate this entity.
+        try await registry.publish(
+            makeDefinition(
+                entity: "sale",
+                fields: [
+                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
+                ], views: [AggregateView(name: "by_product", groupBy: "product", bucket: .lifetime, sum: "amount")]))
+
+        let first = try await store.write(["product": .string("app"), "amount": .double(10)], entity: "sale")
+        try await store.write(["product": .string("app"), "amount": .double(5)], entity: "sale")
+        try await store.write(["product": .string("book"), "amount": .double(2)], entity: "sale")
+
+        var totals = try await store.totals(entity: "sale", view: "by_product")
+        #expect(totals.first { $0.group == "app" }?.count == 2)
+        #expect(totals.first { $0.group == "app" }?.value == 15)
+        #expect(totals.first { $0.group == "book" }?.value == 2)
+        // One grid record per category — no time grid.
+        #expect(database.records.filter { $0.recordType == "Aggregate" }.count == 2)
+
+        // Deletes reverse their contribution like any other view.
+        try await store.delete(entity: "sale", uuid: first)
+        totals = try await store.totals(entity: "sale", view: "by_product")
+        #expect(totals.first { $0.group == "app" }?.count == 1)
+        #expect(totals.first { $0.group == "app" }?.value == 5)
+
+        // A time-bucketed view still demands the envelope date.
+        let dated = makeDefinition(
+            entity: "sale2",
+            fields: [FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00"))],
+            views: [AggregateView(name: "hourly", groupBy: "product", bucket: .hour)])
+        #expect(throws: SchemaError.self) { try dated.validate() }
+    }
 }
