@@ -101,6 +101,43 @@ struct FluentTests {
         #expect(try await store.query("purchase").count() == 1)
     }
 
+    @Test("Builder update and delete honor OR groups")
+    func groupMutation() async throws {
+        try await store.query("purchase")
+            .group {
+                $0.filter("product_id", .equals, "sku-0")
+                $0.filter("product_id", .equals, "sku-2")
+            }
+            .update { record in
+                record.values["quantity"] = .int(9)
+            }
+        #expect(try await store.query("purchase").filter("quantity", .equals, 9).count() == 2)
+
+        try await store.query("purchase")
+            .group {
+                $0.filter("product_id", .equals, "sku-0")
+                $0.filter("product_id", .equals, "sku-2")
+            }
+            .delete()
+        let remaining = try await store.query("purchase").all()
+        #expect(remaining.map(\.uuid) == ["p-1"])
+    }
+
+    @Test("A record matching several OR branches is transformed once")
+    func overlappingBranches() async throws {
+        try await store.query("purchase")
+            .group {
+                $0.filter("quantity" > 1)
+                $0.filter("product_id", .equals, "sku-0")
+            }
+            .update { record in
+                guard case .int(let quantity)? = record.values["quantity"] else { return }
+                record.values["quantity"] = .int(quantity + 1)
+            }
+        let records = try await store.query("purchase").sort("date").all()
+        #expect(records.map { $0.values["quantity"] } == [.int(4), .int(1), .int(3)])
+    }
+
     @Test("Schema update keeps slots, closes removed fields, allocates new ones")
     func schemaUpdate() async throws {
         try await store.schema("purchase")
