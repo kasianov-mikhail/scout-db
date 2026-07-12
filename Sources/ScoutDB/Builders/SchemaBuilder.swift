@@ -52,6 +52,7 @@ public struct SchemaBuilder {
         case derived(from: String, Derivation.Transform)
         case references(String)
         case exclusiveReference(String)
+        case matches(String)
     }
 
     private struct Declaration {
@@ -185,6 +186,7 @@ public struct SchemaBuilder {
             case .exclusiveReference(let entity):
                 field.references = entity
                 field.exclusive = true
+            case .matches(let pattern): field.pattern = pattern
             }
         }
         return field

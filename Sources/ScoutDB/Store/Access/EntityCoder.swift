@@ -74,6 +74,9 @@ struct EntityCoder {
             if let allowed = field.allowed, !value.strings.allSatisfy(allowed.contains) {
                 throw SchemaError.invalidValue(field.name)
             }
+            if let pattern = field.pattern, let regex = try? Regex(pattern), !value.strings.allSatisfy({ $0.wholeMatch(of: regex) != nil }) {
+                throw SchemaError.invalidValue(field.name)
+            }
             for scalar in value.scalars {
                 if let minimum = field.minimum, scalar < minimum { throw SchemaError.invalidValue(field.name) }
                 if let maximum = field.maximum, scalar > maximum { throw SchemaError.invalidValue(field.name) }

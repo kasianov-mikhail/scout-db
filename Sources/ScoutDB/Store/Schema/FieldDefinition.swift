@@ -22,11 +22,13 @@ public struct FieldDefinition: Codable, Equatable, Sendable {
     public var encrypted: Bool?
     public var references: String?
     public var exclusive: Bool?
+    /// A whole-string regular expression every value of the field must match.
+    public var pattern: String?
 
     public init(
         name: String, type: FieldType, storage: Storage, since: Int? = nil, until: Int? = nil, required: Bool? = nil, defaultValue: RecordValue? = nil,
         allowed: [String]? = nil, minimum: Double? = nil, maximum: Double? = nil, derived: Derivation? = nil, encrypted: Bool? = nil, references: String? = nil,
-        exclusive: Bool? = nil
+        exclusive: Bool? = nil, pattern: String? = nil
     ) {
         self.name = name
         self.type = type
@@ -42,10 +44,11 @@ public struct FieldDefinition: Codable, Equatable, Sendable {
         self.encrypted = encrypted
         self.references = references
         self.exclusive = exclusive
+        self.pattern = pattern
     }
 
     private enum CodingKeys: String, CodingKey {
-        case name, type, storage, since, until, required, allowed, minimum, maximum, derived, encrypted, references, exclusive
+        case name, type, storage, since, until, required, allowed, minimum, maximum, derived, encrypted, references, exclusive, pattern
         case defaultValue = "default"
     }
 

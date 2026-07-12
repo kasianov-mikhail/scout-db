@@ -737,6 +737,40 @@ struct OperationsTests {
         #expect(Set(grouped.map(\.uuid)) == ["p-1", "p-3"])
     }
 
+    @Test("A pattern constraint gates writes by a whole-string regex")
+    func patternValidation() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "account",
+                fields: [
+                    FieldDefinition(name: "email", type: .string, storage: .slot(.string, "s_00"), pattern: "[^@]+@[^@]+\\.[a-z]+"),
+                    FieldDefinition(name: "codes", type: .stringList, storage: .slot(.stringList, "ls_00"), pattern: "[A-Z]{3}"),
+                ]))
+
+        try await store.write(["email": .string("ada@example.com"), "codes": .strings(["ABC", "XYZ"])], entity: "account", uuid: "a-1")
+
+        await #expect(throws: SchemaError.invalidValue("email")) {
+            try await store.write(["email": .string("not-an-email")], entity: "account", uuid: "a-2")
+        }
+        // Every element of a list must match; the whole string, not a substring.
+        await #expect(throws: SchemaError.invalidValue("codes")) {
+            try await store.write(["email": .string("bo@example.com"), "codes": .strings(["ABC", "nope"])], entity: "account", uuid: "a-3")
+        }
+        await #expect(throws: SchemaError.invalidValue("email")) {
+            try await store.write(["email": .string("ada@example.com !!")], entity: "account", uuid: "a-4")
+        }
+
+        // The schema rejects patterns on non-string fields and malformed regexes.
+        let numeric = makeDefinition(fields: [
+            FieldDefinition(name: "count", type: .int, storage: .slot(.int, "i_00"), pattern: "[0-9]+")
+        ])
+        #expect(throws: SchemaError.self) { try numeric.validate() }
+        let broken = makeDefinition(fields: [
+            FieldDefinition(name: "email", type: .string, storage: .slot(.string, "s_00"), pattern: "([")
+        ])
+        #expect(throws: SchemaError.self) { try broken.validate() }
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
