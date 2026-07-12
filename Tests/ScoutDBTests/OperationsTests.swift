@@ -303,6 +303,32 @@ struct OperationsTests {
         #expect(remaining.map(\.uuid) == ["b-2"])
     }
 
+    @Test("Cascade delete reaches entities not yet cached in the registry")
+    func cascadeUncached() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "author",
+                fields: [
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
+                ]))
+        try await registry.publish(
+            makeDefinition(
+                entity: "book",
+                fields: [
+                    FieldDefinition(name: "title", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "author_id", type: .string, storage: .slot(.string, "s_01"), references: "author"),
+                ]))
+        try await store.write(["name": .string("Twain")], entity: "author", uuid: "a-1")
+        try await store.write(["title": .string("Tom"), "author_id": .string("a-1")], entity: "book", uuid: "b-1")
+
+        // A fresh registry has an empty cache; the delete itself only loads the
+        // parent's definition, so the cascade must discover 'book' on its own.
+        let fresh = EntityStore(database: database, registry: SchemaRegistry(database: database))
+        try await fresh.delete(entity: "author", uuid: "a-1", cascade: true)
+
+        #expect(try await store.read(entity: "book").isEmpty)
+    }
+
     @Test("List references join across parents, report orphans, and detach on cascade delete")
     func manyToMany() async throws {
         try await registry.publish(

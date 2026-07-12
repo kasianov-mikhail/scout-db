@@ -39,6 +39,10 @@ extension EntityStore {
     public func delete(entity: String, uuid: String, cascade: Bool) async throws {
         try await delete(entity: entity, uuid: uuid)
         guard cascade else { return }
+        // The cascade walks the registry's definitions, so every published entity
+        // must be in the cache first — an entity never read in this session would
+        // otherwise silently keep its referencing records.
+        try await registry.preload()
         try await cascadeDelete(entity: entity, uuids: [uuid])
     }
 
