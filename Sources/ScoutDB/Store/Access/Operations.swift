@@ -23,6 +23,24 @@ public struct EntityCursor: Codable, Equatable, Sendable {
     }
 }
 
+/// One keyset page ordered by an arbitrary field.
+public struct FieldPage: Equatable, Sendable {
+    public let records: [EntityRecord]
+    public let cursor: FieldCursor?
+}
+
+/// Continuation token of a field-ordered keyset read: the last served value
+/// and the uuid that breaks its ties.
+public struct FieldCursor: Codable, Equatable, Sendable {
+    public let value: RecordValue
+    public let uuid: String
+
+    public init(value: RecordValue, uuid: String) {
+        self.value = value
+        self.uuid = uuid
+    }
+}
+
 extension EntityStore {
     public func update(entity: String, uuid: String, maxRetry: Int = 3, transform: (inout EntityRecord) throws -> Void) async throws {
         let definition = try await registry.definition(for: entity)
@@ -102,6 +120,57 @@ extension EntityStore {
             return Self.pageKey(record, dateField) > (cursor.date, cursor.uuid)
         }
         return Array(collected.sorted { Self.pageKey($0, dateField) < Self.pageKey($1, dateField) }.prefix(limit))
+    }
+
+    /// Reads one keyset page ordered by any slot-backed scalar field, ascending
+    /// or descending, with ties broken by uuid.
+    ///
+    /// Records missing the field are skipped — a keyset cursor cannot address them.
+    ///
+    public func read(
+        entity: String, filters: [Filter] = [], orderedBy field: String, descending: Bool = false, limit: Int, after cursor: FieldCursor? = nil
+    ) async throws -> FieldPage {
+        let definition = try await registry.definition(for: entity)
+        guard let target = definition.field(named: field, at: definition.version), [.string, .int, .double, .timestamp].contains(target.type),
+            case .slot = target.storage
+        else {
+            throw SchemaError.invalidValue(field)
+        }
+
+        var pageFilters = filters
+        if let cursor {
+            pageFilters.append(Filter(field: field, op: descending ? .lessThanOrEquals : .greaterThanOrEquals, value: cursor.value))
+        }
+        let sort = try serverSort([Sort(field: field, ascending: !descending)], using: definition)
+        let (query, included) = try liveQuery(pageFilters, entity: entity, sort: sort, using: definition)
+
+        let collected = try await boundedRecords(matching: query, desiredKeys: nil, limit: limit, using: definition) { record in
+            guard included(record), record.values[field] != nil else { return false }
+            guard let cursor else { return true }
+            return Self.beyond(record, field, cursor, descending: descending)
+        }
+        let records = Array(collected.sorted { Self.ordered($0, $1, by: field, descending: descending) }.prefix(limit))
+        let next: FieldCursor? =
+            records.count == limit
+            ? records.last.flatMap { record in record.values[field].map { FieldCursor(value: $0, uuid: record.uuid) } }
+            : nil
+        return FieldPage(records: records, cursor: next)
+    }
+
+    // Whether the record lies strictly beyond the cursor in the page order; ties
+    // on the field fall back to ascending uuids in both directions.
+    private static func beyond(_ record: EntityRecord, _ field: String, _ cursor: FieldCursor, descending: Bool) -> Bool {
+        switch rank(record.values[field], cursor.value) {
+        case .orderedSame: record.uuid > cursor.uuid
+        case .orderedAscending: descending
+        case .orderedDescending: !descending
+        }
+    }
+
+    private static func ordered(_ lhs: EntityRecord, _ rhs: EntityRecord, by field: String, descending: Bool) -> Bool {
+        let order = rank(lhs.values[field], rhs.values[field])
+        guard order != .orderedSame else { return lhs.uuid < rhs.uuid }
+        return descending ? order == .orderedDescending : order == .orderedAscending
     }
 
     private static func pageKey(_ record: EntityRecord, _ dateField: String) -> (Date, String) {

@@ -53,7 +53,7 @@ extension EntityStore {
         return false
     }
 
-    private static func rank(_ lhs: RecordValue?, _ rhs: RecordValue?) -> ComparisonResult {
+    static func rank(_ lhs: RecordValue?, _ rhs: RecordValue?) -> ComparisonResult {
         switch (lhs, rhs) {
         case (nil, nil):
             return .orderedSame
