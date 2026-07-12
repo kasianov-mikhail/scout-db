@@ -18,6 +18,25 @@ extension EntityStore {
         return Dictionary(uniqueKeysWithValues: parents.map { ($0.uuid, $0) })
     }
 
+    /// Resolves several reference fields of one read in a single call.
+    ///
+    /// Each field's parents are fetched concurrently; the result is keyed by
+    /// field name, then by parent uuid — one dictionary per `join(field:)` call
+    /// the caller would otherwise chain.
+    ///
+    public func join(entity: String, records: [EntityRecord], fields: [String]) async throws -> [String: [String: EntityRecord]] {
+        try await withThrowingTaskGroup(of: (String, [String: EntityRecord]).self) { group in
+            for field in Set(fields) {
+                group.addTask { (field, try await self.join(entity: entity, records: records, field: field)) }
+            }
+            var joined: [String: [String: EntityRecord]] = [:]
+            for try await (field, parents) in group {
+                joined[field] = parents
+            }
+            return joined
+        }
+    }
+
     /// Reads every record of `entity` whose reference `field` names the parent.
     ///
     /// The reverse of `join`: a scalar reference matches by equality, a list

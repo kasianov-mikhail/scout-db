@@ -515,6 +515,42 @@ struct OperationsTests {
         }
     }
 
+    @Test("A multi-field join resolves every reference in one call")
+    func multiJoin() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "author",
+                fields: [
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
+                ]))
+        try await registry.publish(
+            makeDefinition(
+                entity: "publisher",
+                fields: [
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
+                ]))
+        try await registry.publish(
+            makeDefinition(
+                entity: "book",
+                fields: [
+                    FieldDefinition(name: "title", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "author_ids", type: .stringList, storage: .slot(.stringList, "ls_00"), references: "author"),
+                    FieldDefinition(name: "publisher_id", type: .string, storage: .slot(.string, "s_01"), references: "publisher"),
+                ]))
+
+        try await store.write(["name": .string("Twain")], entity: "author", uuid: "a-1")
+        try await store.write(["name": .string("Verne")], entity: "author", uuid: "a-2")
+        try await store.write(["name": .string("Salt")], entity: "publisher", uuid: "pub-1")
+        try await store.write(
+            ["title": .string("Duo"), "author_ids": .strings(["a-1", "a-2"]), "publisher_id": .string("pub-1")], entity: "book", uuid: "b-1")
+
+        let books = try await store.read(entity: "book")
+        let joined = try await store.join(entity: "book", records: books, fields: ["author_ids", "publisher_id"])
+
+        #expect(joined["author_ids"]?.keys.sorted() == ["a-1", "a-2"])
+        #expect(joined["publisher_id"]?["pub-1"]?.values["name"] == .string("Salt"))
+    }
+
     @Test("Generated Swift source mirrors the definition")
     func codegen() {
         let source = DefinitionCodeGenerator().source(for: makePurchaseDefinition())
