@@ -120,6 +120,32 @@ struct OperationsTests {
         #expect(second.cursor == nil)
     }
 
+    @Test("Keyset pagination orders by an arbitrary field in both directions")
+    func fieldPagination() async throws {
+        for (index, quantity) in [3, 1, 2, 2].enumerated() {
+            var values = makePurchase().values
+            values["quantity"] = .int(Int64(quantity))
+            try await store.write(values, entity: "purchase", uuid: "p-\(index)")
+        }
+
+        // Ascending: p-1(1), p-2(2), p-3(2), p-0(3) — the tie falls back to uuids.
+        let first = try await store.read(entity: "purchase", orderedBy: "quantity", limit: 2)
+        #expect(first.records.map(\.uuid) == ["p-1", "p-2"])
+        let second = try await store.read(entity: "purchase", orderedBy: "quantity", limit: 2, after: try #require(first.cursor))
+        #expect(second.records.map(\.uuid) == ["p-3", "p-0"])
+
+        let top = try await store.read(entity: "purchase", orderedBy: "quantity", descending: true, limit: 3)
+        #expect(top.records.map(\.uuid) == ["p-0", "p-2", "p-3"])
+        let rest = try await store.read(entity: "purchase", orderedBy: "quantity", descending: true, limit: 3, after: try #require(top.cursor))
+        #expect(rest.records.map(\.uuid) == ["p-1"])
+        #expect(rest.cursor == nil)
+
+        // A payload field cannot key a page.
+        await #expect(throws: SchemaError.invalidValue("comment")) {
+            _ = try await store.read(entity: "purchase", orderedBy: "comment", limit: 1)
+        }
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
