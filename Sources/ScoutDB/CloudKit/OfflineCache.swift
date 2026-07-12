@@ -107,8 +107,21 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
             }
             return response
         } catch  where Self.isOffline(error) {
-            guard let cached = lock.withLock({ snapshots[key] }) else { throw error }
+            guard let cached = lock.withLock({ overlaidLocked(snapshots[key]) }) else { throw error }
             return (cached.map { ($0.recordID, .success($0)) }, nil)
+        }
+    }
+
+    // The queued writes overlaid onto a snapshot: a queued rewrite of a record
+    // the snapshot already holds replaces it (read-your-updates, tombstones
+    // included), a queued delete drops it. A queued *new* record cannot join —
+    // the query's predicate cannot run offline.
+    private func overlaidLocked(_ snapshot: [CKRecord]?) -> [CKRecord]? {
+        guard let snapshot else { return nil }
+        let deleted = Set(queuedDeletes)
+        return snapshot.compactMap { record in
+            guard !deleted.contains(record.recordID) else { return nil }
+            return queuedSaves.last { $0.recordID == record.recordID } ?? record
         }
     }
 

@@ -67,6 +67,37 @@ struct OfflineCacheTests {
         #expect(try await cache.flush() == 0)
     }
 
+    @Test("Offline reads see queued updates and deletes of snapshotted records")
+    func readYourWrites() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        _ = try await store.read(entity: "purchase")
+
+        // Queue offline writes: a rewrite of p-1 and a brand-new p-2.
+        backing.writeErrors = [CKError(.networkFailure), CKError(.networkFailure)]
+        var updated = makePurchase().values
+        updated["quantity"] = .int(9)
+        try await store.write(updated, entity: "purchase", uuid: "p-1")
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
+        #expect(cache.pendingWrites == 2)
+
+        // The offline read serves the queued rewrite; the new record cannot join
+        // the snapshot — its predicate cannot run offline.
+        backing.errors = [CKError(.networkUnavailable)]
+        let offline = try await store.read(entity: "purchase")
+        #expect(offline.map(\.uuid) == ["p-1"])
+        #expect(offline.first?.values["quantity"] == .int(9))
+
+        // A queued tombstone drops the record from offline reads too.
+        backing.writeErrors = [CKError(.networkFailure)]
+        try await store.delete(entity: "purchase", uuid: "p-1")
+        backing.errors = [CKError(.networkUnavailable)]
+        #expect(try await store.read(entity: "purchase").isEmpty)
+
+        // Back online, the flush reconciles everything.
+        try await cache.flush()
+        #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-2"])
+    }
+
     @Test("Snapshots and the write queue survive a relaunch")
     func persistence() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("scout-offline-\(UUID().uuidString)")
