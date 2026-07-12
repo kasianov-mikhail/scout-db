@@ -37,6 +37,30 @@ extension EntityStore {
         }
     }
 
+    /// Follows a chain of reference fields level by level and returns every
+    /// level's parents.
+    ///
+    /// `path[0]` resolves on the given records, `path[1]` on those parents, and
+    /// so on — one dictionary (uuid → record) per hop, in path order. The last
+    /// dictionary holds the far end of the chain ("the books' authors' agency").
+    ///
+    public func join(entity: String, records: [EntityRecord], path: [String]) async throws -> [[String: EntityRecord]] {
+        var levels: [[String: EntityRecord]] = []
+        var hopEntity = entity
+        var hopRecords = records
+        for field in path {
+            let definition = try await registry.definition(for: hopEntity)
+            guard let parent = definition.field(named: field, at: definition.version)?.references else {
+                throw SchemaError.unknownField(field)
+            }
+            let parents = try await join(entity: hopEntity, records: hopRecords, field: field)
+            levels.append(parents)
+            hopEntity = parent
+            hopRecords = Array(parents.values)
+        }
+        return levels
+    }
+
     /// Reads every record of `entity` whose reference `field` names the parent.
     ///
     /// The reverse of `join`: a scalar reference matches by equality, a list
