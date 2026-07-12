@@ -130,13 +130,47 @@ extension EntityStore {
     public func read(
         entity: String, filters: [Filter] = [], orderedBy field: String, descending: Bool = false, limit: Int, after cursor: FieldCursor? = nil
     ) async throws -> FieldPage {
+        try await read(entity: entity, any: [filters], orderedBy: field, descending: descending, limit: limit, after: cursor)
+    }
+
+    /// Reads one field-ordered keyset page of the records matching any of the
+    /// OR branches; the same page-merge argument as the envelope-date variant.
+    public func read(
+        entity: String, any branches: [[Filter]], orderedBy field: String, descending: Bool = false, limit: Int, after cursor: FieldCursor? = nil
+    ) async throws -> FieldPage {
         let definition = try await registry.definition(for: entity)
         guard let target = definition.field(named: field, at: definition.version), [.string, .int, .double, .timestamp].contains(target.type),
             case .slot = target.storage
         else {
             throw SchemaError.invalidValue(field)
         }
+        let pages = try await withThrowingTaskGroup(of: [EntityRecord].self) { group in
+            for branch in branches {
+                group.addTask {
+                    try await self.fieldPage(
+                        entity: entity, filters: branch, field: field, descending: descending, cursor: cursor, limit: limit, using: definition)
+                }
+            }
+            return try await group.reduce(into: [[EntityRecord]]()) { $0.append($1) }
+        }
+        var seen: Set<String> = []
+        let records = Array(
+            pages.flatMap { $0 }
+                .sorted { Self.ordered($0, $1, by: field, descending: descending) }
+                .filter { seen.insert($0.uuid).inserted }
+                .prefix(limit))
+        let next: FieldCursor? =
+            records.count == limit
+            ? records.last.flatMap { record in record.values[field].map { FieldCursor(value: $0, uuid: record.uuid) } }
+            : nil
+        return FieldPage(records: records, cursor: next)
+    }
 
+    // One branch's bounded page: the field is range-bounded and sorted server-side,
+    // and the cursor is followed only until `limit` post-filter rows are in hand.
+    private func fieldPage(
+        entity: String, filters: [Filter], field: String, descending: Bool, cursor: FieldCursor?, limit: Int, using definition: EntityDefinition
+    ) async throws -> [EntityRecord] {
         var pageFilters = filters
         if let cursor {
             pageFilters.append(Filter(field: field, op: descending ? .lessThanOrEquals : .greaterThanOrEquals, value: cursor.value))
@@ -149,12 +183,7 @@ extension EntityStore {
             guard let cursor else { return true }
             return Self.beyond(record, field, cursor, descending: descending)
         }
-        let records = Array(collected.sorted { Self.ordered($0, $1, by: field, descending: descending) }.prefix(limit))
-        let next: FieldCursor? =
-            records.count == limit
-            ? records.last.flatMap { record in record.values[field].map { FieldCursor(value: $0, uuid: record.uuid) } }
-            : nil
-        return FieldPage(records: records, cursor: next)
+        return Array(collected.sorted { Self.ordered($0, $1, by: field, descending: descending) }.prefix(limit))
     }
 
     // Whether the record lies strictly beyond the cursor in the page order; ties
