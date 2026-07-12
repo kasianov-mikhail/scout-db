@@ -11,6 +11,7 @@ import ScoutDB
 
 public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     public var records: [CKRecord] = []
+    public var storedSubscriptions: [CKSubscription] = []
     public var errors: [Error] = []
     public var writeErrors: [Error] = []
 
@@ -91,6 +92,28 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         }
         records.forEach(upsert)
         return records.map { ($0.recordID, .success($0)) }
+    }
+
+    public func save(subscription: CKSubscription) async throws {
+        if let error = writeErrors.popLast() ?? errors.popLast() {
+            throw error
+        }
+        storedSubscriptions.removeAll { $0.subscriptionID == subscription.subscriptionID }
+        storedSubscriptions.append(subscription)
+    }
+
+    public func deleteSubscription(id: CKSubscription.ID) async throws {
+        if let error = writeErrors.popLast() ?? errors.popLast() {
+            throw error
+        }
+        storedSubscriptions.removeAll { $0.subscriptionID == id }
+    }
+
+    public func subscriptions() async throws -> [CKSubscription] {
+        if let error = errors.popLast() {
+            throw error
+        }
+        return storedSubscriptions
     }
 
     private func upsert(_ record: CKRecord) {
