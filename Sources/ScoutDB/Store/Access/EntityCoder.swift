@@ -10,6 +10,7 @@ import Foundation
 
 struct EntityCoder {
     var keyProvider: (any EncryptionKeyProvider)?
+    var zoneID: CKRecordZone.ID?
 
     // One coder pair per store operation instead of one per record — payload
     // encoding and decoding run once for every record in a batch.
@@ -121,7 +122,8 @@ struct EntityCoder {
         let fields = definition.fields(at: entityRecord.schemaVersion)
         let values = entityRecord.values
 
-        let record = base ?? CKRecord(recordType: Entity.recordType, recordID: CKRecord.ID(recordName: entityRecord.uuid))
+        let record =
+            base ?? CKRecord(recordType: Entity.recordType, recordID: CKRecord.ID(recordName: entityRecord.uuid, zoneID: zoneID ?? .default))
         record["entity"] = entityRecord.entity
         record["schema_version"] = Int64(entityRecord.schemaVersion)
         record["uuid"] = entityRecord.uuid

@@ -199,6 +199,29 @@ struct OperationsTests {
         #expect(database.storedSubscriptions.isEmpty)
     }
 
+    @Test("A zoned store keeps entity records and tombstones in its custom zone")
+    func customZone() async throws {
+        let zone = CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName)
+        let zoned = EntityStore(database: database, registry: registry, zoneID: zone)
+        try await zoned.ensureZone()
+        try await zoned.ensureZone()
+        #expect(database.zones == [zone])
+
+        try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        let stored = try #require(database.records.first { $0.recordType == "Entity" })
+        #expect(stored.recordID.zoneID == zone)
+        #expect(try await zoned.read(entity: "purchase").map(\.uuid) == ["p-1"])
+
+        try await zoned.delete(entity: "purchase", uuid: "p-1")
+        let tombstone = try #require(database.records.first { $0.recordType == "Entity" })
+        #expect(tombstone.recordID.zoneID == zone)
+        #expect(try await zoned.read(entity: "purchase").isEmpty)
+
+        // Schema bookkeeping stays in the default zone.
+        let descriptor = try #require(database.records.first { $0.recordType == "SchemaDescriptor" })
+        #expect(descriptor.recordID.zoneID != zone)
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
