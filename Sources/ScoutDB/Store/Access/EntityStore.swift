@@ -141,6 +141,7 @@ public struct EntityStore: Sendable {
 
         try await database.write(records: entityRecords.map { try coder.encode($0, using: definition) })
         try await GridAggregator(database: database).record(fresh, using: definition)
+        noteChange(entity: entity)
         return entityRecords.map(\.uuid)
     }
 
@@ -161,6 +162,7 @@ public struct EntityStore: Sendable {
         try await database.write(record: tombstone(entity: entity, uuid: uuid, definition: definition, values: removed.first?.values ?? [:]))
         try await GridAggregator(database: database).remove(removed, using: definition)
         try await recordRevisions(removed, using: definition)
+        noteChange(entity: entity)
     }
 
     // The live records behind a set of uuids, used to reverse their aggregate contributions

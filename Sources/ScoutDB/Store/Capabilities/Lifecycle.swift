@@ -26,6 +26,7 @@ extension EntityStore {
         guard rewrite.previous.deleted else { return rewrite.previous }
         try await database.write(record: rewrite.record)
         try await GridAggregator(database: database).record([rewrite.next], using: definition)
+        noteChange(entity: entity)
         return rewrite.next
     }
 

@@ -18,7 +18,7 @@ import Foundation
 ///     .all()
 /// ```
 ///
-public struct QueryBuilder {
+public struct QueryBuilder: Sendable {
     let entity: String
     let store: EntityStore
 
