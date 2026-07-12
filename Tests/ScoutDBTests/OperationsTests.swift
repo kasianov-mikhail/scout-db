@@ -300,6 +300,27 @@ struct OperationsTests {
         }
     }
 
+    @Test("Push payloads map to change events and back to records")
+    func pushEvents() async throws {
+        #expect(ChangeEvent(reason: .recordCreated, recordName: "p-1", subscriptionID: "scout-purchase")?.kind == .created)
+        #expect(ChangeEvent(reason: .recordUpdated, recordName: "p-1", subscriptionID: nil)?.kind == .updated)
+        #expect(ChangeEvent(reason: .recordDeleted, recordName: "p-1", subscriptionID: nil)?.kind == .deleted)
+        #expect(ChangeEvent(reason: .recordCreated, recordName: nil, subscriptionID: nil) == nil)
+        // A payload that is not a CloudKit query notification parses to nil.
+        #expect(ChangeEvent(userInfo: ["aps": ["alert": "hi"]]) == nil)
+
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        let created = try #require(ChangeEvent(reason: .recordCreated, recordName: "p-1", subscriptionID: "scout-purchase"))
+        #expect(try await store.record(for: created)?.values["product_id"] == .string("sku-42"))
+
+        // Tombstoned records and hard deletes resolve to nil.
+        try await store.delete(entity: "purchase", uuid: "p-1")
+        let updated = try #require(ChangeEvent(reason: .recordUpdated, recordName: "p-1", subscriptionID: nil))
+        #expect(try await store.record(for: updated) == nil)
+        let deleted = try #require(ChangeEvent(reason: .recordDeleted, recordName: "p-1", subscriptionID: nil))
+        #expect(try await store.record(for: deleted) == nil)
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
