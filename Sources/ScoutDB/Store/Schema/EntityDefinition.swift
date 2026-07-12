@@ -113,8 +113,11 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
             throw SchemaError.invalidDefinition("Unique key '\(key)' is not a field")
         }
         for view in views ?? [] {
-            guard envelopeDate != nil else {
-                throw SchemaError.invalidDefinition("View '\(view.name)' requires an envelope date")
+            // A lifetime view has no time grid, so it alone works without a date.
+            if view.bucket != .lifetime || view.histogram != nil {
+                guard envelopeDate != nil else {
+                    throw SchemaError.invalidDefinition("View '\(view.name)' requires an envelope date")
+                }
             }
             if let groupBy = view.groupBy, !names.contains(groupBy) {
                 throw SchemaError.invalidDefinition("View '\(view.name)' groups by unknown '\(groupBy)'")

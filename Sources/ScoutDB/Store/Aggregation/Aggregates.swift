@@ -115,6 +115,8 @@ extension EntityStore {
             return EntityCoder.calendar.date(byAdding: .hour, value: index, to: period) ?? period
         case .weekday, .day:
             return EntityCoder.calendar.date(byAdding: .day, value: index, to: period) ?? period
+        case .lifetime:
+            return period
         }
     }
 

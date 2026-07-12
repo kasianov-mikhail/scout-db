@@ -43,6 +43,9 @@ public struct AggregateView: Codable, Equatable, Sendable {
 
     public enum Bucket: String, Codable, Sendable {
         case hour, weekday, day
+        /// One running total per group, with no time grid — the categorical
+        /// counter. The only bucket that works without an envelope date.
+        case lifetime
     }
 
     public enum Metric: Equatable, Sendable {
