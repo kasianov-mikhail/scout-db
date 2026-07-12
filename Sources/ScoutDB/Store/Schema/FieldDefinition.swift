@@ -21,10 +21,12 @@ public struct FieldDefinition: Codable, Equatable, Sendable {
     public var derived: Derivation?
     public var encrypted: Bool?
     public var references: String?
+    public var exclusive: Bool?
 
     public init(
         name: String, type: FieldType, storage: Storage, since: Int? = nil, until: Int? = nil, required: Bool? = nil, defaultValue: RecordValue? = nil,
-        allowed: [String]? = nil, minimum: Double? = nil, maximum: Double? = nil, derived: Derivation? = nil, encrypted: Bool? = nil, references: String? = nil
+        allowed: [String]? = nil, minimum: Double? = nil, maximum: Double? = nil, derived: Derivation? = nil, encrypted: Bool? = nil, references: String? = nil,
+        exclusive: Bool? = nil
     ) {
         self.name = name
         self.type = type
@@ -39,10 +41,11 @@ public struct FieldDefinition: Codable, Equatable, Sendable {
         self.derived = derived
         self.encrypted = encrypted
         self.references = references
+        self.exclusive = exclusive
     }
 
     private enum CodingKeys: String, CodingKey {
-        case name, type, storage, since, until, required, allowed, minimum, maximum, derived, encrypted, references
+        case name, type, storage, since, until, required, allowed, minimum, maximum, derived, encrypted, references, exclusive
         case defaultValue = "default"
     }
 

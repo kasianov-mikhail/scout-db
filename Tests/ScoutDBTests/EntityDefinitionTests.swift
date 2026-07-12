@@ -120,6 +120,21 @@ struct EntityDefinitionTests {
         #expect(throws: SchemaError.self) { try list.validate() }
     }
 
+    @Test("Validation restricts exclusive to scalar string references")
+    func exclusiveReferenceTypes() throws {
+        try makeDefinition(fields: [
+            FieldDefinition(name: "person_id", type: .string, storage: .slot(.string, "s_00"), references: "person", exclusive: true)
+        ]).validate()
+        let unreferenced = makeDefinition(fields: [
+            FieldDefinition(name: "person_id", type: .string, storage: .slot(.string, "s_00"), exclusive: true)
+        ])
+        #expect(throws: SchemaError.self) { try unreferenced.validate() }
+        let list = makeDefinition(fields: [
+            FieldDefinition(name: "person_ids", type: .stringList, storage: .slot(.stringList, "ls_00"), references: "person", exclusive: true)
+        ])
+        #expect(throws: SchemaError.self) { try list.validate() }
+    }
+
     @Test("Validation rejects a non-timestamp envelope date")
     func envelopeDateType() {
         let definition = makeDefinition(

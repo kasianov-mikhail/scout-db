@@ -54,6 +54,29 @@ extension EntityStore {
         }
     }
 
+    // Enforces one-to-one references: an exclusive field's key may be held by at
+    // most one live record, so a second suitor is rejected — within the batch and
+    // against the store alike. Best-effort like the integrity gate: two racing
+    // writers can still both win.
+    func validateExclusivity(of records: [EntityRecord], entity: String, using definition: EntityDefinition) async throws {
+        for field in definition.fields(at: definition.version) where field.exclusive == true {
+            var owners: [String: String] = [:]
+            for record in records {
+                guard case .string(let key)? = record.values[field.name] else { continue }
+                if let owner = owners[key], owner != record.uuid {
+                    throw SchemaError.duplicateReference(field: field.name, key: key)
+                }
+                owners[key] = record.uuid
+            }
+            for (key, owner) in owners.sorted(by: { $0.key < $1.key }) {
+                let holders = try await read(entity: entity, filters: [Filter(field: field.name, op: .equals, value: .string(key))])
+                if holders.contains(where: { $0.uuid != owner }) {
+                    throw SchemaError.duplicateReference(field: field.name, key: key)
+                }
+            }
+        }
+    }
+
     // A scalar reference names one parent, a list reference names many — the
     // many-to-many shape, where several records share several parents.
     private static func referencedKeys(_ value: RecordValue?) -> [String] {

@@ -82,6 +82,9 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
             if field.references != nil, ![.string, .stringList].contains(field.type) {
                 throw SchemaError.invalidDefinition("Reference field '\(field.name)' must be a string uuid or a string list of uuids")
             }
+            if field.exclusive == true, field.references == nil || field.type != .string {
+                throw SchemaError.invalidDefinition("Exclusive field '\(field.name)' must be a scalar string reference")
+            }
             if field.allowed != nil, ![.string, .text, .stringList].contains(field.type) {
                 throw SchemaError.invalidDefinition("Field '\(field.name)' of type '\(field.type.rawValue)' cannot constrain 'allowed'")
             }
