@@ -247,6 +247,31 @@ struct OperationsTests {
         }
     }
 
+    @Test("Zone sharing creates one zone-wide share, finds it again, and revokes it")
+    func zoneSharing() async throws {
+        let zone = CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName)
+        let zoned = EntityStore(database: database, registry: registry, zoneID: zone)
+        try await zoned.ensureZone()
+
+        #expect(try await zoned.zoneShare() == nil)
+        let share = try await zoned.shareZone(title: "Purchases")
+        #expect(share.recordID.zoneID == zone)
+        #expect(share.recordID.recordName == CKRecordNameZoneWideShare)
+
+        // A second call returns the existing share instead of minting a new one.
+        let again = try await zoned.shareZone()
+        #expect(again.recordID == share.recordID)
+        #expect(database.records.filter { $0 is CKShare }.count == 1)
+
+        try await zoned.stopSharing()
+        #expect(try await zoned.zoneShare() == nil)
+
+        // A store without a custom zone cannot share.
+        await #expect(throws: SchemaError.self) {
+            try await store.shareZone()
+        }
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")

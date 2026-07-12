@@ -117,6 +117,13 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         return storedSubscriptions
     }
 
+    public func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
+        if let error = errors.popLast() {
+            throw error
+        }
+        return records.first { $0.recordID == id }?.copy() as? CKRecord
+    }
+
     public func save(zone: CKRecordZone) async throws {
         if let error = writeErrors.popLast() ?? errors.popLast() {
             throw error
