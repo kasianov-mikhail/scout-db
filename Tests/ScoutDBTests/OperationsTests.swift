@@ -473,6 +473,36 @@ struct OperationsTests {
         }
     }
 
+    @Test("Increment adds atomically, counts from zero, and survives a race")
+    func increment() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+
+        #expect(try await store.increment(entity: "purchase", uuid: "p-1", field: "quantity") == 4)
+        #expect(try await store.increment(entity: "purchase", uuid: "p-1", field: "quantity", by: -2) == 2)
+        #expect(try await store.increment(entity: "purchase", uuid: "p-1", field: "total", by: 1) == 30.97)
+
+        // A missing value counts from zero.
+        var sparse = makePurchase().values
+        sparse["quantity"] = nil
+        try await store.write(sparse, entity: "purchase", uuid: "p-2")
+        #expect(try await store.increment(entity: "purchase", uuid: "p-2", field: "quantity", by: 5) == 5)
+
+        // A lost race re-applies the delta to the winning record.
+        let server = try #require(database.records.first { $0["uuid"] as? String == "p-1" })
+        database.writeErrors = [RecordConflictError(serverRecord: server.copy() as! CKRecord)]
+        #expect(try await store.increment(entity: "purchase", uuid: "p-1", field: "quantity") == 3)
+
+        await #expect(throws: SchemaError.invalidValue("quantity")) {
+            try await store.increment(entity: "purchase", uuid: "p-1", field: "quantity", by: 0.5)
+        }
+        await #expect(throws: SchemaError.invalidValue("product_id")) {
+            try await store.increment(entity: "purchase", uuid: "p-1", field: "product_id")
+        }
+        await #expect(throws: SchemaError.notFound("ghost")) {
+            try await store.increment(entity: "purchase", uuid: "ghost", field: "quantity")
+        }
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
