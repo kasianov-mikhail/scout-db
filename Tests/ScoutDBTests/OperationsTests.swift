@@ -372,6 +372,34 @@ struct OperationsTests {
         #expect(committed.first?.values["status"] == .string("committed"))
     }
 
+    @Test("A transaction mixes writes and deletes in order")
+    func transactionDeletes() async throws {
+        try await registry.publish(EntityStore.transactionDefinition)
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+
+        try await store.transaction { draft in
+            draft.write(makePurchase().values, entity: "purchase", uuid: "p-2")
+            draft.delete(entity: "purchase", uuid: "p-1")
+        }
+
+        #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-2"])
+        // A replay tombstones the same uuid again — idempotent by design.
+        let committed = try await store.read(entity: EntityStore.transactionEntity)
+        guard case .bytes(let data)? = committed.first?.values["steps"] else {
+            Issue.record("missing steps")
+            return
+        }
+        let steps = try JSONDecoder().decode([TransactionStep].self, from: data)
+        #expect(steps.map(\.kind) == [.write, .delete])
+    }
+
+    @Test("Steps persisted before deletes existed decode as writes")
+    func legacyStepDecoding() throws {
+        let legacy = Data(#"{"entity":"purchase","uuid":"p-1","values":{}}"#.utf8)
+        let step = try JSONDecoder().decode(TransactionStep.self, from: legacy)
+        #expect(step.kind == .write)
+    }
+
     @Test("Repair completes an interrupted transaction")
     func repair() async throws {
         try await registry.publish(EntityStore.transactionDefinition)
