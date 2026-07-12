@@ -123,7 +123,10 @@ extension EntityStore {
                 guard field.type == .text, case .slot(_, let slot) = field.storage else {
                     throw SchemaError.invalidValue(filter.field)
                 }
+                // The server's token search spans every field of the record
+                // (`self CONTAINS`), so the named field re-narrows client-side.
                 server.append(ServerFilter(field: slot, op: .search, value: filter.value))
+                client.append(filter)
             default:
                 guard let op = filter.op.serverOperator else {
                     throw SchemaError.unknownField(filter.field)
@@ -194,6 +197,15 @@ extension EntityStore {
         case .matches:
             guard case .string(let pattern) = filter.value, let regex = try? Regex(pattern) else { return { _ in false } }
             return stringMatcher(field) { $0.wholeMatch(of: regex) != nil }
+        case .search:
+            // Token equality scoped to the named field, mirroring the server's
+            // tokenization; every needle token must appear among the field's.
+            guard case .string(let needle) = filter.value else { return { _ in false } }
+            let needles = needle.lowercased().split { !$0.isLetter && !$0.isNumber }
+            return stringMatcher(field) { text in
+                let tokens = Set(text.lowercased().split { !$0.isLetter && !$0.isNumber })
+                return needles.allSatisfy(tokens.contains)
+            }
         default:
             return { _ in false }
         }

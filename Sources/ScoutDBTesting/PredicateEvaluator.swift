@@ -87,12 +87,16 @@ public enum PredicateEvaluator {
         return point.distance(from: center) < radius
     }
 
+    // Token-based full-text match across every string field, the way the server
+    // treats `self CONTAINS`: each needle token must appear somewhere on the record.
     private static func evaluateSearch(_ comparison: NSComparisonPredicate, record: CKRecord) -> Bool? {
         guard let needle = (comparison.rightExpression.constantValue as? String)?.lowercased() else { return false }
-        return record.allKeys().contains { key in
-            guard let text = record[key] as? String else { return false }
-            return text.lowercased().split { !$0.isLetter && !$0.isNumber }.contains(Substring(needle))
+        var tokens: Set<Substring> = []
+        for key in record.allKeys() {
+            guard let text = record[key] as? String else { continue }
+            tokens.formUnion(text.lowercased().split { !$0.isLetter && !$0.isNumber })
         }
+        return needle.split { !$0.isLetter && !$0.isNumber }.allSatisfy(tokens.contains)
     }
 
     public static func compare(_ lhs: Any?, _ rhs: Any?) -> ComparisonResult {
