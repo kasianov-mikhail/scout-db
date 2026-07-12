@@ -519,6 +519,31 @@ struct OperationsTests {
         #expect(steps.map(\.kind) == [.write, .delete])
     }
 
+    @Test("A transaction patches existing records with update steps")
+    func transactionUpdates() async throws {
+        try await registry.publish(EntityStore.transactionDefinition)
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+
+        try await store.transaction { draft in
+            draft.update(["quantity": .int(9)], entity: "purchase", uuid: "p-1")
+        }
+
+        let patched = try #require(try await store.read(entity: "purchase").first)
+        #expect(patched.values["quantity"] == .int(9))
+        #expect(patched.values["product_id"] == .string("sku-42"))
+
+        // An update of a missing record surfaces and leaves the envelope pending
+        // for a later repair.
+        await #expect(throws: SchemaError.notFound("ghost")) {
+            try await store.transaction { draft in
+                draft.update(["quantity": .int(1)], entity: "purchase", uuid: "ghost")
+            }
+        }
+        let pending = try await store.read(
+            entity: EntityStore.transactionEntity, filters: [.init(field: "status", op: .equals, value: .string("pending"))])
+        #expect(pending.count == 1)
+    }
+
     @Test("Steps persisted before deletes existed decode as writes")
     func legacyStepDecoding() throws {
         let legacy = Data(#"{"entity":"purchase","uuid":"p-1","values":{}}"#.utf8)

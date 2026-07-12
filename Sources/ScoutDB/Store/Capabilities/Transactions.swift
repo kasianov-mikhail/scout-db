@@ -9,7 +9,7 @@ import Foundation
 
 public struct TransactionStep: Codable, Equatable, Sendable {
     public enum Kind: String, Codable, Sendable {
-        case write, delete
+        case write, delete, update
     }
 
     public let kind: Kind
@@ -43,6 +43,15 @@ public struct TransactionDraft {
 
     public mutating func delete(entity: String, uuid: String) {
         steps.append(TransactionStep(kind: .delete, entity: entity, uuid: uuid))
+    }
+
+    /// Patches an existing record.
+    ///
+    /// The given values overwrite their fields, the rest of the record stays.
+    /// Setting absolute values keeps replays idempotent.
+    ///
+    public mutating func update(_ values: [String: RecordValue], entity: String, uuid: String) {
+        steps.append(TransactionStep(kind: .update, entity: entity, uuid: uuid, values: values))
     }
 }
 
@@ -97,12 +106,23 @@ extension EntityStore {
     // Consecutive write steps on one entity flush as a single batched write — order
     // across entities and kinds is preserved, and a repeated uuid starts a new batch
     // so later steps still overwrite earlier ones the way sequential writes did.
-    // Deletes tombstone one by one; replaying a tombstone is idempotent.
+    // Deletes tombstone one by one and updates patch through the CAS rewrite; both
+    // replay idempotently. An update of a missing record throws, leaving the
+    // transaction pending for a later repair.
     private func apply(_ steps: [TransactionStep]) async throws {
         var index = 0
         while index < steps.count {
             guard steps[index].kind == .write else {
-                try await delete(entity: steps[index].entity, uuid: steps[index].uuid)
+                let step = steps[index]
+                if step.kind == .delete {
+                    try await delete(entity: step.entity, uuid: step.uuid)
+                } else {
+                    try await update(entity: step.entity, uuid: step.uuid) { record in
+                        for (name, value) in step.values {
+                            record.values[name] = value
+                        }
+                    }
+                }
                 index += 1
                 continue
             }
