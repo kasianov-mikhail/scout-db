@@ -23,7 +23,7 @@ public struct QueryBuilder {
     let store: EntityStore
 
     private var filters: [EntityStore.Filter] = []
-    private var groups: [[EntityStore.Filter]] = []
+    private var groups: [[[EntityStore.Filter]]] = []
     private var sorts: [EntityStore.Sort] = []
     private var projection: [String]?
     private var ceiling: Int?
@@ -51,13 +51,15 @@ public struct QueryBuilder {
         filter(EntityStore.Filter(field: field, op: method, value: value, radius: radius))
     }
 
-    /// Adds a group of alternatives combined with `OR`; the group as a whole is
-    /// `AND`-ed with the other filters.
+    /// Adds a group of alternatives combined with `OR`.
+    ///
+    /// The group as a whole is `AND`-ed with the other filters. An alternative
+    /// added with `all` requires every one of its filters at once.
     ///
     /// ```swift
     /// .group {
     ///     $0.filter("level", .equals, "error")
-    ///     $0.filter("level", .equals, "fatal")
+    ///     $0.all("level" == "warning", "count" > 10)
     /// }
     /// ```
     ///
@@ -170,23 +172,29 @@ public struct QueryBuilder {
     // normal form: one branch per combination of picks, one query per branch.
     private func branches() -> [[EntityStore.Filter]] {
         groups.reduce([filters]) { branches, group in
-            branches.flatMap { branch in group.map { branch + [$0] } }
+            branches.flatMap { branch in group.map { branch + $0 } }
         }
     }
 }
 
 /// Collects the alternatives of a ``QueryBuilder/group(_:)`` clause.
 public struct OrGroup {
-    fileprivate var alternatives: [EntityStore.Filter] = []
+    fileprivate var alternatives: [[EntityStore.Filter]] = []
 
     /// Adds one alternative to the group.
     public mutating func filter(_ filter: EntityStore.Filter) {
-        alternatives.append(filter)
+        alternatives.append([filter])
     }
 
     /// Adds one alternative from its parts.
     public mutating func filter(_ field: String, _ method: EntityStore.Match, _ value: RecordValue) {
-        alternatives.append(EntityStore.Filter(field: field, op: method, value: value))
+        alternatives.append([EntityStore.Filter(field: field, op: method, value: value)])
+    }
+
+    /// Adds one alternative that requires all of its filters at once — an `AND`
+    /// nested inside the group's `OR`.
+    public mutating func all(_ filters: EntityStore.Filter...) {
+        alternatives.append(filters)
     }
 }
 
