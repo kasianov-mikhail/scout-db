@@ -39,6 +39,21 @@ extension EntityStore {
         }
     }
 
+    // Verifies every reference key of the batch names a live parent record; the
+    // integrity gate behind the store's `enforceReferences` flag. Best-effort: a
+    // parent deleted between this check and the save still slips through.
+    func validateReferences(of records: [EntityRecord], using definition: EntityDefinition) async throws {
+        for field in definition.fields(at: definition.version) {
+            guard let parent = field.references else { continue }
+            let keys = Set(records.flatMap { Self.referencedKeys($0.values[field.name]) })
+            guard keys.count > 0 else { continue }
+            let alive = Set(try await fetch(entity: parent, uuids: keys.sorted()).map(\.uuid))
+            if let missing = keys.subtracting(alive).sorted().first {
+                throw SchemaError.brokenReference(field: field.name, key: missing)
+            }
+        }
+    }
+
     // A scalar reference names one parent, a list reference names many — the
     // many-to-many shape, where several records share several parents.
     private static func referencedKeys(_ value: RecordValue?) -> [String] {

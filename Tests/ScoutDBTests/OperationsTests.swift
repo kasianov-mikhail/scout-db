@@ -448,6 +448,40 @@ struct OperationsTests {
         }
     }
 
+    @Test("An enforcing store rejects writes whose references name missing parents")
+    func enforcedReferences() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "author",
+                fields: [
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
+                ]))
+        try await registry.publish(
+            makeDefinition(
+                entity: "book",
+                fields: [
+                    FieldDefinition(name: "title", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "author_id", type: .string, storage: .slot(.string, "s_01"), references: "author"),
+                    FieldDefinition(name: "editor_ids", type: .stringList, storage: .slot(.stringList, "ls_00"), references: "author"),
+                ]))
+        try await store.write(["name": .string("Twain")], entity: "author", uuid: "a-1")
+
+        let enforcing = EntityStore(database: database, registry: registry, enforceReferences: true)
+        try await enforcing.write(["title": .string("Tom"), "author_id": .string("a-1"), "editor_ids": .strings(["a-1"])], entity: "book", uuid: "b-1")
+
+        await #expect(throws: SchemaError.brokenReference(field: "author_id", key: "a-9")) {
+            try await enforcing.write(["title": .string("Lost"), "author_id": .string("a-9")], entity: "book", uuid: "b-2")
+        }
+        await #expect(throws: SchemaError.brokenReference(field: "editor_ids", key: "a-9")) {
+            let values: [String: RecordValue] = ["title": .string("Lost"), "author_id": .string("a-1"), "editor_ids": .strings(["a-1", "a-9"])]
+            try await enforcing.write(values, entity: "book", uuid: "b-3")
+        }
+
+        // The default store stays permissive.
+        try await store.write(["title": .string("Free"), "author_id": .string("a-9")], entity: "book", uuid: "b-4")
+        #expect(Set(try await store.read(entity: "book").map(\.uuid)) == ["b-1", "b-4"])
+    }
+
     @Test("Generated Swift source mirrors the definition")
     func codegen() {
         let source = DefinitionCodeGenerator().source(for: makePurchaseDefinition())
