@@ -431,6 +431,22 @@ struct OperationsTests {
         #expect(try await zoned.read(entity: "purchase", limit: 5).records.map(\.uuid) == ["p-zoned"])
     }
 
+    @Test("A database subscription registers one silent-push umbrella")
+    func databaseSubscription() async throws {
+        let id = try await store.subscribeToDatabase()
+        #expect(id == "scout-database")
+
+        let stored = try #require(database.storedSubscriptions.first as? CKDatabaseSubscription)
+        #expect(stored.subscriptionID == "scout-database")
+        #expect(stored.notificationInfo?.shouldSendContentAvailable == true)
+
+        // Re-subscribing replaces rather than duplicates; unsubscribe removes.
+        _ = try await store.subscribeToDatabase()
+        #expect(database.storedSubscriptions.count == 1)
+        try await store.unsubscribe(id: id)
+        #expect(database.storedSubscriptions.isEmpty)
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
