@@ -42,4 +42,40 @@ extension EntityStore {
         guard let share = try await zoneShare() else { return }
         try await database.modifyRecords(saving: [], deleting: [share.recordID])
     }
+
+    /// The participants of the zone share, the owner included; empty when unshared.
+    public func shareParticipants() async throws -> [CKShare.Participant] {
+        try await zoneShare()?.participants ?? []
+    }
+
+    /// Sets what following the share link grants.
+    ///
+    /// `.readOnly`/`.readWrite` opens the share to everyone with the URL;
+    /// `.none` makes it invite-only. Inviting a specific participant needs the
+    /// container-scoped lookup (`CKFetchShareParticipantsOperation`), which
+    /// stays on the app side.
+    ///
+    public func setSharePublicPermission(_ permission: CKShare.ParticipantPermission) async throws {
+        guard let share = try await zoneShare() else {
+            throw SchemaError.notFound(CKRecordNameZoneWideShare)
+        }
+        share.publicPermission = permission
+        try await database.write(record: share)
+    }
+
+    /// Removes a participant from the zone share.
+    ///
+    /// The owner cannot be removed — CloudKit raises an unrecoverable exception
+    /// for it, so the attempt fails here as a plain error instead.
+    ///
+    public func removeShareParticipant(_ participant: CKShare.Participant) async throws {
+        guard participant.role != .owner else {
+            throw SchemaError.invalidValue("owner")
+        }
+        guard let share = try await zoneShare() else {
+            throw SchemaError.notFound(CKRecordNameZoneWideShare)
+        }
+        share.removeParticipant(participant)
+        try await database.write(record: share)
+    }
 }
