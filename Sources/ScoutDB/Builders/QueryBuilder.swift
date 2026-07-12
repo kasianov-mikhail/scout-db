@@ -115,6 +115,26 @@ public struct QueryBuilder {
         return try await store.read(entity: entity, filters: filters, sort: sorts, fields: [], limit: ceiling).count
     }
 
+    /// Sums a numeric field across the matching records, fetching only that field.
+    public func sum(_ field: String) async throws -> Double {
+        try await store.aggregate(.sum, of: field, entity: entity, any: branches()) ?? 0
+    }
+
+    /// The smallest value of a numeric field across the matching records, if any match.
+    public func minimum(_ field: String) async throws -> Double? {
+        try await store.aggregate(.minimum, of: field, entity: entity, any: branches())
+    }
+
+    /// The largest value of a numeric field across the matching records, if any match.
+    public func maximum(_ field: String) async throws -> Double? {
+        try await store.aggregate(.maximum, of: field, entity: entity, any: branches())
+    }
+
+    /// The mean of a numeric field across the matching records, if any match.
+    public func average(_ field: String) async throws -> Double? {
+        try await store.aggregate(.average, of: field, entity: entity, any: branches())
+    }
+
     /// Returns one page of results ordered by the envelope date.
     ///
     /// Keyset pagination is ordered by the envelope date alone, so combining it

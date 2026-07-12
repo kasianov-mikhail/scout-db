@@ -123,6 +123,29 @@ struct FluentTests {
         #expect(remaining.map(\.uuid) == ["p-1"])
     }
 
+    @Test("Folds compute over a single projected field")
+    func folds() async throws {
+        #expect(try await store.query("purchase").sum("quantity") == 6)
+        #expect(try await store.query("purchase").filter("quantity" > 1).sum("amount") == 50)
+        #expect(try await store.query("purchase").minimum("quantity") == 1)
+        #expect(try await store.query("purchase").maximum("amount") == 30)
+        #expect(try await store.query("purchase").average("quantity") == 2)
+        #expect(try await store.query("purchase").filter("quantity" > 9).average("quantity") == nil)
+        #expect(try await store.query("purchase").filter("quantity" > 9).sum("quantity") == 0)
+
+        let grouped = try await store.query("purchase")
+            .group {
+                $0.filter("product_id", .equals, "sku-0")
+                $0.filter("product_id", .equals, "sku-2")
+            }
+            .sum("quantity")
+        #expect(grouped == 5)
+
+        await #expect(throws: SchemaError.invalidValue("product_id")) {
+            _ = try await store.query("purchase").sum("product_id")
+        }
+    }
+
     @Test("Pagination and streaming honor OR groups")
     func groupPagination() async throws {
         func query() -> QueryBuilder {
