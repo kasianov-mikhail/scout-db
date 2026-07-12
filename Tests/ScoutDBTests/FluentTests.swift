@@ -285,6 +285,18 @@ struct FluentTests {
         #expect(records.map { $0.values["quantity"] } == [.int(4), .int(1), .int(3)])
     }
 
+    @Test("The schema builder's matches constraint lands in the definition")
+    func matchesConstraint() async throws {
+        try await store.schema("account")
+            .field("email", .string, .matches("[^@]+@[^@]+"))
+            .create()
+
+        #expect(try await registry.definition(for: "account").field(named: "email", at: 1)?.pattern == "[^@]+@[^@]+")
+        await #expect(throws: SchemaError.invalidValue("email")) {
+            try await store.write(["email": .string("nope")], entity: "account", uuid: "a-1")
+        }
+    }
+
     @Test("Typed queries filter, sort, and decode through key paths")
     func typedQueries() async throws {
         let cheap = try await store.query(TypedPurchase.self)

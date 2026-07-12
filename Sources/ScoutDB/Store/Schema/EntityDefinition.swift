@@ -89,6 +89,14 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
             if field.exclusive == true, field.references == nil || field.type != .string {
                 throw SchemaError.invalidDefinition("Exclusive field '\(field.name)' must be a scalar string reference")
             }
+            if let pattern = field.pattern {
+                guard [.string, .text, .stringList].contains(field.type) else {
+                    throw SchemaError.invalidDefinition("Field '\(field.name)' of type '\(field.type.rawValue)' cannot constrain 'pattern'")
+                }
+                guard (try? Regex(pattern)) != nil else {
+                    throw SchemaError.invalidDefinition("Field '\(field.name)' declares a malformed pattern")
+                }
+            }
             if field.allowed != nil, ![.string, .text, .stringList].contains(field.type) {
                 throw SchemaError.invalidDefinition("Field '\(field.name)' of type '\(field.type.rawValue)' cannot constrain 'allowed'")
             }
