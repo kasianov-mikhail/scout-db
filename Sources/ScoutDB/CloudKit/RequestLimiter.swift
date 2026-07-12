@@ -58,7 +58,11 @@ struct CloudKitRequestLimiter {
 extension CKDatabase {
     @discardableResult func throttled<R>(body: @Sendable @escaping (CKDatabase) async throws -> R) async throws -> R {
         try await requestLimiter.withSlot {
-            try await self.configuredWith(configuration: .scoutDB, body: body)
+            // The slot stays held through the backoff sleep on purpose: while the
+            // server is shedding load, parked requests must not refill the pipe.
+            try await withRateLimitRetry {
+                try await self.configuredWith(configuration: .scoutDB, body: body)
+            }
         }
     }
 }
