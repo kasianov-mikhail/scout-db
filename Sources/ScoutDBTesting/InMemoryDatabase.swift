@@ -25,13 +25,13 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
 
     public init() {}
 
-    public func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+    public func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
         if let error = errors.popLast() {
             throw error
         }
-        return page(query: query, desiredKeys: desiredKeys, offset: 0, resultsLimit: resultsLimit)
+        return page(query: query, zoneID: zoneID, desiredKeys: desiredKeys, offset: 0, resultsLimit: resultsLimit)
     }
 
     public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
@@ -40,25 +40,26 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         if let error = errors.popLast() {
             throw error
         }
-        guard case .offset(let query, let offset) = cursor else { throw CKError(.invalidArguments) }
-        return page(query: query, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit)
+        guard case .offset(let query, let zoneID, let offset) = cursor else { throw CKError(.invalidArguments) }
+        return page(query: query, zoneID: zoneID, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit)
     }
 
     // Re-evaluates the query and serves one page from `offset`, mirroring the
     // server: at most `resultsLimit` records per response (`maximumResults`, i.e.
     // 0, means "as many as fit under `pageLimit`") and a cursor whenever matches
-    // remain beyond the page.
-    private func page(query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, offset: Int, resultsLimit: Int) -> (
+    // remain beyond the page. A zone scopes the scan; nil searches all zones.
+    private func page(query: CKQuery, zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, offset: Int, resultsLimit: Int) -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
         let matched =
             records
+            .filter { zoneID == nil || $0.recordID.zoneID == zoneID }
             .filter { $0.recordType == query.recordType && PredicateEvaluator.evaluate(query.predicate, record: $0) == true }
             .sorted(by: query.sortDescriptors ?? [])
         let capacity = Swift.min(resultsLimit > 0 ? resultsLimit : Int.max, pageLimit ?? Int.max)
         let page = matched.dropFirst(offset).prefix(capacity).map { project($0, keys: desiredKeys) }
         let end = offset + page.count
-        let cursor: QueryCursor? = end < matched.count ? .offset(query: query, offset: end) : nil
+        let cursor: QueryCursor? = end < matched.count ? .offset(query: query, zoneID: zoneID, offset: end) : nil
         return (page.map { ($0.recordID, .success($0)) }, cursor)
     }
 

@@ -412,6 +412,25 @@ struct OperationsTests {
         #expect(try await zoned.shareParticipants().count == 1)
     }
 
+    @Test("A zoned store's queries stay inside its zone")
+    func zoneScopedQueries() async throws {
+        let zone = CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName)
+        let zoned = EntityStore(database: database, registry: registry, zoneID: zone)
+        try await zoned.ensureZone()
+
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-default")
+        try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-zoned")
+
+        // The zoned store sees only its zone; the unzoned store searches all zones.
+        #expect(try await zoned.read(entity: "purchase").map(\.uuid) == ["p-zoned"])
+        #expect(Set(try await store.read(entity: "purchase").map(\.uuid)) == ["p-default", "p-zoned"])
+
+        // Point lookups and bounded page reads scope the same way.
+        #expect(try await zoned.fetch(uuid: "p-default") == nil)
+        #expect(try await zoned.fetch(uuid: "p-zoned")?.uuid == "p-zoned")
+        #expect(try await zoned.read(entity: "purchase", limit: 5).records.map(\.uuid) == ["p-zoned"])
+    }
+
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")

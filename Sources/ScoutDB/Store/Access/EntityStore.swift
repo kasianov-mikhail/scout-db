@@ -184,7 +184,7 @@ public struct EntityStore: Sendable {
         if let limit {
             return Array(try await boundedRecords(matching: query, desiredKeys: keys, limit: limit, using: definition, where: included).prefix(limit))
         }
-        return try decode(try await database.allRecords(matching: query, desiredKeys: keys), using: definition).filter(included)
+        return try decode(try await database.allRecords(matching: query, inZone: zoneID, desiredKeys: keys), using: definition).filter(included)
     }
 
     // Assembles the pieces every live read shares: tombstones excluded server-side and
@@ -212,7 +212,7 @@ public struct EntityStore: Sendable {
         matching query: CKQuery, desiredKeys: [String]?, limit: Int, using definition: EntityDefinition, where included: (EntityRecord) -> Bool
     ) async throws -> [EntityRecord] {
         var collected: [EntityRecord] = []
-        var (batch, token) = try await database.records(matching: query, desiredKeys: desiredKeys, resultsLimit: limit)
+        var (batch, token) = try await database.records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: limit)
         while true {
             collected += try decode(batch.map { try $0.1.get() }, using: definition).filter(included)
             guard collected.count < limit, let cursor = token else { break }
@@ -295,7 +295,7 @@ public struct EntityStore: Sendable {
             filters.append(ServerFilter(field: "modificationDate", op: .greaterThan, value: .date(cursor)))
         }
         let query = ckQuery(Entity.recordType, filters: filters)
-        let records = try await database.allRecords(matching: query)
+        let records = try await database.allRecords(matching: query, inZone: zoneID)
         let next = records.compactMap(\.recordModificationDate).max() ?? cursor
         return (try decode(records, using: definition), next)
     }
