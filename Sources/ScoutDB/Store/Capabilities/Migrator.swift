@@ -21,6 +21,30 @@ public struct Migrator: Sendable {
     }
 
     @discardableResult public func backfill(entity: String, transform: (inout EntityRecord) throws -> Void = { _ in }) async throws -> Int {
+        try await backfill(entity: entity) { record, _ in try transform(&record) }
+    }
+
+    /// Renames a field's data: rewrites every outdated record, carrying the value
+    /// stored under `from` at the record's version into `to` at the current one.
+    ///
+    /// Needed when the rename allocated a fresh slot for the new name — a rename
+    /// that reuses the old field's slot across disjoint version ranges migrates
+    /// through a plain `backfill` already. Repeating the run is safe: migrated
+    /// records leave the outdated set.
+    ///
+    @discardableResult public func rename(entity: String, from: String, to: String) async throws -> Int {
+        let definition = try await registry.definition(for: entity)
+        guard definition.field(named: to, at: definition.version) != nil else {
+            throw SchemaError.unknownField(to)
+        }
+        return try await backfill(entity: entity) { record, previous in
+            record.values[to] = record.values[to] ?? previous.values[from]
+        }
+    }
+
+    // The full rewrite loop; `transform` also receives the record as decoded at its
+    // stored version, before rekeying — the only place a renamed-away value survives.
+    @discardableResult public func backfill(entity: String, transform: (inout EntityRecord, _ previous: EntityRecord) throws -> Void) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         let query = ckQuery(
             Entity.recordType,
@@ -38,9 +62,10 @@ public struct Migrator: Sendable {
         let coder = EntityCoder(keyProvider: keyProvider)
         let migrated = try outdated.map { record in
             try coder.rewrite(record, using: definition) { entityRecord in
+                let previous = entityRecord
                 entityRecord = EntityRecord(
-                    entity: entity, uuid: entityRecord.uuid, schemaVersion: definition.version, values: rekey(entityRecord, using: definition))
-                try transform(&entityRecord)
+                    entity: entity, uuid: previous.uuid, schemaVersion: definition.version, values: rekey(previous, using: definition))
+                try transform(&entityRecord, previous)
             }
         }
 
