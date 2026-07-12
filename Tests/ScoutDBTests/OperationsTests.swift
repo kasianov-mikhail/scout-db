@@ -146,6 +146,33 @@ struct OperationsTests {
         }
     }
 
+    @Test("Sorting by a payload field ranks client-side")
+    func payloadSort() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "player",
+                fields: [
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "score", type: .int, storage: .payload),
+                ]))
+        try await store.write(["name": .string("Ada"), "score": .int(10)], entity: "player", uuid: "u-1")
+        try await store.write(["name": .string("Bo"), "score": .int(5)], entity: "player", uuid: "u-2")
+        try await store.write(["name": .string("Cy")], entity: "player", uuid: "u-3")
+
+        // A missing value ranks first ascending, mirroring the union ranking.
+        let ranked = try await store.read(entity: "player", sort: [.init(field: "score")])
+        #expect(ranked.map(\.uuid) == ["u-3", "u-2", "u-1"])
+
+        // The cap applies after the ranking, and the builder path inherits it.
+        let top = try await store.read(entity: "player", sort: [.init(field: "score", ascending: false)], limit: 2)
+        #expect(top.map(\.uuid) == ["u-1", "u-2"])
+        #expect(try await store.query("player").sort("score", .descending).first()?.uuid == "u-1")
+
+        await #expect(throws: SchemaError.unknownField("ghost")) {
+            _ = try await store.read(entity: "player", sort: [.init(field: "ghost")])
+        }
+    }
+
     @Test("Filters on payload fields fall back to client-side matching")
     func payloadFilters() async throws {
         try await registry.publish(

@@ -167,6 +167,15 @@ public struct EntityStore: Sendable {
 
     public func read(entity: String, filters: [Filter] = [], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil) async throws -> [EntityRecord] {
         let definition = try await registry.definition(for: entity)
+        // A payload field has no sortable slot, so a sort touching one ranks
+        // client-side — every key together, to keep the total order coherent.
+        // The scan is unbounded: a cap can only apply after the ranking.
+        if try clientRanked(sort, using: definition) {
+            let projection = fields.map { $0 + sort.map(\.field) }
+            let ranked = try await read(entity: entity, filters: filters, fields: projection).sorted { Self.ordered($0, $1, by: sort) }
+            guard let limit else { return ranked }
+            return Array(ranked.prefix(limit))
+        }
         let (query, included) = try liveQuery(filters, entity: entity, sort: try serverSort(sort, using: definition), using: definition)
         let keys = try fields.map { try desiredKeys($0 + filters.map(\.field), using: definition) }
         // A capped read stops following the cursor once enough rows are in hand. The
@@ -210,6 +219,18 @@ public struct EntityStore: Sendable {
             (batch, token) = try await database.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: limit)
         }
         return collected
+    }
+
+    // Whether any sort clause names a payload-stored field; an unknown field
+    // still fails loudly here, matching the server-sort path.
+    private func clientRanked(_ sort: [Sort], using definition: EntityDefinition) throws -> Bool {
+        try sort.contains { clause in
+            guard let field = definition.field(named: clause.field, at: definition.version) else {
+                throw SchemaError.unknownField(clause.field)
+            }
+            guard case .payload = field.storage else { return false }
+            return true
+        }
     }
 
     private func desiredKeys(_ fields: [String], using definition: EntityDefinition) throws -> [String] {
