@@ -104,6 +104,9 @@ public struct EntityStore: Sendable {
         if enforceReferences {
             try await validateReferences(of: entityRecords, using: definition)
         }
+        // Exclusivity is declared in the schema itself, so it holds regardless of
+        // the store's integrity flag.
+        try await validateExclusivity(of: entityRecords, entity: entity, using: definition)
 
         // Views count occurrences on first write. A re-write of the same record — a
         // unique-key upsert or an explicit repeat uuid — must not inflate the grid, so fold

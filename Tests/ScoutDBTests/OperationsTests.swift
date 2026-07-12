@@ -482,6 +482,39 @@ struct OperationsTests {
         #expect(Set(try await store.read(entity: "book").map(\.uuid)) == ["b-1", "b-4"])
     }
 
+    @Test("An exclusive reference admits one holder, allows re-writes, rejects a second suitor")
+    func exclusiveReference() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "person",
+                fields: [
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
+                ]))
+        try await registry.publish(
+            makeDefinition(
+                entity: "passport",
+                fields: [
+                    FieldDefinition(name: "number", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "person_id", type: .string, storage: .slot(.string, "s_01"), references: "person", exclusive: true),
+                ]))
+        try await store.write(["name": .string("Ada")], entity: "person", uuid: "h-1")
+
+        try await store.write(["number": .string("111"), "person_id": .string("h-1")], entity: "passport", uuid: "d-1")
+        // The holder may re-write its own reference.
+        try await store.write(["number": .string("112"), "person_id": .string("h-1")], entity: "passport", uuid: "d-1")
+
+        await #expect(throws: SchemaError.duplicateReference(field: "person_id", key: "h-1")) {
+            try await store.write(["number": .string("222"), "person_id": .string("h-1")], entity: "passport", uuid: "d-2")
+        }
+        await #expect(throws: SchemaError.duplicateReference(field: "person_id", key: "h-2")) {
+            try await store.write(
+                [
+                    EntityWrite(values: ["number": .string("333"), "person_id": .string("h-2")], uuid: "d-3"),
+                    EntityWrite(values: ["number": .string("444"), "person_id": .string("h-2")], uuid: "d-4"),
+                ], entity: "passport")
+        }
+    }
+
     @Test("Generated Swift source mirrors the definition")
     func codegen() {
         let source = DefinitionCodeGenerator().source(for: makePurchaseDefinition())

@@ -51,6 +51,7 @@ public struct SchemaBuilder {
         case maximum(Double)
         case derived(from: String, Derivation.Transform)
         case references(String)
+        case exclusiveReference(String)
     }
 
     private struct Declaration {
@@ -181,6 +182,9 @@ public struct SchemaBuilder {
             case .maximum(let value): field.maximum = value
             case .derived(let source, let transform): field.derived = Derivation(source: source, transform: transform)
             case .references(let entity): field.references = entity
+            case .exclusiveReference(let entity):
+                field.references = entity
+                field.exclusive = true
             }
         }
         return field
