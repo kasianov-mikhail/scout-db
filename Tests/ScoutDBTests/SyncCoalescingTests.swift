@@ -125,6 +125,43 @@ struct SyncLifecycleTests {
         #expect(counts.uuids == ["2", "4", "5"])
     }
 
+    @Test("Failures nobody awaits reach onError")
+    func onErrorSurfaces() async throws {
+        let database = InMemoryDatabase()
+        let registry = SchemaRegistry(database: database)
+        try await registry.publish(makePurchaseDefinition())
+        let cache = OfflineCache(backing: database)
+        let store = EntityStore(
+            database: cache, registry: SchemaRegistry(database: cache), zoneID: CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName))
+        try await store.ensureZone()
+        let errors = Seen()
+        let coordinator = SyncCoordinator(
+            store: store, cache: cache,
+            onError: { errors.add([($0 as? CKError)?.code == .notAuthenticated ? "auth" : String(describing: type(of: $0))]) })
+
+        // Queue an offline write whose server copy moves in an overlapping way:
+        // the pass's flush conflicts, sync() itself still succeeds — the only
+        // trace of the conflict is the onError report.
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        _ = try await store.read(entity: "purchase")
+        database.writeErrors = [CKError(.networkFailure)]
+        var updated = makePurchase().values
+        updated["quantity"] = .int(9)
+        try await store.write(updated, entity: "purchase", uuid: "p-1")
+        let server = try #require(database.records.first { $0.recordID.recordName == "p-1" })
+        server["i_01"] = 5
+        database.writeErrors = [RecordConflictError(serverRecord: server.copy() as! CKRecord)]
+
+        _ = try await coordinator.sync()
+        #expect(errors.uuids.contains("OfflineFlushError"))
+
+        // A periodic pass that fails between ticks reports instead of vanishing.
+        database.errors = [CKError(.notAuthenticated)]
+        coordinator.start(every: .milliseconds(20))
+        try await poll { errors.uuids.contains("auth") }
+        coordinator.stop()
+    }
+
     private func poll(_ condition: () -> Bool) async throws {
         for _ in 0..<200 {
             if condition() { return }

@@ -334,6 +334,35 @@ struct OperationsTests {
         }
     }
 
+    @Test("A batch write unwraps a partial failure to the records that caused it")
+    func partialFailureUnwrapped() async throws {
+        // The atomic batch rolls back: one real cause, one innocent record
+        // marked batchRequestFailed. Only the cause survives the unwrap.
+        let culprit = CKRecord.ID(recordName: "p-1")
+        let innocent = CKRecord.ID(recordName: "p-2")
+        let partial = CKError(
+            .partialFailure,
+            userInfo: [CKPartialErrorsByItemIDKey: [culprit: CKError(.quotaExceeded), innocent: CKError(.batchRequestFailed)]])
+        database.writeErrors = [partial]
+
+        do {
+            try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+            Issue.record("Expected a PartialWriteError")
+        } catch let error as PartialWriteError {
+            #expect(error.reasons.count == 1)
+            #expect((error.reasons[culprit] as? CKError)?.code == .quotaExceeded)
+        }
+
+        // A partial failure carrying no real cause stays a raw CKError.
+        database.writeErrors = [CKError(.partialFailure)]
+        do {
+            try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+            Issue.record("Expected a CKError")
+        } catch let error as CKError {
+            #expect(error.code == .partialFailure)
+        }
+    }
+
     @Test("A single record shares, reports its share, and stops")
     func recordSharing() async throws {
         let zone = CKRecordZone.ID(zoneName: "scout-share", ownerName: CKCurrentUserDefaultName)

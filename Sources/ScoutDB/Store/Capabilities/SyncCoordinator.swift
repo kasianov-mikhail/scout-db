@@ -21,6 +21,7 @@ public final class SyncCoordinator: @unchecked Sendable {
     private let projections: [SyncProjection]?
     private let batchSize: Int?
     private let onProgress: (@Sendable (Int) -> Void)?
+    private let onError: (@Sendable (any Error) -> Void)?
     private let lock = NSLock()
     private var token: Data?
     private var inFlight: Task<ZoneDelta, any Error>?
@@ -36,9 +37,14 @@ public final class SyncCoordinator: @unchecked Sendable {
     /// running change count after each batch. The feed's total is unknowable
     /// up front, so progress is a count, not a fraction.
     ///
+    /// `onError` receives the failures nobody else sees: a flush that
+    /// conflicted during a pass (`OfflineFlushError` — the pass itself
+    /// proceeds), and a periodic pass that failed between `start()` ticks.
+    /// Errors of a `sync()` you awaited yourself still throw to you directly.
+    ///
     public init(
         store: EntityStore, cache: OfflineCache? = nil, tokenURL: URL? = nil, projecting projections: [SyncProjection]? = nil,
-        batchSize: Int? = nil, onProgress: (@Sendable (Int) -> Void)? = nil
+        batchSize: Int? = nil, onProgress: (@Sendable (Int) -> Void)? = nil, onError: (@Sendable (any Error) -> Void)? = nil
     ) {
         self.store = store
         self.cache = cache
@@ -46,6 +52,7 @@ public final class SyncCoordinator: @unchecked Sendable {
         self.projections = projections
         self.batchSize = batchSize
         self.onProgress = onProgress
+        self.onError = onError
         if let tokenURL {
             token = try? Data(contentsOf: tokenURL)
         }
@@ -115,7 +122,15 @@ public final class SyncCoordinator: @unchecked Sendable {
 
     private func pass() async throws -> ZoneDelta {
         if let cache {
-            _ = try? await cache.flush()
+            do {
+                _ = try await cache.flush()
+            } catch {
+                // The pull must proceed — an offline queue waits for the next
+                // pass — but the caller of sync() never sees this failure, so
+                // report it: an OfflineFlushError here is the only sign the
+                // app gets that queued edits conflicted.
+                onError?(error)
+            }
         }
         let since = lock.withLock { token }
         if let batchSize {
@@ -171,18 +186,22 @@ public final class SyncCoordinator: @unchecked Sendable {
     ///
     /// Silent pushes are best-effort, so the heartbeat bounds staleness when they
     /// are dropped — and doubles as the retry for passes that fail offline; a
-    /// failed pass waits for the next tick instead of surfacing. Deltas that
-    /// carry changes are handed to `onDelta`. Live queries tick regardless, so
-    /// observing stores refresh without it. Calling `start` on a running
-    /// coordinator is a no-op; pair with `stop()`.
+    /// failed pass waits for the next tick and reports to `onError` instead of
+    /// surfacing. Deltas that carry changes are handed to `onDelta`. Live
+    /// queries tick regardless, so observing stores refresh without it.
+    /// Calling `start` on a running coordinator is a no-op; pair with `stop()`.
     ///
     public func start(every interval: Duration = .seconds(300), onDelta: (@Sendable (ZoneDelta) -> Void)? = nil) {
         lock.withLock {
             guard runner == nil else { return }
             runner = Task { [weak self] in
                 while !Task.isCancelled {
-                    if let delta = try? await self?.sync(), delta.records.count + delta.deleted.count > 0 {
-                        onDelta?(delta)
+                    do {
+                        if let delta = try await self?.sync(), delta.records.count + delta.deleted.count > 0 {
+                            onDelta?(delta)
+                        }
+                    } catch {
+                        self?.onError?(error)
                     }
                     do {
                         try await Task.sleep(for: interval)

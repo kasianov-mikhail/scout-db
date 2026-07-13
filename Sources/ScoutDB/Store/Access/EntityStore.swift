@@ -227,8 +227,8 @@ public struct EntityStore: Sendable {
         if let creator {
             server.append(ServerFilter(field: "creatorUserRecordID", op: .equals, value: .reference(creator)))
         }
-        let matchers = client.map { filter in
-            let base = Self.matcher(for: filter)
+        let matchers = try client.map { filter in
+            let base = try Self.matcher(for: filter)
             return filter.negated ? { !base($0) } : base
         }
         return (

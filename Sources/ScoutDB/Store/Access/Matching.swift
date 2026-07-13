@@ -176,7 +176,7 @@ extension EntityStore {
     // Compiles a client-side filter into a record predicate. Building the predicate
     // once per read hoists regex construction for `like` and `matches` out of the
     // per-record loop. A record missing the field never matches, mirroring the server.
-    static func matcher(for filter: Filter) -> (EntityRecord) -> Bool {
+    static func matcher(for filter: Filter) throws -> (EntityRecord) -> Bool {
         let field = filter.field
         switch filter.op {
         case .isNull:
@@ -211,10 +211,14 @@ extension EntityStore {
             guard case .string(let suffix) = filter.value else { return { _ in false } }
             return stringMatcher(field) { $0.hasSuffix(suffix) }
         case .like:
-            guard case .string(let pattern) = filter.value, let regex = try? Regex(wildcardPattern(pattern)) else { return { _ in false } }
+            guard case .string(let pattern) = filter.value else { return { _ in false } }
+            // A malformed pattern is a caller mistake — matching nothing would
+            // silently turn the typo into an empty result set.
+            guard let regex = try? Regex(wildcardPattern(pattern)) else { throw SchemaError.invalidValue(filter.field) }
             return stringMatcher(field) { $0.wholeMatch(of: regex) != nil }
         case .matches:
-            guard case .string(let pattern) = filter.value, let regex = try? Regex(pattern) else { return { _ in false } }
+            guard case .string(let pattern) = filter.value else { return { _ in false } }
+            guard let regex = try? Regex(pattern) else { throw SchemaError.invalidValue(filter.field) }
             return stringMatcher(field) { $0.wholeMatch(of: regex) != nil }
         case .search:
             // Token equality scoped to the named field, mirroring the server's
