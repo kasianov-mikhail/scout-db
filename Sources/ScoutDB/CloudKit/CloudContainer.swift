@@ -34,12 +34,33 @@ public protocol CloudContainer: Sendable {
     ///
     func acceptShare(metadata: CKShare.Metadata) async throws
 
+    /// The metadata behind a share URL — the share, its owner, and whether
+    /// the current user already participates.
+    ///
+    /// The missing link when an invitation arrives outside the system flow —
+    /// a pasted link, a QR code: fetch the metadata here, then
+    /// `acceptShare(metadata:)`, or take both steps with `acceptShare(at:)`.
+    ///
+    func shareMetadata(for url: URL) async throws -> CKShare.Metadata
+
     var privateDatabase: any CloudDatabase { get }
     var publicDatabase: any CloudDatabase { get }
     var sharedDatabase: any CloudDatabase { get }
 }
 
 extension CloudContainer {
+    /// Accepts a share straight from its URL: fetches the metadata, accepts it.
+    ///
+    /// Returns the metadata so the app can route to what it just joined —
+    /// build a store over the shared database scoped to
+    /// `metadata.share.recordID.zoneID`.
+    ///
+    @discardableResult public func acceptShare(at url: URL) async throws -> CKShare.Metadata {
+        let metadata = try await shareMetadata(for: url)
+        try await acceptShare(metadata: metadata)
+        return metadata
+    }
+
     /// Passes only with a usable account; throws `AccountUnavailableError`
     /// carrying the actual status otherwise.
     public func requireAccount() async throws {
@@ -114,6 +135,32 @@ extension CKContainer: CloudContainer {
 
     public func acceptShare(metadata: CKShare.Metadata) async throws {
         _ = try await accept(metadata)
+    }
+
+    public func shareMetadata(for url: URL) async throws -> CKShare.Metadata {
+        try await withCheckedThrowingContinuation { continuation in
+            // One URL in, so the per-share callback alone decides the outcome;
+            // the completion block would only repeat it.
+            final class Box: @unchecked Sendable {
+                var result: Result<CKShare.Metadata, any Error>?
+            }
+            let box = Box()
+            let operation = CKFetchShareMetadataOperation(shareURLs: [url])
+            operation.perShareMetadataResultBlock = { _, result in
+                box.result = result
+            }
+            operation.fetchShareMetadataResultBlock = { result in
+                switch (box.result, result) {
+                case (.some(let outcome), _):
+                    continuation.resume(with: outcome)
+                case (nil, .failure(let error)):
+                    continuation.resume(throwing: error)
+                case (nil, .success):
+                    continuation.resume(throwing: CKError(.unknownItem))
+                }
+            }
+            self.add(operation)
+        }
     }
 
     public func accountStatusUpdates() -> AsyncStream<CKAccountStatus> {

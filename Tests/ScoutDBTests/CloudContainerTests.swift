@@ -70,6 +70,27 @@ struct CloudContainerTests {
         #expect(try await store.zoneShare() != nil)
     }
 
+    @Test("Share metadata by URL rides the container, and a failed fetch never accepts")
+    func shareMetadataByURL() async throws {
+        let container = InMemoryContainer()
+        let url = URL(string: "https://www.icloud.com/share/abc")!
+
+        // The double cannot fabricate CKShare.Metadata; it records the request
+        // and answers unknownItem.
+        await #expect(throws: CKError.self) {
+            _ = try await container.shareMetadata(for: url)
+        }
+        #expect(container.requestedShareURLs == [url])
+
+        // acceptShare(at:) rides the same fetch, so its failure surfaces
+        // before anything is accepted.
+        container.metadataErrors = [CKError(.networkFailure)]
+        await #expect(throws: CKError.self) {
+            _ = try await container.acceptShare(at: url)
+        }
+        #expect(container.requestedShareURLs.count == 2)
+    }
+
     @Test("The three databases are distinct stores")
     func distinctDatabases() async throws {
         let container = InMemoryContainer()
