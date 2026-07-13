@@ -362,6 +362,38 @@ struct OperationsTests {
         }
     }
 
+    @Test("Batched zone sync walks the feed with per-batch tokens")
+    func batchedZoneSync() async throws {
+        let zone = CKRecordZone.ID(zoneName: "scout-batched", ownerName: CKCurrentUserDefaultName)
+        let zoned = EntityStore(database: database, registry: registry, zoneID: zone)
+        try await zoned.ensureZone()
+        for index in 0..<5 {
+            try await zoned.write(makePurchase().values, entity: "purchase", uuid: "b-\(index)")
+        }
+
+        var batches: [ZoneDelta] = []
+        for try await delta in zoned.zoneChanges(batchSize: 2) {
+            batches.append(delta)
+        }
+        #expect(batches.map(\.records.count) == [2, 2, 1])
+        #expect(batches.flatMap { $0.records.map(\.uuid) }.sorted() == ["b-0", "b-1", "b-2", "b-3", "b-4"])
+
+        // Every batch carries its own token: a walk resumed from the first
+        // batch's token picks up exactly the rest of the feed.
+        var resumed: [String] = []
+        for try await delta in zoned.zoneChanges(since: batches[0].token, batchSize: 2) {
+            resumed += delta.records.map(\.uuid)
+        }
+        #expect(resumed.sorted() == ["b-2", "b-3", "b-4"])
+
+        // A drained feed ends the walk without yielding.
+        var idle = 0
+        for try await _ in zoned.zoneChanges(since: batches.last?.token, batchSize: 2) {
+            idle += 1
+        }
+        #expect(idle == 0)
+    }
+
     @Test("Push payloads map to change events and back to records")
     func pushEvents() async throws {
         #expect(ChangeEvent(reason: .recordCreated, recordName: "p-1", subscriptionID: "scout-purchase")?.kind == .created)

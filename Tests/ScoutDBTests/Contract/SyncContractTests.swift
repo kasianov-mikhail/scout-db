@@ -77,6 +77,33 @@ struct SyncContractTests {
         }
     }
 
+    @Test("A batched zone walk pages the feed with per-batch tokens")
+    func batchedZoneChanges() async throws {
+        try await withContract { f in
+            let entity = try await f.publishOrder()
+            for index in 0..<5 {
+                try await f.store.write(orderValues(), entity: entity, uuid: "bz-\(index)")
+            }
+
+            // The walk drains the feed in several small batches; each one
+            // carries a token the next incremental pass can start from.
+            var uuids: [String] = []
+            var batches = 0
+            var last: Data?
+            for try await delta in f.store.zoneChanges(batchSize: 2) {
+                uuids += delta.records.map(\.uuid)
+                last = delta.token ?? last
+                batches += 1
+            }
+            #expect(Set(uuids) == ["bz-0", "bz-1", "bz-2", "bz-3", "bz-4"])
+            #expect(batches >= 2)
+
+            // The combined walk left nothing behind.
+            let after = try await f.store.zoneChanges(since: last)
+            #expect(after.records.isEmpty)
+        }
+    }
+
     @Test("A projected zone pass carries only the requested fields")
     func projectedZoneChanges() async throws {
         try await withContract { f in

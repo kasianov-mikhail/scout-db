@@ -19,6 +19,8 @@ public final class SyncCoordinator: @unchecked Sendable {
     private let cache: OfflineCache?
     private let tokenURL: URL?
     private let projections: [SyncProjection]?
+    private let batchSize: Int?
+    private let onProgress: (@Sendable (Int) -> Void)?
     private let lock = NSLock()
     private var token: Data?
     private var inFlight: Task<ZoneDelta, any Error>?
@@ -27,11 +29,23 @@ public final class SyncCoordinator: @unchecked Sendable {
 
     /// With `projecting`, every pass pulls only the projected fields — see
     /// `EntityStore.zoneChanges(since:projecting:)` for the trade-offs.
-    public init(store: EntityStore, cache: OfflineCache? = nil, tokenURL: URL? = nil, projecting projections: [SyncProjection]? = nil) {
+    ///
+    /// With a `batchSize`, every pass walks the feed in batches instead of one
+    /// silent pull: the token advances and live queries tick per batch — a
+    /// killed initial sync resumes mid-feed — and `onProgress` reports the
+    /// running change count after each batch. The feed's total is unknowable
+    /// up front, so progress is a count, not a fraction.
+    ///
+    public init(
+        store: EntityStore, cache: OfflineCache? = nil, tokenURL: URL? = nil, projecting projections: [SyncProjection]? = nil,
+        batchSize: Int? = nil, onProgress: (@Sendable (Int) -> Void)? = nil
+    ) {
         self.store = store
         self.cache = cache
         self.tokenURL = tokenURL
         self.projections = projections
+        self.batchSize = batchSize
+        self.onProgress = onProgress
         if let tokenURL {
             token = try? Data(contentsOf: tokenURL)
         }
@@ -104,12 +118,37 @@ public final class SyncCoordinator: @unchecked Sendable {
             _ = try? await cache.flush()
         }
         let since = lock.withLock { token }
+        if let batchSize {
+            return try await batchedPass(since: since, batchSize: batchSize)
+        }
         let delta: ZoneDelta
         if let projections {
             delta = try await store.zoneChanges(since: since, projecting: projections)
         } else {
             delta = try await store.zoneChanges(since: since)
         }
+        apply(delta)
+        return delta
+    }
+
+    // Pulls the pass in batches, applying each one — token, persistence, live
+    // queries, progress — before the next, so an interrupted walk resumes from
+    // its last applied batch. Returns the batches combined.
+    private func batchedPass(since: Data?, batchSize: Int) async throws -> ZoneDelta {
+        var records: [EntityRecord] = []
+        var deleted: [String] = []
+        var last = since
+        for try await batch in store.zoneChanges(since: since, batchSize: batchSize, projecting: projections) {
+            apply(batch)
+            records += batch.records
+            deleted += batch.deleted
+            last = batch.token ?? last
+            onProgress?(records.count + deleted.count)
+        }
+        return ZoneDelta(records: records, deleted: deleted, token: last)
+    }
+
+    private func apply(_ delta: ZoneDelta) {
         lock.withLock {
             token = delta.token ?? token
             if let tokenURL, let token {
@@ -120,7 +159,6 @@ public final class SyncCoordinator: @unchecked Sendable {
         for entity in Set(delta.records.map(\.entity)) {
             store.noteChange(entity: entity)
         }
-        return delta
     }
 
     /// Whether a periodic runner started by `start` is active.

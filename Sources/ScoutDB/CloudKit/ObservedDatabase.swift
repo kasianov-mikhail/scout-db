@@ -124,11 +124,11 @@ public final class ObservedDatabase: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?) async throws -> (
+    public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int?) async throws -> (
         changed: [CKRecord], deleted: [CKRecord.ID], token: Data?
     ) {
         try await measure(.zoneChanges, counting: { $0.changed.count + $0.deleted.count }) {
-            try await backing.zoneChanges(zoneID: zoneID, since: token, desiredKeys: desiredKeys)
+            try await backing.zoneChanges(zoneID: zoneID, since: token, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
         }
     }
 

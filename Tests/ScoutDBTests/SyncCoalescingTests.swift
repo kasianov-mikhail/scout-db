@@ -101,6 +101,30 @@ struct SyncLifecycleTests {
         #expect(record.values["comment"] == nil)
     }
 
+    @Test("A batched coordinator reports progress and combines the batches")
+    func batchedCoordinator() async throws {
+        let database = InMemoryDatabase()
+        let registry = SchemaRegistry(database: database)
+        try await registry.publish(makePurchaseDefinition())
+        let store = EntityStore(database: database, registry: registry, zoneID: CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName))
+        try await store.ensureZone()
+        for index in 0..<5 {
+            try await store.write(makePurchase().values, entity: "purchase", uuid: "p-\(index)")
+        }
+
+        // Progress ticks with the running count after every batch; the caller
+        // still receives the whole pass as one delta.
+        let counts = Seen()
+        let coordinator = SyncCoordinator(store: store, batchSize: 2, onProgress: { counts.add(["\($0)"]) })
+        let delta = try await coordinator.sync()
+        #expect(delta.records.count == 5)
+        #expect(counts.uuids == ["2", "4", "5"])
+
+        // The next pass starts from the combined token: nothing new, no ticks.
+        #expect(try await coordinator.sync().records.isEmpty)
+        #expect(counts.uuids == ["2", "4", "5"])
+    }
+
     private func poll(_ condition: () -> Bool) async throws {
         for _ in 0..<200 {
             if condition() { return }
@@ -134,11 +158,11 @@ private final class GatedDatabase: CloudDatabase, @unchecked Sendable {
         self.backing = backing
     }
 
-    func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?) async throws -> (
+    func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int?) async throws -> (
         changed: [CKRecord], deleted: [CKRecord.ID], token: Data?
     ) {
         await gate.pass()
-        return try await backing.zoneChanges(zoneID: zoneID, since: token, desiredKeys: desiredKeys)
+        return try await backing.zoneChanges(zoneID: zoneID, since: token, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
     }
 
     func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (

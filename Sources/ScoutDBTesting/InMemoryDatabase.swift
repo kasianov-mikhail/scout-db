@@ -154,7 +154,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         return records.first { $0.recordID == id }.map { project($0, keys: nil) }
     }
 
-    public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?) async throws -> (
+    public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int?) async throws -> (
         changed: [CKRecord], deleted: [CKRecord.ID], token: Data?
     ) {
         if let error = errors.popLast() {
@@ -162,13 +162,21 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         }
         let floor = token.flatMap { Int64(String(decoding: $0, as: UTF8.self)) } ?? 0
         // Latest state per record wins, mirroring the server's coalesced feed.
-        var latest: [CKRecord.ID: Bool] = [:]
+        var latest: [CKRecord.ID: (sequence: Int64, deleted: Bool)] = [:]
         for entry in changeLog where entry.sequence > floor && entry.id.zoneID == zoneID {
-            latest[entry.id] = entry.deleted
+            latest[entry.id] = (entry.sequence, entry.deleted)
         }
-        let changed = latest.filter { !$0.value }.keys.compactMap { id in records.first { $0.recordID == id }.map { project($0, keys: desiredKeys) } }
-        let deleted = latest.filter(\.value).keys.sorted { $0.recordName < $1.recordName }
-        return (changed.sorted { $0.recordID.recordName < $1.recordID.recordName }, Array(deleted), Data("\(sequence)".utf8))
+        // A limited pass serves the oldest changes with a token fencing them
+        // off, the way the server pages its feed.
+        var entries = latest.map { (id: $0.key, sequence: $0.value.sequence, deleted: $0.value.deleted) }.sorted { $0.sequence < $1.sequence }
+        var next = sequence
+        if let resultsLimit, entries.count > resultsLimit {
+            entries = Array(entries.prefix(resultsLimit))
+            next = entries.last?.sequence ?? sequence
+        }
+        let changed = entries.filter { !$0.deleted }.compactMap { entry in records.first { $0.recordID == entry.id }.map { project($0, keys: desiredKeys) } }
+        let deleted = entries.filter(\.deleted).map(\.id).sorted { $0.recordName < $1.recordName }
+        return (changed.sorted { $0.recordID.recordName < $1.recordID.recordName }, deleted, Data("\(next)".utf8))
     }
 
     public func save(zone: CKRecordZone) async throws {
