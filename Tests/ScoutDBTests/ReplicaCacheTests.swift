@@ -108,6 +108,79 @@ struct ReplicaCacheTests {
         #expect(try await store.read(entity: "purchase").isEmpty)
     }
 
+    @Test("localFirst serves zone reads from the mirror without touching the network")
+    func localFirstReads() async throws {
+        let replica = ReplicaCache(backing: backing, zoneID: zone, readPolicy: .localFirst)
+        let store = EntityStore(database: replica, registry: registry, zoneID: zone)
+        try await writePurchases([3, 1, 2], through: store)
+
+        // Before the first completed refresh the policy stays network-first.
+        #expect(!replica.hasCompleteMirror)
+        try await replica.refresh()
+        #expect(replica.hasCompleteMirror)
+
+        // A poisoned backing proves the read never leaves the mirror.
+        backing.errors = [CKError(.notAuthenticated)]
+        let filtered = try await store.read(entity: "purchase", filters: [.init(field: "quantity", op: .greaterThan, value: .int(1))])
+        #expect(Set(filtered.map(\.uuid)) == ["p-0", "p-2"])
+        #expect(backing.errors.count == 1)
+        backing.errors = []
+
+        // A write through the replica is visible to the very next local read.
+        var values = makePurchase().values
+        values["quantity"] = .int(7)
+        try await store.write(values, entity: "purchase", uuid: "p-new")
+        backing.errors = [CKError(.notAuthenticated)]
+        let after = try await store.read(entity: "purchase", filters: [.init(field: "quantity", op: .equals, value: .int(7))])
+        #expect(after.map(\.uuid) == ["p-new"])
+        backing.errors = []
+
+        // Local scans page with the mirror's own cursors, network untouched.
+        backing.errors = [CKError(.notAuthenticated)]
+        let query = CKQuery(recordType: "Entity", predicate: NSPredicate(value: true))
+        var collected: [String] = []
+        var response = try await replica.records(matching: query, inZone: zone, desiredKeys: nil, resultsLimit: 2)
+        collected += response.matchResults.map(\.0.recordName)
+        while let cursor = response.queryCursor {
+            response = try await replica.records(continuingMatchFrom: cursor, desiredKeys: nil, resultsLimit: 2)
+            collected += response.matchResults.map(\.0.recordName)
+        }
+        #expect(Set(collected).count == 4)
+        #expect(backing.errors.count == 1)
+    }
+
+    @Test("localFirst completeness survives a relaunch")
+    func localFirstPersistence() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("scout-replica-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        try await writePurchases([3])
+        let first = ReplicaCache(backing: backing, zoneID: zone, storeURL: url, readPolicy: .localFirst)
+        try await first.refresh()
+        #expect(first.hasCompleteMirror)
+
+        // The relaunched replica serves locally from the first read.
+        let second = ReplicaCache(backing: backing, zoneID: zone, storeURL: url, readPolicy: .localFirst)
+        #expect(second.hasCompleteMirror)
+        let store = EntityStore(database: second, registry: registry, zoneID: zone)
+        backing.errors = [CKError(.notAuthenticated)]
+        #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-0"])
+        #expect(backing.errors.count == 1)
+    }
+
+    @Test("Online full-fidelity query pages feed the mirror")
+    func onlineReadsFeedMirror() async throws {
+        // Records written behind the replica's back become visible offline
+        // after one plain online read through it.
+        let direct = EntityStore(database: backing, registry: SchemaRegistry(database: backing), zoneID: zone)
+        try await writePurchases([4, 5], through: direct)
+        _ = try await store.read(entity: "purchase")
+
+        backing.errors = [CKError(.networkUnavailable)]
+        let offline = try await store.read(entity: "purchase", filters: [.init(field: "quantity", op: .equals, value: .int(5))])
+        #expect(offline.map(\.uuid) == ["p-1"])
+    }
+
     @Test("A tombstone written through the replica hides the record offline")
     func tombstonesOffline() async throws {
         try await writePurchases([3, 1])
