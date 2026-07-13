@@ -1,0 +1,168 @@
+//
+// Copyright 2026 Mikhail Kasianov
+//
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+import CloudKit
+import Foundation
+import ScoutDBTesting
+import Testing
+
+@testable import ScoutDB
+
+@Suite("Replica cache")
+struct ReplicaCacheTests {
+    let backing = InMemoryDatabase()
+    let zone = CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName)
+    let replica: ReplicaCache
+    let store: EntityStore
+    let registry: SchemaRegistry
+
+    init() async throws {
+        replica = ReplicaCache(backing: backing, zoneID: zone)
+        registry = SchemaRegistry(database: replica)
+        store = EntityStore(database: replica, registry: registry, zoneID: zone)
+        try await registry.publish(makePurchaseDefinition())
+        try await store.ensureZone()
+    }
+
+    private func writePurchases(_ quantities: [Int], through store: EntityStore? = nil) async throws {
+        for (index, quantity) in quantities.enumerated() {
+            var values = makePurchase().values
+            values["quantity"] = .int(Int64(quantity))
+            try await (store ?? self.store).write(values, entity: "purchase", uuid: "p-\(index)")
+        }
+    }
+
+    @Test("A query never run before is answered from the mirror offline")
+    func novelQueryOffline() async throws {
+        try await writePurchases([3, 1, 2])
+
+        backing.errors = [CKError(.networkUnavailable)]
+        let filtered = try await store.read(entity: "purchase", filters: [.init(field: "quantity", op: .greaterThan, value: .int(1))])
+        #expect(Set(filtered.map(\.uuid)) == ["p-0", "p-2"])
+
+        // Sorting and projections run locally too.
+        backing.errors = [CKError(.networkUnavailable)]
+        let sorted = try await store.read(entity: "purchase", sort: [.init(field: "quantity", ascending: false)], fields: ["quantity"])
+        #expect(sorted.map(\.uuid) == ["p-0", "p-2", "p-1"])
+        #expect(sorted.first?.values["product_id"] == nil)
+    }
+
+    @Test("Offline pagination walks the mirror with offset cursors")
+    func offlinePagination() async throws {
+        try await writePurchases([1, 2, 3, 4, 5])
+
+        backing.errors = [CKError(.networkUnavailable), CKError(.networkUnavailable), CKError(.networkUnavailable)]
+        let query = CKQuery(recordType: "Entity", predicate: NSPredicate(value: true))
+        var collected: [String] = []
+        var response = try await replica.records(matching: query, inZone: zone, desiredKeys: nil, resultsLimit: 2)
+        collected += response.matchResults.map(\.0.recordName)
+        while let cursor = response.queryCursor {
+            response = try await replica.records(continuingMatchFrom: cursor, desiredKeys: nil, resultsLimit: 2)
+            collected += response.matchResults.map(\.0.recordName)
+        }
+        #expect(collected == collected.sorted())
+        #expect(Set(collected).count == 5)
+    }
+
+    @Test("refresh walks the feed from the replica's own token")
+    func refreshBuildsMirror() async throws {
+        // Records written behind the replica's back — straight into the backing.
+        let direct = EntityStore(database: backing, registry: SchemaRegistry(database: backing), zoneID: zone)
+        try await writePurchases([1, 2, 3, 4, 5], through: direct)
+
+        #expect(try await replica.refresh(batchSize: 2) >= 5)
+        #expect(try await replica.refresh(batchSize: 2) == 0)
+
+        backing.errors = [CKError(.networkUnavailable)]
+        let offline = try await store.read(entity: "purchase")
+        #expect(offline.count == 5)
+    }
+
+    @Test("Full feed passes flowing through keep the mirror fresh; projected ones do not corrupt it")
+    func passiveFeeding() async throws {
+        try await writePurchases([3])
+
+        // Another client's edit arrives with a coordinator-style full pass.
+        let direct = EntityStore(database: backing, registry: SchemaRegistry(database: backing), zoneID: zone)
+        try await direct.update(entity: "purchase", uuid: "p-0") { $0.values["quantity"] = .int(9) }
+        _ = try await replica.zoneChanges(zoneID: zone, since: nil, desiredKeys: nil, resultsLimit: nil)
+
+        backing.errors = [CKError(.networkUnavailable)]
+        let offline = try await store.read(entity: "purchase")
+        #expect(offline.first?.values["quantity"] == .int(9))
+
+        // A projected pass misses fields — it must not trim mirrored records.
+        _ = try await replica.zoneChanges(zoneID: zone, since: nil, desiredKeys: ["e_uuid"], resultsLimit: nil)
+        backing.errors = [CKError(.networkUnavailable)]
+        let after = try await store.read(entity: "purchase")
+        #expect(after.first?.values["quantity"] == .int(9))
+
+        // A hard delete in the feed leaves the mirror too.
+        try await backing.modifyRecords(saving: [], deleting: [CKRecord.ID(recordName: "p-0", zoneID: zone)])
+        _ = try await replica.zoneChanges(zoneID: zone, since: nil, desiredKeys: nil, resultsLimit: nil)
+        backing.errors = [CKError(.networkUnavailable)]
+        #expect(try await store.read(entity: "purchase").isEmpty)
+    }
+
+    @Test("A tombstone written through the replica hides the record offline")
+    func tombstonesOffline() async throws {
+        try await writePurchases([3, 1])
+        try await store.delete(entity: "purchase", uuid: "p-0")
+
+        backing.errors = [CKError(.networkUnavailable)]
+        #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-1"])
+    }
+
+    @Test("The mirror persists across a relaunch")
+    func persistence() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("scout-replica-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let first = ReplicaCache(backing: backing, zoneID: zone, storeURL: url)
+        let firstStore = EntityStore(database: first, registry: SchemaRegistry(database: first), zoneID: zone)
+        var values = makePurchase().values
+        values["quantity"] = .int(7)
+        try await firstStore.write(values, entity: "purchase", uuid: "p-persist")
+        try await first.refresh()
+
+        // The relaunched replica serves offline reads and resumes the feed
+        // from its persisted position.
+        let second = ReplicaCache(backing: backing, zoneID: zone, storeURL: url)
+        #expect(second.recordCount == first.recordCount)
+        #expect(try await second.refresh() == 0)
+        let secondStore = EntityStore(database: second, registry: registry, zoneID: zone)
+        backing.errors = [CKError(.networkUnavailable)]
+        let offline = try await secondStore.read(entity: "purchase", filters: [.init(field: "quantity", op: .equals, value: .int(7))])
+        #expect(offline.map(\.uuid) == ["p-persist"])
+    }
+
+    @Test("Composed outside an offline cache, queued writes reach novel offline queries")
+    func composesWithOfflineCache() async throws {
+        let cache = OfflineCache(backing: backing)
+        let replica = ReplicaCache(backing: cache, zoneID: zone)
+        let registry = SchemaRegistry(database: replica)
+        let store = EntityStore(database: replica, registry: registry, zoneID: zone)
+        try await registry.publish(makePurchaseDefinition())
+        try await store.ensureZone()
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+
+        // Offline: the queue takes the write, the mirror still learns it.
+        backing.writeErrors = [CKError(.networkFailure)]
+        var values = makePurchase().values
+        values["quantity"] = .int(8)
+        try await store.write(values, entity: "purchase", uuid: "p-2")
+        #expect(cache.pendingWrites == 1)
+
+        backing.errors = [CKError(.networkUnavailable)]
+        let offline = try await store.read(entity: "purchase", filters: [.init(field: "quantity", op: .greaterThan, value: .int(5))])
+        #expect(offline.map(\.uuid) == ["p-2"])
+
+        // Back online the flush lands the queued write for real.
+        try await cache.flush()
+        #expect(try await store.read(entity: "purchase").count == 2)
+    }
+}
