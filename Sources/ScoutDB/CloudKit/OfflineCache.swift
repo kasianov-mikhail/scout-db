@@ -31,16 +31,54 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     // The last full server copy seen per record — the merge base a conflicted
     // flush diffs both sides against.
     private var baselines: [CKRecord.ID: CKRecord] = [:]
+    private let snapshotLimit: Int
+    private let baselineLimit: Int
+    // Recency bookkeeping for the LRU quotas; not persisted, so restored
+    // entries count as oldest until traffic touches them again.
+    private var snapshotUsage: [String: Int64] = [:]
+    private var baselineUsage: [CKRecord.ID: Int64] = [:]
+    private var clock: Int64 = 0
 
     /// With a `storeURL`, snapshots and the write queue persist across launches:
     /// every mutation archives the state to the file (best-effort — a failed
     /// write costs freshness, not correctness), and init restores it.
-    public init(backing: any CloudDatabase, storeURL: URL? = nil) {
+    ///
+    /// The quotas keep the cache bounded: at most `snapshotLimit` query
+    /// snapshots and `baselineLimit` merge baselines, evicted least-recently
+    /// used. An evicted snapshot costs offline coverage of that query; an
+    /// evicted baseline degrades a conflicting flush from a merge to a
+    /// surfaced conflict — never correctness.
+    ///
+    public init(backing: any CloudDatabase, storeURL: URL? = nil, snapshotLimit: Int = 50, baselineLimit: Int = 500) {
         self.backing = backing
         self.storeURL = storeURL
+        self.snapshotLimit = snapshotLimit
+        self.baselineLimit = baselineLimit
         if let storeURL, let data = try? Data(contentsOf: storeURL) {
             restore(from: data)
+            lock.withLock { enforceQuotasLocked() }
         }
+    }
+
+    private func enforceQuotasLocked() {
+        while snapshots.count > snapshotLimit, let victim = snapshots.keys.min(by: { snapshotUsage[$0] ?? 0 < snapshotUsage[$1] ?? 0 }) {
+            snapshots[victim] = nil
+            snapshotUsage[victim] = nil
+        }
+        while baselines.count > baselineLimit, let victim = baselines.keys.min(by: { baselineUsage[$0] ?? 0 < baselineUsage[$1] ?? 0 }) {
+            baselines[victim] = nil
+            baselineUsage[victim] = nil
+        }
+    }
+
+    private func touchSnapshotLocked(_ key: String) {
+        clock += 1
+        snapshotUsage[key] = clock
+    }
+
+    private func touchBaselineLocked(_ id: CKRecord.ID) {
+        clock += 1
+        baselineUsage[id] = clock
     }
 
     private func restore(from data: Data) {
@@ -157,7 +195,12 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     // server copy this cache saw. Without that baseline, or with both sides
     // moving one field to different values, there is nothing safe to merge.
     private func graft(_ queued: CKRecord, onto server: CKRecord) -> CKRecord? {
-        guard let ancestor = lock.withLock({ baselines[queued.recordID] }) else { return nil }
+        let ancestor = lock.withLock { () -> CKRecord? in
+            guard let ancestor = baselines[queued.recordID] else { return nil }
+            touchBaselineLocked(queued.recordID)
+            return ancestor
+        }
+        guard let ancestor else { return nil }
         let mine = Self.changedValues(from: ancestor, to: queued)
         let theirs = Self.changedValues(from: ancestor, to: server)
         for (key, value) in mine {
@@ -222,20 +265,28 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
                 if desiredKeys == nil {
                     for record in page {
                         baselines[record.recordID] = record
+                        touchBaselineLocked(record.recordID)
                     }
                 }
                 // Only a complete response can stand in for the query later; a first
                 // page served offline would silently truncate the result set.
                 if response.queryCursor == nil {
                     snapshots[key] = page
+                    touchSnapshotLocked(key)
                 }
                 if desiredKeys == nil || response.queryCursor == nil {
+                    enforceQuotasLocked()
                     persistLocked()
                 }
             }
             return response
         } catch  where Self.isOffline(error) {
-            guard let cached = lock.withLock({ overlaidLocked(snapshots[key]) }) else { throw error }
+            let cached = lock.withLock { () -> [CKRecord]? in
+                guard let overlaid = overlaidLocked(snapshots[key]) else { return nil }
+                touchSnapshotLocked(key)
+                return overlaid
+            }
+            guard let cached else { throw error }
             return (cached.map { ($0.recordID, .success($0)) }, nil)
         }
     }
@@ -265,7 +316,9 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
             lock.withLock {
                 for record in page {
                     baselines[record.recordID] = record
+                    touchBaselineLocked(record.recordID)
                 }
+                enforceQuotasLocked()
                 persistLocked()
             }
         }
@@ -343,6 +396,8 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         if let record {
             lock.withLock {
                 baselines[record.recordID] = record
+                touchBaselineLocked(record.recordID)
+                enforceQuotasLocked()
                 persistLocked()
             }
         }
