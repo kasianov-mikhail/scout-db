@@ -19,6 +19,26 @@ public struct ZoneDelta: Sendable {
     public let token: Data?
 }
 
+extension ZoneDelta {
+    /// The delta's live records of one entity, decoded into its Swift type.
+    ///
+    /// Tombstones are skipped — collect them from `deletedIDs(of:)` — and so
+    /// are records of other entities, so one delta serves several typed calls.
+    /// On a projected pass the fields the projection dropped decode as nil.
+    ///
+    public func items<T: EntityRepresentable>(_ type: T.Type = T.self) -> [T] {
+        records.filter { $0.entity == T.entityName && !$0.deleted }.map(T.init(record:))
+    }
+
+    /// The uuids of the entity's records this delta tombstoned.
+    ///
+    /// CloudKit hard deletes carry no entity name and stay in `deleted`.
+    ///
+    public func deletedIDs<T: EntityRepresentable>(of type: T.Type = T.self) -> [String] {
+        records.filter { $0.entity == T.entityName && $0.deleted }.map(\.uuid)
+    }
+}
+
 /// The fields one entity contributes to a projected zone pass.
 public struct SyncProjection: Sendable {
     public let entity: String
