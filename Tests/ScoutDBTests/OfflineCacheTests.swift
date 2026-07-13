@@ -208,6 +208,25 @@ struct OfflineCacheTests {
         #expect(cache.pendingWrites == 0)
     }
 
+    @Test("An offline-queued asset write survives the staged file's retirement")
+    func queuedAssetWriteSurvivesRetirement() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "report",
+                fields: [FieldDefinition(name: "dump", type: .asset, storage: .slot(.asset, "a_00"))]))
+        let payload = Data("offline-\(UUID().uuidString)".utf8)
+
+        // The write queues offline and reports success, so the store retires
+        // its staged file; the queue must hold its own copy of the bytes.
+        backing.writeErrors = [CKError(.networkFailure)]
+        try await store.write(["dump": .bytes(payload)], entity: "report", uuid: "r-1")
+        #expect(cache.pendingWrites == 1)
+
+        try await cache.flush()
+        let record = try #require(try await store.read(entity: "report").first)
+        #expect(try record.assetData(for: "dump") == payload)
+    }
+
     @Test("A flush that fails keeps the queue intact")
     func failedFlush() async throws {
         backing.writeErrors = [CKError(.networkFailure)]

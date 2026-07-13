@@ -155,7 +155,33 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         }
     }
 
+    // The real server uploads asset bytes during the save, so ScoutDB retires
+    // its staged files once a write lands. Mirror the upload: store a copy
+    // whose staged assets point at private duplicates — without it, every
+    // post-save read would dangle. The caller's record stays untouched, the
+    // way a CKDatabase save leaves the client record's asset URLs alone.
+    private let assetDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("InMemoryAssets-\(UUID().uuidString)", isDirectory: true)
+
+    private func retainingAssets(of record: CKRecord) -> CKRecord {
+        let prefix = EntityStore.assetStagingDirectory.standardizedFileURL.path + "/"
+        let staged = record.allKeys().filter { key in
+            guard let url = (record[key] as? CKAsset)?.fileURL else { return false }
+            return url.standardizedFileURL.path.hasPrefix(prefix)
+        }
+        guard staged.count > 0 else { return record }
+        let stored = record.copy() as! CKRecord
+        for key in staged {
+            guard let url = (stored[key] as? CKAsset)?.fileURL else { continue }
+            let copy = assetDirectory.appendingPathComponent(UUID().uuidString)
+            try? FileManager.default.createDirectory(at: assetDirectory, withIntermediateDirectories: true)
+            guard (try? FileManager.default.copyItem(at: url, to: copy)) != nil else { continue }
+            stored[key] = CKAsset(fileURL: copy)
+        }
+        return stored
+    }
+
     private func upsert(_ record: CKRecord) {
+        let record = retainingAssets(of: record)
         records.removeAll { $0.recordType == record.recordType && $0.recordID == record.recordID }
         records.append(record)
         // Stamp the save time the way the server does, so `modificationDate`

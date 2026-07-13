@@ -82,6 +82,9 @@ extension EntityStore {
                 }
                 continue
             }
+            // The staged asset copies existed only for the upload; the landed
+            // rewrite retires them.
+            EntityCoder.discardStagedAssets(in: [rewrite.record])
             // Rebalance the views outside the CAS loop: drop the stored record's old
             // contribution, add the new one. A grid conflict here must not retry the update.
             try await GridAggregator(database: database).rebalance(removing: [rewrite.previous], adding: [rewrite.next], using: definition)
