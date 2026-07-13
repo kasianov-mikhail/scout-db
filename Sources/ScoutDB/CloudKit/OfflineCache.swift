@@ -33,7 +33,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     private var baselines: [CKRecord.ID: CKRecord] = [:]
     private let snapshotLimit: Int
     private let baselineLimit: Int
-    private let conflictResolver: (any ConflictResolver)?
+    private var conflictResolver: (any ConflictResolver)?
     // Recency bookkeeping for the LRU quotas; not persisted, so restored
     // entries count as oldest until traffic touches them again.
     private var snapshotUsage: [String: Int64] = [:]
@@ -107,6 +107,16 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         ]
         guard let data = try? NSKeyedArchiver.archivedData(withRootObject: root, requiringSecureCoding: true) else { return }
         try? data.write(to: storeURL, options: .atomic)
+    }
+
+    /// Installs or replaces the flush conflict policy.
+    ///
+    /// The one hook that must outlive init: a decoded resolver is built from
+    /// an `EntityStore`, and the store wraps this cache — construct the cache,
+    /// the store, then install `store.conflictResolver { ... }` here.
+    ///
+    public func setConflictResolver(_ resolver: (any ConflictResolver)?) {
+        lock.withLock { conflictResolver = resolver }
     }
 
     /// The writes waiting for `flush`, in arrival order.
@@ -231,7 +241,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
                     attempt = merged
                     continue
                 }
-                switch resolve(record, against: server) {
+                switch await resolve(record, against: server) {
                 case .save(let resolved): attempt = resolved
                 case .keepServer: return nil
                 case .surface: return OfflineFlushError.Conflict(queued: record, server: server)
@@ -243,10 +253,10 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     // Hands a graft-proof conflict to the app's resolver. A record it returns
     // must compare as the server copy it saw, so the server's version tag is
     // carried onto it before the retry.
-    private func resolve(_ queued: CKRecord, against server: CKRecord) -> ConflictResolution {
-        guard let conflictResolver else { return .surface }
+    private func resolve(_ queued: CKRecord, against server: CKRecord) async -> ConflictResolution {
+        guard let conflictResolver = lock.withLock({ conflictResolver }) else { return .surface }
         let ancestor = lock.withLock { baselines[queued.recordID] }
-        let resolution = conflictResolver.resolve(queued: queued, server: server, ancestor: ancestor)
+        let resolution = await conflictResolver.resolve(queued: queued, server: server, ancestor: ancestor)
         if case .save(let resolved) = resolution, let tag = server.recordVersionTag {
             resolved.overrideChangeTag(tag)
         }
@@ -486,13 +496,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     }
 }
 
-/// The offline writes a flush could not replay: queued records whose server
-/// copies moved in ways that overlap the offline edits.
-///
-/// The conflicted writes are removed from the queue — replaying them verbatim
-/// could never succeed. Resolve each one by re-applying the `queued` edit on
-/// top of `server`, through a fresh store update or a manual save.
-///
 /// What a `ConflictResolver` decided about one conflicted queued write.
 public enum ConflictResolution {
     /// Save this record instead — typically a custom merge of the two sides.
@@ -507,8 +510,8 @@ public enum ConflictResolution {
 ///
 /// The disjoint-field graft runs first; the resolver is only consulted when
 /// the two sides moved the same field — say, to take the larger quantity, or
-/// to let one side always win a field. Called synchronously on the flushing
-/// task, once per conflicted save attempt.
+/// to let one side always win a field. Awaited on the flushing task, once per
+/// conflicted save attempt — a decoded policy can consult the schema registry.
 ///
 public protocol ConflictResolver: Sendable {
     /// Decides a conflict between a queued write and the moved server copy.
@@ -519,9 +522,16 @@ public protocol ConflictResolver: Sendable {
     /// the `server` copy passed here; build it from `server` and re-apply the
     /// queued edits worth keeping.
     ///
-    func resolve(queued: CKRecord, server: CKRecord, ancestor: CKRecord?) -> ConflictResolution
+    func resolve(queued: CKRecord, server: CKRecord, ancestor: CKRecord?) async -> ConflictResolution
 }
 
+/// The offline writes a flush could not replay: queued records whose server
+/// copies moved in ways that overlap the offline edits.
+///
+/// The conflicted writes are removed from the queue — replaying them verbatim
+/// could never succeed. Resolve each one by re-applying the `queued` edit on
+/// top of `server`, through a fresh store update or a manual save.
+///
 public struct OfflineFlushError: LocalizedError {
     /// One queued write that lost to an overlapping server-side edit.
     public struct Conflict {

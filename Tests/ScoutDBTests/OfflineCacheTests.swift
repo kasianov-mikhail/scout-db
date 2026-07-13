@@ -165,6 +165,42 @@ struct OfflineCacheTests {
         #expect(record.values["quantity"] == .int(9))
     }
 
+    @Test("A decoded resolver reads and writes field names, not slots")
+    func decodedConflictResolver() async throws {
+        let cache = OfflineCache(backing: backing)
+        let store = EntityStore(database: cache, registry: SchemaRegistry(database: cache))
+        cache.setConflictResolver(
+            store.conflictResolver { queued, server, ancestor in
+                // The merge base is decoded too, and the policy speaks schema
+                // field names — no storage slots in sight.
+                #expect(ancestor != nil)
+                let mine: Int64 = queued["quantity"] ?? 0
+                let theirs: Int64 = server["quantity"] ?? 0
+                var merged = server
+                merged.values["quantity"] = .int(max(mine, theirs))
+                return .save(merged)
+            })
+
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        _ = try await store.read(entity: "purchase")
+
+        backing.writeErrors = [CKError(.networkFailure)]
+        var updated = makePurchase().values
+        updated["quantity"] = .int(9)
+        try await store.write(updated, entity: "purchase", uuid: "p-1")
+
+        // Another client moved the same field: the graft cannot merge, the
+        // decoded policy takes the larger quantity and the flush lands it.
+        let server = try #require(backing.records.first { $0.recordID.recordName == "p-1" })
+        server["i_01"] = 5
+        backing.writeErrors = [RecordConflictError(serverRecord: server.copy() as! CKRecord)]
+
+        #expect(try await cache.flush() == 1)
+        #expect(cache.pendingWrites == 0)
+        let record = try #require(try await store.read(entity: "purchase").first)
+        #expect(record.values["quantity"] == .int(9))
+    }
+
     @Test("A resolver keeping the server copy retires the queued write")
     func conflictResolverKeepsServer() async throws {
         struct ServerWins: ConflictResolver {
