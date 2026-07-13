@@ -356,6 +356,27 @@ struct FluentTests {
         #expect(mine.map(\.productId) == ["sku-0"])
     }
 
+    @Test("Zone deltas decode into typed items and typed tombstones")
+    func typedDeltas() async throws {
+        let zone = CKRecordZone.ID(zoneName: "typed-delta", ownerName: CKCurrentUserDefaultName)
+        let zoned = EntityStore(database: database, registry: registry, zoneID: zone)
+        try await zoned.ensureZone()
+        try await zoned.schema("note").field("title", .string).create()
+
+        try await zoned.write(["product_id": .string("sku-9"), "quantity": .int(4)], entity: "purchase", uuid: "tp-1")
+        try await zoned.write(["title": .string("hi")], entity: "note", uuid: "n-1")
+        try await zoned.write(["product_id": .string("sku-8"), "quantity": .int(2)], entity: "purchase", uuid: "tp-2")
+        try await zoned.delete(entity: "purchase", uuid: "tp-2")
+
+        // items decodes only the entity's live records; the note and the
+        // tombstone stay out, and the tombstone surfaces as a typed deletion.
+        let delta = try await zoned.zoneChanges()
+        let purchases = delta.items(TypedPurchase.self)
+        #expect(purchases.map(\.productId) == ["sku-9"])
+        #expect(purchases.first?.quantity == 4)
+        #expect(delta.deletedIDs(of: TypedPurchase.self) == ["tp-2"])
+    }
+
     @Test("Schema update keeps slots, closes removed fields, allocates new ones")
     func schemaUpdate() async throws {
         try await store.schema("purchase")
