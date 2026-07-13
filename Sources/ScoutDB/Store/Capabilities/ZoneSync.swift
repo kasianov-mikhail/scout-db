@@ -19,6 +19,17 @@ public struct ZoneDelta: Sendable {
     public let token: Data?
 }
 
+/// The fields one entity contributes to a projected zone pass.
+public struct SyncProjection: Sendable {
+    public let entity: String
+    public let fields: [String]
+
+    public init(entity: String, fields: [String]) {
+        self.entity = entity
+        self.fields = fields
+    }
+}
+
 extension EntityStore {
     /// Fetches everything that changed in the store's zone since the token —
     /// every entity in one round trip, unlike the per-entity `changes(entity:since:)`.
@@ -27,10 +38,31 @@ extension EntityStore {
     /// unknown entities are skipped.
     ///
     public func zoneChanges(since token: Data? = nil) async throws -> ZoneDelta {
+        try await zoneChanges(since: token, desiredKeys: nil)
+    }
+
+    /// A projected zone pass: changed records carry only the projected fields.
+    ///
+    /// Use it when the pass drives something light — badges, counters, list
+    /// rows — and full records would drag assets and payload blobs over the
+    /// wire. Entities outside the projections still appear, envelope-only.
+    /// Do not write a projected record back whole: the fields the projection
+    /// dropped read as cleared.
+    ///
+    public func zoneChanges(since token: Data? = nil, projecting projections: [SyncProjection]) async throws -> ZoneDelta {
+        var keys = EntityCoder.envelopeKeys
+        for projection in projections {
+            let definition = try await registry.definition(for: projection.entity)
+            keys += try desiredKeys(projection.fields, using: definition).filter { !keys.contains($0) }
+        }
+        return try await zoneChanges(since: token, desiredKeys: keys)
+    }
+
+    private func zoneChanges(since token: Data?, desiredKeys: [CKRecord.FieldKey]?) async throws -> ZoneDelta {
         guard let zoneID else {
             throw SchemaError.invalidDefinition("Zone sync requires a store configured with a custom zone")
         }
-        let (changed, deleted, next) = try await database.zoneChanges(zoneID: zoneID, since: token)
+        let (changed, deleted, next) = try await database.zoneChanges(zoneID: zoneID, since: token, desiredKeys: desiredKeys)
         var records: [EntityRecord] = []
         for record in changed where record.recordType == Entity.recordType {
             guard let entity = record["entity"] as? String, let definition = try? await registry.definition(for: entity) else { continue }

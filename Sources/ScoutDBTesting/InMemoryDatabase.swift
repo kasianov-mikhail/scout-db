@@ -154,7 +154,9 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         return records.first { $0.recordID == id }.map { project($0, keys: nil) }
     }
 
-    public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?) async throws -> (changed: [CKRecord], deleted: [CKRecord.ID], token: Data?) {
+    public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?) async throws -> (
+        changed: [CKRecord], deleted: [CKRecord.ID], token: Data?
+    ) {
         if let error = errors.popLast() {
             throw error
         }
@@ -164,7 +166,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         for entry in changeLog where entry.sequence > floor && entry.id.zoneID == zoneID {
             latest[entry.id] = entry.deleted
         }
-        let changed = latest.filter { !$0.value }.keys.compactMap { id in records.first { $0.recordID == id }.map { project($0, keys: nil) } }
+        let changed = latest.filter { !$0.value }.keys.compactMap { id in records.first { $0.recordID == id }.map { project($0, keys: desiredKeys) } }
         let deleted = latest.filter(\.value).keys.sorted { $0.recordName < $1.recordName }
         return (changed.sorted { $0.recordID.recordName < $1.recordID.recordName }, Array(deleted), Data("\(sequence)".utf8))
     }
