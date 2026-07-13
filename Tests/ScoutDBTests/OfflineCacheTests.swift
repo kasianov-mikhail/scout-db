@@ -98,6 +98,40 @@ struct OfflineCacheTests {
         #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-2"])
     }
 
+    @Test("The queue is inspectable and a record's pending writes can be discarded")
+    func queueInspection() async throws {
+        backing.writeErrors = [CKError(.networkFailure), CKError(.networkFailure)]
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
+        let deleteID = CKRecord.ID(recordName: "gone")
+        backing.writeErrors = [CKError(.networkFailure)]
+        try await cache.modifyRecords(saving: [], deleting: [deleteID])
+
+        let queued = cache.queuedWrites
+        #expect(queued.count == 3)
+        guard case .save(let first) = queued[0], case .delete(let deleted) = queued[2] else {
+            Issue.record("unexpected queue shape")
+            return
+        }
+        #expect(deleted == deleteID)
+
+        // The reported record is a copy — editing it does not edit the queue.
+        first["probe"] = "x"
+        guard case .save(let again) = cache.queuedWrites[0] else {
+            Issue.record("unexpected queue shape")
+            return
+        }
+        #expect(again["probe"] == nil)
+
+        // Discarding drops the entry; the flush replays only what remains.
+        #expect(cache.discardQueuedWrites(for: first.recordID) == 1)
+        #expect(cache.discardQueuedWrites(for: deleteID) == 1)
+        #expect(cache.discardQueuedWrites(for: deleteID) == 0)
+        #expect(cache.pendingWrites == 1)
+        try await cache.flush()
+        #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-2"])
+    }
+
     @Test("Snapshots and the write queue survive a relaunch")
     func persistence() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("scout-offline-\(UUID().uuidString)")

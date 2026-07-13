@@ -106,6 +106,45 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         lock.withLock { queuedSaves.count + queuedDeletes.count }
     }
 
+    /// One write sitting in the offline queue.
+    public enum QueuedWrite: @unchecked Sendable {
+        /// A record save awaiting replay; the record is a defensive copy.
+        case save(CKRecord)
+        /// A deletion awaiting replay.
+        case delete(CKRecord.ID)
+    }
+
+    /// The queued writes awaiting `flush`: saves in replay order, then deletes.
+    ///
+    /// The records are defensive copies — mutating one does not edit the queue.
+    /// Use `discardQueuedWrites(for:)` to drop an entry that should not replay.
+    ///
+    public var queuedWrites: [QueuedWrite] {
+        lock.withLock {
+            queuedSaves.map { .save($0.copy() as! CKRecord) } + queuedDeletes.map(QueuedWrite.delete)
+        }
+    }
+
+    /// Drops every queued write that targets the given record, without replaying it.
+    ///
+    /// Asset copies retained for the dropped saves are discarded with them.
+    /// Returns how many queue entries were removed. Offline reads stop seeing
+    /// the discarded edit and serve the snapshotted server copy again.
+    ///
+    @discardableResult public func discardQueuedWrites(for id: CKRecord.ID) -> Int {
+        lock.withLock {
+            let dropped = queuedSaves.filter { $0.recordID == id }
+            let deletes = queuedDeletes.count
+            queuedSaves.removeAll { $0.recordID == id }
+            queuedDeletes.removeAll { $0 == id }
+            let removed = dropped.count + deletes - queuedDeletes.count
+            guard removed > 0 else { return 0 }
+            EntityCoder.discardStagedAssets(in: dropped)
+            persistLocked()
+            return removed
+        }
+    }
+
     /// Replays every queued write through the backing database.
     ///
     /// Every save replays under the if-unchanged policy. A record whose server
@@ -119,13 +158,13 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         let (saves, deletes) = lock.withLock { (queuedSaves, queuedDeletes) }
         guard saves.count + deletes.count > 0 else { return 0 }
         var conflicts: [OfflineFlushError.Conflict] = []
-        var landed: Set<Int> = []
+        var landed: [CKRecord] = []
         do {
-            for (index, record) in saves.enumerated() {
+            for record in saves {
                 if let conflict = try await push(record) {
                     conflicts.append(conflict)
                 } else {
-                    landed.insert(index)
+                    landed.append(record)
                     // The asset copies retained at queueing time were only
                     // needed for this upload.
                     EntityCoder.discardStagedAssets(in: [record])
@@ -137,24 +176,29 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         } catch {
             // A transport failure keeps everything unreplayed — including the
             // conflicts found so far, so the next flush reports them again.
-            dequeue(saveIndices: landed, deletes: 0)
+            dequeue(saves: landed, deletes: [])
             throw error
         }
         // Conflicted saves leave the queue too: they are handed to the caller,
         // and replaying them verbatim could never succeed.
-        dequeue(saveIndices: Set(saves.indices), deletes: deletes.count)
+        dequeue(saves: saves, deletes: deletes)
         guard conflicts.isEmpty else { throw OfflineFlushError(conflicts: conflicts) }
         return saves.count + deletes.count
     }
 
-    private func dequeue(saveIndices: Set<Int>, deletes: Int) {
+    // Removes the replayed writes from the queue — by identity for saves and
+    // one occurrence per ID for deletes, so a concurrent `discardQueuedWrites`
+    // never shifts what gets dequeued.
+    private func dequeue(saves: [CKRecord], deletes: [CKRecord.ID]) {
         lock.withLock {
-            var index = -1
-            queuedSaves.removeAll { _ in
-                index += 1
-                return saveIndices.contains(index)
+            let replayed = Set(saves.map(ObjectIdentifier.init))
+            queuedSaves.removeAll { replayed.contains(ObjectIdentifier($0)) }
+            var remaining = deletes
+            queuedDeletes.removeAll { id in
+                guard let index = remaining.firstIndex(of: id) else { return false }
+                remaining.remove(at: index)
+                return true
             }
-            queuedDeletes.removeFirst(deletes)
             persistLocked()
         }
     }
