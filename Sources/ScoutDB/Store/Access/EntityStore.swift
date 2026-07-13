@@ -139,7 +139,11 @@ public struct EntityStore: Sendable {
         // entirely when the entity declares no views.
         let fresh = try await freshForAggregation(entityRecords, using: definition)
 
-        try await database.write(records: entityRecords.map { try coder.encode($0, using: definition) })
+        let encoded = try entityRecords.map { try coder.encode($0, using: definition) }
+        try await database.write(records: encoded)
+        // The staged asset copies existed only for the upload; the landed write
+        // retires them.
+        EntityCoder.discardStagedAssets(in: encoded)
         try await GridAggregator(database: database).record(fresh, using: definition)
         noteChange(entity: entity)
         return entityRecords.map(\.uuid)

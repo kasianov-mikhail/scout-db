@@ -88,6 +88,9 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
                     conflicts.append(conflict)
                 } else {
                     landed.insert(index)
+                    // The asset copies retained at queueing time were only
+                    // needed for this upload.
+                    EntityCoder.discardStagedAssets(in: [record])
                 }
             }
             if deletes.count > 0 {
@@ -267,8 +270,9 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         do {
             return try await backing.save(record)
         } catch  where Self.isOffline(error) {
+            let queued = Self.retainingStagedAssets(record)
             lock.withLock {
-                queuedSaves.append(record)
+                queuedSaves.append(queued)
                 persistLocked()
             }
             return record
@@ -279,12 +283,31 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         do {
             try await backing.modifyRecords(saving: records, deleting: recordIDs)
         } catch  where Self.isOffline(error) {
+            let queued = records.map(Self.retainingStagedAssets)
             lock.withLock {
-                queuedSaves.append(contentsOf: records)
+                queuedSaves.append(contentsOf: queued)
                 queuedDeletes.append(contentsOf: recordIDs)
                 persistLocked()
             }
         }
+    }
+
+    // A queued save must outlive the write that staged its assets: the caller
+    // is told the save succeeded and retires the staged files. Queue a copy
+    // whose assets point at private duplicates in the staging directory —
+    // the flush retires those once the record lands, and `sweepStagedAssets`
+    // eventually collects the copies of writes that never do.
+    private static func retainingStagedAssets(_ record: CKRecord) -> CKRecord {
+        let staged = record.allKeys().filter { (record[$0] as? CKAsset)?.fileURL.map(EntityCoder.isStaged) == true }
+        guard staged.count > 0 else { return record }
+        let copy = record.copy() as! CKRecord
+        for key in staged {
+            guard let url = (copy[key] as? CKAsset)?.fileURL else { continue }
+            let retained = EntityCoder.stagingDirectory.appendingPathComponent("offline-" + UUID().uuidString)
+            guard (try? FileManager.default.copyItem(at: url, to: retained)) != nil else { continue }
+            copy[key] = CKAsset(fileURL: retained)
+        }
+        return copy
     }
 
     // A conditional save compares against the server; offline there is nothing to
