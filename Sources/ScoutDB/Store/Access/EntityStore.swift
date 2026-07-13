@@ -265,7 +265,7 @@ public struct EntityStore: Sendable {
         }
     }
 
-    private func desiredKeys(_ fields: [String], using definition: EntityDefinition) throws -> [String] {
+    func desiredKeys(_ fields: [String], using definition: EntityDefinition) throws -> [String] {
         var keys = EntityCoder.envelopeKeys
         for name in Set(fields) {
             guard let field = definition.field(named: name, at: definition.version) else {

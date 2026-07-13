@@ -77,6 +77,24 @@ struct SyncContractTests {
         }
     }
 
+    @Test("A projected zone pass carries only the requested fields")
+    func projectedZoneChanges() async throws {
+        try await withContract { f in
+            let entity = try await f.publishOrder()
+            try await f.store.write(orderValues(product: "sku-9", quantity: 4, note: "heavy payload"), entity: entity, uuid: "pz-1")
+
+            let delta = try await f.store.zoneChanges(projecting: [SyncProjection(entity: entity, fields: ["quantity"])])
+            let record = try #require(delta.records.first { $0.uuid == "pz-1" })
+            #expect(record.values["quantity"] == .int(4))
+            #expect(record.values["product"] == nil)
+            #expect(record.values["note"] == nil)
+
+            // The unprojected pass still carries everything.
+            let full = try await f.store.zoneChanges()
+            #expect(try #require(full.records.first { $0.uuid == "pz-1" }).values["product"] == .string("sku-9"))
+        }
+    }
+
     @Test("Subscriptions save, list, and delete by id")
     func subscriptionLifecycle() async throws {
         try await withContract { f in

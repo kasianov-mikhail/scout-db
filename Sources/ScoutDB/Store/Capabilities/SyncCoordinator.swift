@@ -18,16 +18,20 @@ public final class SyncCoordinator: @unchecked Sendable {
     private let store: EntityStore
     private let cache: OfflineCache?
     private let tokenURL: URL?
+    private let projections: [SyncProjection]?
     private let lock = NSLock()
     private var token: Data?
     private var inFlight: Task<ZoneDelta, any Error>?
     private var trailing: Task<ZoneDelta, any Error>?
     private var runner: Task<Void, Never>?
 
-    public init(store: EntityStore, cache: OfflineCache? = nil, tokenURL: URL? = nil) {
+    /// With `projecting`, every pass pulls only the projected fields — see
+    /// `EntityStore.zoneChanges(since:projecting:)` for the trade-offs.
+    public init(store: EntityStore, cache: OfflineCache? = nil, tokenURL: URL? = nil, projecting projections: [SyncProjection]? = nil) {
         self.store = store
         self.cache = cache
         self.tokenURL = tokenURL
+        self.projections = projections
         if let tokenURL {
             token = try? Data(contentsOf: tokenURL)
         }
@@ -99,7 +103,13 @@ public final class SyncCoordinator: @unchecked Sendable {
         if let cache {
             _ = try? await cache.flush()
         }
-        let delta = try await store.zoneChanges(since: lock.withLock { token })
+        let since = lock.withLock { token }
+        let delta: ZoneDelta
+        if let projections {
+            delta = try await store.zoneChanges(since: since, projecting: projections)
+        } else {
+            delta = try await store.zoneChanges(since: since)
+        }
         lock.withLock {
             token = delta.token ?? token
             if let tokenURL, let token {

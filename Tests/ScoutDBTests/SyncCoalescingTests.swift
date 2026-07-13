@@ -84,6 +84,23 @@ struct SyncLifecycleTests {
         #expect(await gated.gate.calls == settled)
     }
 
+    @Test("A projecting coordinator pulls trimmed records")
+    func projectedCoordinator() async throws {
+        let database = InMemoryDatabase()
+        let registry = SchemaRegistry(database: database)
+        try await registry.publish(makePurchaseDefinition())
+        let store = EntityStore(database: database, registry: registry, zoneID: CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName))
+        try await store.ensureZone()
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+
+        let coordinator = SyncCoordinator(store: store, projecting: [SyncProjection(entity: "purchase", fields: ["quantity"])])
+        let delta = try await coordinator.sync()
+        let record = try #require(delta.records.first)
+        #expect(record.values["quantity"] == .int(3))
+        #expect(record.values["product_id"] == nil)
+        #expect(record.values["comment"] == nil)
+    }
+
     private func poll(_ condition: () -> Bool) async throws {
         for _ in 0..<200 {
             if condition() { return }
@@ -117,9 +134,11 @@ private final class GatedDatabase: CloudDatabase, @unchecked Sendable {
         self.backing = backing
     }
 
-    func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?) async throws -> (changed: [CKRecord], deleted: [CKRecord.ID], token: Data?) {
+    func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?) async throws -> (
+        changed: [CKRecord], deleted: [CKRecord.ID], token: Data?
+    ) {
         await gate.pass()
-        return try await backing.zoneChanges(zoneID: zoneID, since: token)
+        return try await backing.zoneChanges(zoneID: zoneID, since: token, desiredKeys: desiredKeys)
     }
 
     func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
