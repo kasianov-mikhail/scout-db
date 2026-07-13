@@ -106,6 +106,16 @@ extension EntityStore {
         }
     }
 
+    /// The field-key whitelist a partial `ReplicaCache` needs for the given
+    /// projections.
+    ///
+    /// Resolves each projection's fields to their storage keys and keeps the
+    /// record envelope in — without it no store query is answerable locally.
+    ///
+    public func replicaFields(projecting projections: [SyncProjection]) async throws -> [CKRecord.FieldKey] {
+        try await projectionKeys(projections)
+    }
+
     private func projectionKeys(_ projections: [SyncProjection]) async throws -> [CKRecord.FieldKey] {
         var keys = EntityCoder.envelopeKeys
         for projection in projections {

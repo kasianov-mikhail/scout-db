@@ -257,6 +257,55 @@ struct ReplicaCacheTests {
         #expect(try await store.read(entity: "purchase").map(\.uuid) == ["d-1"])
     }
 
+    @Test("A partial replica serves only the reads its fields cover")
+    func partialReplica() async throws {
+        let keys = try await store.replicaFields(projecting: [SyncProjection(entity: "purchase", fields: ["quantity"])])
+        let partial = ReplicaCache(backing: backing, zoneID: zone, fields: keys)
+        let store = EntityStore(database: partial, registry: SchemaRegistry(database: partial), zoneID: zone)
+        try await writePurchases([3, 1, 2], through: store)
+        try await partial.refresh()
+
+        // A projected read the whitelist covers is served offline, trimmed.
+        backing.errors = [CKError(.networkUnavailable)]
+        let covered = try await store.read(
+            entity: "purchase", filters: [.init(field: "quantity", op: .greaterThan, value: .int(1))], fields: ["quantity"])
+        #expect(Set(covered.map(\.uuid)) == ["p-0", "p-2"])
+        #expect(covered.first?.values["product_id"] == nil)
+
+        // A full read is refused — the mirror cannot fabricate missing fields.
+        backing.errors = [CKError(.networkUnavailable)]
+        await #expect(throws: CKError.self) {
+            _ = try await store.read(entity: "purchase")
+        }
+
+        // So is one that filters on an unmirrored field.
+        backing.errors = [CKError(.networkUnavailable)]
+        await #expect(throws: CKError.self) {
+            _ = try await store.read(
+                entity: "purchase", filters: [.init(field: "product_id", op: .equals, value: .string("sku-1"))], fields: ["quantity"])
+        }
+    }
+
+    @Test("A partial localFirst replica sends uncovered reads to the network")
+    func partialLocalFirst() async throws {
+        let keys = try await store.replicaFields(projecting: [SyncProjection(entity: "purchase", fields: ["quantity"])])
+        let partial = ReplicaCache(backing: backing, zoneID: zone, readPolicy: .localFirst, fields: keys)
+        let store = EntityStore(database: partial, registry: SchemaRegistry(database: partial), zoneID: zone)
+        try await writePurchases([3], through: store)
+        try await partial.refresh()
+
+        // The covered read never touches the poisoned backing.
+        backing.errors = [CKError(.notAuthenticated)]
+        let covered = try await store.read(entity: "purchase", fields: ["quantity"])
+        #expect(covered.first?.values["quantity"] == .int(3))
+        #expect(backing.errors.count == 1)
+        backing.errors = []
+
+        // The uncovered read goes to the network and comes back whole.
+        let full = try await store.read(entity: "purchase")
+        #expect(full.first?.values["product_id"] != nil)
+    }
+
     @Test("Composed outside an offline cache, queued writes reach novel offline queries")
     func composesWithOfflineCache() async throws {
         let cache = OfflineCache(backing: backing)
