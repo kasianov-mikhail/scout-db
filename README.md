@@ -5,7 +5,6 @@
 </picture>
 
 <br/>
-<br/>
 
 [![Swift](https://github.com/kasianov-mikhail/scout-db/actions/workflows/swift.yml/badge.svg)](https://github.com/kasianov-mikhail/scout-db/actions/workflows/swift.yml)
 [![Release](https://img.shields.io/github/v/release/kasianov-mikhail/scout-db)](https://github.com/kasianov-mikhail/scout-db/releases)
