@@ -134,6 +134,34 @@ struct SyncContractTests {
         }
     }
 
+    // A real network cannot be unplugged from a test, so reads fail through a
+    // wrapper while the feed stays reachable — the replica must then answer
+    // exactly what the server answered before the plug was pulled.
+    @Test("A refreshed replica answers reads the server would")
+    func replicaServesUnpluggedReads() async throws {
+        try await withContract { f in
+            let entity = try await f.publishOrder()
+            for (index, quantity) in [3, 1, 2].enumerated() {
+                try await f.store.write(orderValues(product: "sku-\(index)", quantity: quantity), entity: entity, uuid: "r-\(index)")
+            }
+            try await eventually { try await f.store.read(entity: entity).count == 3 }
+
+            let replica = ReplicaCache(backing: UnpluggedReads(backing: f.database), zoneID: f.zoneID)
+            try await eventually {
+                try await replica.refresh(batchSize: 2)
+                return replica.recordCount >= 3
+            }
+
+            // Filters, sorts, and projections all run against the mirror.
+            let offline = EntityStore(database: replica, registry: f.registry, zoneID: f.zoneID)
+            let filtered = try await offline.read(entity: entity, filters: [.init(field: "quantity", op: .greaterThan, value: .int(1))])
+            #expect(Set(filtered.map(\.uuid)) == ["r-0", "r-2"])
+            let sorted = try await offline.read(entity: entity, sort: [.init(field: "quantity", ascending: false)], fields: ["quantity"])
+            #expect(sorted.map(\.uuid) == ["r-0", "r-2", "r-1"])
+            #expect(sorted.first?.values["product"] == nil)
+        }
+    }
+
     // Both backends compare change tags: the double stamps a fresh tag on
     // every landed save, so a stale copy conflicts exactly like on the server.
     @Test("A stale conditional save loses to the server copy")
@@ -160,5 +188,70 @@ struct SyncContractTests {
                     return error is RecordConflictError || (error as? CKError)?.code == .serverRecordChanged
                 })
         }
+    }
+}
+
+// Fails every query the way a dropped network would, while writes and the
+// change feed stay reachable — the harness for exercising the replica's
+// offline reads against a live container.
+private final class UnpluggedReads: CloudDatabase, @unchecked Sendable {
+    let backing: any CloudDatabase
+
+    init(backing: any CloudDatabase) {
+        self.backing = backing
+    }
+
+    func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
+    ) {
+        throw CKError(.networkUnavailable)
+    }
+
+    func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
+    ) {
+        throw CKError(.networkUnavailable)
+    }
+
+    func save(_ record: CKRecord) async throws -> CKRecord {
+        try await backing.save(record)
+    }
+
+    func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {
+        try await backing.modifyRecords(saving: records, deleting: recordIDs)
+    }
+
+    func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
+        try await backing.saveIfUnchanged(records)
+    }
+
+    func save(subscription: CKSubscription) async throws {
+        try await backing.save(subscription: subscription)
+    }
+
+    func deleteSubscription(id: CKSubscription.ID) async throws {
+        try await backing.deleteSubscription(id: id)
+    }
+
+    func subscriptions() async throws -> [CKSubscription] {
+        try await backing.subscriptions()
+    }
+
+    func save(zone: CKRecordZone) async throws {
+        try await backing.save(zone: zone)
+    }
+
+    func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
+        try await backing.fetchRecord(id: id)
+    }
+
+    func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int?) async throws -> (
+        changed: [CKRecord], deleted: [CKRecord.ID], token: Data?
+    ) {
+        try await backing.zoneChanges(zoneID: zoneID, since: token, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+    }
+
+    func databaseChanges(since token: Data?) async throws -> (changed: [CKRecordZone.ID], deleted: [CKRecordZone.ID], token: Data?) {
+        try await backing.databaseChanges(since: token)
     }
 }
