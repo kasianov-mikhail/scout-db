@@ -13,6 +13,9 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
     public let fields: [FieldDefinition]
     public var envelopeDate: String?
     public var unique: [String]?
+    /// Enforced uniqueness constraints, one field tuple each — unlike `unique`,
+    /// they reject duplicates instead of deriving the record's identity.
+    public var uniqueKeys: [[String]]?
     public var views: [AggregateView]?
     public var keyID: String?
     public var ttl: Double?
@@ -21,14 +24,15 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
     public var audited: Bool?
 
     public init(
-        entity: String, version: Int, fields: [FieldDefinition], envelopeDate: String? = nil, unique: [String]? = nil, views: [AggregateView]? = nil,
-        keyID: String? = nil, ttl: Double? = nil, audited: Bool? = nil
+        entity: String, version: Int, fields: [FieldDefinition], envelopeDate: String? = nil, unique: [String]? = nil,
+        uniqueKeys: [[String]]? = nil, views: [AggregateView]? = nil, keyID: String? = nil, ttl: Double? = nil, audited: Bool? = nil
     ) {
         self.entity = entity
         self.version = version
         self.fields = fields
         self.envelopeDate = envelopeDate
         self.unique = unique
+        self.uniqueKeys = uniqueKeys
         self.views = views
         self.keyID = keyID
         self.ttl = ttl
@@ -123,6 +127,14 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
         }
         for key in unique ?? [] where !names.contains(key) {
             throw SchemaError.invalidDefinition("Unique key '\(key)' is not a field")
+        }
+        for key in uniqueKeys ?? [] {
+            guard !key.isEmpty else {
+                throw SchemaError.invalidDefinition("A unique key cannot be empty")
+            }
+            for field in key where !names.contains(field) {
+                throw SchemaError.invalidDefinition("Unique key field '\(field)' is not a field")
+            }
         }
         for view in views ?? [] {
             // A lifetime view has no time grid, so it alone works without a date.

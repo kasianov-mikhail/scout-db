@@ -377,6 +377,72 @@ struct FluentTests {
         #expect(delta.deletedIDs(of: TypedPurchase.self) == ["tp-2"])
     }
 
+    @Test("Unique keys reject duplicates without deriving identity")
+    func uniqueKeys() async throws {
+        try await store.schema("account")
+            .field("email", .string, .required)
+            .field("username", .string)
+            .field("plan", .string)
+            .uniqueKey(on: "email")
+            .uniqueKey(on: "username")
+            .create()
+
+        try await store.write(["email": .string("a@x.io"), "username": .string("ann"), "plan": .string("free")], entity: "account", uuid: "u-1")
+
+        // Each key constrains independently.
+        await #expect(throws: SchemaError.duplicateKey(fields: ["email"])) {
+            try await store.write(["email": .string("a@x.io"), "username": .string("bob")], entity: "account", uuid: "u-2")
+        }
+        await #expect(throws: SchemaError.duplicateKey(fields: ["username"])) {
+            try await store.write(["email": .string("b@x.io"), "username": .string("ann")], entity: "account", uuid: "u-2")
+        }
+
+        // Distinct values pass, and a record missing a key field is exempt.
+        try await store.write(["email": .string("b@x.io")], entity: "account", uuid: "u-2")
+        try await store.write(["email": .string("c@x.io")], entity: "account", uuid: "u-3")
+
+        // Rewriting a record with its own values does not trip its keys.
+        try await store.write(["email": .string("a@x.io"), "username": .string("ann"), "plan": .string("pro")], entity: "account", uuid: "u-1")
+
+        // An update stealing a taken value is rejected; a tombstoned record
+        // frees its keys.
+        await #expect(throws: SchemaError.duplicateKey(fields: ["email"])) {
+            try await store.update(entity: "account", uuid: "u-2") { $0.values["email"] = .string("a@x.io") }
+        }
+        try await store.delete(entity: "account", uuid: "u-1")
+        try await store.update(entity: "account", uuid: "u-2") { record in
+            record.values["email"] = .string("a@x.io")
+        }
+
+        // In-batch duplicates are rejected before anything lands.
+        await #expect(throws: SchemaError.duplicateKey(fields: ["email"])) {
+            try await store.write(
+                [EntityWrite(values: ["email": .string("d@x.io")], uuid: "u-4"), EntityWrite(values: ["email": .string("d@x.io")], uuid: "u-5")],
+                entity: "account")
+        }
+    }
+
+    @Test("A composite unique key constrains the tuple, not each field")
+    func compositeUniqueKey() async throws {
+        try await store.schema("membership")
+            .field("group_id", .string, .required)
+            .field("member", .string, .required)
+            .uniqueKey(on: "group_id", "member")
+            .create()
+
+        try await store.write(["group_id": .string("g1"), "member": .string("m1")], entity: "membership", uuid: "m-1")
+        try await store.write(["group_id": .string("g1"), "member": .string("m2")], entity: "membership", uuid: "m-2")
+        try await store.write(["group_id": .string("g2"), "member": .string("m1")], entity: "membership", uuid: "m-3")
+        await #expect(throws: SchemaError.duplicateKey(fields: ["group_id", "member"])) {
+            try await store.write(["group_id": .string("g1"), "member": .string("m1")], entity: "membership", uuid: "m-4")
+        }
+
+        // An unknown key field fails schema validation up front.
+        await #expect(throws: SchemaError.self) {
+            try await store.schema("broken").field("name", .string).uniqueKey(on: "missing").create()
+        }
+    }
+
     @Test("Schema update keeps slots, closes removed fields, allocates new ones")
     func schemaUpdate() async throws {
         try await store.schema("purchase")
