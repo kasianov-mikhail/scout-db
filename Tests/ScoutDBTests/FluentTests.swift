@@ -319,6 +319,43 @@ struct FluentTests {
         }
     }
 
+    @Test("Typed queries paginate, stream, observe, and scope by creator")
+    func typedParity() async throws {
+        // Envelope-date pages decode into structs and chain by cursor.
+        let first = try await store.query(TypedPurchase.self).paginate(size: 2)
+        #expect(first.items.map(\.productId) == ["sku-0", "sku-1"])
+        let rest = try await store.query(TypedPurchase.self).paginate(size: 2, after: first.cursor)
+        #expect(rest.items.map(\.productId) == ["sku-2"])
+        #expect(rest.cursor == nil)
+
+        // Field-ordered pages honor the single sort clause.
+        let cheap = try await store.query(TypedPurchase.self).sort(\.amount).page(size: 2)
+        #expect(cheap.items.map(\.amount) == [10, 20])
+        let expensive = try await store.query(TypedPurchase.self).sort(\.amount).page(size: 2, after: cheap.cursor)
+        #expect(expensive.items.map(\.amount) == [30])
+        #expect(expensive.cursor == nil)
+
+        // Streaming decodes every match, page by page.
+        var streamed: [TypedPurchase] = []
+        for try await purchase in try store.query(TypedPurchase.self).filter(\.quantity > 1).stream(pageSize: 1) {
+            streamed.append(purchase)
+        }
+        #expect(Set(streamed.compactMap(\.productId)) == ["sku-0", "sku-2"])
+
+        // observe: the first element is the current result, a write ticks a fresh one.
+        var updates = try store.query(TypedPurchase.self).filter(\.quantity > 2).observe().makeAsyncIterator()
+        #expect(try await updates.next()?.count == 1)
+        try await store.write(
+            ["product_id": .string("sku-9"), "quantity": .int(5), "date": .date(Date(timeIntervalSince1970: 9_000))],
+            entity: "purchase", uuid: "p-9")
+        #expect(try await updates.next()?.count == 2)
+
+        // createdBy narrows to one user's records, decoded like any other read.
+        database.records.first { $0.recordID.recordName == "p-0" }?.overrideCreator("user-a")
+        let mine = try await store.query(TypedPurchase.self).createdBy("user-a").all()
+        #expect(mine.map(\.productId) == ["sku-0"])
+    }
+
     @Test("Schema update keeps slots, closes removed fields, allocates new ones")
     func schemaUpdate() async throws {
         try await store.schema("purchase")
