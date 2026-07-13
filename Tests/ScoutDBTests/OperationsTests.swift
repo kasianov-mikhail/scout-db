@@ -334,6 +334,40 @@ struct OperationsTests {
         }
     }
 
+    @Test("A single record shares, reports its share, and stops")
+    func recordSharing() async throws {
+        let zone = CKRecordZone.ID(zoneName: "scout-share", ownerName: CKCurrentUserDefaultName)
+        let zoned = EntityStore(database: database, registry: registry, zoneID: zone)
+        try await zoned.ensureZone()
+        try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-2")
+
+        let share = try await zoned.shareRecord(entity: "purchase", uuid: "p-1", title: "Trip")
+        #expect(share[CKShare.SystemFieldKey.title] as? String == "Trip")
+        #expect(share.recordID.zoneID == zone)
+
+        // Idempotent: a second call returns the existing share.
+        let again = try await zoned.shareRecord(entity: "purchase", uuid: "p-1")
+        #expect(again.recordID == share.recordID)
+        #expect(database.records.filter { $0 is CKShare }.count == 1)
+
+        // The sibling record stays unshared; a foreign entity name is a miss.
+        #expect(try await zoned.recordShare(entity: "purchase", uuid: "p-2") == nil)
+        await #expect(throws: SchemaError.notFound("p-1")) {
+            _ = try await zoned.shareRecord(entity: "order", uuid: "p-1")
+        }
+
+        // Un-sharing removes the share, not the record.
+        try await zoned.stopSharing(entity: "purchase", uuid: "p-1")
+        #expect(try await zoned.recordShare(entity: "purchase", uuid: "p-1") == nil)
+        #expect(try await zoned.read(entity: "purchase").count == 2)
+
+        // A store without a custom zone cannot share a record.
+        await #expect(throws: SchemaError.self) {
+            _ = try await store.shareRecord(entity: "purchase", uuid: "p-1")
+        }
+    }
+
     @Test("Zone delta sync walks the change feed across entities by token")
     func zoneDeltaSync() async throws {
         let zone = CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName)
