@@ -33,6 +33,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     private var baselines: [CKRecord.ID: CKRecord] = [:]
     private let snapshotLimit: Int
     private let baselineLimit: Int
+    private let conflictResolver: (any ConflictResolver)?
     // Recency bookkeeping for the LRU quotas; not persisted, so restored
     // entries count as oldest until traffic touches them again.
     private var snapshotUsage: [String: Int64] = [:]
@@ -49,11 +50,18 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     /// evicted baseline degrades a conflicting flush from a merge to a
     /// surfaced conflict — never correctness.
     ///
-    public init(backing: any CloudDatabase, storeURL: URL? = nil, snapshotLimit: Int = 50, baselineLimit: Int = 500) {
+    /// A `conflictResolver` decides the conflicts the graft cannot merge —
+    /// without one they surface as `OfflineFlushError`.
+    ///
+    public init(
+        backing: any CloudDatabase, storeURL: URL? = nil, snapshotLimit: Int = 50, baselineLimit: Int = 500,
+        conflictResolver: (any ConflictResolver)? = nil
+    ) {
         self.backing = backing
         self.storeURL = storeURL
         self.snapshotLimit = snapshotLimit
         self.baselineLimit = baselineLimit
+        self.conflictResolver = conflictResolver
         if let storeURL, let data = try? Data(contentsOf: storeURL) {
             restore(from: data)
             lock.withLock { enforceQuotasLocked() }
@@ -218,12 +226,31 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
             } catch {
                 guard let server = Self.conflictingServerRecord(in: error) else { throw error }
                 retries -= 1
-                guard retries > 0, let merged = graft(record, onto: server) else {
-                    return OfflineFlushError.Conflict(queued: record, server: server)
+                guard retries > 0 else { return OfflineFlushError.Conflict(queued: record, server: server) }
+                if let merged = graft(record, onto: server) {
+                    attempt = merged
+                    continue
                 }
-                attempt = merged
+                switch resolve(record, against: server) {
+                case .save(let resolved): attempt = resolved
+                case .keepServer: return nil
+                case .surface: return OfflineFlushError.Conflict(queued: record, server: server)
+                }
             }
         }
+    }
+
+    // Hands a graft-proof conflict to the app's resolver. A record it returns
+    // must compare as the server copy it saw, so the server's version tag is
+    // carried onto it before the retry.
+    private func resolve(_ queued: CKRecord, against server: CKRecord) -> ConflictResolution {
+        guard let conflictResolver else { return .surface }
+        let ancestor = lock.withLock { baselines[queued.recordID] }
+        let resolution = conflictResolver.resolve(queued: queued, server: server, ancestor: ancestor)
+        if case .save(let resolved) = resolution, let tag = server.recordVersionTag {
+            resolved.overrideChangeTag(tag)
+        }
+        return resolution
     }
 
     private static func conflictingServerRecord(in error: any Error) -> CKRecord? {
@@ -466,6 +493,35 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
 /// could never succeed. Resolve each one by re-applying the `queued` edit on
 /// top of `server`, through a fresh store update or a manual save.
 ///
+/// What a `ConflictResolver` decided about one conflicted queued write.
+public enum ConflictResolution {
+    /// Save this record instead — typically a custom merge of the two sides.
+    case save(CKRecord)
+    /// Keep the server copy; the queued write is dropped as landed.
+    case keepServer
+    /// Give up: surface the conflict in `OfflineFlushError`.
+    case surface
+}
+
+/// An app-supplied policy for flush conflicts the built-in merge cannot solve.
+///
+/// The disjoint-field graft runs first; the resolver is only consulted when
+/// the two sides moved the same field — say, to take the larger quantity, or
+/// to let one side always win a field. Called synchronously on the flushing
+/// task, once per conflicted save attempt.
+///
+public protocol ConflictResolver: Sendable {
+    /// Decides a conflict between a queued write and the moved server copy.
+    ///
+    /// `ancestor` is the last server copy this cache saw before the offline
+    /// edit — the merge base — or nil when it was never seen or was evicted.
+    /// A returned `.save` record replays under the if-unchanged policy against
+    /// the `server` copy passed here; build it from `server` and re-apply the
+    /// queued edits worth keeping.
+    ///
+    func resolve(queued: CKRecord, server: CKRecord, ancestor: CKRecord?) -> ConflictResolution
+}
+
 public struct OfflineFlushError: LocalizedError {
     /// One queued write that lost to an overlapping server-side edit.
     public struct Conflict {
