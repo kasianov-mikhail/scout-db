@@ -20,6 +20,8 @@ public final class SyncCoordinator: @unchecked Sendable {
     private let tokenURL: URL?
     private let lock = NSLock()
     private var token: Data?
+    private var inFlight: Task<ZoneDelta, any Error>?
+    private var trailing: Task<ZoneDelta, any Error>?
 
     public init(store: EntityStore, cache: OfflineCache? = nil, tokenURL: URL? = nil) {
         self.store = store
@@ -43,10 +45,50 @@ public final class SyncCoordinator: @unchecked Sendable {
     /// One sync pass: replay the offline queue, pull the zone delta, advance
     /// the token.
     ///
-    /// A flush that fails (still offline) is not fatal — the pull proceeds and
-    /// the queue waits for the next pass.
+    /// Concurrent calls coalesce: callers arriving while a pass runs all share
+    /// one trailing pass that starts when the running one settles, so a push
+    /// storm costs at most two passes — the one in flight and one that picks up
+    /// everything the storm announced. A flush that fails (still offline) is
+    /// not fatal — the pull proceeds and the queue waits for the next pass.
     ///
     @discardableResult public func sync() async throws -> ZoneDelta {
+        try await join().value
+    }
+
+    // The task this request rides on: the pass just started, or the single
+    // trailing pass every arrival during a running pass shares.
+    private func join() -> Task<ZoneDelta, any Error> {
+        lock.withLock {
+            if let current = inFlight {
+                if let waiting = trailing { return waiting }
+                let next = makePass(after: current)
+                trailing = next
+                return next
+            }
+            let task = makePass(after: nil)
+            inFlight = task
+            return task
+        }
+    }
+
+    // One queued pass; when it settles, the trailing pass (if a burst created
+    // one) is promoted to in-flight so later arrivals chain behind it.
+    private func makePass(after previous: Task<ZoneDelta, any Error>?) -> Task<ZoneDelta, any Error> {
+        Task {
+            if let previous {
+                _ = try? await previous.value
+            }
+            defer {
+                lock.withLock {
+                    inFlight = trailing
+                    trailing = nil
+                }
+            }
+            return try await pass()
+        }
+    }
+
+    private func pass() async throws -> ZoneDelta {
         if let cache {
             _ = try? await cache.flush()
         }
