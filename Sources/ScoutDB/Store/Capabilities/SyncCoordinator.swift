@@ -22,6 +22,7 @@ public final class SyncCoordinator: @unchecked Sendable {
     private var token: Data?
     private var inFlight: Task<ZoneDelta, any Error>?
     private var trailing: Task<ZoneDelta, any Error>?
+    private var runner: Task<Void, Never>?
 
     public init(store: EntityStore, cache: OfflineCache? = nil, tokenURL: URL? = nil) {
         self.store = store
@@ -30,6 +31,12 @@ public final class SyncCoordinator: @unchecked Sendable {
         if let tokenURL {
             token = try? Data(contentsOf: tokenURL)
         }
+    }
+
+    deinit {
+        // The runner holds the coordinator weakly, so it would idle forever
+        // after the last strong reference goes away — cancel it instead.
+        runner?.cancel()
     }
 
     /// Handles a remote notification: a CloudKit push triggers one sync pass.
@@ -104,6 +111,47 @@ public final class SyncCoordinator: @unchecked Sendable {
             store.noteChange(entity: entity)
         }
         return delta
+    }
+
+    /// Whether a periodic runner started by `start` is active.
+    public var isRunning: Bool {
+        lock.withLock { runner != nil }
+    }
+
+    /// Keeps the zone synced continuously: one pass now, then one per `interval`,
+    /// until `stop()`.
+    ///
+    /// Silent pushes are best-effort, so the heartbeat bounds staleness when they
+    /// are dropped — and doubles as the retry for passes that fail offline; a
+    /// failed pass waits for the next tick instead of surfacing. Deltas that
+    /// carry changes are handed to `onDelta`. Live queries tick regardless, so
+    /// observing stores refresh without it. Calling `start` on a running
+    /// coordinator is a no-op; pair with `stop()`.
+    ///
+    public func start(every interval: Duration = .seconds(300), onDelta: (@Sendable (ZoneDelta) -> Void)? = nil) {
+        lock.withLock {
+            guard runner == nil else { return }
+            runner = Task { [weak self] in
+                while !Task.isCancelled {
+                    if let delta = try? await self?.sync(), delta.records.count + delta.deleted.count > 0 {
+                        onDelta?(delta)
+                    }
+                    do {
+                        try await Task.sleep(for: interval)
+                    } catch {
+                        break
+                    }
+                }
+            }
+        }
+    }
+
+    /// Stops the periodic runner; an in-flight pass finishes, no new one starts.
+    public func stop() {
+        lock.withLock {
+            runner?.cancel()
+            runner = nil
+        }
     }
 
     /// Forgets the token; the next sync replays the zone from the beginning.
