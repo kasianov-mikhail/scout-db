@@ -56,6 +56,27 @@ struct SyncContractTests {
         }
     }
 
+    @Test("Zone discovery reports zones with new activity incrementally")
+    func zoneDiscovery() async throws {
+        try await withContract { f in
+            let entity = try await f.publishOrder()
+            try await f.store.write(orderValues(), entity: entity, uuid: "zd-1")
+
+            var token: Data?
+            try await eventually {
+                let initial = try await f.database.databaseChanges(since: nil)
+                token = initial.token
+                return initial.changed.contains(f.zoneID)
+            }
+
+            // Quiet zones stay out of the incremental feed until they move again.
+            try await f.store.write(orderValues(), entity: entity, uuid: "zd-2")
+            try await eventually {
+                try await f.database.databaseChanges(since: token).changed.contains(f.zoneID)
+            }
+        }
+    }
+
     @Test("Subscriptions save, list, and delete by id")
     func subscriptionLifecycle() async throws {
         try await withContract { f in
