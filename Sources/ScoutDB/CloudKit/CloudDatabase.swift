@@ -43,8 +43,12 @@ public protocol CloudDatabase: Sendable {
     /// The record behind an ID, or nil when the server has none.
     func fetchRecord(id: CKRecord.ID) async throws -> CKRecord?
     /// One pass of a zone's change feed from an opaque continuation token;
-    /// `desiredKeys` trims every changed record to those fields (nil fetches whole records).
-    func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?) async throws -> (
+    /// `desiredKeys` trims every changed record to those fields (nil fetches
+    /// whole records). A `resultsLimit` stops the pass after roughly that many
+    /// changes with an intermediate token — the batched walk behind sync
+    /// progress; nil drains the feed in one pass. A drained feed answers a
+    /// limited pass with an empty batch.
+    func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int?) async throws -> (
         changed: [CKRecord], deleted: [CKRecord.ID], token: Data?
     )
     /// One pass of the database's zone-level change feed: which zones gained
@@ -59,7 +63,13 @@ extension CloudDatabase {
     static var maxBatchSize: Int { 400 }
 
     func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?) async throws -> (changed: [CKRecord], deleted: [CKRecord.ID], token: Data?) {
-        try await zoneChanges(zoneID: zoneID, since: token, desiredKeys: nil)
+        try await zoneChanges(zoneID: zoneID, since: token, desiredKeys: nil, resultsLimit: nil)
+    }
+
+    func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?) async throws -> (
+        changed: [CKRecord], deleted: [CKRecord.ID], token: Data?
+    ) {
+        try await zoneChanges(zoneID: zoneID, since: token, desiredKeys: desiredKeys, resultsLimit: nil)
     }
 
     func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
@@ -256,7 +266,7 @@ extension CKDatabase: CloudDatabase {
         }
     }
 
-    public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?) async throws -> (
+    public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int?) async throws -> (
         changed: [CKRecord], deleted: [CKRecord.ID], token: Data?
     ) {
         let previous = try token.map { data in
@@ -266,9 +276,12 @@ extension CKDatabase: CloudDatabase {
             return unarchived
         }
         return try await throttled { database in
-            var configuration = CKFetchRecordZoneChangesOperation.ZoneConfiguration()
+            let configuration = CKFetchRecordZoneChangesOperation.ZoneConfiguration()
             configuration.previousServerChangeToken = previous
             configuration.desiredKeys = desiredKeys
+            if let resultsLimit {
+                configuration.resultsLimit = resultsLimit
+            }
 
             // The operation reports through callbacks on its own queue, one at a
             // time; the box only bridges that serial stream into the continuation.
@@ -281,6 +294,9 @@ extension CKDatabase: CloudDatabase {
 
             return try await withCheckedThrowingContinuation { continuation in
                 let operation = CKFetchRecordZoneChangesOperation(recordZoneIDs: [zoneID], configurationsByRecordZoneID: [zoneID: configuration])
+                // A limited pass returns one batch with its intermediate token
+                // instead of chasing moreComing to the end of the feed.
+                operation.fetchAllChanges = resultsLimit == nil
                 operation.recordWasChangedBlock = { _, result in
                     if case .success(let record) = result {
                         collector.changed.append(record)

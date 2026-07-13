@@ -70,24 +70,68 @@ extension EntityStore {
     /// dropped read as cleared.
     ///
     public func zoneChanges(since token: Data? = nil, projecting projections: [SyncProjection]) async throws -> ZoneDelta {
+        try await zoneChanges(since: token, desiredKeys: projectionKeys(projections))
+    }
+
+    /// Walks the zone change feed in batches of roughly `batchSize` changes.
+    ///
+    /// The shape for the big initial sync, where one `zoneChanges` call would
+    /// pull everything silently: each delta arrives with its own intermediate
+    /// token — apply it and persist the token as you go, and a killed sync
+    /// resumes from the last applied batch instead of starting over. The
+    /// sequence ends once the feed drains. `projecting` trims the records the
+    /// way `zoneChanges(since:projecting:)` does.
+    ///
+    public func zoneChanges(since token: Data? = nil, batchSize: Int, projecting projections: [SyncProjection]? = nil) -> AsyncThrowingStream<
+        ZoneDelta, any Error
+    > {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    var keys: [CKRecord.FieldKey]?
+                    if let projections { keys = try await projectionKeys(projections) }
+                    var cursor = token
+                    while !Task.isCancelled {
+                        let (delta, raw) = try await batch(since: cursor, desiredKeys: keys, resultsLimit: batchSize)
+                        guard raw > 0 else { break }
+                        cursor = delta.token ?? cursor
+                        continuation.yield(delta)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    private func projectionKeys(_ projections: [SyncProjection]) async throws -> [CKRecord.FieldKey] {
         var keys = EntityCoder.envelopeKeys
         for projection in projections {
             let definition = try await registry.definition(for: projection.entity)
             keys += try desiredKeys(projection.fields, using: definition).filter { !keys.contains($0) }
         }
-        return try await zoneChanges(since: token, desiredKeys: keys)
+        return keys
     }
 
     private func zoneChanges(since token: Data?, desiredKeys: [CKRecord.FieldKey]?) async throws -> ZoneDelta {
+        try await batch(since: token, desiredKeys: desiredKeys, resultsLimit: nil).delta
+    }
+
+    // One feed pass. The raw count says whether the feed had anything left —
+    // decoding can drop records (retired entities), so the batched walk cannot
+    // infer that from the delta alone.
+    private func batch(since token: Data?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int?) async throws -> (delta: ZoneDelta, raw: Int) {
         guard let zoneID else {
             throw SchemaError.invalidDefinition("Zone sync requires a store configured with a custom zone")
         }
-        let (changed, deleted, next) = try await database.zoneChanges(zoneID: zoneID, since: token, desiredKeys: desiredKeys)
+        let (changed, deleted, next) = try await database.zoneChanges(zoneID: zoneID, since: token, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
         var records: [EntityRecord] = []
         for record in changed where record.recordType == Entity.recordType {
             guard let entity = record["entity"] as? String, let definition = try? await registry.definition(for: entity) else { continue }
             records += try decode([record], using: definition)
         }
-        return ZoneDelta(records: records, deleted: deleted.map(\.recordName), token: next)
+        return (ZoneDelta(records: records, deleted: deleted.map(\.recordName), token: next), changed.count + deleted.count)
     }
 }
