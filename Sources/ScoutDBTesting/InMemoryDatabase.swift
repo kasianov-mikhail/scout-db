@@ -52,16 +52,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     private func page(query: CKQuery, zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, offset: Int, resultsLimit: Int) -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        let matched =
-            records
-            .filter { zoneID == nil || $0.recordID.zoneID == zoneID }
-            .filter { $0.recordType == query.recordType && PredicateEvaluator.evaluate(query.predicate, record: $0) == true }
-            .sorted(by: query.sortDescriptors ?? [])
-        let capacity = Swift.min(resultsLimit > 0 ? resultsLimit : Int.max, pageLimit ?? Int.max)
-        let page = matched.dropFirst(offset).prefix(capacity).map { project($0, keys: desiredKeys) }
-        let end = offset + page.count
-        let cursor: QueryCursor? = end < matched.count ? .offset(query: query, zoneID: zoneID, offset: end) : nil
-        return (page.map { ($0.recordID, .success($0)) }, cursor)
+        LocalQuery.page(records, matching: query, inZone: zoneID, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit, pageLimit: pageLimit)
     }
 
     public func save(_ record: CKRecord) async throws -> CKRecord {
@@ -242,53 +233,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         zoneLog.append((sequence, record.recordID.zoneID))
     }
 
-    // Every response hands out a copy, the way the server returns a fresh record
-    // per fetch — mutating a query result must not silently edit the store. The
-    // envelope overrides live outside the record's own coding, so they are
-    // carried over by hand.
     private func project(_ record: CKRecord, keys: [CKRecord.FieldKey]?) -> CKRecord {
-        let projected: CKRecord
-        if let keys {
-            projected = CKRecord(recordType: record.recordType, recordID: record.recordID)
-            for key in record.allKeys() where keys.contains(key) {
-                projected[key] = record[key]
-            }
-        } else {
-            projected = record.copy() as! CKRecord
-        }
-        if let tag = record.recordVersionTag {
-            projected.overrideChangeTag(tag)
-        }
-        if let date = record.recordModificationDate {
-            projected.overrideModificationDate(date)
-        }
-        if let creator = record.recordCreator {
-            projected.overrideCreator(creator)
-        }
-        return projected
-    }
-}
-
-extension [CKRecord] {
-    fileprivate func sorted(by descriptors: [NSSortDescriptor]) -> [CKRecord] {
-        guard descriptors.count > 0 else { return self }
-        return sorted { lhs, rhs in
-            for descriptor in descriptors {
-                guard let key = descriptor.key else { continue }
-                let order: ComparisonResult
-                if let location = descriptor as? CKLocationSortDescriptor {
-                    // Distance sorting, the way the server runs CKLocationSortDescriptor;
-                    // records without the location rank last.
-                    let near = (lhs[key] as? CLLocation)?.distance(from: location.relativeLocation) ?? .greatestFiniteMagnitude
-                    let far = (rhs[key] as? CLLocation)?.distance(from: location.relativeLocation) ?? .greatestFiniteMagnitude
-                    order = PredicateEvaluator.compare(near as NSNumber, far as NSNumber)
-                } else {
-                    order = PredicateEvaluator.compare(lhs[key], rhs[key])
-                }
-                guard order != .orderedSame else { continue }
-                return descriptor.ascending ? order == .orderedAscending : order == .orderedDescending
-            }
-            return false
-        }
+        LocalQuery.project(record, keys: keys)
     }
 }

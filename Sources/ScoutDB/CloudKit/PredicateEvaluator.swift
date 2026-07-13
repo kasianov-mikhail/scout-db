@@ -8,7 +8,6 @@
 import CloudKit
 import CoreLocation
 import Foundation
-import ScoutDB
 
 /// In-memory execution of the NSPredicate trees the store builds — the stub
 /// counterpart of the CloudKit server running the query for real.
