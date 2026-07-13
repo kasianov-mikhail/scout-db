@@ -67,6 +67,11 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         if let error = writeErrors.popLast() ?? errors.popLast() {
             throw error
         }
+        // The single-record save is conditional, like the CKDatabase conformance
+        // that backs it with .ifServerRecordUnchanged.
+        if let server = conflictingServer(for: record) {
+            throw RecordConflictError(serverRecord: server)
+        }
         upsert(record)
         return record
     }
@@ -98,8 +103,24 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
                 return (record.recordID, .failure(conflict))
             }
         }
-        records.forEach(upsert)
-        return records.map { ($0.recordID, .success($0)) }
+        return records.map { record in
+            if let server = conflictingServer(for: record) {
+                return (record.recordID, .failure(RecordConflictError(serverRecord: server)))
+            }
+            upsert(record)
+            return (record.recordID, .success(record))
+        }
+    }
+
+    // The stored copy that beats a conditional save: present when the incoming
+    // record's change tag differs from the server's — the comparison the real
+    // ifServerRecordUnchanged policy makes. A record fetched from this database
+    // carries the current tag and passes; a fresh or stale one conflicts.
+    private func conflictingServer(for record: CKRecord) -> CKRecord? {
+        guard let stored = records.first(where: { $0.recordType == record.recordType && $0.recordID == record.recordID }),
+            stored.recordVersionTag != record.recordVersionTag
+        else { return nil }
+        return project(stored, keys: nil)
     }
 
     public func save(subscription: CKSubscription) async throws {
@@ -128,7 +149,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         if let error = errors.popLast() {
             throw error
         }
-        return records.first { $0.recordID == id }?.copy() as? CKRecord
+        return records.first { $0.recordID == id }.map { project($0, keys: nil) }
     }
 
     public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?) async throws -> (changed: [CKRecord], deleted: [CKRecord.ID], token: Data?) {
@@ -141,7 +162,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         for entry in changeLog where entry.sequence > floor && entry.id.zoneID == zoneID {
             latest[entry.id] = entry.deleted
         }
-        let changed = latest.filter { !$0.value }.keys.compactMap { id in records.first { $0.recordID == id }?.copy() as? CKRecord }
+        let changed = latest.filter { !$0.value }.keys.compactMap { id in records.first { $0.recordID == id }.map { project($0, keys: nil) } }
         let deleted = latest.filter(\.value).keys.sorted { $0.recordName < $1.recordName }
         return (changed.sorted { $0.recordID.recordName < $1.recordID.recordName }, Array(deleted), Data("\(sequence)".utf8))
     }
@@ -184,10 +205,12 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         let record = retainingAssets(of: record)
         records.removeAll { $0.recordType == record.recordType && $0.recordID == record.recordID }
         records.append(record)
-        // Stamp the save time the way the server does, so `modificationDate`
-        // predicates and change feeds behave in tests; explicit overrides win
-        // because they are applied after the write.
+        // Stamp the save time and a fresh change tag the way the server does, so
+        // `modificationDate` predicates, change feeds, and conditional saves
+        // behave in tests; explicit overrides win because they are applied
+        // after the write.
         record.overrideModificationDate(Date())
+        record.overrideChangeTag(UUID().uuidString)
         sequence += 1
         changeLog.append((sequence, record.recordID, false))
     }
@@ -205,6 +228,9 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
             }
         } else {
             projected = record.copy() as! CKRecord
+        }
+        if let tag = record.recordVersionTag {
+            projected.overrideChangeTag(tag)
         }
         if let date = record.recordModificationDate {
             projected.overrideModificationDate(date)

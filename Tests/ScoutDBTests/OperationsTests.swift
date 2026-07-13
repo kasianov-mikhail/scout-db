@@ -100,8 +100,11 @@ struct OperationsTests {
     func conflictFieldMerge() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
 
-        // The winner changed product_id (s_00); this side changes quantity.
-        let winner = try #require(database.records.first { $0["uuid"] as? String == "p-1" }?.copy() as? CKRecord)
+        // The winner changed product_id (s_00); this side changes quantity. The
+        // fetched copy keeps the current change tag, so the merge's retried save
+        // passes the double's conditional-save comparison the way a real
+        // conflict's server record would.
+        let winner = try #require(try await database.fetchRecord(id: CKRecord.ID(recordName: "p-1")))
         winner["s_00"] = "sku-99"
         database.writeErrors = [RecordConflictError(serverRecord: winner)]
         var runs = 0
@@ -115,7 +118,7 @@ struct OperationsTests {
         #expect(merged.values["product_id"] == .string("sku-99"))
 
         // Overlapping edits still re-run the transform on the winner.
-        let overlap = try #require(database.records.first { $0["uuid"] as? String == "p-1" }?.copy() as? CKRecord)
+        let overlap = try #require(try await database.fetchRecord(id: CKRecord.ID(recordName: "p-1")))
         overlap["i_01"] = Int64(100)
         database.writeErrors = [RecordConflictError(serverRecord: overlap)]
         var reruns = 0

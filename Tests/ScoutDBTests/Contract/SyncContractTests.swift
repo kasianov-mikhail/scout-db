@@ -68,10 +68,9 @@ struct SyncContractTests {
         }
     }
 
-    // The in-memory double accepts every conditional save today, so this
-    // contract holds only against the real server — the exact divergence the
-    // live run exists to keep visible.
-    @Test("A stale conditional save loses to the server copy", .enabled(if: ContractBackend.isLive))
+    // Both backends compare change tags: the double stamps a fresh tag on
+    // every landed save, so a stale copy conflicts exactly like on the server.
+    @Test("A stale conditional save loses to the server copy")
     func staleConditionalSave() async throws {
         try await withContract { f in
             let entity = try await f.publishOrder()

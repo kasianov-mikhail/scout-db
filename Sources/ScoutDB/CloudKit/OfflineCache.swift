@@ -165,6 +165,12 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
             return nil
         }
         let merged = server.copy() as! CKRecord
+        // A real record's change tag survives the copy; a testing override does
+        // not, so carry it over — the retried save must compare as the server
+        // copy it was built from.
+        if let tag = server.recordVersionTag {
+            merged.overrideChangeTag(tag)
+        }
         for (key, value) in mine {
             merged[key] = value
         }
