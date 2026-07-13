@@ -237,11 +237,14 @@ struct AsyncSemaphoreTests {
         await limiter.release()
     }
 
-    @Test("A queued drain takes ownership before queued single-slot waiters")
-    func testDrainHandOffPrecedesWaiters() async throws {
+    @Test("A stream of drains cannot starve a waiter queued between them")
+    func testDrainsDoNotStarveWaiters() async throws {
         let limiter = AsyncSemaphore(limit: 2)
         try await limiter.acquireAll()
 
+        // The single-slot waiter parks first, a second drain after it. With
+        // drain-first hand-off the drain chain would keep ownership and the
+        // waiter would starve; FIFO order serves the waiter in between.
         let events = Events()
         let waiter = Task {
             try await limiter.acquire()
@@ -258,6 +261,36 @@ struct AsyncSemaphoreTests {
         try? await Task.sleep(for: .milliseconds(50))
 
         await limiter.releaseAll()
+        try await waiter.value
+        try await drain.value
+
+        #expect(await events.log == ["acquire", "drain"])
+    }
+
+    @Test("A waiter parked behind a queued drain runs after it, not around it")
+    func testWaitersQueueBehindDrain() async throws {
+        let limiter = AsyncSemaphore(limit: 2)
+        try await limiter.acquire()
+
+        let events = Events()
+        // The drain parks first (one slot is busy), then a single-slot waiter.
+        // A free slot exists, but granting it would let requests leapfrog the
+        // drain forever — the waiter must wait its turn behind the drain.
+        let drain = Task {
+            try await limiter.withAllSlots {
+                await events.append("drain")
+            }
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+
+        let waiter = Task {
+            try await limiter.acquire()
+            await events.append("acquire")
+            await limiter.release()
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+
+        await limiter.release()
         try await drain.value
         try await waiter.value
 
