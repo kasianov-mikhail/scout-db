@@ -99,6 +99,7 @@ extension RecordValue {
 // store reads them through these accessors and tests inject values underneath.
 private nonisolated(unsafe) var modificationDateKey: UInt8 = 0
 private nonisolated(unsafe) var creatorKey: UInt8 = 0
+private nonisolated(unsafe) var changeTagKey: UInt8 = 0
 
 extension CKRecord {
     /// The record's modification date, honoring a testing override.
@@ -111,6 +112,16 @@ extension CKRecord {
         objc_getAssociatedObject(self, &creatorKey) as? String ?? creatorUserRecordID?.recordName
     }
 
+    /// The record's change tag, honoring a testing override.
+    ///
+    /// Unlike the real `recordChangeTag`, an injected tag does not survive
+    /// `copy()` or archiving — code that duplicates a record and relies on its
+    /// version must carry the tag over by hand.
+    ///
+    public var recordVersionTag: String? {
+        objc_getAssociatedObject(self, &changeTagKey) as? String ?? recordChangeTag
+    }
+
     /// Injects a modification date underneath the read-only system field.
     public func overrideModificationDate(_ date: Date) {
         objc_setAssociatedObject(self, &modificationDateKey, date, .OBJC_ASSOCIATION_RETAIN)
@@ -119,5 +130,10 @@ extension CKRecord {
     /// Injects a creator identifier underneath the read-only system field.
     public func overrideCreator(_ name: String) {
         objc_setAssociatedObject(self, &creatorKey, name, .OBJC_ASSOCIATION_RETAIN)
+    }
+
+    /// Injects a change tag underneath the read-only system field.
+    public func overrideChangeTag(_ tag: String) {
+        objc_setAssociatedObject(self, &changeTagKey, tag, .OBJC_ASSOCIATION_RETAIN)
     }
 }

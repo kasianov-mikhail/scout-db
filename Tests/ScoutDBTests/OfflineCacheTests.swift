@@ -227,6 +227,29 @@ struct OfflineCacheTests {
         #expect(try record.assetData(for: "dump") == payload)
     }
 
+    @Test("Flush merges honestly against a genuinely moved server record")
+    func flushMergesHonestly() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        _ = try await store.read(entity: "purchase")
+
+        backing.writeErrors = [CKError(.networkFailure)]
+        var updated = makePurchase().values
+        updated["quantity"] = .int(9)
+        try await store.write(updated, entity: "purchase", uuid: "p-1")
+        #expect(cache.pendingWrites == 1)
+
+        // Another client really lands a disjoint edit — no injected conflict;
+        // the double's own change-tag comparison must surface it to the flush.
+        let other = EntityStore(database: backing, registry: SchemaRegistry(database: backing))
+        try await other.update(entity: "purchase", uuid: "p-1") { $0.values["product_id"] = .string("sku-77") }
+
+        #expect(try await cache.flush() == 1)
+        #expect(cache.pendingWrites == 0)
+        let record = try #require(try await store.read(entity: "purchase").first)
+        #expect(record.values["product_id"] == .string("sku-77"))
+        #expect(record.values["quantity"] == .int(9))
+    }
+
     @Test("A flush that fails keeps the queue intact")
     func failedFlush() async throws {
         backing.writeErrors = [CKError(.networkFailure)]
