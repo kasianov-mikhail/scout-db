@@ -534,7 +534,7 @@ public protocol ConflictResolver: Sendable {
 ///
 public struct OfflineFlushError: LocalizedError {
     /// One queued write that lost to an overlapping server-side edit.
-    public struct Conflict {
+    public struct Conflict: @unchecked Sendable {
         public let queued: CKRecord
         public let server: CKRecord
     }
