@@ -297,6 +297,38 @@ struct FluentTests {
         }
     }
 
+    @Test("Typed values write, batch-write, and update through their field map")
+    func typedWrites() async throws {
+        var item = TypedPurchase(record: EntityRecord(entity: "purchase", uuid: "", schemaVersion: 1, values: [:]))
+        item.productId = "sku-9"
+        item.quantity = 5
+        item.amount = 12.5
+        #expect(try await store.write(item, uuid: "t-1") == "t-1")
+
+        let stored = try await store.query(TypedPurchase.self).filter(\.quantity > 4).all()
+        #expect(stored.map(\.productId) == ["sku-9"])
+        #expect(stored.first?.amount == 12.5)
+
+        // A field outside the type's map — the payload comment — survives a
+        // typed update; nil properties leave their fields untouched.
+        try await store.update(entity: "purchase", uuid: "t-1") { $0.values["comment"] = .string("gift") }
+        try await store.update(TypedPurchase.self, uuid: "t-1") { purchase in
+            purchase.quantity = 6
+            purchase.productId = nil
+        }
+        let updated = try #require(try await store.read(entity: "purchase", filters: [.init(field: "quantity", op: .equals, value: .int(6))]).first)
+        #expect(updated.values["comment"] == .string("gift"))
+        #expect(updated.values["product_id"] == .string("sku-9"))
+        #expect(updated.values["amount"] == .double(12.5))
+
+        // The batch path lands every value under a fresh uuid.
+        var second = item
+        second.productId = "sku-10"
+        let uuids = try await store.write([item, second])
+        #expect(uuids.count == 2)
+        #expect(try await store.query(TypedPurchase.self).filter(\.quantity > 4).count() == 3)
+    }
+
     @Test("Typed queries filter, sort, and decode through key paths")
     func typedQueries() async throws {
         let cheap = try await store.query(TypedPurchase.self)
