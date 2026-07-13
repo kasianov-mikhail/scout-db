@@ -91,6 +91,7 @@ let recent = try await store.query("purchase")
 - [Operators](docs/operators.md)
 - [Aggregation](docs/aggregation.md)
 - [Security](docs/security.md)
+- [Live contract testing](LiveTestHost/README.md)
 
 ## License
 

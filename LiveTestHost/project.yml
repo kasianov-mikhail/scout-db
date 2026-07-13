@@ -1,0 +1,61 @@
+# XcodeGen spec for the live-contract test host.
+#
+# The contract tests need a signed app with the iCloud entitlement to talk to
+# real CloudKit; `swift test` bundles are unsigned and cannot. Generate the
+# project with `xcodegen generate` (brew install xcodegen) — see README.md for
+# the one-time container and signing setup.
+name: LiveTestHost
+options:
+  bundleIdPrefix: com.example.scoutdb
+packages:
+  scout-db:
+    path: ..
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    DEVELOPMENT_TEAM: ""  # set your Team ID here or pick a team once in Xcode
+targets:
+  LiveTestHost:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources: [Sources]
+    entitlements:
+      path: LiveTestHost.entitlements
+      properties:
+        com.apple.developer.icloud-services: [CloudKit]
+        # Replace with your test container in project.yml AND the scheme below.
+        com.apple.developer.icloud-container-identifiers: [iCloud.com.example.scoutdb-tests]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.scoutdb.LiveTestHost
+        CODE_SIGN_STYLE: Automatic
+    info:
+      path: Info.plist
+      properties:
+        UILaunchScreen: {}
+  LiveTestHostTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      # The contract tests are shared by file reference with the SPM test
+      # target — one set of assertions, two runners.
+      - path: ../Tests/ScoutDBTests/Contract
+    dependencies:
+      - target: LiveTestHost
+      - package: scout-db
+        product: ScoutDB
+      - package: scout-db
+        product: ScoutDBTesting
+schemes:
+  LiveTestHost:
+    build:
+      targets:
+        LiveTestHost: all
+        LiveTestHostTests: [test]
+    test:
+      targets: [LiveTestHostTests]
+      environmentVariables:
+        # The container the contract runs against; must match the entitlement.
+        SCOUTDB_CONTRACT_CONTAINER: iCloud.com.example.scoutdb-tests
