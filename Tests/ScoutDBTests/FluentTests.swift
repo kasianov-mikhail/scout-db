@@ -124,6 +124,15 @@ struct FluentTests {
         }
     }
 
+    @Test("A malformed regex filter throws instead of matching nothing")
+    func malformedPatternFilter() async throws {
+        await #expect(throws: SchemaError.invalidValue("product_id")) {
+            _ = try await store.query("purchase").filter("product_id", .matches, "(").all()
+        }
+        // A valid pattern keeps working.
+        #expect(try await store.query("purchase").filter("product_id", .matches, "sku-[0-9]").count() == 3)
+    }
+
     @Test("A compound alternative requires all of its filters at once")
     func compoundAlternative() async throws {
         // quantities: p-0 → 3, p-1 → 1, p-2 → 2
