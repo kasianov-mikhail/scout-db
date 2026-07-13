@@ -250,6 +250,72 @@ struct OfflineCacheTests {
         #expect(record.values["quantity"] == .int(9))
     }
 
+    @Test("The snapshot quota evicts the least recently used query")
+    func snapshotQuota() async throws {
+        let cache = OfflineCache(backing: backing, snapshotLimit: 2)
+        let store = EntityStore(database: cache, registry: registry)
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+
+        // Three distinct queries; re-touching the first makes the second the
+        // LRU victim when the third arrives.
+        let q1: [EntityStore.Filter] = []
+        let q2: [EntityStore.Filter] = [.init(field: "quantity", op: .greaterThan, value: .int(0))]
+        let q3: [EntityStore.Filter] = [.init(field: "quantity", op: .lessThan, value: .int(9))]
+        _ = try await store.read(entity: "purchase", filters: q1)
+        _ = try await store.read(entity: "purchase", filters: q2)
+        _ = try await store.read(entity: "purchase", filters: q1)
+        _ = try await store.read(entity: "purchase", filters: q3)
+
+        backing.errors = [CKError(.networkUnavailable)]
+        #expect(try await store.read(entity: "purchase", filters: q1).map(\.uuid) == ["p-1"])
+        backing.errors = [CKError(.networkUnavailable)]
+        #expect(try await store.read(entity: "purchase", filters: q3).map(\.uuid) == ["p-1"])
+        backing.errors = [CKError(.networkUnavailable)]
+        await #expect(throws: CKError.self) {
+            _ = try await store.read(entity: "purchase", filters: q2)
+        }
+    }
+
+    @Test("An evicted baseline degrades a conflicting flush to a surfaced conflict")
+    func baselineQuota() async throws {
+        let cache = OfflineCache(backing: backing, baselineLimit: 1)
+        let store = EntityStore(database: cache, registry: registry)
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.write(makePurchase(uuid: "p-2").values, entity: "purchase", uuid: "p-2")
+        // Both baselines arrive in one read; only the newer (p-2) survives.
+        _ = try await store.read(entity: "purchase")
+
+        backing.writeErrors = [CKError(.networkFailure), CKError(.networkFailure)]
+        var updated = makePurchase().values
+        updated["quantity"] = .int(9)
+        try await store.write(updated, entity: "purchase", uuid: "p-1")
+        var updatedTwo = makePurchase(uuid: "p-2").values
+        updatedTwo["quantity"] = .int(9)
+        try await store.write(updatedTwo, entity: "purchase", uuid: "p-2")
+
+        // Both servers move on a disjoint field: with a baseline the flush
+        // grafts, without one it must surface the conflict.
+        for uuid in ["p-1", "p-2"] {
+            let server = try #require(backing.records.first { $0.recordID.recordName == uuid })
+            server["s_00"] = "sku-77"
+        }
+        let conflicts = [
+            RecordConflictError(serverRecord: backing.records.first { $0.recordID.recordName == "p-2" }!.copy() as! CKRecord),
+            RecordConflictError(serverRecord: backing.records.first { $0.recordID.recordName == "p-1" }!.copy() as! CKRecord),
+        ]
+        backing.writeErrors = conflicts
+
+        do {
+            try await cache.flush()
+            Issue.record("Expected an OfflineFlushError")
+        } catch let error as OfflineFlushError {
+            #expect(error.conflicts.map { $0.queued.recordID.recordName } == ["p-1"])
+        }
+        let merged = try #require(backing.records.first { $0.recordID.recordName == "p-2" })
+        #expect(merged["i_01"] == 9)
+        #expect(merged["s_00"] == "sku-77")
+    }
+
     @Test("A flush that fails keeps the queue intact")
     func failedFlush() async throws {
         backing.writeErrors = [CKError(.networkFailure)]
