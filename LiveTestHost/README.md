@@ -14,11 +14,10 @@ test` bundles cannot call `CKContainer` at all. This directory holds an
 1. **Prerequisites:** Apple Developer Program membership, Xcode 16+,
    `brew install xcodegen`, and a simulator or device signed into iCloud —
    use a dedicated test Apple ID, the suite writes and deletes data.
-2. **Container:** pick a test container identifier (for example
-   `iCloud.com.yourname.scoutdb-tests`) and replace
-   `iCloud.com.example.scoutdb-tests` in `project.yml` — it appears twice:
-   in the entitlement and in the scheme's `SCOUTDB_CONTRACT_CONTAINER`
-   environment variable. The container is created on first build.
+2. **Container:** `project.yml` is configured for
+   `iCloud.dev.kasianov.scoutdb-tests` under team `CGU22629ZT`; to run against
+   another container, change it in both places — the entitlement and the
+   scheme's `SCOUTDB_CONTRACT_CONTAINER` environment variable.
 3. **Signing:** set `DEVELOPMENT_TEAM` in `project.yml` (or generate the
    project, open it in Xcode, and pick your team once under Signing &
    Capabilities).
@@ -35,19 +34,26 @@ test` bundles cannot call `CKContainer` at all. This directory holds an
 
 ## First-run schema bootstrap
 
-The development environment creates record types just-in-time on first write,
-but query indexes must be enabled by hand in the
-[CloudKit Console](https://icloud.developer.apple.com) → your container →
-Schema → Indexes. Expect the first run to fail with "field ... is not marked
-queryable"; add the index it names and re-run. The usual starter set on the
-`Entity` record type: `entity`, `uuid`, `deleted` (queryable);
-`modificationDate` (queryable + sortable); the slot fields the contract
-filters and sorts on — `s_00` (queryable), `i_00`, `d_00`, `t_00`
-(queryable + sortable). The `Schema` and `Aggregate` record types need
-`entity` (queryable) once the registry and views first write them.
+Two one-time steps, both observed on the first real run:
 
-Alternatively, generate a management token in the Console and script the
-indexes with `cktool` — worthwhile if the schema keeps evolving.
+1. **Container creation.** `xcodebuild -allowProvisioningUpdates` registers
+   the App ID but does not create the CloudKit container — every call fails
+   with "Bad Container" (CKError 1014) until it exists. Open the generated
+   project once in Xcode → target LiveTestHost → Signing & Capabilities →
+   press the refresh button under the iCloud container list (or create the
+   identifier on the developer portal).
+2. **The `___modTime` index.** The development environment creates record
+   types and marks user fields queryable just-in-time, but system fields get
+   no indexes, and `changes(since:)` queries `modificationDate`. `cktool`
+   authenticates through the local Xcode session — no management token needed:
+
+   ```sh
+   xcrun cktool export-schema --team-id <team> \
+       --container-id <container> --environment development > schema.ckdb
+   # In RECORD TYPE Entity: "___modTime" TIMESTAMP QUERYABLE SORTABLE,
+   xcrun cktool import-schema --team-id <team> \
+       --container-id <container> --environment development --file schema.ckdb
+   ```
 
 ## What to expect
 

@@ -6,14 +6,15 @@
 # the one-time container and signing setup.
 name: LiveTestHost
 options:
-  bundleIdPrefix: com.example.scoutdb
+  bundleIdPrefix: dev.kasianov.scoutdb
 packages:
   scout-db:
     path: ..
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    DEVELOPMENT_TEAM: ""  # set your Team ID here or pick a team once in Xcode
+    GENERATE_INFOPLIST_FILE: YES
+    DEVELOPMENT_TEAM: CGU22629ZT
 targets:
   LiveTestHost:
     type: application
@@ -25,10 +26,10 @@ targets:
       properties:
         com.apple.developer.icloud-services: [CloudKit]
         # Replace with your test container in project.yml AND the scheme below.
-        com.apple.developer.icloud-container-identifiers: [iCloud.com.example.scoutdb-tests]
+        com.apple.developer.icloud-container-identifiers: [iCloud.dev.kasianov.scoutdb-tests]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.scoutdb.LiveTestHost
+        PRODUCT_BUNDLE_IDENTIFIER: dev.kasianov.scoutdb.LiveTestHost
         CODE_SIGN_STYLE: Automatic
     info:
       path: Info.plist
@@ -58,4 +59,4 @@ schemes:
       targets: [LiveTestHostTests]
       environmentVariables:
         # The container the contract runs against; must match the entitlement.
-        SCOUTDB_CONTRACT_CONTAINER: iCloud.com.example.scoutdb-tests
+        SCOUTDB_CONTRACT_CONTAINER: iCloud.dev.kasianov.scoutdb-tests

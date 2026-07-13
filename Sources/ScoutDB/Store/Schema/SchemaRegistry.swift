@@ -81,7 +81,10 @@ public actor SchemaRegistry {
         record["entity_version"] = Int64(definition.version)
         record["status"] = "active"
         record["definition"] = try JSONEncoder().encode(definition)
-        try await database.write(record: record)
+        // Publishing is declarative and idempotent: re-publishing a version must
+        // overwrite, so the write takes the last-write-wins batch path instead of
+        // the conditional single-record save a real server would reject.
+        try await database.write(records: [record])
         cache[definition.entity] = definition
     }
 

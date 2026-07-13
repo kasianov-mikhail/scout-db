@@ -45,7 +45,12 @@ struct ContractTimeoutError: Error {}
 func eventually(timeout: Duration = .seconds(90), _ body: () async throws -> Bool) async throws {
     let deadline = ContinuousClock.now + (ContractBackend.isLive ? timeout : .seconds(1))
     while true {
-        if try await body() { return }
+        do {
+            if try await body() { return }
+        } catch let error as CKError where ContractBackend.isLive && error.code == .unknownItem {
+            // The development environment creates record types just-in-time on
+            // first write; a query racing that creation fails transiently.
+        }
         guard ContinuousClock.now < deadline else { throw ContractTimeoutError() }
         try await Task.sleep(for: ContractBackend.isLive ? .seconds(2) : .milliseconds(10))
     }
