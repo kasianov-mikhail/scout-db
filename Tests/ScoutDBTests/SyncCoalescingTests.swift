@@ -47,6 +47,66 @@ struct SyncCoalescingTests {
     }
 }
 
+@Suite("Sync lifecycle")
+struct SyncLifecycleTests {
+    @Test("start runs periodic passes and stop halts them")
+    func startStopLifecycle() async throws {
+        let database = InMemoryDatabase()
+        let registry = SchemaRegistry(database: database)
+        try await registry.publish(makePurchaseDefinition())
+        let gated = GatedDatabase(backing: database)
+        let store = EntityStore(database: gated, registry: registry, zoneID: CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName))
+        try await store.ensureZone()
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        await gated.gate.open()
+
+        let seen = Seen()
+        let coordinator = SyncCoordinator(store: store)
+        #expect(!coordinator.isRunning)
+        coordinator.start(every: .milliseconds(20)) { delta in
+            seen.add(delta.records.map(\.uuid))
+        }
+        coordinator.start(every: .milliseconds(20))  // idempotent: no second runner
+        #expect(coordinator.isRunning)
+
+        // The immediate first pass delivers p-1; a later write reaches a
+        // periodic pass without any push.
+        try await poll { seen.uuids.contains("p-1") }
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
+        try await poll { seen.uuids.contains("p-2") }
+
+        // After stop, the pass counter settles for good.
+        coordinator.stop()
+        #expect(!coordinator.isRunning)
+        try? await Task.sleep(for: .milliseconds(60))
+        let settled = await gated.gate.calls
+        try? await Task.sleep(for: .milliseconds(100))
+        #expect(await gated.gate.calls == settled)
+    }
+
+    private func poll(_ condition: () -> Bool) async throws {
+        for _ in 0..<200 {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        Issue.record("Condition never held")
+    }
+}
+
+// Collects the uuids periodic deltas delivered, from any thread.
+private final class Seen: @unchecked Sendable {
+    private let lock = NSLock()
+    private var collected: Set<String> = []
+
+    var uuids: Set<String> {
+        lock.withLock { collected }
+    }
+
+    func add(_ uuids: [String]) {
+        lock.withLock { collected.formUnion(uuids) }
+    }
+}
+
 // Forwards everything to the in-memory double, but parks zone-delta fetches
 // behind a gate so a test can hold a sync pass open and count the passes.
 private final class GatedDatabase: CloudDatabase, @unchecked Sendable {
