@@ -5,6 +5,7 @@
 </picture>
 
 <br/>
+<img width="1" height="12" alt="" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBTAA7">
 
 [![Swift](https://github.com/kasianov-mikhail/scout-db/actions/workflows/swift.yml/badge.svg)](https://github.com/kasianov-mikhail/scout-db/actions/workflows/swift.yml)
 [![Release](https://img.shields.io/github/v/release/kasianov-mikhail/scout-db)](https://github.com/kasianov-mikhail/scout-db/releases)
