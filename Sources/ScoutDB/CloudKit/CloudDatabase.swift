@@ -118,9 +118,17 @@ extension CKDatabase: CloudDatabase {
     public func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        try await throttled { database in
-            let (results, cursor) = try await database.records(matching: query, inZoneWith: zoneID, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
-            return (results, cursor.map(QueryCursor.cloudKit))
+        do {
+            return try await throttled { database in
+                let (results, cursor) = try await database.records(matching: query, inZoneWith: zoneID, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+                return (results, cursor.map(QueryCursor.cloudKit))
+            }
+        } catch let error as CKError where error.code == .unknownItem {
+            // A record type nobody has written yet does not exist server-side and
+            // its query throws, unlike a written-then-emptied one. ScoutDB's
+            // record types are fixed internal names, so the miss can only mean
+            // "no rows yet" — the answer an empty type would give.
+            return ([], nil)
         }
     }
 

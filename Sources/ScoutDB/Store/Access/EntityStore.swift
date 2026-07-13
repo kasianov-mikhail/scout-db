@@ -163,7 +163,10 @@ public struct EntityStore: Sendable {
         // The read is unconditional now: the tombstone keeps the record's values
         // so `restore` can lift it later.
         let removed = try decode(try await items(entity: entity, uuids: [uuid]), using: definition).filter { !$0.deleted }
-        try await database.write(record: tombstone(entity: entity, uuid: uuid, definition: definition, values: removed.first?.values ?? [:]))
+        // The tombstone is a fresh record with no change tag, so it must take the
+        // last-write-wins batch path: the single-record save is conditional and a
+        // real server rejects it whenever the record already exists.
+        try await database.write(records: [tombstone(entity: entity, uuid: uuid, definition: definition, values: removed.first?.values ?? [:])])
         try await GridAggregator(database: database).remove(removed, using: definition)
         try await recordRevisions(removed, using: definition)
         noteChange(entity: entity)
