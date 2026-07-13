@@ -8,63 +8,71 @@
 import CloudKit
 import Foundation
 
-/// A `CloudDatabase` decorator that keeps a local replica of one zone and
+/// A `CloudDatabase` decorator that keeps a local replica of its zones and
 /// answers any query from it when the network fails.
 ///
 /// Where `OfflineCache` replays snapshots of queries it has already seen, the
-/// replica mirrors the zone's records themselves and runs the query locally —
+/// replica mirrors the zones' records themselves and runs the query locally —
 /// filters, sorts, pagination, and projections included, through the same
 /// evaluation the in-memory test double uses. The mirror feeds three ways:
 /// every successful write through this database lands in it, every
 /// full-fidelity `zoneChanges` pass flowing through applies its delta (a
-/// `SyncCoordinator` keeps it fresh for free), and `refresh()` walks the feed
-/// from the replica's own token for a complete mirror. With a `storeURL` the
-/// mirror persists across launches.
+/// `SyncCoordinator` keeps it fresh for free), and `refresh()` walks each
+/// zone's feed from the replica's own token for a complete mirror. With a
+/// `storeURL` the mirror persists across launches.
+///
+/// One replica can mirror several zones — the shape of a shared database,
+/// where every accepted share lives in its own zone. Configure the initial
+/// set at init, register later arrivals with `add(zone:)`, or let
+/// `discoverZones()` track the database feed: it registers zones with
+/// activity and purges deleted ones. Zones outside the set pass through
+/// untouched. The mirror holds its zones whole by design; it is a replica,
+/// not a bounded cache.
 ///
 /// Compose it outside an `OfflineCache` —
 /// `ReplicaCache(backing: OfflineCache(backing: db), zoneID: zone)` — and a
 /// write queued offline still reaches the mirror, so novel offline queries
 /// read your writes; a flush that later merges or conflicts is corrected by
-/// the next feed pass. Queries outside the replica's zone pass through
-/// untouched. The mirror holds the whole zone by design; it is a replica,
-/// not a bounded cache.
+/// the next feed pass.
 ///
 /// With `readPolicy: .localFirst` the mirror becomes the primary read path:
-/// once a refresh has drained the feed, reads of the zone never touch the
-/// network — no round trip online, no timeout to wait out offline — and
+/// once a zone's refresh has drained its feed, reads of that zone never touch
+/// the network — no round trip online, no timeout to wait out offline — and
 /// freshness comes from the coordinator passes and refreshes that feed the
 /// mirror. A stale local copy caught in a conditional save conflicts and
 /// retries against the winner, exactly like a stale server page would.
 ///
 public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
-    /// When the mirror answers reads of the replica's zone.
+    /// When the mirror answers reads of a replicated zone.
     public enum ReadPolicy: Sendable {
         /// Reads go to the server; the mirror answers when the network fails.
         case networkFirst
-        /// Reads of the zone are answered from the mirror immediately — no
-        /// network round trip, no offline timeout to wait out. Freshness comes
-        /// from the passes that feed the mirror: a `SyncCoordinator`, or
-        /// `refresh()`. Until the first refresh completes the policy behaves
-        /// like `networkFirst` — a half-built mirror must not silently answer
-        /// with partial results.
+        /// Reads of a replicated zone are answered from the mirror
+        /// immediately — no network round trip, no offline timeout to wait
+        /// out. Freshness comes from the passes that feed the mirror: a
+        /// `SyncCoordinator`, or `refresh()`. Until a zone's first refresh
+        /// completes it behaves like `networkFirst` — a half-built mirror
+        /// must not silently answer with partial results.
         case localFirst
     }
 
     private let backing: any CloudDatabase
-    private let zoneID: CKRecordZone.ID
     private let storeURL: URL?
     private let readPolicy: ReadPolicy
     private let lock = NSLock()
+    private var zones: Set<CKRecordZone.ID>
     private var mirror: [CKRecord.ID: CKRecord] = [:]
-    // The replica's own feed position — advanced only by refresh(), which is
-    // the one path that guarantees the mirror saw everything before it.
-    private var token: Data?
-    // Whether a refresh() ever drained the feed; the gate for localFirst.
-    private var complete = false
+    // Each zone's own feed position — advanced only by refresh(), the one
+    // path that guarantees the mirror saw everything before it.
+    private var tokens: [CKRecordZone.ID: Data] = [:]
+    // The zones whose refresh() ever drained the feed; the localFirst gate.
+    private var completed: Set<CKRecordZone.ID> = []
+    // The discovery position of discoverZones() in the database feed.
+    private var databaseToken: Data?
 
-    public init(backing: any CloudDatabase, zoneID: CKRecordZone.ID, storeURL: URL? = nil, readPolicy: ReadPolicy = .networkFirst) {
+    public init(backing: any CloudDatabase, zones: [CKRecordZone.ID], storeURL: URL? = nil, readPolicy: ReadPolicy = .networkFirst) {
         self.backing = backing
-        self.zoneID = zoneID
+        self.zones = Set(zones)
         self.storeURL = storeURL
         self.readPolicy = readPolicy
         if let storeURL, let data = try? Data(contentsOf: storeURL) {
@@ -72,39 +80,101 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    /// How many records the mirror currently holds.
+    /// A replica of one zone; see `init(backing:zones:storeURL:readPolicy:)`.
+    public convenience init(backing: any CloudDatabase, zoneID: CKRecordZone.ID, storeURL: URL? = nil, readPolicy: ReadPolicy = .networkFirst) {
+        self.init(backing: backing, zones: [zoneID], storeURL: storeURL, readPolicy: readPolicy)
+    }
+
+    /// How many records the mirror currently holds, across all zones.
     public var recordCount: Int {
         lock.withLock { mirror.count }
     }
 
-    /// Whether a `refresh()` has ever drained the feed — the point from which
-    /// the mirror holds the whole zone and `localFirst` starts serving.
+    /// The zones the replica currently mirrors.
+    public var zoneIDs: Set<CKRecordZone.ID> {
+        lock.withLock { zones }
+    }
+
+    /// Whether every replicated zone's `refresh()` has drained its feed — the
+    /// point from which the mirror is whole and `localFirst` serves them all.
     public var hasCompleteMirror: Bool {
-        lock.withLock { complete }
+        lock.withLock { zones.allSatisfy(completed.contains) }
     }
 
-    // Whether this read of the zone should skip the network entirely.
-    private func servesLocally(_ zoneID: CKRecordZone.ID?) -> Bool {
-        guard case .localFirst = readPolicy, zoneID == self.zoneID else { return false }
-        return lock.withLock { complete }
+    /// Starts mirroring another zone — a newly accepted share, typically.
+    ///
+    /// The zone serves locally only after its first completed `refresh()`.
+    ///
+    public func add(zone: CKRecordZone.ID) {
+        lock.withLock {
+            zones.insert(zone)
+            persistLocked()
+        }
     }
 
-    /// Walks the zone's change feed from the replica's own position until it
-    /// drains, applying every batch to the mirror.
+    /// Tracks the database feed: registers zones with activity, purges
+    /// deleted ones.
+    ///
+    /// The discovery step for a shared database — run it after accepting a
+    /// share or on a coordinator tick, then `refresh()` to mirror what it
+    /// found. Incremental: each call continues from the last one's position.
+    /// Returns the zones new to the replica.
+    ///
+    @discardableResult public func discoverZones() async throws -> [CKRecordZone.ID] {
+        let since = lock.withLock { databaseToken }
+        let (changed, deleted, next) = try await backing.databaseChanges(since: since)
+        return lock.withLock {
+            var added: [CKRecordZone.ID] = []
+            for zone in changed where !zones.contains(zone) {
+                zones.insert(zone)
+                added.append(zone)
+            }
+            for zone in deleted {
+                purgeLocked(zone)
+            }
+            databaseToken = next ?? databaseToken
+            persistLocked()
+            return added
+        }
+    }
+
+    /// Walks every replicated zone's change feed from the replica's own
+    /// position until it drains, applying every batch to the mirror.
     ///
     /// The one call that guarantees a complete mirror — the passive feeding
     /// only sees what happens to flow through. Batches keep memory flat and
-    /// the position advances per batch, so an interrupted refresh resumes
-    /// where it stopped. Returns how many changes were applied.
+    /// each zone's position advances per batch, so an interrupted refresh
+    /// resumes where it stopped. A zone deleted server-side is purged instead
+    /// of failing the walk. Returns how many changes were applied.
     ///
     @discardableResult public func refresh(batchSize: Int = 200) async throws -> Int {
         var applied = 0
+        for zone in lock.withLock({ zones }) {
+            applied += try await refresh(zone: zone, batchSize: batchSize)
+        }
+        return applied
+    }
+
+    /// Walks one zone's change feed to the end; see `refresh(batchSize:)`.
+    @discardableResult public func refresh(zone: CKRecordZone.ID, batchSize: Int = 200) async throws -> Int {
+        var applied = 0
         while true {
-            let since = lock.withLock { token }
-            let (changed, deleted, next) = try await backing.zoneChanges(zoneID: zoneID, since: since, desiredKeys: nil, resultsLimit: batchSize)
+            let since = lock.withLock { tokens[zone] }
+            let changed: [CKRecord]
+            let deleted: [CKRecord.ID]
+            let next: Data?
+            do {
+                (changed, deleted, next) = try await backing.zoneChanges(zoneID: zone, since: since, desiredKeys: nil, resultsLimit: batchSize)
+            } catch let error as CKError where error.code == .zoneNotFound {
+                lock.withLock {
+                    purgeLocked(zone)
+                    persistLocked()
+                }
+                return applied
+            }
             guard changed.count + deleted.count > 0 else {
                 lock.withLock {
-                    complete = true
+                    completed.insert(zone)
                     persistLocked()
                 }
                 return applied
@@ -112,10 +182,22 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
             applied += changed.count + deleted.count
             lock.withLock {
                 applyLocked(changed: changed, deleted: deleted)
-                token = next ?? token
+                tokens[zone] = next ?? tokens[zone]
                 persistLocked()
             }
         }
+    }
+
+    // Whether this read of the zone should skip the network entirely.
+    private func servesLocally(_ zoneID: CKRecordZone.ID?) -> Bool {
+        guard case .localFirst = readPolicy, let zoneID else { return false }
+        return lock.withLock { completed.contains(zoneID) }
+    }
+
+    // Whether the zone is replicated, so its offline reads have a fallback.
+    private func mirrors(_ zoneID: CKRecordZone.ID?) -> Bool {
+        guard let zoneID else { return false }
+        return lock.withLock { zones.contains(zoneID) }
     }
 
     // MARK: - Mirror maintenance
@@ -130,27 +212,44 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
     }
 
     private func upsert(_ records: [CKRecord], deleting deleted: [CKRecord.ID] = []) {
-        let mine = records.filter { $0.recordID.zoneID == zoneID }
-        let gone = deleted.filter { $0.zoneID == zoneID }
-        guard mine.count + gone.count > 0 else { return }
         lock.withLock {
+            let mine = records.filter { zones.contains($0.recordID.zoneID) }
+            let gone = deleted.filter { zones.contains($0.zoneID) }
+            guard mine.count + gone.count > 0 else { return }
             applyLocked(changed: mine, deleted: gone)
             persistLocked()
         }
     }
 
+    private func purgeLocked(_ zone: CKRecordZone.ID) {
+        zones.remove(zone)
+        tokens[zone] = nil
+        completed.remove(zone)
+        mirror = mirror.filter { $0.key.zoneID != zone }
+    }
+
     private func restore(from data: Data) {
-        let classes = [NSDictionary.self, NSArray.self, NSString.self, NSData.self, CKRecord.self]
+        let classes = [NSDictionary.self, NSArray.self, NSString.self, NSData.self, NSNumber.self, CKRecord.self, CKRecordZone.ID.self]
         guard let root = try? NSKeyedUnarchiver.unarchivedObject(ofClasses: classes, from: data) as? [String: Any] else { return }
         mirror = (root["records"] as? [CKRecord] ?? []).reduce(into: [:]) { $0[$1.recordID] = $1 }
-        token = root["token"] as? Data
-        complete = (root["complete"] as? NSNumber)?.boolValue ?? false
+        zones.formUnion(root["zones"] as? [CKRecordZone.ID] ?? [])
+        let tokenZones = root["tokenZones"] as? [CKRecordZone.ID] ?? []
+        let tokenValues = root["tokenValues"] as? [Data] ?? []
+        tokens = Dictionary(zip(tokenZones, tokenValues), uniquingKeysWith: { first, _ in first })
+        completed = Set(root["completed"] as? [CKRecordZone.ID] ?? [])
+        databaseToken = root["databaseToken"] as? Data
     }
 
     private func persistLocked() {
         guard let storeURL else { return }
-        var root: [String: Any] = ["records": Array(mirror.values), "complete": NSNumber(value: complete)]
-        root["token"] = token
+        var root: [String: Any] = [
+            "records": Array(mirror.values),
+            "zones": Array(zones),
+            "tokenZones": Array(tokens.keys),
+            "tokenValues": tokens.keys.map { tokens[$0]! },
+            "completed": Array(completed),
+        ]
+        root["databaseToken"] = databaseToken
         guard let data = try? NSKeyedArchiver.archivedData(withRootObject: root, requiringSecureCoding: true) else { return }
         try? data.write(to: storeURL, options: .atomic)
     }
@@ -175,11 +274,11 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
             let response = try await backing.records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
             // A full-fidelity page is fresh server truth — fold it into the
             // mirror; a projected one misses fields and cannot.
-            if zoneID == self.zoneID, desiredKeys == nil {
+            if desiredKeys == nil {
                 upsert(response.matchResults.compactMap { try? $0.1.get() })
             }
             return response
-        } catch  where OfflineCache.isOffline(error) && zoneID == self.zoneID {
+        } catch  where OfflineCache.isOffline(error) && mirrors(zoneID) {
             return lock.withLock {
                 LocalQuery.page(scanOrderLocked, matching: query, inZone: zoneID, desiredKeys: desiredKeys, offset: 0, resultsLimit: resultsLimit)
             }
@@ -192,8 +291,8 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
     public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        // A localFirst scan of the zone stays on the mirror to its end — its
-        // offset cursors are the mirror's own.
+        // A localFirst scan of a replicated zone stays on the mirror to its
+        // end — its offset cursors are the mirror's own.
         if case .offset(let query, let zoneID, let offset) = cursor, servesLocally(zoneID) {
             return lock.withLock {
                 LocalQuery.page(scanOrderLocked, matching: query, inZone: zoneID, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit)
@@ -202,7 +301,7 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
         do {
             return try await backing.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
         } catch {
-            guard case .offset(let query, let zoneID, let offset) = cursor, zoneID == self.zoneID,
+            guard case .offset(let query, let zoneID, let offset) = cursor, mirrors(zoneID),
                 OfflineCache.isOffline(error) || (error as? CKError)?.code == .invalidArguments
             else { throw error }
             return lock.withLock {
@@ -221,7 +320,7 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
                 upsert([record])
             }
             return record
-        } catch  where OfflineCache.isOffline(error) && id.zoneID == zoneID {
+        } catch  where OfflineCache.isOffline(error) && mirrors(id.zoneID) {
             return lock.withLock { mirror[id].map { LocalQuery.project($0, keys: nil) } }
         }
     }
@@ -253,7 +352,7 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
         let response = try await backing.zoneChanges(zoneID: zoneID, since: token, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
         // A projected pass cannot feed the mirror: its records miss fields,
         // and overwriting a full record with a trimmed one would lose them.
-        if zoneID == self.zoneID, desiredKeys == nil {
+        if desiredKeys == nil {
             upsert(response.changed, deleting: response.deleted)
         }
         return response
