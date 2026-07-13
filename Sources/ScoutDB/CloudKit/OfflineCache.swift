@@ -13,9 +13,13 @@ import Foundation
 /// Reads are served from the last complete response of the same query when the
 /// network fails — stale by definition, but present. Plain writes made offline
 /// are queued and reported successful; `flush()` replays them once the network
-/// is back, and record uuids make the replay idempotent. Queued writes are not
-/// visible to reads until they flush, and conditional (CAS) saves are never
-/// queued — deferring a compare-and-swap would discard its comparison.
+/// is back, and record uuids make the replay idempotent. The replay is
+/// conflict-aware: every save runs under the if-unchanged policy, offline edits
+/// are grafted onto a server record that moved when the two sides touched
+/// disjoint fields, and overlapping edits surface as `OfflineFlushError`
+/// instead of overwriting the server. Queued writes are not visible to reads
+/// until they flush, and conditional (CAS) saves are never queued — deferring
+/// a compare-and-swap would discard its comparison.
 ///
 public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     private let backing: any CloudDatabase
@@ -24,6 +28,9 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     private var snapshots: [String: [CKRecord]] = [:]
     private var queuedSaves: [CKRecord] = []
     private var queuedDeletes: [CKRecord.ID] = []
+    // The last full server copy seen per record — the merge base a conflicted
+    // flush diffs both sides against.
+    private var baselines: [CKRecord.ID: CKRecord] = [:]
 
     /// With a `storeURL`, snapshots and the write queue persist across launches:
     /// every mutation archives the state to the file (best-effort — a failed
@@ -42,13 +49,16 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         snapshots = root["snapshots"] as? [String: [CKRecord]] ?? [:]
         queuedSaves = root["saves"] as? [CKRecord] ?? []
         queuedDeletes = root["deletes"] as? [CKRecord.ID] ?? []
+        baselines = (root["baselines"] as? [CKRecord] ?? []).reduce(into: [:]) { $0[$1.recordID] = $1 }
     }
 
     // Callers hold the lock; the archive is a full rewrite, small by design
     // (complete query snapshots plus the pending queue).
     private func persistLocked() {
         guard let storeURL else { return }
-        let root: [String: Any] = ["snapshots": snapshots, "saves": queuedSaves, "deletes": queuedDeletes]
+        let root: [String: Any] = [
+            "snapshots": snapshots, "saves": queuedSaves, "deletes": queuedDeletes, "baselines": Array(baselines.values),
+        ]
         guard let data = try? NSKeyedArchiver.archivedData(withRootObject: root, requiringSecureCoding: true) else { return }
         try? data.write(to: storeURL, options: .atomic)
     }
@@ -60,21 +70,120 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
 
     /// Replays every queued write through the backing database.
     ///
-    /// Returns how many landed; a replay that fails leaves the queue intact.
+    /// Every save replays under the if-unchanged policy. A record whose server
+    /// copy moved while the write sat in the queue is merged when the two edits
+    /// touched disjoint fields; overlapping edits surface in an
+    /// `OfflineFlushError` — never a blind overwrite. Returns how many writes
+    /// landed; a transport failure leaves the unreplayed writes queued for the
+    /// next attempt.
     ///
     @discardableResult public func flush() async throws -> Int {
         let (saves, deletes) = lock.withLock { (queuedSaves, queuedDeletes) }
         guard saves.count + deletes.count > 0 else { return 0 }
-        try await backing.write(records: saves)
-        if deletes.count > 0 {
-            try await backing.modifyRecords(saving: [], deleting: deletes)
+        var conflicts: [OfflineFlushError.Conflict] = []
+        var landed: Set<Int> = []
+        do {
+            for (index, record) in saves.enumerated() {
+                if let conflict = try await push(record) {
+                    conflicts.append(conflict)
+                } else {
+                    landed.insert(index)
+                }
+            }
+            if deletes.count > 0 {
+                try await backing.modifyRecords(saving: [], deleting: deletes)
+            }
+        } catch {
+            // A transport failure keeps everything unreplayed — including the
+            // conflicts found so far, so the next flush reports them again.
+            dequeue(saveIndices: landed, deletes: 0)
+            throw error
         }
+        // Conflicted saves leave the queue too: they are handed to the caller,
+        // and replaying them verbatim could never succeed.
+        dequeue(saveIndices: Set(saves.indices), deletes: deletes.count)
+        guard conflicts.isEmpty else { throw OfflineFlushError(conflicts: conflicts) }
+        return saves.count + deletes.count
+    }
+
+    private func dequeue(saveIndices: Set<Int>, deletes: Int) {
         lock.withLock {
-            queuedSaves.removeFirst(saves.count)
-            queuedDeletes.removeFirst(deletes.count)
+            var index = -1
+            queuedSaves.removeAll { _ in
+                index += 1
+                return saveIndices.contains(index)
+            }
+            queuedDeletes.removeFirst(deletes)
             persistLocked()
         }
-        return saves.count + deletes.count
+    }
+
+    // Replays one queued save under the if-unchanged policy, re-merging against
+    // the moving server record a bounded number of times. Returns the conflict
+    // when the edits overlap; transport and other non-conflict errors throw.
+    private func push(_ record: CKRecord) async throws -> OfflineFlushError.Conflict? {
+        var attempt = record
+        var retries = 3
+        while true {
+            do {
+                for (_, result) in try await backing.saveIfUnchanged([attempt]) {
+                    _ = try result.get()
+                }
+                return nil
+            } catch {
+                guard let server = Self.conflictingServerRecord(in: error) else { throw error }
+                retries -= 1
+                guard retries > 0, let merged = graft(record, onto: server) else {
+                    return OfflineFlushError.Conflict(queued: record, server: server)
+                }
+                attempt = merged
+            }
+        }
+    }
+
+    private static func conflictingServerRecord(in error: any Error) -> CKRecord? {
+        if let conflict = error as? RecordConflictError { return conflict.serverRecord }
+        if let error = error as? CKError, error.code == .serverRecordChanged {
+            return error.userInfo[CKRecordChangedErrorServerRecordKey] as? CKRecord
+        }
+        return nil
+    }
+
+    // The queued record's edits applied on top of the winning server record —
+    // but only when the two sides changed disjoint fields relative to the last
+    // server copy this cache saw. Without that baseline, or with both sides
+    // moving one field to different values, there is nothing safe to merge.
+    private func graft(_ queued: CKRecord, onto server: CKRecord) -> CKRecord? {
+        guard let ancestor = lock.withLock({ baselines[queued.recordID] }) else { return nil }
+        let mine = Self.changedValues(from: ancestor, to: queued)
+        let theirs = Self.changedValues(from: ancestor, to: server)
+        for (key, value) in mine {
+            guard let their = theirs[key], !Self.equalValues(value, their) else { continue }
+            return nil
+        }
+        let merged = server.copy() as! CKRecord
+        for (key, value) in mine {
+            merged[key] = value
+        }
+        return merged
+    }
+
+    // The fields whose values differ between two states of one record; a field
+    // the later state removed carries nil.
+    private static func changedValues(from ancestor: CKRecord, to record: CKRecord) -> [String: CKRecordValue?] {
+        var changes: [String: CKRecordValue?] = [:]
+        for key in Set(ancestor.allKeys()).union(record.allKeys()) where !equalValues(ancestor[key], record[key]) {
+            changes.updateValue(record[key], forKey: key)
+        }
+        return changes
+    }
+
+    private static func equalValues(_ lhs: CKRecordValue?, _ rhs: CKRecordValue?) -> Bool {
+        switch (lhs, rhs) {
+        case (nil, nil): return true
+        case (let lhs?, let rhs?): return (lhs as? NSObject)?.isEqual(rhs) == true
+        default: return false
+        }
     }
 
     // A failure counts as offline when the transport, not the request, is at fault.
@@ -96,12 +205,22 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         let key = cacheKey(query, zoneID, desiredKeys, resultsLimit)
         do {
             let response = try await backing.records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
-            // Only a complete response can stand in for the query later; a first
-            // page served offline would silently truncate the result set.
-            if response.queryCursor == nil {
-                let page = response.matchResults.compactMap { try? $0.1.get() }
-                lock.withLock {
+            let page = response.matchResults.compactMap { try? $0.1.get() }
+            lock.withLock {
+                // A full-fidelity response refreshes the merge baselines; a
+                // projected one cannot — its missing keys would later read as
+                // fields the offline edit removed.
+                if desiredKeys == nil {
+                    for record in page {
+                        baselines[record.recordID] = record
+                    }
+                }
+                // Only a complete response can stand in for the query later; a first
+                // page served offline would silently truncate the result set.
+                if response.queryCursor == nil {
                     snapshots[key] = page
+                }
+                if desiredKeys == nil || response.queryCursor == nil {
                     persistLocked()
                 }
             }
@@ -125,12 +244,23 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    // Continuation pages are never cached — the cursor is opaque and a partial
-    // snapshot would truncate offline reads.
+    // Continuation pages are never cached as snapshots — the cursor is opaque
+    // and a partial snapshot would truncate offline reads — but their full
+    // records still refresh the merge baselines.
     public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        try await backing.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+        let response = try await backing.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+        if desiredKeys == nil {
+            let page = response.matchResults.compactMap { try? $0.1.get() }
+            lock.withLock {
+                for record in page {
+                    baselines[record.recordID] = record
+                }
+                persistLocked()
+            }
+        }
+        return response
     }
 
     public func save(_ record: CKRecord) async throws -> CKRecord {
@@ -180,10 +310,38 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     }
 
     public func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
-        try await backing.fetchRecord(id: id)
+        let record = try await backing.fetchRecord(id: id)
+        if let record {
+            lock.withLock {
+                baselines[record.recordID] = record
+                persistLocked()
+            }
+        }
+        return record
     }
 
     public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?) async throws -> (changed: [CKRecord], deleted: [CKRecord.ID], token: Data?) {
         try await backing.zoneChanges(zoneID: zoneID, since: token)
+    }
+}
+
+/// The offline writes a flush could not replay: queued records whose server
+/// copies moved in ways that overlap the offline edits.
+///
+/// The conflicted writes are removed from the queue — replaying them verbatim
+/// could never succeed. Resolve each one by re-applying the `queued` edit on
+/// top of `server`, through a fresh store update or a manual save.
+///
+public struct OfflineFlushError: LocalizedError {
+    /// One queued write that lost to an overlapping server-side edit.
+    public struct Conflict {
+        public let queued: CKRecord
+        public let server: CKRecord
+    }
+
+    public let conflicts: [Conflict]
+
+    public var errorDescription: String? {
+        "\(conflicts.count) offline write(s) overlap newer server edits"
     }
 }

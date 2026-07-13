@@ -132,6 +132,82 @@ struct OfflineCacheTests {
         #expect(OfflineCache(backing: server, storeURL: url).pendingWrites == 0)
     }
 
+    @Test("Flush grafts disjoint offline edits onto a server record that moved")
+    func flushGraftsDisjointEdits() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        _ = try await store.read(entity: "purchase")
+
+        backing.writeErrors = [CKError(.networkFailure)]
+        var updated = makePurchase().values
+        updated["quantity"] = .int(9)
+        try await store.write(updated, entity: "purchase", uuid: "p-1")
+        #expect(cache.pendingWrites == 1)
+
+        // Another client renamed the product while this one was offline: the
+        // two edits touch disjoint fields, so the flush merges instead of
+        // overwriting the rename.
+        let server = try #require(backing.records.first { $0.recordID.recordName == "p-1" })
+        server["s_00"] = "sku-77"
+        backing.writeErrors = [RecordConflictError(serverRecord: server.copy() as! CKRecord)]
+
+        #expect(try await cache.flush() == 1)
+        #expect(cache.pendingWrites == 0)
+        let record = try #require(try await store.read(entity: "purchase").first)
+        #expect(record.values["product_id"] == .string("sku-77"))
+        #expect(record.values["quantity"] == .int(9))
+    }
+
+    @Test("Flush surfaces an overlapping edit as a conflict instead of overwriting")
+    func flushSurfacesOverlappingEdit() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        _ = try await store.read(entity: "purchase")
+
+        backing.writeErrors = [CKError(.networkFailure)]
+        var updated = makePurchase().values
+        updated["quantity"] = .int(9)
+        try await store.write(updated, entity: "purchase", uuid: "p-1")
+
+        // Another client moved the same field to a different value.
+        let server = try #require(backing.records.first { $0.recordID.recordName == "p-1" })
+        server["i_01"] = 5
+        backing.writeErrors = [RecordConflictError(serverRecord: server.copy() as! CKRecord)]
+
+        do {
+            try await cache.flush()
+            Issue.record("Expected an OfflineFlushError")
+        } catch let error as OfflineFlushError {
+            #expect(error.conflicts.count == 1)
+            #expect(error.conflicts.first?.queued["i_01"] == 9)
+            #expect(error.conflicts.first?.server["i_01"] == 5)
+        }
+        // The conflicted write left the queue and the server's edit survived.
+        #expect(cache.pendingWrites == 0)
+        let record = try #require(try await store.read(entity: "purchase").first)
+        #expect(record.values["quantity"] == .int(5))
+    }
+
+    @Test("A conflict with no remembered baseline surfaces instead of merging")
+    func flushWithoutBaselineConflicts() async throws {
+        // No read happens before the offline edit, so the cache has no merge
+        // base to prove the edits disjoint — even a disjoint-looking conflict
+        // must surface.
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+
+        backing.writeErrors = [CKError(.networkFailure)]
+        var updated = makePurchase().values
+        updated["quantity"] = .int(9)
+        try await store.write(updated, entity: "purchase", uuid: "p-1")
+
+        let server = try #require(backing.records.first { $0.recordID.recordName == "p-1" })
+        server["s_00"] = "sku-77"
+        backing.writeErrors = [RecordConflictError(serverRecord: server.copy() as! CKRecord)]
+
+        await #expect(throws: OfflineFlushError.self) {
+            try await cache.flush()
+        }
+        #expect(cache.pendingWrites == 0)
+    }
+
     @Test("A flush that fails keeps the queue intact")
     func failedFlush() async throws {
         backing.writeErrors = [CKError(.networkFailure)]
