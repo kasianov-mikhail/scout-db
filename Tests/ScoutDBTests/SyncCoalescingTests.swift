@@ -165,6 +165,10 @@ private final class GatedDatabase: CloudDatabase, @unchecked Sendable {
     func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
         try await backing.fetchRecord(id: id)
     }
+
+    func databaseChanges(since token: Data?) async throws -> (changed: [CKRecordZone.ID], deleted: [CKRecordZone.ID], token: Data?) {
+        try await backing.databaseChanges(since: token)
+    }
 }
 
 // A one-way gate: calls park in `pass()` until `open()`, and a test can wait

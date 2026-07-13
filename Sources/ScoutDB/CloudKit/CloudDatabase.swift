@@ -44,6 +44,12 @@ public protocol CloudDatabase: Sendable {
     func fetchRecord(id: CKRecord.ID) async throws -> CKRecord?
     /// One pass of a zone's change feed from an opaque continuation token.
     func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?) async throws -> (changed: [CKRecord], deleted: [CKRecord.ID], token: Data?)
+    /// One pass of the database's zone-level change feed: which zones gained
+    /// changes, which disappeared. The discovery step for accepted shares —
+    /// run it on the shared database, then build a zone-scoped store per zone
+    /// (seed its registry with `register(_:)`, schemas live in the owner's
+    /// default zone).
+    func databaseChanges(since token: Data?) async throws -> (changed: [CKRecordZone.ID], deleted: [CKRecordZone.ID], token: Data?)
 }
 
 extension CloudDatabase {
@@ -194,6 +200,51 @@ extension CKDatabase: CloudDatabase {
                 return try await database.records(for: [id])[id]?.get()
             } catch let error as CKError where error.code == .unknownItem {
                 return nil
+            }
+        }
+    }
+
+    public func databaseChanges(since token: Data?) async throws -> (changed: [CKRecordZone.ID], deleted: [CKRecordZone.ID], token: Data?) {
+        let previous = try token.map { data in
+            guard let unarchived = try NSKeyedUnarchiver.unarchivedObject(ofClass: CKServerChangeToken.self, from: data) else {
+                throw CKError(.invalidArguments)
+            }
+            return unarchived
+        }
+        return try await throttled { database in
+            // The operation reports through callbacks on its own queue, one at a
+            // time; the box only bridges that serial stream into the continuation.
+            final class Collector: @unchecked Sendable {
+                var changed: [CKRecordZone.ID] = []
+                var deleted: [CKRecordZone.ID] = []
+                var latest: CKServerChangeToken?
+            }
+            let collector = Collector()
+
+            return try await withCheckedThrowingContinuation { continuation in
+                let operation = CKFetchDatabaseChangesOperation(previousServerChangeToken: previous)
+                operation.recordZoneWithIDChangedBlock = { zoneID in
+                    collector.changed.append(zoneID)
+                }
+                operation.recordZoneWithIDWasDeletedBlock = { zoneID in
+                    collector.deleted.append(zoneID)
+                }
+                operation.recordZoneWithIDWasPurgedBlock = { zoneID in
+                    collector.deleted.append(zoneID)
+                }
+                operation.changeTokenUpdatedBlock = { token in
+                    collector.latest = token
+                }
+                operation.fetchDatabaseChangesResultBlock = { result in
+                    switch result {
+                    case .success((let token, _)):
+                        let archived = try? NSKeyedArchiver.archivedData(withRootObject: token, requiringSecureCoding: true)
+                        continuation.resume(returning: (collector.changed, collector.deleted, archived))
+                    case .failure(let error):
+                        continuation.resume(throwing: error)
+                    }
+                }
+                database.add(operation)
             }
         }
     }

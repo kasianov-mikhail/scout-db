@@ -352,6 +352,10 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?) async throws -> (changed: [CKRecord], deleted: [CKRecord.ID], token: Data?) {
         try await backing.zoneChanges(zoneID: zoneID, since: token)
     }
+
+    public func databaseChanges(since token: Data?) async throws -> (changed: [CKRecordZone.ID], deleted: [CKRecordZone.ID], token: Data?) {
+        try await backing.databaseChanges(since: token)
+    }
 }
 
 /// The offline writes a flush could not replay: queued records whose server

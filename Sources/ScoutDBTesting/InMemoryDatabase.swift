@@ -14,6 +14,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     public var storedSubscriptions: [CKSubscription] = []
     public var zones: [CKRecordZone.ID] = []
     private var changeLog: [(sequence: Int64, id: CKRecord.ID, deleted: Bool)] = []
+    private var zoneLog: [(sequence: Int64, zone: CKRecordZone.ID)] = []
     private var sequence: Int64 = 0
     public var errors: [Error] = []
     public var writeErrors: [Error] = []
@@ -86,6 +87,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         for id in recordIDs {
             sequence += 1
             changeLog.append((sequence, id, true))
+            zoneLog.append((sequence, id.zoneID))
         }
     }
 
@@ -174,6 +176,20 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         if !zones.contains(zone.zoneID) {
             zones.append(zone.zoneID)
         }
+        sequence += 1
+        zoneLog.append((sequence, zone.zoneID))
+    }
+
+    public func databaseChanges(since token: Data?) async throws -> (changed: [CKRecordZone.ID], deleted: [CKRecordZone.ID], token: Data?) {
+        if let error = errors.popLast() {
+            throw error
+        }
+        let floor = token.flatMap { Int64(String(decoding: $0, as: UTF8.self)) } ?? 0
+        // One entry per zone, mirroring the server's coalesced feed; the double
+        // never hard-deletes zones, so the deleted list stays empty.
+        var seen: Set<CKRecordZone.ID> = []
+        let changed = zoneLog.filter { $0.sequence > floor }.map(\.zone).filter { seen.insert($0).inserted }
+        return (changed.sorted { $0.zoneName < $1.zoneName }, [], Data("\(sequence)".utf8))
     }
 
     // The real server uploads asset bytes during the save, so ScoutDB retires
@@ -213,6 +229,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         record.overrideChangeTag(UUID().uuidString)
         sequence += 1
         changeLog.append((sequence, record.recordID, false))
+        zoneLog.append((sequence, record.recordID.zoneID))
     }
 
     // Every response hands out a copy, the way the server returns a fresh record
