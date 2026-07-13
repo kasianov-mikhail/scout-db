@@ -1,3 +1,12 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/scoutdb-header-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/scoutdb-header-light.svg">
+  <img alt="ScoutDB" width="495" height="144" src="assets/scoutdb-header-light.svg">
+</picture>
+
+<br/>
+<br/>
+
 [![Swift](https://github.com/kasianov-mikhail/scout-db/actions/workflows/swift.yml/badge.svg)](https://github.com/kasianov-mikhail/scout-db/actions/workflows/swift.yml)
 [![Release](https://img.shields.io/github/v/release/kasianov-mikhail/scout-db)](https://github.com/kasianov-mikhail/scout-db/releases)
 ![Swift 6.0](https://img.shields.io/badge/Swift-6.0-orange)
