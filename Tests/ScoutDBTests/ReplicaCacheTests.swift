@@ -213,6 +213,50 @@ struct ReplicaCacheTests {
         #expect(offline.map(\.uuid) == ["p-persist"])
     }
 
+    @Test("One replica mirrors several zones with per-zone completeness")
+    func multipleZones() async throws {
+        let second = CKRecordZone.ID(zoneName: "scout_b", ownerName: CKCurrentUserDefaultName)
+        let replica = ReplicaCache(backing: backing, zones: [zone, second])
+        let registry = SchemaRegistry(database: replica)
+        let mine = EntityStore(database: replica, registry: registry, zoneID: zone)
+        let theirs = EntityStore(database: replica, registry: registry, zoneID: second)
+        try await theirs.ensureZone()
+
+        try await mine.write(makePurchase().values, entity: "purchase", uuid: "z-a")
+        try await theirs.write(makePurchase().values, entity: "purchase", uuid: "z-b")
+
+        // Offline reads stay zone-scoped: each store sees only its zone.
+        backing.errors = [CKError(.networkUnavailable), CKError(.networkUnavailable)]
+        #expect(try await mine.read(entity: "purchase").map(\.uuid) == ["z-a"])
+        #expect(try await theirs.read(entity: "purchase").map(\.uuid) == ["z-b"])
+
+        // Completeness is per zone: refreshing both flips the whole mirror.
+        #expect(!replica.hasCompleteMirror)
+        try await replica.refresh()
+        #expect(replica.hasCompleteMirror)
+    }
+
+    @Test("discoverZones registers active zones incrementally")
+    func zoneDiscovery() async throws {
+        // Records land behind the replica's back; the database feed leads to them.
+        let direct = EntityStore(database: backing, registry: SchemaRegistry(database: backing), zoneID: zone)
+        try await direct.write(makePurchase().values, entity: "purchase", uuid: "d-1")
+
+        let replica = ReplicaCache(backing: backing, zones: [])
+        let added = try await replica.discoverZones()
+        #expect(added.contains(zone))
+        #expect(replica.zoneIDs.contains(zone))
+        // Discovery is incremental — a quiet feed adds nothing new.
+        #expect(try await replica.discoverZones().isEmpty)
+
+        try await replica.refresh()
+        let store = EntityStore(database: replica, registry: SchemaRegistry(database: replica), zoneID: zone)
+        // One online read warms the schema cache; the offline one hits the mirror.
+        _ = try await store.read(entity: "purchase")
+        backing.errors = [CKError(.networkUnavailable)]
+        #expect(try await store.read(entity: "purchase").map(\.uuid) == ["d-1"])
+    }
+
     @Test("Composed outside an offline cache, queued writes reach novel offline queries")
     func composesWithOfflineCache() async throws {
         let cache = OfflineCache(backing: backing)
