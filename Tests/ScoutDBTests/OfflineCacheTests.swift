@@ -132,6 +132,68 @@ struct OfflineCacheTests {
         #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-2"])
     }
 
+    @Test("A conflict resolver decides overlapping edits the graft cannot merge")
+    func conflictResolverMerges() async throws {
+        // The larger quantity wins a two-sided edit of the same field.
+        struct LargerQuantityWins: ConflictResolver {
+            func resolve(queued: CKRecord, server: CKRecord, ancestor: CKRecord?) -> ConflictResolution {
+                let merged = server.copy() as! CKRecord
+                merged["i_01"] = max((queued["i_01"] as? Int64) ?? 0, (server["i_01"] as? Int64) ?? 0)
+                return .save(merged)
+            }
+        }
+        let cache = OfflineCache(backing: backing, conflictResolver: LargerQuantityWins())
+        let store = EntityStore(database: cache, registry: SchemaRegistry(database: cache))
+
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        _ = try await store.read(entity: "purchase")
+
+        backing.writeErrors = [CKError(.networkFailure)]
+        var updated = makePurchase().values
+        updated["quantity"] = .int(9)
+        try await store.write(updated, entity: "purchase", uuid: "p-1")
+
+        // Another client moved the same field: the graft cannot merge, the
+        // resolver picks the larger value and the flush lands it.
+        let server = try #require(backing.records.first { $0.recordID.recordName == "p-1" })
+        server["i_01"] = 5
+        backing.writeErrors = [RecordConflictError(serverRecord: server.copy() as! CKRecord)]
+
+        #expect(try await cache.flush() == 1)
+        #expect(cache.pendingWrites == 0)
+        let record = try #require(try await store.read(entity: "purchase").first)
+        #expect(record.values["quantity"] == .int(9))
+    }
+
+    @Test("A resolver keeping the server copy retires the queued write")
+    func conflictResolverKeepsServer() async throws {
+        struct ServerWins: ConflictResolver {
+            func resolve(queued: CKRecord, server: CKRecord, ancestor: CKRecord?) -> ConflictResolution {
+                .keepServer
+            }
+        }
+        let cache = OfflineCache(backing: backing, conflictResolver: ServerWins())
+        let store = EntityStore(database: cache, registry: SchemaRegistry(database: cache))
+
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        _ = try await store.read(entity: "purchase")
+
+        backing.writeErrors = [CKError(.networkFailure)]
+        var updated = makePurchase().values
+        updated["quantity"] = .int(9)
+        try await store.write(updated, entity: "purchase", uuid: "p-1")
+
+        let server = try #require(backing.records.first { $0.recordID.recordName == "p-1" })
+        server["i_01"] = 5
+        backing.writeErrors = [RecordConflictError(serverRecord: server.copy() as! CKRecord)]
+
+        // The flush retires the queued write without touching the server copy.
+        #expect(try await cache.flush() == 1)
+        #expect(cache.pendingWrites == 0)
+        let record = try #require(try await store.read(entity: "purchase").first)
+        #expect(record.values["quantity"] == .int(5))
+    }
+
     @Test("Snapshots and the write queue survive a relaunch")
     func persistence() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("scout-offline-\(UUID().uuidString)")
