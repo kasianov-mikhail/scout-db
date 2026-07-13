@@ -59,6 +59,28 @@ public final class InMemoryContainer: CloudContainer, @unchecked Sendable {
 
     public func acceptShare(metadata: CKShare.Metadata) async throws {}
 
+    /// The share URLs `shareMetadata(for:)` was asked to resolve, in call order.
+    ///
+    /// CloudKit does not let tests fabricate `CKShare.Metadata` instances, so
+    /// the double records the requests and answers `unknownItem` — inject an
+    /// error through `metadataErrors` to exercise failure paths instead.
+    public var requestedShareURLs: [URL] {
+        lock.withLock { shareURLs }
+    }
+
+    /// Errors popped by `shareMetadata(for:)`, newest first.
+    public var metadataErrors: [Error] = []
+
+    private var shareURLs: [URL] = []
+
+    public func shareMetadata(for url: URL) async throws -> CKShare.Metadata {
+        lock.withLock { shareURLs.append(url) }
+        if let error = metadataErrors.popLast() {
+            throw error
+        }
+        throw CKError(.unknownItem)
+    }
+
     public func accountStatusUpdates() -> AsyncStream<CKAccountStatus> {
         AsyncStream { continuation in
             let id = UUID()
