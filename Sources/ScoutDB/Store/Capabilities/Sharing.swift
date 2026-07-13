@@ -63,6 +63,29 @@ extension EntityStore {
         try await database.write(record: share)
     }
 
+    /// Invites people to the zone share by email or phone.
+    ///
+    /// Resolves the identities through the container, marks each participant
+    /// with `permission`, and saves them onto the zone-wide share — which must
+    /// already exist (`shareZone()` first). Hand `share.url` to the invitees;
+    /// acceptance runs through the system flow and
+    /// `CloudContainer.acceptShare(metadata:)`.
+    ///
+    @discardableResult public func inviteToShare(
+        emails: [String] = [], phoneNumbers: [String] = [], permission: CKShare.ParticipantPermission = .readWrite, via container: any CloudContainer
+    ) async throws -> CKShare {
+        guard let share = try await zoneShare() else {
+            throw SchemaError.notFound(CKRecordNameZoneWideShare)
+        }
+        let infos = emails.map(CKUserIdentity.LookupInfo.init(emailAddress:)) + phoneNumbers.map(CKUserIdentity.LookupInfo.init(phoneNumber:))
+        for participant in try await container.lookUpShareParticipants(infos) {
+            participant.permission = permission
+            share.addParticipant(participant)
+        }
+        try await database.write(record: share)
+        return share
+    }
+
     /// Removes a participant from the zone share.
     ///
     /// The owner cannot be removed — CloudKit raises an unrecoverable exception

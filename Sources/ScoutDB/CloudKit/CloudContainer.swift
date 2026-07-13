@@ -23,6 +23,17 @@ public protocol CloudContainer: Sendable {
     /// Emits the fresh status after every account change.
     func accountStatusUpdates() -> AsyncStream<CKAccountStatus>
 
+    /// Resolves user identities (emails, phone numbers) into share participants.
+    func lookUpShareParticipants(_ lookupInfos: [CKUserIdentity.LookupInfo]) async throws -> [CKShare.Participant]
+
+    /// Accepts a share invitation on behalf of the current user.
+    ///
+    /// The metadata arrives through the system acceptance flow — the
+    /// `userDidAcceptCloudKitShareWith` scene callback or
+    /// `CKFetchShareMetadataOperation` on a share URL.
+    ///
+    func acceptShare(metadata: CKShare.Metadata) async throws
+
     var privateDatabase: any CloudDatabase { get }
     var publicDatabase: any CloudDatabase { get }
     var sharedDatabase: any CloudDatabase { get }
@@ -68,6 +79,41 @@ extension CKContainer: CloudContainer {
 
     public var sharedDatabase: any CloudDatabase {
         sharedCloudDatabase
+    }
+
+    public func lookUpShareParticipants(_ lookupInfos: [CKUserIdentity.LookupInfo]) async throws -> [CKShare.Participant] {
+        guard lookupInfos.count > 0 else { return [] }
+        // The operation reports through callbacks on its own queue, one at a
+        // time; the box only bridges that serial stream into the continuation.
+        final class Collector: @unchecked Sendable {
+            var participants: [CKShare.Participant] = []
+            var failure: (any Error)?
+        }
+        let collector = Collector()
+        return try await withCheckedThrowingContinuation { continuation in
+            let operation = CKFetchShareParticipantsOperation(userIdentityLookupInfos: lookupInfos)
+            operation.perShareParticipantResultBlock = { _, result in
+                switch result {
+                case .success(let participant): collector.participants.append(participant)
+                case .failure(let error): collector.failure = error
+                }
+            }
+            operation.fetchShareParticipantsResultBlock = { result in
+                switch result {
+                case .success where collector.failure == nil:
+                    continuation.resume(returning: collector.participants)
+                case .success:
+                    continuation.resume(throwing: collector.failure!)
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+            self.add(operation)
+        }
+    }
+
+    public func acceptShare(metadata: CKShare.Metadata) async throws {
+        _ = try await accept(metadata)
     }
 
     public func accountStatusUpdates() -> AsyncStream<CKAccountStatus> {

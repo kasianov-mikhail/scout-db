@@ -42,6 +42,34 @@ struct CloudContainerTests {
         #expect(try await container.accountStatus() == .available)
     }
 
+    @Test("Invitations resolve identities through the container and save the share")
+    func inviteToShare() async throws {
+        let container = InMemoryContainer()
+        guard let database = container.privateDatabase as? InMemoryDatabase else {
+            Issue.record("Expected the in-memory double")
+            return
+        }
+        let registry = SchemaRegistry(database: database)
+        try await registry.publish(makePurchaseDefinition())
+        let zone = CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName)
+        let store = EntityStore(database: database, registry: registry, zoneID: zone)
+        try await store.ensureZone()
+
+        // Without a share the invitation fails loudly.
+        await #expect(throws: SchemaError.notFound(CKRecordNameZoneWideShare)) {
+            try await store.inviteToShare(emails: ["ada@example.com"], via: container)
+        }
+
+        try await store.shareZone(title: "Scout")
+        let share = try await store.inviteToShare(emails: ["ada@example.com"], phoneNumbers: ["+1555"], via: container)
+
+        // The double cannot fabricate participants, so it records the lookups;
+        // the share round-trips through the save either way.
+        #expect(container.lookedUpParticipants.count == 2)
+        #expect(share.recordID.recordName == CKRecordNameZoneWideShare)
+        #expect(try await store.zoneShare() != nil)
+    }
+
     @Test("The three databases are distinct stores")
     func distinctDatabases() async throws {
         let container = InMemoryContainer()

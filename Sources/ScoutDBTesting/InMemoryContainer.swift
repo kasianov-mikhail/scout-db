@@ -42,6 +42,23 @@ public final class InMemoryContainer: CloudContainer, @unchecked Sendable {
         }
     }
 
+    /// The identities `lookUpShareParticipants` was asked to resolve, in call order.
+    ///
+    /// CloudKit does not let tests fabricate `CKShare.Participant` instances, so
+    /// the double records the requests and resolves none of them.
+    public var lookedUpParticipants: [CKUserIdentity.LookupInfo] {
+        lock.withLock { lookups }
+    }
+
+    private var lookups: [CKUserIdentity.LookupInfo] = []
+
+    public func lookUpShareParticipants(_ lookupInfos: [CKUserIdentity.LookupInfo]) async throws -> [CKShare.Participant] {
+        lock.withLock { lookups.append(contentsOf: lookupInfos) }
+        return []
+    }
+
+    public func acceptShare(metadata: CKShare.Metadata) async throws {}
+
     public func accountStatusUpdates() -> AsyncStream<CKAccountStatus> {
         AsyncStream { continuation in
             let id = UUID()
