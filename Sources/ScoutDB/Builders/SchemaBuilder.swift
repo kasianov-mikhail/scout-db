@@ -31,6 +31,7 @@ public struct SchemaBuilder {
     private var declarations: [Declaration] = []
     private var envelopeDate: String?
     private var unique: [String]?
+    private var uniqueKeys: [[String]]?
     private var views: [AggregateView]?
     private var keyID: String?
     private var ttl: Double?
@@ -83,6 +84,20 @@ public struct SchemaBuilder {
     public func unique(on fields: String...) -> Self {
         var builder = self
         builder.unique = fields
+        return builder
+    }
+
+    /// Adds an enforced uniqueness constraint over the named fields.
+    ///
+    /// Unlike `unique(on:)`, which derives the record's identity, a unique key
+    /// only rejects writes that would duplicate another live record's values —
+    /// declare several for independent keys (an email and a username). Records
+    /// missing any of the key's fields are exempt. The check is client-side
+    /// and best-effort under concurrency, like the reference checks.
+    ///
+    public func uniqueKey(on fields: String...) -> Self {
+        var builder = self
+        builder.uniqueKeys = (uniqueKeys ?? []) + [fields]
         return builder
     }
 
@@ -153,6 +168,7 @@ public struct SchemaBuilder {
             fields: fields,
             envelopeDate: envelopeDate ?? previous?.envelopeDate,
             unique: unique ?? previous?.unique,
+            uniqueKeys: uniqueKeys ?? previous?.uniqueKeys,
             views: views ?? previous?.views,
             keyID: keyID ?? previous?.keyID,
             ttl: ttl ?? previous?.ttl
