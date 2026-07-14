@@ -108,7 +108,8 @@ struct SchemaConsistencyTests {
         var directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         while directory.path != "/" {
             let candidate = directory.appendingPathComponent("Schema")
-            if FileManager.default.fileExists(atPath: candidate.path) {
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory), !isDirectory.boolValue {
                 return candidate
             }
             directory.deleteLastPathComponent()
