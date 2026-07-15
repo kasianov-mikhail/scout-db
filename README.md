@@ -30,15 +30,12 @@ schema freely — the CloudKit [schema](Schema) is uploaded once and never touch
 
 | | | |
 |:-:|-|-|
-| 🗂 | **Entities** | Declare fields, constraints, defaults, and unique keys with a chainable schema builder — no CloudKit Console clicking. |
-| 🔄 | **Migrations** | Rename, retype, add, and remove fields as new schema versions. Old records stay readable forever; nothing is ever re-imported. |
-| 🔍 | **Queries** | Filters, sorting, pagination, streaming, full-text search, geo radius, and batch update/delete through a query builder. |
-| 📊 | **Aggregation** | Counters, sums, extremes, deviation, and percentiles maintained on write — reads never scan raw records. |
+| 🗂 | **Schema** | Declare fields, constraints, defaults, and unique keys with a chainable schema builder, then rename, retype, add, or remove fields as new schema versions — old records stay readable forever, nothing is ever re-imported. |
+| 🔍 | **Queries** | Filters, sorting, pagination, streaming, full-text search, geo radius, and batch update/delete through a query builder, plus counters, sums, extremes, deviation, and percentiles maintained on write so reads never scan raw records. |
 | 🔐 | **Security** | Client-side field encryption with key rotation, filterable hashed surrogates, and trusted-writer filtering for public databases. |
 | 📎 | **Records** | Assets up to 50 MB per field, entity references with cascading delete, an opt-in audit log, and soft delete/TTL lifecycle. |
 | 🔗 | **Sharing** | Zone-wide and single-record `CKShare`s, participant invitations, and accept-by-URL for collaborative data. |
-| 📡 | **Sync** | A batched, resumable zone-change feed with selective field projections, push-triggered sync, and a live-query model for SwiftUI. |
-| 📴 | **Offline** | Local-first zone replicas and a queued write cache with app-resolved conflicts, both LRU-bounded. |
+| 📡 | **Sync** | A batched, resumable zone-change feed with selective field projections and push-triggered sync, plus local-first zone replicas and a queued write cache with app-resolved conflicts, both LRU-bounded. |
 | ⚙️ | **Reliability** | Unique-key upserts, optimistic concurrency, outbox transactions, and telemetry over every request ScoutDB makes. |
 
 ## 📱 Requirements
