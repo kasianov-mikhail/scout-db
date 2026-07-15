@@ -1,6 +1,6 @@
 .build/
 .DS_Store
 .swiftpm/xcode/xcuserdata/
-LiveTestHost/LiveTestHost.xcodeproj/
-LiveTestHost/Info.plist
-LiveTestHost/LiveTestHost.entitlements
+Tests/ScoutDBTestHost/ScoutDBTestHost.xcodeproj/
+Tests/ScoutDBTestHost/Info.plist
+Tests/ScoutDBTestHost/ScoutDBTestHost.entitlements

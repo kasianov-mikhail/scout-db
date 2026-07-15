@@ -24,9 +24,9 @@ test` bundles cannot call `CKContainer` at all. This directory holds an
 4. **Generate and run:**
 
    ```sh
-   cd LiveTestHost
+   cd Tests/ScoutDBTestHost
    xcodegen generate
-   xcodebuild test -project LiveTestHost.xcodeproj -scheme LiveTestHost \
+   xcodebuild test -project ScoutDBTestHost.xcodeproj -scheme ScoutDBTestHost \
        -destination 'platform=iOS Simulator,name=iPhone 16'
    ```
 
@@ -39,7 +39,7 @@ Two one-time steps, both observed on the first real run:
 1. **Container creation.** `xcodebuild -allowProvisioningUpdates` registers
    the App ID but does not create the CloudKit container — every call fails
    with "Bad Container" (CKError 1014) until it exists. Open the generated
-   project once in Xcode → target LiveTestHost → Signing & Capabilities →
+   project once in Xcode → target ScoutDBTestHost → Signing & Capabilities →
    press the refresh button under the iCloud container list (or create the
    identifier on the developer portal).
 2. **The `___modTime` index.** The development environment creates record

@@ -17,7 +17,7 @@ import Testing
 /// hermetic, and part of the regular suite. Setting `SCOUTDB_CONTRACT_CONTAINER`
 /// to a CloudKit container identifier switches the same tests to that
 /// container's private database, which requires a signed test host with the
-/// iCloud entitlement and a logged-in account — see LiveTestHost/README.md.
+/// iCloud entitlement and a logged-in account — see Tests/ScoutDBTestHost/README.md.
 ///
 enum ContractBackend {
     static var containerID: String? {
