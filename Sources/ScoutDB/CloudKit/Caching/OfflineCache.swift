@@ -242,9 +242,12 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
                     continue
                 }
                 switch await resolve(record, against: server) {
-                case .save(let resolved): attempt = resolved
-                case .keepServer: return nil
-                case .surface: return OfflineFlushError.Conflict(queued: record, server: server)
+                case .save(let resolved):
+                    attempt = resolved
+                case .keepServer:
+                    return nil
+                case .surface:
+                    return OfflineFlushError.Conflict(queued: record, server: server)
                 }
             }
         }

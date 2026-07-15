@@ -115,8 +115,10 @@ extension CKContainer: CloudContainer {
             let operation = CKFetchShareParticipantsOperation(userIdentityLookupInfos: lookupInfos)
             operation.perShareParticipantResultBlock = { _, result in
                 switch result {
-                case .success(let participant): collector.participants.append(participant)
-                case .failure(let error): collector.failure = error
+                case .success(let participant):
+                    collector.participants.append(participant)
+                case .failure(let error):
+                    collector.failure = error
                 }
             }
             operation.fetchShareParticipantsResultBlock = { result in
