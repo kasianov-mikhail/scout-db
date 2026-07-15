@@ -13,12 +13,12 @@
 ![Platform](https://img.shields.io/badge/platform-iOS%2016%2B%20%7C%20macOS%2013%2B-blue)
 [![License](https://img.shields.io/github/license/kasianov-mikhail/scout-db)](LICENSE)
 
-## Description
+## 📖 Description
 [ScoutDB](https://github.com/kasianov-mikhail/scout-db) adds entities, migrations, and structured queries on top of CloudKit. Define entities
 in code, query them with filters and sorting, aggregate without scanning, and evolve your
 schema freely — the CloudKit [schema](Schema) is uploaded once and never touched again.
 
-## Table of Contents
+## 📋 Table of Contents
 - [Features](#features)
 - [Requirements](#requirements)
 - [Installation](#installation)
@@ -26,7 +26,7 @@ schema freely — the CloudKit [schema](Schema) is uploaded once and never touch
 - [Documentation](#documentation)
 - [License](#license)
 
-## Features
+## ✨ Features
 
 | | | |
 |:-:|-|-|
@@ -41,13 +41,13 @@ schema freely — the CloudKit [schema](Schema) is uploaded once and never touch
 | 📴 | **Offline** | Local-first zone replicas and a queued write cache with app-resolved conflicts, both LRU-bounded. |
 | ⚙️ | **Reliability** | Unique-key upserts, optimistic concurrency, outbox transactions, and telemetry over every request ScoutDB makes. |
 
-## Requirements
+## 📱 Requirements
 
 - iOS 16.0+ / macOS 13.0+
 - Swift 6.0+
 - [Apple Developer](https://developer.apple.com) account with [CloudKit](https://developer.apple.com/icloud/cloudkit/) enabled
 
-## Installation
+## 📦 Installation
 
 Add the package to your `Package.swift`:
 
@@ -64,7 +64,7 @@ open **Schema**, and use **Import Schema** to upload the file to the Development
 Deploy it to Production from the console when ready — this is the only schema upload the
 container will ever need.
 
-## Usage
+## 🚀 Usage
 
 ```swift
 import CloudKit
@@ -94,23 +94,24 @@ let recent = try await store.query("purchase")
     .all()
 ```
 
-## Documentation
+## 📚 Documentation
 
-- [Getting started](docs/getting-started.md)
-- [Schema](docs/schema.md)
-- [Migrations](docs/migrations.md)
-- [Filtering](docs/filtering.md)
-- [Operators](docs/operators.md)
-- [Aggregation](docs/aggregation.md)
-- [Records](docs/records.md) — assets, relations, revisions, soft delete, and TTL
-- [The @Entity macro](docs/macros.md) — typed structs instead of value dictionaries
-- [Sharing](docs/sharing.md) — zone-wide and single-record `CKShare`s
-- [Sync](docs/sync.md) — the zone change feed, selective sync, and live queries
-- [Offline](docs/offline.md) — zone replicas and the queued write cache
-- [Security](docs/security.md)
-- [Telemetry](docs/telemetry.md) — request observability and previously-silent failures
-- [Live contract testing](LiveTestHost/README.md)
+| Doc | Covers |
+|---|---|
+| 🚀 [Getting started](docs/getting-started.md) | install, connect, and write your first entity |
+| 🧬 [Schema](docs/schema.md) | the frozen physical schema |
+| 🔄 [Migrations](docs/migrations.md) | evolving entities without ever re-importing |
+| 🔍 [Filtering](docs/filtering.md) | the query builder and shadow-field techniques |
+| ⚙️ [Operators](docs/operators.md) | the full operator reference |
+| 📊 [Aggregation](docs/aggregation.md) | materialized counters, sums, and percentiles |
+| 📎 [Records](docs/records.md) | assets, relations, revisions, soft delete, and TTL |
+| 🧩 [The @Entity macro](docs/macros.md) | typed structs instead of value dictionaries |
+| 🔗 [Sharing](docs/sharing.md) | zone-wide and single-record `CKShare`s |
+| 📡 [Sync](docs/sync.md) | the zone change feed, selective sync, and live queries |
+| 📴 [Offline](docs/offline.md) | zone replicas and the queued write cache |
+| 🔐 [Security](docs/security.md) | field encryption and trusted writers |
+| 📈 [Telemetry](docs/telemetry.md) | request observability and previously-silent failures |
 
-## License
+## 📄 License
 
 ScoutDB is available under the MIT license. See the [LICENSE](LICENSE) file for details.

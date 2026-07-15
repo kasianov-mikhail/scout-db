@@ -1,18 +1,21 @@
-# Sync
+# 📡 Sync
 
 CloudKit's zone change feed is the only way to discover what changed without re-querying
 everything. ScoutDB decodes that feed into typed items, walks it in resumable batches, and
 wires it to push notifications and SwiftUI so a view updates itself when data changes
 anywhere — locally or on another device.
 
-## Reading the change feed
+## 📖 Reading the change feed
 
 ```swift
 let delta = try await store.zoneChanges(since: savedToken)
-// delta.records: [EntityRecord] — changed and tombstoned records
-// delta.deleted: [String]       — hard-deleted uuids
-// delta.token:   Data?          — persist this, pass it back next time
 ```
+
+| Field | Holds |
+|---|---|
+| `delta.records` | `[EntityRecord]` — changed and tombstoned records |
+| `delta.deleted` | `[String]` — hard-deleted uuids |
+| `delta.token` | `Data?` — persist this, pass it back next time |
 
 `since: nil` replays the zone from the beginning. Decode into typed items instead of raw
 records:
@@ -22,7 +25,7 @@ let purchases: [Purchase] = delta.items(Purchase.self)
 let removedIDs: [String] = delta.deletedIDs(of: Purchase.self)
 ```
 
-## Batched walking with progress
+## 📦 Batched walking with progress
 
 A large backlog shouldn't be one unbounded round trip. Ask for a stream of deltas instead,
 one per batch, each carrying its own resumable token:
@@ -51,7 +54,7 @@ coordinator.start(every: .seconds(300)) { delta in
 A killed sync resumes mid-feed rather than restarting — each batch's token is persisted
 before the next batch is fetched.
 
-## Selective sync
+## 🎯 Selective sync
 
 Pull only the fields a view actually needs instead of full payloads and assets:
 
@@ -64,7 +67,7 @@ Fields left out of the projection decode as `nil` on the records the feed return
 write a projected record back whole**, or you'll erase the fields you didn't fetch.
 `SyncCoordinator(projecting:)` applies the same projections to every pass.
 
-## Push-triggered sync
+## 🔔 Push-triggered sync
 
 One silent push per database change, then pull the delta — cheaper than a subscription per
 entity:
@@ -84,11 +87,11 @@ func application(_ app: UIApplication, didReceiveRemoteNotification userInfo: [A
 }
 ```
 
-`subscribe(entity:filters:id:)` creates a per-entity `CKQuerySubscription` instead, if you'd
-rather filter server-side which changes wake the app; only server-evaluable filters are
-allowed there.
+`subscribe(entity:filters:id:)` creates a per-entity subscription instead, if you'd rather
+filter server-side which changes wake the app; only server-evaluable filters are allowed
+there.
 
-## Live queries in SwiftUI
+## 🔴 Live queries in SwiftUI
 
 `query(_:).live()` returns an observable model that re-runs the query whenever a local write
 or an applied sync delta touches its entity — no manual refresh:
@@ -108,7 +111,7 @@ struct PurchaseListView: View {
 worth running even when nothing in the UI is polling directly — a live query updates itself
 the moment a coordinator pass lands.
 
-## Trade-offs
+## ⚖️ Trade-offs
 
 - Progress from a batched walk is a running count, not a fraction — the total size of an
   unfetched backlog isn't knowable in advance.

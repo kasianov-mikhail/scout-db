@@ -1,4 +1,4 @@
-# Filtering
+# 🔍 Filtering
 
 Open a query with `store.query(_:)`, chain clauses, finish with an executor:
 
@@ -11,10 +11,18 @@ let failures = try await store.query("log")
     .all()
 ```
 
-Executors: `all()`, `first()`, `count()`, `paginate(size:after:)`, `stream(pageSize:)`,
-`update(_:)`, `delete()`, and `explain()`.
+| Executor | Returns |
+|---|---|
+| `all()` | every matching record |
+| `first()` | the first matching record, if any |
+| `count()` | the number of matches |
+| `paginate(size:after:)` | one page plus a cursor for the next |
+| `stream(pageSize:)` | an async sequence of pages |
+| `update(_:)` | applies a transform to every match |
+| `delete()` | deletes every match |
+| `explain()` | the query plan, for debugging |
 
-## Operator sugar
+## 🧪 Operator sugar
 
 ```swift
 .filter("quantity" > 5)          // ranges: > >= < <=
@@ -27,7 +35,7 @@ Executors: `all()`, `first()`, `count()`, `paginate(size:after:)`, `stream(pageS
 String equality via `==` collides with Swift's own `String == String`, so spell it
 `.filter("field", .equals, "value")`.
 
-## OR groups
+## 🔀 OR groups
 
 CloudKit combines predicates with `AND` only. A group of alternatives is `OR`-ed inside and
 `AND`-ed with the rest of the query; behind the scenes it fans out into one server query per
@@ -42,14 +50,14 @@ branch:
 
 Prefer a single `in` filter when the branches only differ by one field's value.
 
-## Performance
+## ⚡ Performance
 
 Some operators (`matches`, `isNull`, substring `contains` without a shadow field) scan the
 records the rest of the query selects — on large entities, combine them with at least one
 selective filter such as an equality or a date range. `explain()` prints the plan of a query
 when in doubt.
 
-## Shadow fields
+## 👻 Shadow fields
 
 Three matching capabilities CloudKit lacks are recovered by declaring a derived shadow field
 once; the matching operators pick it up automatically:
@@ -61,12 +69,13 @@ once; the matching operators pick it up automatically:
 .field("title_grams", .stringList, .derived(from: "title", .ngrams))    // substring prefilter
 ```
 
-- `reversed` turns `endsWith` into a server-side prefix query.
-- `fold` holds the lowercased, diacritic-stripped value; query it with a pre-folded needle.
-- `ngrams` holds trigrams of the folded value; `contains` and `like` use it to narrow the
-  scan server-side before the exact client-side check.
+| Derivation | Recovers |
+|---|---|
+| `reversed` | server-side `endsWith`, as a prefix query |
+| `fold` | case/diacritic-insensitive matching |
+| `ngrams` | a substring prefilter, narrowed further client-side |
 
-## Existence and projections
+## 🎯 Existence and projections
 
 `isNull` / `isNotNull` are always client-side — CloudKit cannot match a missing field — and
 work on payload fields too. Projections fetch only what you name:
