@@ -45,13 +45,13 @@ let package = Package(
         .executableTarget(
             name: "scoutdb-codegen",
             dependencies: ["ScoutDB"],
-            path: "Sources/ScoutDBCodegen"
+            path: "Sources/ScoutDBCodegen/Tool"
         ),
         .plugin(
             name: "CodegenPlugin",
             capability: .buildTool(),
             dependencies: ["scoutdb-codegen"],
-            path: "CodegenPlugin"
+            path: "Sources/ScoutDBCodegen/Plugin"
         ),
         .testTarget(
             name: "ScoutDBTests",
