@@ -51,9 +51,27 @@ for large entities.
 
 ## ⚖️ Trade-offs
 
-| | |
-|---|---|
-| 🔮 **Questions must be known in advance.** | A view added later covers new writes only; replay history through a backfill to cover the past. |
-| ✍️ **Write amplification.** | Each view adds one counter update per write. |
-| 🤝 **Concurrent writers merge.** | Aggregates update by compare-and-swap on the grid record's change tag, instead of overwriting each other. |
-| 🔁 **Deletes and updates rebalance the views.** | `delete`, `deleteAll`, `reap`, `update`, and `updateAll` reverse the removed record's contribution, so `count`, `sum`, `stats`, and `histogram` views stay accurate as records change. A `min`/`max` extremum is the exception: it cannot be recomputed without rescanning, so its value is left as-is when a record leaves (the count still decrements). Backfill a `min`/`max` view if you need it exact after deletes. |
+<table>
+<colgroup>
+<col width="38%">
+<col width="62%">
+</colgroup>
+<tbody>
+<tr>
+<td>🔮 <strong>Questions must be known in advance.</strong></td>
+<td>A view added later covers new writes only; replay history through a backfill to cover the past.</td>
+</tr>
+<tr>
+<td>✍️ <strong>Write amplification.</strong></td>
+<td>Each view adds one counter update per write.</td>
+</tr>
+<tr>
+<td>🤝 <strong>Concurrent writers merge.</strong></td>
+<td>Aggregates update by compare-and-swap on the grid record's change tag, instead of overwriting each other.</td>
+</tr>
+<tr>
+<td>🔁 <strong>Deletes and updates rebalance the views.</strong></td>
+<td><code>delete</code>, <code>deleteAll</code>, <code>reap</code>, <code>update</code>, and <code>updateAll</code> reverse the removed record's contribution, so <code>count</code>, <code>sum</code>, <code>stats</code>, and <code>histogram</code> views stay accurate as records change. A <code>min</code>/<code>max</code> extremum is the exception: it cannot be recomputed without rescanning, so its value is left as-is when a record leaves (the count still decrements). Backfill a <code>min</code>/<code>max</code> view if you need it exact after deletes.</td>
+</tr>
+</tbody>
+</table>
