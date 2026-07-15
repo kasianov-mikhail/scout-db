@@ -23,7 +23,6 @@ schema freely — the CloudKit [schema](Schema) is uploaded once and never touch
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Usage](#usage)
-- [Documentation](#documentation)
 - [License](#license)
 
 ## ✨ Features
@@ -61,6 +60,9 @@ open **Schema**, and use **Import Schema** to upload the file to the Development
 Deploy it to Production from the console when ready — this is the only schema upload the
 container will ever need.
 
+See the [docs](docs) folder for guides on migrations, filtering, aggregation, sharing, sync,
+offline support, and more.
+
 ## 🚀 Usage
 
 ```swift
@@ -90,23 +92,6 @@ let recent = try await store.query("purchase")
     .limit(20)
     .all()
 ```
-
-## 📚 Documentation
-
-| Doc | Covers |
-|---|---|
-| 🚀 [Getting started](docs/getting-started.md) | install, connect, and write your first entity |
-| 🧬 [Schema](docs/schema.md) | the frozen physical schema |
-| 🔄 [Migrations](docs/migrations.md) | evolving entities without ever re-importing |
-| 🔍 [Filtering](docs/filtering.md) | the query builder and shadow-field techniques |
-| ⚙️ [Operators](docs/operators.md) | the full operator reference |
-| 📊 [Aggregation](docs/aggregation.md) | materialized counters, sums, and percentiles |
-| 📎 [Records](docs/records.md) | assets, relations, revisions, soft delete, and TTL |
-| 🧩 [The @Entity macro](docs/macros.md) | typed structs instead of value dictionaries |
-| 🔗 [Sharing](docs/sharing.md) | zone-wide and single-record `CKShare`s |
-| 📡 [Sync](docs/sync.md) | the zone change feed, selective sync, and live queries |
-| 📴 [Offline](docs/offline.md) | zone replicas and the queued write cache |
-| 🔐 [Security](docs/security.md) | field encryption and trusted writers |
 
 ## 📄 License
 
