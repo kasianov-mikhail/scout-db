@@ -12,7 +12,7 @@ import CloudKit
 /// Re-validate with `verifyParallelismBenchmark` if CloudKit's behavior changes.
 public let cloudKitParallelismLimit = 8
 
-let requestLimiter = CloudKitRequestLimiter(limit: cloudKitParallelismLimit, timeout: requestTimeout, monitor: cloudKitRequestActivity)
+let requestLimiter = CloudKitRequestLimiter(limit: cloudKitParallelismLimit, timeout: requestTimeout)
 
 // A backstop above CloudKit's own 10s request/resource timeout: a write can stall
 // server-side without that timeout firing, so this cancels the operation and
@@ -32,24 +32,20 @@ let requestTimeout: Duration = .seconds(30)
 struct CloudKitRequestLimiter {
     private let semaphore: AsyncSemaphore
     private let timeout: Duration
-    private let monitor: RequestActivityMonitor
 
-    init(limit: Int, timeout: Duration, monitor: RequestActivityMonitor) {
+    init(limit: Int, timeout: Duration) {
         self.semaphore = AsyncSemaphore(limit: limit)
         self.timeout = timeout
-        self.monitor = monitor
     }
 
     func withSlot<R>(body: @Sendable @escaping () async throws -> R) async throws -> R {
         try await semaphore.acquire()
-        await monitor.began()
         // The slot is freed when the request settles, not when the caller is
         // unblocked, so an abandoned request cannot push real parallelism past
         // the limit - and a drain waits for true quiescence.
         return try await withRequestTimeout(
             timeout, body,
-            onSettled: { [semaphore, monitor] in
-                await monitor.ended()
+            onSettled: { [semaphore] in
                 await semaphore.release()
             })
     }

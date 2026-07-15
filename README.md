@@ -110,7 +110,6 @@ let recent = try await store.query("purchase")
 | 📡 [Sync](docs/sync.md) | the zone change feed, selective sync, and live queries |
 | 📴 [Offline](docs/offline.md) | zone replicas and the queued write cache |
 | 🔐 [Security](docs/security.md) | field encryption and trusted writers |
-| 📈 [Telemetry](docs/telemetry.md) | request observability and previously-silent failures |
 
 ## 📄 License
 
