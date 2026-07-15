@@ -11,7 +11,7 @@ import PackagePlugin
 /// Generates a typed entity struct for every `*.entity.json` file in the
 /// target's sources, through the `scoutdb-codegen` executable.
 @main
-struct ScoutDBCodegenPlugin: BuildToolPlugin {
+struct CodegenPlugin: BuildToolPlugin {
     func createBuildCommands(context: PluginContext, target: Target) async throws -> [Command] {
         guard let module = target as? SourceModuleTarget else { return [] }
         let generator = try context.tool(named: "scoutdb-codegen")

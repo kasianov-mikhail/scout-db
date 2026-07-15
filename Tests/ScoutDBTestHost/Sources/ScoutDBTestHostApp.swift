@@ -12,7 +12,7 @@ import SwiftUI
 /// It exists only to carry the iCloud entitlement and code signature the
 /// CloudKit-backed test run needs; nothing in it is exercised directly.
 @main
-struct LiveTestHostApp: App {
+struct ScoutDBTestHostApp: App {
     var body: some Scene {
         WindowGroup {
             Text("ScoutDB live-contract test host")
