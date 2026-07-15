@@ -55,13 +55,12 @@ dependencies: [
 
 Upload the [`Schema`](Schema) file to your CloudKit container once, via the
 [CloudKit Console](https://icloud.developer.apple.com/dashboard/): select your container,
-open **Schema**, and use **Import Schema** to upload the file to the Development environment.
-
-Deploy it to Production from the console when ready — this is the only schema upload the
+open **Schema**, and use **Import Schema** to upload the file to the Development environment;
+then deploy it to Production from the console when ready — this is the only schema upload the
 container will ever need.
 
-See the [docs](docs) folder for guides on migrations, filtering, aggregation, sharing, sync,
-offline support, and more.
+> See the [docs](docs) folder for guides on migrations, filtering, aggregation, sharing, sync,
+> offline support, and more.
 
 ## 🚀 Usage
 
