@@ -1,24 +1,8 @@
 # 📈 Telemetry
 
-ScoutDB throttles, retries, and times out CloudKit requests so your app doesn't have to. Two
-seams make that traffic observable instead of opaque: an in-flight request counter for
-at-a-glance backpressure, and a per-call observer for durations, record counts, and errors.
-
-## 🚦 In-flight request count
-
-Every CloudKit request ScoutDB issues is gated through a shared limiter; its current
-concurrency is published as an `AsyncStream`:
-
-```swift
-Task {
-    for await count in cloudKitRequestActivity.updates {
-        print("CloudKit in-flight requests: \(count)")
-    }
-}
-```
-
-A new subscriber immediately receives the current count, then every change after that.
-Multiple subscribers are independent — each gets its own stream.
+ScoutDB throttles, retries, and times out CloudKit requests so your app doesn't have to. A
+per-call observer makes that traffic observable instead of opaque: durations, record counts,
+and errors for every operation.
 
 ## 👀 Per-call observer
 

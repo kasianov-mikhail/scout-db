@@ -302,7 +302,7 @@ struct AsyncSemaphoreTests {
 struct CloudKitRequestLimiterTests {
     @Test("The backstop clock starts when the slot is granted, not when the request queues")
     func testTimeoutExcludesQueueTime() async throws {
-        let limiter = CloudKitRequestLimiter(limit: 1, timeout: .milliseconds(500), monitor: RequestActivityMonitor())
+        let limiter = CloudKitRequestLimiter(limit: 1, timeout: .milliseconds(500))
 
         // Back to back the two requests take ~600ms of wall time - past the
         // 500ms backstop; the second would spuriously time out if its clock
@@ -319,7 +319,7 @@ struct CloudKitRequestLimiterTests {
 
     @Test("A timed-out request keeps its slot until it actually settles")
     func testAbandonedRequestHoldsSlot() async throws {
-        let limiter = CloudKitRequestLimiter(limit: 1, timeout: .milliseconds(50), monitor: RequestActivityMonitor())
+        let limiter = CloudKitRequestLimiter(limit: 1, timeout: .milliseconds(50))
         let settled = Box(false)
 
         let stuck = Task {
