@@ -35,8 +35,11 @@ schema freely — the CloudKit [schema](Schema) is uploaded once and never touch
 | 🔍 | **Queries** | Filters, sorting, pagination, streaming, full-text search, geo radius, and batch update/delete through a query builder. |
 | 📊 | **Aggregation** | Counters, sums, extremes, deviation, and percentiles maintained on write — reads never scan raw records. |
 | 🔐 | **Security** | Client-side field encryption with key rotation, filterable hashed surrogates, and trusted-writer filtering for public databases. |
-| 📎 | **Assets** | Store files up to 50 MB per field: write `Data`, read `Data`, ScoutDB handles the staging. |
-| ⚙️ | **Reliability** | Unique-key upserts, optimistic concurrency, outbox transactions, TTL cleanup, and a change feed for incremental sync. |
+| 📎 | **Records** | Assets up to 50 MB per field, entity references with cascading delete, an opt-in audit log, and soft delete/TTL lifecycle. |
+| 🔗 | **Sharing** | Zone-wide and single-record `CKShare`s, participant invitations, and accept-by-URL for collaborative data. |
+| 📡 | **Sync** | A batched, resumable zone-change feed with selective field projections, push-triggered sync, and a live-query model for SwiftUI. |
+| 📴 | **Offline** | Local-first zone replicas and a queued write cache with app-resolved conflicts, both LRU-bounded. |
+| ⚙️ | **Reliability** | Unique-key upserts, optimistic concurrency, outbox transactions, and telemetry over every request ScoutDB makes. |
 
 ## Requirements
 
@@ -99,7 +102,13 @@ let recent = try await store.query("purchase")
 - [Filtering](docs/filtering.md)
 - [Operators](docs/operators.md)
 - [Aggregation](docs/aggregation.md)
+- [Records](docs/records.md) — assets, relations, revisions, soft delete, and TTL
+- [The @Entity macro](docs/macros.md) — typed structs instead of value dictionaries
+- [Sharing](docs/sharing.md) — zone-wide and single-record `CKShare`s
+- [Sync](docs/sync.md) — the zone change feed, selective sync, and live queries
+- [Offline](docs/offline.md) — zone replicas and the queued write cache
 - [Security](docs/security.md)
+- [Telemetry](docs/telemetry.md) — request observability and previously-silent failures
 - [Live contract testing](LiveTestHost/README.md)
 
 ## License

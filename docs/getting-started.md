@@ -68,4 +68,10 @@ let recent = try await store.query("purchase")
 - [Filtering](filtering.md) — the query builder and shadow-slot techniques
 - [Operators](operators.md) — the full operator reference
 - [Aggregation](aggregation.md) — materialized counters, sums, and percentiles
+- [Records](records.md) — assets, relations, revisions, soft delete, and TTL
+- [The @Entity macro](macros.md) — typed structs instead of value dictionaries
+- [Sharing](sharing.md) — zone-wide and single-record `CKShare`s
+- [Sync](sync.md) — the zone change feed, selective sync, and live queries
+- [Offline](offline.md) — zone replicas and the queued write cache
 - [Security](security.md) — field encryption and trusted writers
+- [Telemetry](telemetry.md) — request observability and previously-silent failures
