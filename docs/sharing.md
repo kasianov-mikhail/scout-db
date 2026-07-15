@@ -1,11 +1,11 @@
-# Sharing
+# 🔗 Sharing
 
 CloudKit sharing works over the private database: a `CKShare` grants other iCloud users
 access to a zone or a single record, and CloudKit routes their reads/writes into their own
 `sharedDatabase`. ScoutDB wraps the operation pairs (create, invite, accept) that a share
 otherwise takes several raw CloudKit calls to assemble.
 
-## Zone-wide vs single-record
+## 🗂️ Zone-wide vs single-record
 
 Share every record in the store's custom zone:
 
@@ -33,7 +33,7 @@ try await store.stopSharing(entity: "purchase", uuid: "p-1")      // single reco
 
 `stopSharing` deletes the share record only — the underlying data stays.
 
-## Inviting participants
+## ✉️ Inviting participants
 
 ```swift
 try await store.inviteToShare(
@@ -50,7 +50,6 @@ try await store.inviteToShare(
 )
 ```
 
-Email/phone lookups resolve through `CKFetchShareParticipantsOperation` under the hood.
 Open the share to anyone with the link instead of naming participants:
 
 ```swift
@@ -60,7 +59,7 @@ try await store.setSharePublicPermission(.readWrite)   // or .readOnly / .none
 `removeShareParticipant(_:from:)` drops a participant; removing the owner throws
 `SchemaError.invalidValue("owner")` instead of letting CloudKit raise an unrecoverable error.
 
-## Accepting an invitation
+## ✅ Accepting an invitation
 
 The recipient gets a share URL (from Messages, Mail, or your own delivery). Turn it into a
 share and read from it:
@@ -75,12 +74,12 @@ let sharedStore = EntityStore(
 )
 ```
 
-`acceptShare(at:)` fetches the metadata (`CKFetchShareMetadataOperation`) and accepts it
-(`CKContainer.accept(_:)`) in one call; if the fetch fails, nothing is accepted. Build the
-recipient's store against `sharedDatabase` and the zone from the metadata — everything else
-(queries, filters, writes) works the same as against a private zone.
+`acceptShare(at:)` fetches the share's metadata and accepts it in one call; if the fetch
+fails, nothing is accepted. Build the recipient's store against `sharedDatabase` and the zone
+from the metadata — everything else (queries, filters, writes) works the same as against a
+private zone.
 
-## Limits
+## ⚠️ Limits
 
 - Sharing needs a custom zone; the default zone cannot be shared.
 - A single-record share requires its root record to already exist — create it before sharing.

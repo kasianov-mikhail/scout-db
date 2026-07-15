@@ -1,6 +1,6 @@
-# Security
+# 🔐 Security
 
-## Field encryption
+## 🔒 Field encryption
 
 The public database is world-readable, so sensitive values are encrypted on the client
 before they leave the device. Mark a payload field `.encrypted`, name the key, and provide
@@ -20,7 +20,7 @@ Values are sealed with AES-GCM. Readers without the key see ciphertext and simpl
 for the field; readers with the key decrypt transparently. Key rotation is a new definition
 version with a new `keyID`.
 
-## HMAC surrogates
+## #️⃣ HMAC surrogates
 
 An encrypted field cannot be filtered — the `hmac` derivation materializes a keyed hash of
 the value into a slot, so equality lookups still run server-side:
@@ -31,7 +31,7 @@ the value into a slot, so equality lookups still run server-side:
 
 The surrogate reveals nothing about the value, but matches deterministically.
 
-## Trusted writers
+## 🛡️ Trusted writers
 
 Anyone with an iCloud account can write to a public database. CloudKit stamps every record
 with its creator (`___createdBy`) server-side — it cannot be forged — so a reader can drop
@@ -44,7 +44,7 @@ let store = EntityStore(database: database, registry: registry, trustedWriters: 
 Grants cannot be narrowed after the fact, so this reader-side filter is the practical
 anti-vandalism tool for world-writable containers.
 
-## Public database grants
+## 🏗️ Public database grants
 
 The shipped `Schema` grants authenticated iCloud users (`_icloud`) `CREATE` and `WRITE` on
 `Entity`, `Aggregate`, and `SchemaDescriptor`, and `_world` `READ`. `SchemaDescriptor` needs the `_icloud` grant just
@@ -53,7 +53,7 @@ that write runs under the caller's own account rather than an admin role. Withou
 publishing is rejected and no records sync. If you configure roles by hand instead of
 importing `Schema`, grant `_icloud` `CREATE, WRITE` on all three record types.
 
-## Limits
+## ⚠️ Limits
 
 - Encrypted fields support exact-match lookups via the surrogate only — no ranges, no
   substring search.

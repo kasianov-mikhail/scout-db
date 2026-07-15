@@ -1,4 +1,4 @@
-# Live contract runs
+# 🧪 Live contract runs
 
 The contract suite in `Tests/ScoutDBTests/Contract` runs against the in-memory
 double on every `swift test`. This host runs the **same tests** against a real

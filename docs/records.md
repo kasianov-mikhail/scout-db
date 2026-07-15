@@ -1,11 +1,11 @@
-# Records
+# 📎 Records
 
 Beyond writing and querying fields, individual records carry files, references to other
 entities, an optional audit trail, and soft-delete/TTL lifecycle. This page covers those
 capabilities; field encryption is covered in [Security](security.md) and materialized
 aggregates in [Aggregation](aggregation.md).
 
-## Assets
+## 📁 Assets
 
 Fields typed `.asset` (or `.assetList`) hold arbitrary bytes up to 50 MB. Hand a field bytes
 directly — ScoutDB stages the upload to disk for you:
@@ -37,7 +37,7 @@ file behind. Sweep those periodically:
 let removed = EntityStore.sweepStagedAssets(olderThan: 86_400)   // default: 24h
 ```
 
-## Relations
+## 🔗 Relations
 
 Declare a reference field with `.references(_:)` (one parent) or `.exclusiveReference(_:)`
 (one parent, enforced unique holder):
@@ -73,7 +73,7 @@ Turn on `EntityStore.enforceReferences` to reject writes that would create a dan
 reference, and to enforce `.exclusiveReference` uniqueness. Both checks are client-side —
 useful as a guardrail, not a server-side constraint.
 
-## Unique keys
+## 🔑 Unique keys
 
 `.unique(on:)` makes writes upsert by identity. A `uniqueKey(on:)` is different: it rejects a
 write that would duplicate another **live** record's values for that field tuple, without
@@ -90,7 +90,7 @@ A duplicate throws `SchemaError.duplicateKey(fields:)`. Records missing a key fi
 exempt, and tombstoning a record frees its key. Like reference enforcement, this is a
 client-side pre-write check — two writers racing on the same key can still both win.
 
-## Counters and set fields
+## 🔢 Counters and set fields
 
 Atomic per-record mutation, distinct from the aggregate views in
 [Aggregation](aggregation.md) — this updates the record's own field in place, safely under
@@ -105,16 +105,24 @@ try await store.remove(["clearance"], from: "tags", entity: "product", uuid: "p-
 Never call `increment` inside a `transaction` — transaction replays are at-least-once, and a
 replayed increment would double-count.
 
-## Soft delete, restore, and TTL
+## 🗑️ Soft delete, restore, and TTL
 
 Every record's envelope carries `deleted` and `expires` (see [Schema](schema.md#envelope)).
 The lifecycle API around them:
 
+| Method | Effect |
+|---|---|
+| `delete(entity:uuid:)` | tombstone; values retained |
+| `restore(entity:uuid:)` | lift the tombstone |
+| `compact(entity:olderThan:)` | permanently erase old tombstones |
+| `drop(entity:)` | tombstone every record, retire the schema |
+| `reap(entity:asOf:)` | purge TTL-expired records |
+
 ```swift
-try await store.delete(entity: "purchase", uuid: "p-1")     // tombstone; values retained
-try await store.restore(entity: "purchase", uuid: "p-1")     // lift the tombstone
-try await store.compact(entity: "purchase", olderThan: cutoff)  // permanently erase old tombstones
-try await store.drop(entity: "purchase")                     // tombstone every record, retire the schema
+try await store.delete(entity: "purchase", uuid: "p-1")
+try await store.restore(entity: "purchase", uuid: "p-1")
+try await store.compact(entity: "purchase", olderThan: cutoff)
+try await store.drop(entity: "purchase")
 ```
 
 `compact` removes tombstones from the change feed for good — a record purged this way can no
@@ -125,7 +133,7 @@ are purged with:
 try await store.reap(entity: "purchase", asOf: .now)
 ```
 
-## Revisions
+## 📜 Revisions
 
 An opt-in, append-only audit log — not the mechanism behind optimistic concurrency, which is
 CloudKit's own change tag. Enable it per entity, then read history oldest-first:

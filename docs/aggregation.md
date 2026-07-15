@@ -1,4 +1,4 @@
-# Aggregation
+# 📊 Aggregation
 
 CloudKit has no server-side `SUM` or `GROUP BY` — a query returns records, never computed
 values. ScoutDB materializes aggregates at write time instead: declare `views` on an entity,
@@ -18,7 +18,7 @@ try await store.schema("payment")
 One grid record covers one group and period; a million writes still read back as a handful
 of grid records.
 
-## Metrics
+## 📐 Metrics
 
 Every view counts writes (`COUNT`). One metric per view on top of that:
 
@@ -31,7 +31,7 @@ Every view counts writes (`COUNT`). One metric per view on top of that:
 
 Buckets: `hour` (default), `weekday`, `day`.
 
-## Reading
+## 📖 Reading
 
 ```swift
 let rows = try await store.aggregate(entity: "payment", view: "revenue", from: june, to: july)
@@ -49,15 +49,11 @@ let products = try await store.distinct(entity: "payment", field: "product")
 filters with the `having:` closure. `distinct` is a client-side scan — materialize a view
 for large entities.
 
-## Trade-offs
+## ⚖️ Trade-offs
 
-- **Questions must be known in advance.** A view added later covers new writes only; replay
-  history through a backfill to cover the past.
-- **Write amplification.** Each view adds one counter update per write.
-- Aggregates update by compare-and-swap on the grid record's change tag, so concurrent
-  writers merge instead of overwriting each other.
-- **Deletes and updates rebalance the views.** `delete`, `deleteAll`, `reap`, `update`, and
-  `updateAll` reverse the removed record's contribution, so `count`, `sum`, `stats`, and
-  `histogram` views stay accurate as records change. A `min`/`max` extremum is the exception:
-  it cannot be recomputed without rescanning, so its value is left as-is when a record leaves
-  (the count still decrements). Backfill a `min`/`max` view if you need it exact after deletes.
+| | |
+|---|---|
+| 🔮 **Questions must be known in advance.** | A view added later covers new writes only; replay history through a backfill to cover the past. |
+| ✍️ **Write amplification.** | Each view adds one counter update per write. |
+| 🤝 **Concurrent writers merge.** | Aggregates update by compare-and-swap on the grid record's change tag, instead of overwriting each other. |
+| 🔁 **Deletes and updates rebalance the views.** | `delete`, `deleteAll`, `reap`, `update`, and `updateAll` reverse the removed record's contribution, so `count`, `sum`, `stats`, and `histogram` views stay accurate as records change. A `min`/`max` extremum is the exception: it cannot be recomputed without rescanning, so its value is left as-is when a record leaves (the count still decrements). Backfill a `min`/`max` view if you need it exact after deletes. |

@@ -1,10 +1,10 @@
-# The @Entity macro
+# 🧩 The @Entity macro
 
 Every example so far writes and reads `[String: RecordValue]` dictionaries. `@Entity`
 generates the mapping between a Swift struct and its schema fields, so the store can write
 and query typed structs directly instead.
 
-## Declaring an entity type
+## 🏷️ Declaring an entity type
 
 ```swift
 @Entity("purchase")
@@ -16,22 +16,22 @@ struct Purchase {
 }
 ```
 
-- The macro name defaults to the type's snake-cased name (`CartEvent` → `cart_event`) — the
-  string argument is only needed to override it.
-- Every stored property the macro maps must be `Optional`: a record is free to be missing any
-  field, and the macro enforces that at compile time.
-- `@Field("amount")` maps `price` to the schema field `amount` instead of the snake-cased
-  `price`.
-- `@Transient` excludes a property from the mapping entirely — use it for view-local state
-  that never goes to CloudKit.
-- Computed properties are ignored automatically; only stored properties participate.
+| Annotation | Effect |
+|---|---|
+| `@Entity("name")` | maps the struct to a schema entity; defaults to the type's snake-cased name (`CartEvent` → `cart_event`) |
+| `@Field("name")` | maps a property to a differently-named schema field |
+| `@Transient` | excludes a property from the mapping entirely — view-local state that never goes to CloudKit |
+
+Every stored property the macro maps must be `Optional`: a record is free to be missing any
+field, and the macro enforces that at compile time. Computed properties are ignored
+automatically; only stored properties participate.
 
 This expands to conformance to `EntityRepresentable`: `init(record:)`, a `recordValues`
 dictionary, and a `fieldName(for:)` lookup from key path to schema field name. The struct's
 own field names are unrelated to the `.required`/`.payload` constraints you declare with
 `SchemaBuilder` — the macro only maps property ↔ field name, not storage or validation.
 
-## Using it with EntityStore
+## 🧵 Using it with EntityStore
 
 ```swift
 try await store.write(Purchase(productId: "sku-1", quantity: 2, price: 25))
@@ -50,7 +50,7 @@ try await store.update(Purchase.self, uuid: "sku-1") { purchase in
 generated `fieldName(for:)` — filters read the same as the untyped query builder, just
 key-path-safe instead of string-keyed.
 
-## Opaque fields
+## 🎭 Opaque fields
 
 A property typed exactly `RecordValue?` bypasses the usual `String`/`Int`/`Double`/etc.
 conversion and is stored/read raw — useful for a field whose type varies by schema version or
@@ -64,7 +64,7 @@ struct Event {
 }
 ```
 
-## Limitations
+## 🚧 Limitations
 
 - Structs only — classes and enums aren't supported.
 - At least one stored, optional property is required.
