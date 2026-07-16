@@ -13,19 +13,19 @@
 ![Platform](https://img.shields.io/badge/platform-iOS%2016%2B%20%7C%20macOS%2013%2B-blue)
 [![License](https://img.shields.io/github/license/kasianov-mikhail/scout-db)](LICENSE)
 
-## 📖 Description
+## Description
 [ScoutDB](https://github.com/kasianov-mikhail/scout-db) adds entities, migrations, and structured queries on top of CloudKit. Define entities
 in code, query them with filters and sorting, aggregate without scanning, and evolve your
 schema freely — the CloudKit [schema](Schema) is uploaded once and never touched again.
 
-## 📋 Table of Contents
+## Table of Contents
 - [Features](#features)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Usage](#usage)
 - [License](#license)
 
-## ✨ Features
+## Features
 
 | | | |
 |:-:|-|-|
@@ -37,13 +37,13 @@ schema freely — the CloudKit [schema](Schema) is uploaded once and never touch
 | 📡 | **Sync** | A batched, resumable zone-change feed with selective field projections and push-triggered sync, plus local-first zone replicas and a queued write cache with app-resolved conflicts, both LRU-bounded. |
 | ⚙️ | **Reliability** | Unique-key upserts, optimistic concurrency, outbox transactions, and telemetry over every request ScoutDB makes. |
 
-## 📱 Requirements
+## Requirements
 
 - iOS 16.0+ / macOS 13.0+
 - Swift 6.0+
 - [Apple Developer](https://developer.apple.com) account with [CloudKit](https://developer.apple.com/icloud/cloudkit/) enabled
 
-## 📦 Installation
+## Installation
 
 Add the package to your `Package.swift`:
 
@@ -62,7 +62,7 @@ container will ever need.
 > See the [docs](docs) folder for guides on migrations, filtering, aggregation, sharing, sync,
 > offline support, and more.
 
-## 🚀 Usage
+## Usage
 
 ```swift
 import CloudKit
@@ -92,6 +92,6 @@ let recent = try await store.query("purchase")
     .all()
 ```
 
-## 📄 License
+## License
 
 ScoutDB is available under the MIT license. See the [LICENSE](LICENSE) file for details.
