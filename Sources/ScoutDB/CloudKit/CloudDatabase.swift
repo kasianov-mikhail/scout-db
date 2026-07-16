@@ -132,15 +132,15 @@ extension CloudDatabase {
     }
 }
 
-// Routes every real CloudKit call through the shared concurrency limit and a
-// bounded operation configuration; the in-memory test double bypasses both
-// since it never talks to the network.
+// Routes every real CloudKit call through a bounded operation configuration,
+// a backstop timeout, and rate-limit retries; the in-memory test double
+// bypasses all of that since it never talks to the network.
 //
 // The conformance bodies must never spell a call that matches a CloudDatabase
 // requirement's own signature: within this module such a call resolves back to
-// the conformance itself, not to CloudKit, and the resulting recursion eats one
-// limiter slot per level until every request deadlocks. Each body goes through
-// a CloudKit API whose shape differs from the requirement it implements.
+// the conformance itself, not to CloudKit, and the resulting recursion never
+// reaches the server. Each body goes through a CloudKit API whose shape
+// differs from the requirement it implements.
 extension CKDatabase: CloudDatabase {
     public func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
