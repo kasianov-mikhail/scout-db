@@ -69,6 +69,28 @@ struct EntityDefinitionTests {
         try definition.validate()
     }
 
+    @Test("Validation rejects an envelope date inactive at the current version")
+    func envelopeDateClosedAtVersion() {
+        // The date field was closed before v2, so it is inactive there; a
+        // whole-fields search would still find the closed timestamp and pass.
+        let definition = makeDefinition(
+            entity: "e", version: 2,
+            fields: [
+                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
+                FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00"), until: 2),
+            ], envelopeDate: "date")
+        #expect(throws: SchemaError.self) { try definition.validate() }
+    }
+
+    @Test("Validation accepts an envelope date active at the current version")
+    func envelopeDateActiveAtVersion() throws {
+        let definition = makeDefinition(
+            entity: "e", version: 2,
+            fields: [FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00"), since: 1)],
+            envelopeDate: "date")
+        try definition.validate()
+    }
+
     @Test("Validation accepts a text field in the searchable pool")
     func textSlot() throws {
         let definition = makeDefinition(fields: [
