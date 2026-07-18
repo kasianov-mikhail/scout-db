@@ -57,6 +57,35 @@ struct AssetsTests {
         #expect(try record.assetData(for: "screenshot") == screenshot)
     }
 
+    @Test("Export inlines asset bytes so the dump is self-contained")
+    func exportInlinesAssetBytes() async throws {
+        let payload = Data("dump-\(UUID().uuidString)".utf8)
+        try await store.write(["name": .string("crash"), "dump": .bytes(payload)], entity: "report", uuid: "r-1")
+
+        let dump = try await store.export(entity: "report")
+
+        // The dump must carry the bytes, not a path into an ephemeral cache that
+        // is useless on another machine or container.
+        let decoded = try JSONDecoder().decode([EntityRecord].self, from: dump)
+        #expect(decoded.first?.values["dump"] == .bytes(payload))
+
+        // And a fresh store's import restores the asset from those bytes.
+        let target = InMemoryDatabase()
+        let targetRegistry = SchemaRegistry(database: target)
+        try await targetRegistry.publish(
+            makeDefinition(
+                entity: "report",
+                fields: [
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "dump", type: .asset, storage: .slot(.asset, "a_00")),
+                    FieldDefinition(name: "screenshot", type: .asset, storage: .slot(.asset, "a_01")),
+                ]))
+        let targetStore = EntityStore(database: target, registry: targetRegistry)
+        #expect(try await targetStore.importRecords(dump, entity: "report") == 1)
+        let record = try #require(try await targetStore.read(entity: "report").first)
+        #expect(try record.assetData(for: "dump") == payload)
+    }
+
     @Test("Asset data reads back through the record")
     func roundTrip() async throws {
         let payload = Data("roundtrip-\(UUID().uuidString)".utf8)
