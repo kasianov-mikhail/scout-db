@@ -118,8 +118,12 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
             }
         }
         if let envelopeDate {
-            guard fields.first(where: { $0.name == envelopeDate })?.type == .timestamp else {
-                throw SchemaError.invalidDefinition("Envelope date '\(envelopeDate)' is not a timestamp field")
+            // Check the field active at this version, not any historical one: an
+            // update() that stops re-declaring the envelope-date field closes it,
+            // and the closed field would still satisfy a whole-fields search while
+            // TTL and pagination key on a field inactive at this version.
+            guard field(named: envelopeDate, at: version)?.type == .timestamp else {
+                throw SchemaError.invalidDefinition("Envelope date '\(envelopeDate)' is not an active timestamp field at version \(version)")
             }
         }
         if ttl != nil, envelopeDate == nil {
