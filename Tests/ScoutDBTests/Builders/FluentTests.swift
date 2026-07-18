@@ -90,6 +90,30 @@ struct FluentTests {
         #expect(records.map(\.uuid) == ["p-0", "p-2"])
     }
 
+    @Test("Explain reports one plan per OR branch instead of dropping the groups")
+    func explainGroups() async throws {
+        // No group: a single plan describing the base filters.
+        let flat = try await store.query("purchase").filter("quantity" > 0).explain()
+        #expect(flat.count == 1)
+        #expect(!flat[0].server.isEmpty)
+
+        // Two picks in one group fan out into two plans, each carrying the base
+        // filter plus its own pick — not the base filters alone. (Server
+        // predicates render with storage-slot names.)
+        let grouped = try await store.query("purchase")
+            .filter("quantity" > 0)
+            .group {
+                $0.filter("product_id", .equals, "sku-0")
+                $0.filter("product_id", .equals, "sku-2")
+            }
+            .explain()
+        #expect(grouped.count == 2)
+        // The base filter is shared by both branches; each branch adds its pick.
+        #expect(!Set(grouped[0].server).intersection(grouped[1].server).isEmpty)
+        #expect(grouped.contains { plan in plan.server.contains { $0.contains("sku-0") } })
+        #expect(grouped.contains { plan in plan.server.contains { $0.contains("sku-2") } })
+    }
+
     @Test("Builder update and delete rewrite matching records")
     func mutation() async throws {
         try await store.query("purchase").filter("quantity" > 1).update { record in

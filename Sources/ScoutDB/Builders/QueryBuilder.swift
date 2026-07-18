@@ -234,9 +234,16 @@ public struct QueryBuilder: Sendable {
         try await store.deleteAll(entity: entity, any: branches())
     }
 
-    /// Explains how the query splits into server predicates and client matchers.
-    public func explain() async throws -> QueryPlan {
-        try await store.explain(entity: entity, filters: filters, sort: sorts)
+    /// Explains how the query splits into server predicates and client matchers,
+    /// one `QueryPlan` per OR branch.
+    ///
+    /// A query with no `.group { … }` yields a single plan; each added group
+    /// multiplies the branches, since the store runs one server query per branch
+    /// of the disjunction. Earlier this dropped the groups and described only the
+    /// base filters — a plan for a query that was never run.
+    ///
+    public func explain() async throws -> [QueryPlan] {
+        try await store.explain(entity: entity, any: branches(), sort: sorts)
     }
 
     // Distributes the AND-ed base filters over the OR groups into disjunctive
