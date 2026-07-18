@@ -66,8 +66,11 @@ public struct DefinitionCodeGenerator {
     }
 
     // The kinds with no native Swift counterpart stay as raw `RecordValue`s.
+    // `.reference` is one of them: mapping it to `String` produced code that
+    // read back nil (String decodes only `.string`) and threw `typeMismatch` on
+    // write (a String encodes to `.string`, which no `.reference` field accepts).
     private static func opaque(_ type: FieldType) -> Bool {
-        [.location, .asset, .locationList, .assetList].contains(type)
+        [.location, .asset, .locationList, .assetList, .reference].contains(type)
     }
 
     private func swiftType(of type: FieldType) -> String {
@@ -77,7 +80,7 @@ public struct DefinitionCodeGenerator {
         case .double: "Double"
         case .timestamp: "Date"
         case .bytes: "Data"
-        case .reference: "String"
+        case .reference: "RecordValue"
         case .stringList: "[String]"
         case .intList: "[Int64]"
         case .doubleList: "[Double]"
