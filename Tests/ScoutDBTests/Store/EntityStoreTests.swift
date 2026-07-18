@@ -209,6 +209,12 @@ struct EntityStoreTests {
         #expect(record.values["scores"] == .doubles([9.5]))
         #expect(record.values["times"] == .dates([t0]))
 
+        // A whole-number double list must decode as doubles, not ints: every
+        // element is integer-representable, so an [Int64]-first cast would
+        // silently swallow it.
+        let whole = try #require(try await store.read(entity: "sample").first { $0.uuid == "s-2" })
+        #expect(whole.values["scores"] == .doubles([1.0]))
+
         let filter = EntityStore.Filter(field: "codes", op: .contains, value: .int(2))
         let matched = try await store.read(entity: "sample", filters: [filter])
         #expect(matched.map(\.uuid) == ["s-1"])

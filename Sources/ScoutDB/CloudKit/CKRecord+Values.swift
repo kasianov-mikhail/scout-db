@@ -39,10 +39,16 @@ extension RecordValue {
             self = .strings(value)
         case let value as [Date]:
             self = .dates(value)
-        case let value as [Int64]:
-            self = .ints(value)
-        case let value as [Double]:
-            self = .doubles(value)
+        case let value as [NSNumber]:
+            // Mirror the scalar path below: an all-integer bridge to [Int64]
+            // would also swallow a whole-number double array (CloudKit returns
+            // numeric lists as [NSNumber]), so decide by element type instead of
+            // relying on cast order.
+            if value.contains(where: { CFNumberIsFloatType($0) }) {
+                self = .doubles(value.map(\.doubleValue))
+            } else {
+                self = .ints(value.map(\.int64Value))
+            }
         case let value as [CLLocation]:
             self = .locations(value.map { GeoPoint(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude) })
         case let value as [CKAsset]:
