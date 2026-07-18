@@ -23,6 +23,13 @@ struct EntityCoder {
     static let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
+        // Pin the week to Sunday so period truncation is deterministic across
+        // locales, and so the weekday grid buckets line up: a weekday index is
+        // stored as `component(.weekday) - 1` (0 = Sunday) against the week's
+        // start, which the series reconstructs as `weekStart + index days`. That
+        // only holds when the week starts on Sunday; leaving firstWeekday at the
+        // platform default misdated weekday cells in Monday-first locales.
+        calendar.firstWeekday = 1
         return calendar
     }()
 
