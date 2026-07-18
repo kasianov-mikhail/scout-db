@@ -200,10 +200,22 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
                 return applied
             }
             applied += changed.count + deleted.count
-            lock.withLock {
+            let advanced = lock.withLock { () -> Bool in
                 applyLocked(changed: changed, deleted: deleted)
-                tokens[zone] = next ?? tokens[zone]
+                let previous = tokens[zone]
+                tokens[zone] = next ?? previous
                 persistLocked()
+                return next != nil && next != previous
+            }
+            // The feed returned changes but no fresh token: re-querying from the
+            // same cursor would replay the same batch forever, so stop rather
+            // than spin.
+            guard advanced else {
+                lock.withLock {
+                    completed.insert(zone)
+                    persistLocked()
+                }
+                return applied
             }
         }
     }
