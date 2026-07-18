@@ -60,6 +60,29 @@ struct AggregatesTests {
         #expect(try await store.totals(entity: "visit", view: "daily").map(\.count) == [1])
     }
 
+    @Test("A unique-key upsert with a changed value rebalances a sum view")
+    func upsertRebalancesSumView() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "meter",
+                fields: [
+                    FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
+                    FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
+                ], envelopeDate: "date", unique: ["user"], views: [AggregateView(name: "revenue", sum: "amount")]))
+
+        // Same unique key twice with a changed amount: the second write upserts the
+        // one record, so the sum must follow the latest value — not stay at the
+        // first, not accumulate both.
+        try await store.write(["user": .string("u1"), "amount": .double(10), "date": .date(noon)], entity: "meter")
+        try await store.write(["user": .string("u1"), "amount": .double(25), "date": .date(noon)], entity: "meter")
+
+        #expect(try await store.read(entity: "meter").count == 1)
+        let rows = try await store.aggregate(entity: "meter", view: "revenue")
+        #expect(rows.first?.count == 1)
+        #expect(rows.first?.value == 25)
+    }
+
     @Test("Deleting a record reverses its aggregate contribution")
     func deleteReversesAggregate() async throws {
         try await publishPayment(views: [AggregateView(name: "revenue", sum: "amount")])

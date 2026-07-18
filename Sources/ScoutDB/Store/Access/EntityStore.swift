@@ -134,29 +134,44 @@ public struct EntityStore: Sendable {
         try await validateExclusivity(of: entityRecords, entity: entity, using: definition)
         try await validateUniqueKeys(of: entityRecords, using: definition)
 
-        // Views count occurrences on first write. A re-write of the same record — a
-        // unique-key upsert or an explicit repeat uuid — must not inflate the grid, so fold
-        // only records with no live row yet into the aggregate views. Skip the lookup
-        // entirely when the entity declares no views.
-        let fresh = try await freshForAggregation(entityRecords, using: definition)
+        // Views count contributions per live record. A first write adds its
+        // contribution; a re-write over an existing live row (a unique-key upsert or
+        // an explicit repeat uuid) rebalances — removing the old contribution and
+        // adding the new — so a changed value or group does not leave the grid
+        // stale, while an unchanged re-write nets to zero and never inflates it.
+        // Skip the lookup entirely when the entity declares no views.
+        let (removedFromViews, addedToViews) = try await aggregationRebalance(entityRecords, using: definition)
 
         let encoded = try entityRecords.map { try coder.encode($0, using: definition) }
         try await database.write(records: encoded)
         // The staged asset copies existed only for the upload; the landed write
         // retires them.
         EntityCoder.discardStagedAssets(in: encoded)
-        try await GridAggregator(database: database).record(fresh, using: definition)
+        try await GridAggregator(database: database).rebalance(removing: removedFromViews, adding: addedToViews, using: definition)
         noteChange(entity: entity)
         return entityRecords.map(\.uuid)
     }
 
-    // The records a batch write should fold into aggregate views: those with no live row
-    // yet, deduplicated within the batch. Returns nothing when the entity has no views, so
-    // a viewless write never pays for the lookup.
-    private func freshForAggregation(_ records: [EntityRecord], using definition: EntityDefinition) async throws -> [EntityRecord] {
-        guard definition.views?.isEmpty == false else { return [] }
-        var seen = Set(try await liveRecords(entity: definition.entity, uuids: records.map(\.uuid), using: definition).map(\.uuid))
-        return records.filter { seen.insert($0.uuid).inserted }
+    // How a batch write should move the aggregate grid: the live rows it overwrites
+    // come out (`removing`) and the batch's records go in (`adding`), so a changed
+    // value rebalances instead of drifting. Within the batch the last write per uuid
+    // wins, mirroring the last-write-wins server save. Returns nothing when the
+    // entity has no views, so a viewless write never pays for the lookup.
+    private func aggregationRebalance(_ records: [EntityRecord], using definition: EntityDefinition) async throws -> (
+        removing: [EntityRecord], adding: [EntityRecord]
+    ) {
+        guard definition.views?.isEmpty == false else { return ([], []) }
+        let live = try await liveRecords(entity: definition.entity, uuids: records.map(\.uuid), using: definition)
+        let liveByUUID = Dictionary(live.map { ($0.uuid, $0) }, uniquingKeysWith: { first, _ in first })
+        var latest: [String: EntityRecord] = [:]
+        for record in records { latest[record.uuid] = record }
+        var removing: [EntityRecord] = []
+        var adding: [EntityRecord] = []
+        for (uuid, record) in latest {
+            if let old = liveByUUID[uuid] { removing.append(old) }
+            adding.append(record)
+        }
+        return (removing, adding)
     }
 
     public func delete(entity: String, uuid: String) async throws {
