@@ -115,6 +115,22 @@ struct AggregatesTests {
         #expect(points.last == AggregateSeriesPoint(group: "app", date: noon.addingTimeInterval(3_600), count: 1, value: 10))
     }
 
+    @Test("The shared calendar is Sunday-anchored so weekday cells date correctly")
+    func weekdaySeriesDatesLineUp() async throws {
+        // The weekday index is Sunday-based; reconstructing the cell date as
+        // weekStart + index days only lines up when the week starts on Sunday.
+        #expect(EntityCoder.calendar.firstWeekday == 1)
+
+        try await publishPayment(views: [AggregateView(name: "byday", groupBy: "product", bucket: .weekday, sum: "amount")])
+        // Jan 1 1970 (timeIntervalSince1970 == 36_000 is that day, 10:00 UTC) was
+        // a Thursday, so the reconstructed series point must fall on a Thursday.
+        let thursday = Date(timeIntervalSince1970: 36_000)
+        try await store.write(["product": .string("app"), "amount": .double(2), "date": .date(thursday)], entity: "payment")
+
+        let point = try #require(try await store.series(entity: "payment", view: "byday").first)
+        #expect(EntityCoder.calendar.component(.weekday, from: point.date) == EntityCoder.calendar.component(.weekday, from: thursday))
+    }
+
     @Test("MIN view keeps the smallest value")
     func minView() async throws {
         try await publishPayment(views: [AggregateView(name: "low", min: "amount")])
