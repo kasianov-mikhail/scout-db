@@ -45,6 +45,26 @@ struct SyncCoalescingTests {
         _ = try await coordinator.sync()
         #expect(await gated.gate.calls == 3)
     }
+
+    @Test("A zone pass skips a record from a newer schema instead of stalling")
+    func zonePassSkipsStaleSchemaRecord() async throws {
+        let database = InMemoryDatabase()
+        let registry = SchemaRegistry(database: database)
+        try await registry.publish(makePurchaseDefinition())
+        let store = EntityStore(database: database, registry: registry, zoneID: CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName))
+        try await store.ensureZone()
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
+
+        // A peer wrote p-2 under a schema newer than this device knows.
+        let stale = try #require(database.records.first { $0.recordType == "Entity" && ($0["uuid"] as? String) == "p-2" })
+        stale["schema_version"] = Int64(9999)
+
+        // The pass skips the undecodable record and still delivers the good one,
+        // instead of throwing and stalling the whole zone behind p-2.
+        let delta = try await store.zoneChanges()
+        #expect(delta.records.map(\.uuid) == ["p-1"])
+    }
 }
 
 @Suite("Sync lifecycle")

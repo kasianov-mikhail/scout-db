@@ -94,8 +94,12 @@ extension EntityStore {
                     while !Task.isCancelled {
                         let (delta, raw) = try await batch(since: cursor, desiredKeys: keys, resultsLimit: batchSize)
                         guard raw > 0 else { break }
-                        cursor = delta.token ?? cursor
                         continuation.yield(delta)
+                        // The feed must advance every pass; a nil or unchanged
+                        // token would replay the same batch forever, so stop
+                        // rather than spin.
+                        guard let next = delta.token, next != cursor else { break }
+                        cursor = next
                     }
                     continuation.finish()
                 } catch {
@@ -139,8 +143,19 @@ extension EntityStore {
         let (changed, deleted, next) = try await database.zoneChanges(zoneID: zoneID, since: token, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
         var records: [EntityRecord] = []
         for record in changed where record.recordType == Entity.recordType {
-            guard let entity = record["entity"] as? String, let definition = try? await registry.definition(for: entity) else { continue }
-            records += try decode([record], using: definition)
+            guard let entity = record["entity"] as? String else { continue }
+            do {
+                let definition = try await registry.definition(for: entity)
+                records += try decode([record], using: definition)
+            } catch is SchemaError {
+                // A record of a retired or unknown entity, or one a peer wrote
+                // under a schema newer than this device knows: skip it, as
+                // documented. Only schema-shaped failures are swallowed — a
+                // transient lookup error (network) or a corrupt payload now
+                // propagates instead of silently dropping the record while the
+                // token advances past it.
+                continue
+            }
         }
         return (ZoneDelta(records: records, deleted: deleted.map(\.recordName), token: next), changed.count + deleted.count)
     }
