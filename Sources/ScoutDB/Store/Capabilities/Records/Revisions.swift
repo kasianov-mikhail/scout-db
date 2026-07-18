@@ -31,10 +31,20 @@ extension EntityStore {
             Filter(field: "record_uuid", op: .equals, value: .string(uuid)),
         ]
         let revisions = try await read(entity: Self.revisionEntity, filters: filters, sort: [Sort(field: "date")])
-        return revisions.compactMap { revision in
-            guard case .bytes(let data)? = revision.values["snapshot"] else { return nil }
-            return try? JSONDecoder().decode(EntityRecord.self, from: data)
-        }
+        // Revision dates are millisecond-resolution, so two updates within the
+        // same millisecond tie on `date`. Break the tie by the revision record's
+        // own uuid for a stable, reproducible order instead of an arbitrary one.
+        return
+            revisions
+            .sorted { lhs, rhs in
+                let lDate = (lhs["date"] as Date?) ?? .distantPast
+                let rDate = (rhs["date"] as Date?) ?? .distantPast
+                return lDate == rDate ? lhs.uuid < rhs.uuid : lDate < rDate
+            }
+            .compactMap { revision in
+                guard case .bytes(let data)? = revision.values["snapshot"] else { return nil }
+                return try? JSONDecoder().decode(EntityRecord.self, from: data)
+            }
     }
 
     // Appends one revision per overwritten record. A mutation of an audited

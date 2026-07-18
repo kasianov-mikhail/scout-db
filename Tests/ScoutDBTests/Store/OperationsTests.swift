@@ -688,6 +688,25 @@ struct OperationsTests {
         #expect(try await store.history(entity: "purchase", uuid: "p-2").isEmpty)
     }
 
+    @Test("Revisions sharing a millisecond order deterministically by revision id")
+    func revisionTieBreak() async throws {
+        try await registry.publish(EntityStore.revisionDefinition)
+
+        // Two revisions of one record sharing a timestamp, written out of uuid
+        // order so a date-only sort could not settle them by insertion.
+        let date = Date(timeIntervalSince1970: 1_000)
+        func revision(uuid: String, tag: String) throws -> EntityWrite {
+            let snapshot = try JSONEncoder().encode(EntityRecord(entity: "doc", uuid: "d-1", schemaVersion: 1, values: ["p": .string(tag)]))
+            return EntityWrite(
+                values: ["entity": .string("doc"), "record_uuid": .string("d-1"), "date": .date(date), "snapshot": .bytes(snapshot)], uuid: uuid)
+        }
+        try await store.write([revision(uuid: "rev-b", tag: "b"), revision(uuid: "rev-a", tag: "a")], entity: EntityStore.revisionEntity)
+
+        // The tie breaks by revision uuid (rev-a before rev-b), and it repeats.
+        #expect(try await store.history(entity: "doc", uuid: "d-1").map { $0.values["p"] } == [.string("a"), .string("b")])
+        #expect(try await store.history(entity: "doc", uuid: "d-1").map { $0.values["p"] } == [.string("a"), .string("b")])
+    }
+
     @Test("An export round-trips into another store's import")
     func exportImport() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
