@@ -11,6 +11,22 @@ import Foundation
 extension EntityStore {
     public func explain(entity: String, filters: [Filter] = [], sort: [Sort] = []) async throws -> QueryPlan {
         let definition = try await registry.definition(for: entity)
+        return try plan(filters, entity: entity, sort: sort, using: definition)
+    }
+
+    /// Explains a disjunctive query the way it actually runs: one `QueryPlan`
+    /// per OR branch, since a single plan cannot express a disjunction.
+    ///
+    /// The store fans an OR query out into one server query per branch, so each
+    /// branch has its own server/client split. `QueryBuilder.explain()` routes
+    /// through here so a `.group { … }` is reflected rather than dropped.
+    ///
+    public func explain(entity: String, any branches: [[Filter]], sort: [Sort] = []) async throws -> [QueryPlan] {
+        let definition = try await registry.definition(for: entity)
+        return try branches.map { try plan($0, entity: entity, sort: sort, using: definition) }
+    }
+
+    private func plan(_ filters: [Filter], entity: String, sort: [Sort], using definition: EntityDefinition) throws -> QueryPlan {
         let (server, client) = try split(filters, entity: entity, using: definition)
         return QueryPlan(
             server: server.map { "\($0.field) \($0.op.rawValue) \($0.value.canonical)" },
