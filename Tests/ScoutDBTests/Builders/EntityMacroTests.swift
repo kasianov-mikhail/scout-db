@@ -32,6 +32,16 @@ private struct CartEvent {
     var kind: String?
 }
 
+// A stored property with an observer stays a schema field — didSet/willSet
+// must not make the macro treat it as computed and drop it.
+@Entity("observed")
+private struct ObservedEntity {
+    var kind: String?
+    var tally: Int64? {
+        didSet {}
+    }
+}
+
 @Suite("Entity macro")
 struct EntityMacroTests {
     let database = InMemoryDatabase()
@@ -76,5 +86,13 @@ struct EntityMacroTests {
         #expect(values["product_id"] == .string("sku-2"))
         #expect(values["amount"] == .double(70))
         #expect(values["badge"] == nil)
+    }
+
+    @Test("A stored property with a didSet observer still maps to a field")
+    func observedStoredProperty() {
+        #expect(ObservedEntity.fieldName(for: \.tally) == "tally")
+        #expect(ObservedEntity(kind: "k", tally: 4).recordValues["tally"] == .int(4))
+        let decoded = ObservedEntity(record: EntityRecord(entity: "observed", uuid: "o-1", schemaVersion: 1, values: ["tally": .int(9)]))
+        #expect(decoded.tally == 9)
     }
 }

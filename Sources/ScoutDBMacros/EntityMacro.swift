@@ -85,7 +85,7 @@ public struct EntityMacro: ExtensionMacro {
                 !hasAttribute(variable, named: "Transient")
             else { continue }
             for binding in variable.bindings {
-                guard binding.accessorBlock == nil, let name = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.text else { continue }
+                guard isStored(binding), let name = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.text else { continue }
                 guard let annotation = binding.typeAnnotation else {
                     throw EntityMacroError("@Entity property '\(name)' needs an explicit type annotation")
                 }
@@ -101,6 +101,22 @@ public struct EntityMacro: ExtensionMacro {
             }
         }
         return fields
+    }
+
+    // Whether a binding is a stored property. A bare binding is stored; a
+    // computed one (a `{ expr }` getter, or an accessor block with get/set) is
+    // not. A property with only observers (didSet/willSet) is still stored, so
+    // it must not be mistaken for computed and dropped from the schema mapping.
+    private static func isStored(_ binding: PatternBindingSyntax) -> Bool {
+        guard let accessorBlock = binding.accessorBlock else { return true }
+        guard case .accessors(let accessors) = accessorBlock.accessors else {
+            // A `{ expr }` shorthand getter is computed.
+            return false
+        }
+        return accessors.allSatisfy { accessor in
+            let kind = accessor.accessorSpecifier.tokenKind
+            return kind == .keyword(.didSet) || kind == .keyword(.willSet)
+        }
     }
 
     private static func optionalBase(of type: TypeSyntax) -> TypeSyntax? {
