@@ -38,6 +38,25 @@ struct SchemaExportTests {
         #expect(source.contains("struct Purchase"))
     }
 
+    @Test("A reference field generates as an opaque RecordValue, not a broken String")
+    func referenceFieldCodegen() throws {
+        let definition = makeDefinition(
+            entity: "post",
+            fields: [
+                FieldDefinition(name: "title", type: .string, storage: .slot(.string, "s_00")),
+                FieldDefinition(name: "author", type: .reference, storage: .slot(.reference, "r_00"), references: "user"),
+            ])
+        let source = DefinitionCodeGenerator().source(for: definition)
+
+        // A reference has no scalar Swift counterpart: mapping it to String
+        // produced code that read back nil and failed to write. It must stay a
+        // raw RecordValue that round-trips, like location and asset.
+        #expect(source.contains("var author: RecordValue?"))
+        #expect(!source.contains("var author: String?"))
+        #expect(source.contains("author = record.values[\"author\"]"))
+        #expect(source.contains("values[\"author\"] = author"))
+    }
+
     @Test("Exports are byte-stable across runs")
     func stableOutput() async throws {
         let registry = SchemaRegistry(database: database)
