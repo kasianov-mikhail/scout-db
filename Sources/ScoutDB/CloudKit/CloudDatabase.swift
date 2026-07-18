@@ -178,11 +178,24 @@ extension CKDatabase: CloudDatabase {
 
     public func save(_ record: CKRecord) async throws -> CKRecord {
         try await throttled { database in
-            let results = try await database.modifyRecords(saving: [record], deleting: [], savePolicy: .ifServerRecordUnchanged, atomically: true)
-            guard let result = results.saveResults[record.recordID] else {
-                throw CKError(.internalError)
+            do {
+                let results = try await database.modifyRecords(saving: [record], deleting: [], savePolicy: .ifServerRecordUnchanged, atomically: true)
+                guard let result = results.saveResults[record.recordID] else {
+                    throw CKError(.internalError)
+                }
+                return try result.get()
+            } catch let error as CKError where error.code == .partialFailure {
+                // An atomic batch surfaces a per-record conflict as `partialFailure`
+                // with the real cause (a `.serverRecordChanged`) buried per item and
+                // never reaches `saveResults`. Unwrap it so `write(record:)` can
+                // normalize a lost compare-and-swap race into `RecordConflictError`.
+                guard let perItem = error.userInfo[CKPartialErrorsByItemIDKey] as? [CKRecord.ID: any Error],
+                    let cause = perItem[record.recordID]
+                else {
+                    throw error
+                }
+                throw cause
             }
-            return try result.get()
         }
     }
 
@@ -293,6 +306,7 @@ extension CKDatabase: CloudDatabase {
                 var changed: [CKRecord] = []
                 var deleted: [CKRecord.ID] = []
                 var latest: CKServerChangeToken?
+                var failure: (any Error)?
             }
             let collector = Collector()
 
@@ -302,8 +316,15 @@ extension CKDatabase: CloudDatabase {
                 // instead of chasing moreComing to the end of the feed.
                 operation.fetchAllChanges = resultsLimit == nil
                 operation.recordWasChangedBlock = { _, result in
-                    if case .success(let record) = result {
+                    switch result {
+                    case .success(let record):
                         collector.changed.append(record)
+                    case .failure(let error):
+                        // A changed record that fails to materialize must not be
+                        // dropped while the token advances past it — that loses the
+                        // change silently and forever. Surface the failure so the
+                        // pass throws and its token is never committed.
+                        if collector.failure == nil { collector.failure = error }
                     }
                 }
                 operation.recordWithIDWasDeletedBlock = { id, _ in
@@ -320,6 +341,10 @@ extension CKDatabase: CloudDatabase {
                 operation.fetchRecordZoneChangesResultBlock = { result in
                     switch result {
                     case .success:
+                        if let failure = collector.failure {
+                            continuation.resume(throwing: failure)
+                            return
+                        }
                         let data = collector.latest.flatMap { try? NSKeyedArchiver.archivedData(withRootObject: $0, requiringSecureCoding: true) }
                         continuation.resume(returning: (collector.changed, collector.deleted, data))
                     case .failure(let error):
