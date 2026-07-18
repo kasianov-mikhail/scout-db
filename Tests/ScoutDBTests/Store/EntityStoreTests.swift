@@ -492,6 +492,29 @@ struct EntityStoreTests {
         #expect(reread.values["email"] == .string("alice@example.com"))
     }
 
+    @Test("A keyed update can clear an encrypted field instead of resurrecting it")
+    func keyedUpdateClearsEncryptedField() async throws {
+        let provider = StaticKeyProvider(keys: ["k1": SymmetricKey(size: .bits256)])
+        let secure = EntityStore(database: database, registry: registry, keyProvider: provider)
+        try await registry.publish(
+            makeDefinition(
+                entity: "account",
+                fields: [
+                    FieldDefinition(name: "email", type: .string, storage: .payload, encrypted: true),
+                    FieldDefinition(name: "status", type: .string, storage: .slot(.string, "s_00")),
+                ], keyID: "k1"))
+
+        try await secure.write(["email": .string("alice@example.com"), "status": .string("new")], entity: "account", uuid: "a-1")
+
+        // With the key present, decode round-trips the encrypted field, so a
+        // deliberate clear must stick rather than restore the old ciphertext.
+        try await secure.update(entity: "account", uuid: "a-1") { $0.values["email"] = nil }
+
+        let reread = try #require(try await secure.read(entity: "account").first { $0.uuid == "a-1" })
+        #expect(reread.values["email"] == nil)
+        #expect(reread.values["status"] == .string("new"))
+    }
+
     @Test("Writing an encrypted entity without a key fails")
     func encryptionWithoutKey() async throws {
         try await registry.publish(
