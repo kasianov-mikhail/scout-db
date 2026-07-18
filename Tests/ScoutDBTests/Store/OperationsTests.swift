@@ -633,6 +633,28 @@ struct OperationsTests {
         }
     }
 
+    @Test("Mutations treat a tombstoned record as absent, but restore still lifts it")
+    func mutationsSkipTombstones() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "t-1")
+        try await store.delete(entity: "purchase", uuid: "t-1")
+
+        // A tombstone is logically gone: an increment (which rides update) or a
+        // lease must fail rather than silently mutate the dead record.
+        await #expect(throws: SchemaError.notFound("t-1")) {
+            try await store.increment(entity: "purchase", uuid: "t-1", field: "quantity")
+        }
+        await #expect(throws: SchemaError.notFound("t-1")) {
+            _ = try await store.lease(entity: "purchase", uuid: "t-1", owner: "me", for: 60)
+        }
+        await #expect(throws: SchemaError.notFound("t-1")) {
+            _ = try await store.leaseHolder(entity: "purchase", uuid: "t-1")
+        }
+
+        // restore still reaches the tombstone — items() keeps returning it.
+        _ = try await store.restore(entity: "purchase", uuid: "t-1")
+        #expect(try await store.read(entity: "purchase").map(\.uuid) == ["t-1"])
+    }
+
     @Test("Restore lifts a tombstone with its values, compact purges old tombstones")
     func restoreAndCompact() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
