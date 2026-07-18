@@ -22,12 +22,27 @@ import Foundation
 /// a compare-and-swap would discard its comparison.
 ///
 public final class OfflineCache: CloudDatabase, @unchecked Sendable {
+    // One offline write in the replay log. Saves and deletes share a single
+    // ordered queue so their arrival order survives — a delete followed by a
+    // recreate of the same id, or the reverse, must replay in the order it
+    // happened, not saves-then-deletes.
+    private enum PendingWrite {
+        case save(CKRecord)
+        case delete(CKRecord.ID)
+
+        var recordID: CKRecord.ID {
+            switch self {
+            case .save(let record): return record.recordID
+            case .delete(let id): return id
+            }
+        }
+    }
+
     private let backing: any CloudDatabase
     private let storeURL: URL?
     private let lock = NSLock()
     private var snapshots: [String: [CKRecord]] = [:]
-    private var queuedSaves: [CKRecord] = []
-    private var queuedDeletes: [CKRecord.ID] = []
+    private var pending: [PendingWrite] = []
     // The last full server copy seen per record — the merge base a conflicted
     // flush diffs both sides against.
     private var baselines: [CKRecord.ID: CKRecord] = [:]
@@ -93,8 +108,21 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         let classes = [NSDictionary.self, NSArray.self, NSString.self, CKRecord.self, CKRecord.ID.self]
         guard let root = try? NSKeyedUnarchiver.unarchivedObject(ofClasses: classes, from: data) as? [String: Any] else { return }
         snapshots = root["snapshots"] as? [String: [CKRecord]] ?? [:]
-        queuedSaves = root["saves"] as? [CKRecord] ?? []
-        queuedDeletes = root["deletes"] as? [CKRecord.ID] ?? []
+        if let ops = root["ops"] as? [[String: Any]] {
+            pending = ops.compactMap { entry in
+                switch entry["t"] as? String {
+                case "s": return (entry["r"] as? CKRecord).map(PendingWrite.save)
+                case "d": return (entry["r"] as? CKRecord.ID).map(PendingWrite.delete)
+                default: return nil
+                }
+            }
+        } else {
+            // A queue archived before the ordered log: saves replayed first, then
+            // deletes, so restore it in that order.
+            let saves = (root["saves"] as? [CKRecord] ?? []).map(PendingWrite.save)
+            let deletes = (root["deletes"] as? [CKRecord.ID] ?? []).map(PendingWrite.delete)
+            pending = saves + deletes
+        }
         baselines = (root["baselines"] as? [CKRecord] ?? []).reduce(into: [:]) { $0[$1.recordID] = $1 }
     }
 
@@ -102,8 +130,14 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     // (complete query snapshots plus the pending queue).
     private func persistLocked() {
         guard let storeURL else { return }
+        let ops: [[String: Any]] = pending.map { op in
+            switch op {
+            case .save(let record): return ["t": "s", "r": record]
+            case .delete(let id): return ["t": "d", "r": id]
+            }
+        }
         let root: [String: Any] = [
-            "snapshots": snapshots, "saves": queuedSaves, "deletes": queuedDeletes, "baselines": Array(baselines.values),
+            "snapshots": snapshots, "ops": ops, "baselines": Array(baselines.values),
         ]
         guard let data = try? NSKeyedArchiver.archivedData(withRootObject: root, requiringSecureCoding: true) else { return }
         try? data.write(to: storeURL, options: .atomic)
@@ -121,7 +155,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
 
     /// The writes waiting for `flush`, in arrival order.
     public var pendingWrites: Int {
-        lock.withLock { queuedSaves.count + queuedDeletes.count }
+        lock.withLock { pending.count }
     }
 
     /// One write sitting in the offline queue.
@@ -132,14 +166,19 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         case delete(CKRecord.ID)
     }
 
-    /// The queued writes awaiting `flush`: saves in replay order, then deletes.
+    /// The queued writes awaiting `flush`, in arrival order.
     ///
     /// The records are defensive copies — mutating one does not edit the queue.
     /// Use `discardQueuedWrites(for:)` to drop an entry that should not replay.
     ///
     public var queuedWrites: [QueuedWrite] {
         lock.withLock {
-            queuedSaves.map { .save($0.copy() as! CKRecord) } + queuedDeletes.map(QueuedWrite.delete)
+            pending.map { op in
+                switch op {
+                case .save(let record): return .save(record.copy() as! CKRecord)
+                case .delete(let id): return .delete(id)
+                }
+            }
         }
     }
 
@@ -151,11 +190,13 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     ///
     @discardableResult public func discardQueuedWrites(for id: CKRecord.ID) -> Int {
         lock.withLock {
-            let dropped = queuedSaves.filter { $0.recordID == id }
-            let deletes = queuedDeletes.count
-            queuedSaves.removeAll { $0.recordID == id }
-            queuedDeletes.removeAll { $0 == id }
-            let removed = dropped.count + deletes - queuedDeletes.count
+            let before = pending.count
+            let dropped = pending.compactMap { op -> CKRecord? in
+                guard case .save(let record) = op, record.recordID == id else { return nil }
+                return record
+            }
+            pending.removeAll { $0.recordID == id }
+            let removed = before - pending.count
             guard removed > 0 else { return 0 }
             EntityCoder.discardStagedAssets(in: dropped)
             persistLocked()
@@ -173,49 +214,118 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     /// next attempt.
     ///
     @discardableResult public func flush() async throws -> Int {
-        let (saves, deletes) = lock.withLock { (queuedSaves, queuedDeletes) }
-        guard saves.count + deletes.count > 0 else { return 0 }
+        let snapshot = lock.withLock { pending }
+        guard !snapshot.isEmpty else { return 0 }
+
+        // The net offline intent per record is its last queued op — exactly what
+        // offline reads surfaced through `overlaidLocked`. Replay only that: an
+        // earlier save superseded by a later one, or a delete cancelled by a
+        // later recreate, never uploads. This collapses repeated edits (which
+        // would otherwise conflict against their own predecessor and be lost)
+        // and honors save/delete order for a reused record id.
+        var lastIndex: [CKRecord.ID: Int] = [:]
+        for (index, op) in snapshot.enumerated() { lastIndex[op.recordID] = index }
+        let effective = snapshot.enumerated().filter { lastIndex[$0.element.recordID] == $0.offset }.map(\.element)
+        let superseded = snapshot.enumerated()
+            .filter { lastIndex[$0.element.recordID] != $0.offset }
+            .compactMap { op -> CKRecord? in
+                guard case .save(let record) = op.element else { return nil }
+                return record
+            }
+        // Only one op survives per record id, so effective saves and deletes
+        // target disjoint records — deletes can batch, order between records
+        // does not matter.
+        let effectiveSaves = effective.compactMap { op -> CKRecord? in
+            guard case .save(let record) = op else { return nil }
+            return record
+        }
+        let effectiveDeletes = effective.compactMap { op -> CKRecord.ID? in
+            guard case .delete(let id) = op else { return nil }
+            return id
+        }
+
         var conflicts: [OfflineFlushError.Conflict] = []
-        var landed: [CKRecord] = []
+        var failures: [OfflineFlushError.Failure] = []
+        var resolved = Set<CKRecord.ID>()
+        var landedCount = 0
+        var transportFailure: (any Error)?
         do {
-            for record in saves {
-                if let conflict = try await push(record) {
-                    conflicts.append(conflict)
-                } else {
-                    landed.append(record)
-                    // The asset copies retained at queueing time were only
-                    // needed for this upload.
+            for record in effectiveSaves {
+                do {
+                    if let conflict = try await push(record) {
+                        // Handed to the caller; its staged assets stay in case the
+                        // caller re-saves the record.
+                        conflicts.append(conflict)
+                    } else {
+                        landedCount += 1
+                        EntityCoder.discardStagedAssets(in: [record])
+                    }
+                } catch  where Self.isOffline(error) {
+                    throw error
+                } catch {
+                    // A permanent per-record failure (permission, quota, invalid
+                    // argument) will never land on replay. Surface it and drop the
+                    // write instead of wedging the whole queue behind it forever.
+                    failures.append(OfflineFlushError.Failure(recordID: record.recordID, error: error))
                     EntityCoder.discardStagedAssets(in: [record])
                 }
+                resolved.insert(record.recordID)
             }
-            if deletes.count > 0 {
-                try await backing.modifyRecords(saving: [], deleting: deletes)
+            if !effectiveDeletes.isEmpty {
+                do {
+                    try await backing.modifyRecords(saving: [], deleting: effectiveDeletes)
+                    landedCount += effectiveDeletes.count
+                } catch  where Self.isOffline(error) {
+                    throw error
+                } catch {
+                    for id in effectiveDeletes {
+                        failures.append(OfflineFlushError.Failure(recordID: id, error: error))
+                    }
+                }
+                for id in effectiveDeletes { resolved.insert(id) }
             }
         } catch {
-            // A transport failure keeps everything unreplayed — including the
-            // conflicts found so far, so the next flush reports them again.
-            dequeue(saves: landed, deletes: [])
-            throw error
+            // A transport failure stops the replay; keep every record not yet
+            // resolved queued for the next attempt.
+            transportFailure = error
         }
-        // Conflicted saves leave the queue too: they are handed to the caller,
-        // and replaying them verbatim could never succeed.
-        dequeue(saves: saves, deletes: deletes)
-        guard conflicts.isEmpty else { throw OfflineFlushError(conflicts: conflicts) }
-        return saves.count + deletes.count
+
+        // Drop the resolved records (landed, conflicted, or permanently failed)
+        // and retire the staged assets of their superseded copies. Records left
+        // unresolved by a transport failure stay queued verbatim.
+        EntityCoder.discardStagedAssets(in: superseded.filter { resolved.contains($0.recordID) })
+        dequeue(snapshot.filter { resolved.contains($0.recordID) })
+
+        if let transportFailure { throw transportFailure }
+        guard conflicts.isEmpty, failures.isEmpty else {
+            throw OfflineFlushError(conflicts: conflicts, failures: failures)
+        }
+        return landedCount
     }
 
-    // Removes the replayed writes from the queue — by identity for saves and
-    // one occurrence per ID for deletes, so a concurrent `discardQueuedWrites`
-    // never shifts what gets dequeued.
-    private func dequeue(saves: [CKRecord], deletes: [CKRecord.ID]) {
+    // Removes the given ops from the queue — by identity for saves and one
+    // occurrence per id for deletes, so a concurrent enqueue (a fresh offline
+    // write of the same record made mid-flush) is never dropped by mistake.
+    private func dequeue(_ ops: [PendingWrite]) {
         lock.withLock {
-            let replayed = Set(saves.map(ObjectIdentifier.init))
-            queuedSaves.removeAll { replayed.contains(ObjectIdentifier($0)) }
-            var remaining = deletes
-            queuedDeletes.removeAll { id in
-                guard let index = remaining.firstIndex(of: id) else { return false }
-                remaining.remove(at: index)
-                return true
+            let replayedSaves = Set(
+                ops.compactMap { op -> ObjectIdentifier? in
+                    guard case .save(let record) = op else { return nil }
+                    return ObjectIdentifier(record)
+                })
+            var remainingDeletes = ops.compactMap { op -> CKRecord.ID? in
+                guard case .delete(let id) = op else { return nil }
+                return id
+            }
+            pending.removeAll { op in
+                switch op {
+                case .save(let record):
+                    return replayedSaves.contains(ObjectIdentifier(record))
+                case .delete(let id):
+                    guard let index = remainingDeletes.firstIndex(of: id) else { return false }
+                    remainingDeletes.remove(at: index)
+                    return true
+                }
             }
             persistLocked()
         }
@@ -381,10 +491,17 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     // the query's predicate cannot run offline.
     private func overlaidLocked(_ snapshot: [CKRecord]?) -> [CKRecord]? {
         guard let snapshot else { return nil }
-        let deleted = Set(queuedDeletes)
+        // The net effect on a record is its last queued op: a later save replaces
+        // it, a later delete drops it, and a recreate after a delete brings it
+        // back — read-your-updates, tombstones included.
+        var lastOp: [CKRecord.ID: PendingWrite] = [:]
+        for op in pending { lastOp[op.recordID] = op }
         return snapshot.compactMap { record in
-            guard !deleted.contains(record.recordID) else { return nil }
-            return queuedSaves.last { $0.recordID == record.recordID } ?? record
+            switch lastOp[record.recordID] {
+            case .delete: return nil
+            case .save(let queued): return queued
+            case nil: return record
+            }
         }
     }
 
@@ -415,7 +532,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         } catch  where Self.isOffline(error) {
             let queued = Self.retainingStagedAssets(record)
             lock.withLock {
-                queuedSaves.append(queued)
+                pending.append(.save(queued))
                 persistLocked()
             }
             return record
@@ -428,8 +545,8 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         } catch  where Self.isOffline(error) {
             let queued = records.map(Self.retainingStagedAssets)
             lock.withLock {
-                queuedSaves.append(contentsOf: queued)
-                queuedDeletes.append(contentsOf: recordIDs)
+                pending.append(contentsOf: queued.map(PendingWrite.save))
+                pending.append(contentsOf: recordIDs.map(PendingWrite.delete))
                 persistLocked()
             }
         }
@@ -528,12 +645,14 @@ public protocol ConflictResolver: Sendable {
     func resolve(queued: CKRecord, server: CKRecord, ancestor: CKRecord?) async -> ConflictResolution
 }
 
-/// The offline writes a flush could not replay: queued records whose server
-/// copies moved in ways that overlap the offline edits.
+/// The offline writes a flush could not complete: queued records whose server
+/// copies moved in ways that overlap the offline edits (`conflicts`), and
+/// queued writes the server rejected outright (`failures`).
 ///
-/// The conflicted writes are removed from the queue — replaying them verbatim
-/// could never succeed. Resolve each one by re-applying the `queued` edit on
-/// top of `server`, through a fresh store update or a manual save.
+/// Both leave the queue — replaying them verbatim could never succeed. Resolve
+/// a conflict by re-applying the `queued` edit on top of `server`, through a
+/// fresh store update or a manual save; a failure carries the server's own
+/// error for its record.
 ///
 public struct OfflineFlushError: LocalizedError {
     /// One queued write that lost to an overlapping server-side edit.
@@ -542,9 +661,25 @@ public struct OfflineFlushError: LocalizedError {
         public let server: CKRecord
     }
 
+    /// One queued write the server rejected for a non-conflict reason — a
+    /// permission, quota, or invalid-argument error that no replay would fix.
+    public struct Failure: @unchecked Sendable {
+        public let recordID: CKRecord.ID
+        public let error: any Error
+    }
+
     public let conflicts: [Conflict]
+    public let failures: [Failure]
+
+    public init(conflicts: [Conflict], failures: [Failure] = []) {
+        self.conflicts = conflicts
+        self.failures = failures
+    }
 
     public var errorDescription: String? {
-        "\(conflicts.count) offline write(s) overlap newer server edits"
+        var parts: [String] = []
+        if !conflicts.isEmpty { parts.append("\(conflicts.count) offline write(s) overlap newer server edits") }
+        if !failures.isEmpty { parts.append("\(failures.count) offline write(s) were rejected by the server") }
+        return parts.joined(separator: "; ")
     }
 }
