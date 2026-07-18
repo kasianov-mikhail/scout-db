@@ -118,7 +118,9 @@ extension CKContainer: CloudContainer {
                 case .success(let participant):
                     collector.participants.append(participant)
                 case .failure(let error):
-                    collector.failure = error
+                    // Keep the first failure, not whichever callback fires last, so
+                    // the thrown error is deterministic when several lookups fail.
+                    if collector.failure == nil { collector.failure = error }
                 }
             }
             operation.fetchShareParticipantsResultBlock = { result in
@@ -176,10 +178,30 @@ extension CKContainer: CloudContainer {
                     self.value = value
                 }
             }
+            // Each notification triggers an async accountStatus() read. Spawning an
+            // independent Task per notification lets a later change's status resolve
+            // and yield before an earlier one's, so observers can settle on a stale
+            // status. Chain the reads so each completes and yields before the next
+            // begins, preserving notification order.
+            final class Serial: @unchecked Sendable {
+                private let lock = NSLock()
+                private var tail = Task<Void, Never> {}
+
+                func enqueue(_ work: @escaping @Sendable () async -> Void) {
+                    lock.lock()
+                    defer { lock.unlock() }
+                    let previous = tail
+                    tail = Task {
+                        await previous.value
+                        await work()
+                    }
+                }
+            }
+            let serial = Serial()
             let token = Token(
                 NotificationCenter.default.addObserver(forName: .CKAccountChanged, object: nil, queue: nil) { [weak self] _ in
                     guard let self else { return }
-                    Task {
+                    serial.enqueue {
                         if let status = try? await self.accountStatus() {
                             continuation.yield(status)
                         }
