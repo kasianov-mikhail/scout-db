@@ -462,4 +462,69 @@ struct OfflineCacheTests {
         }
         #expect(cache.pendingWrites == 1)
     }
+
+    @Test("Repeated offline edits of one record flush to the latest without a self-conflict")
+    func coalescesRepeatedSaves() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        _ = try await store.read(entity: "purchase")
+
+        // Two offline edits of the same record touching the same field.
+        backing.writeErrors = [CKError(.networkFailure), CKError(.networkFailure)]
+        var first = makePurchase().values
+        first["quantity"] = .int(5)
+        try await store.write(first, entity: "purchase", uuid: "p-1")
+        var second = makePurchase().values
+        second["quantity"] = .int(9)
+        try await store.write(second, entity: "purchase", uuid: "p-1")
+        #expect(cache.pendingWrites == 2)
+
+        // Only the latest edit replays, so it never conflicts against its own
+        // earlier queued copy: the server ends at 9, not stuck at 5.
+        #expect(try await cache.flush() == 1)
+        #expect(cache.pendingWrites == 0)
+        let record = try #require(try await store.read(entity: "purchase").first)
+        #expect(record.values["quantity"] == .int(9))
+    }
+
+    @Test("An offline delete then recreate of one record restores it on flush")
+    func deleteThenRecreateKeepsOrder() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        _ = try await store.read(entity: "purchase")
+
+        // Delete p-1, then recreate it — the recreate is the later op and wins.
+        backing.writeErrors = [CKError(.networkFailure), CKError(.networkFailure)]
+        try await store.delete(entity: "purchase", uuid: "p-1")
+        var revived = makePurchase().values
+        revived["quantity"] = .int(7)
+        try await store.write(revived, entity: "purchase", uuid: "p-1")
+        #expect(cache.pendingWrites == 2)
+
+        try await cache.flush()
+        let record = try #require(try await store.read(entity: "purchase").first)
+        #expect(record.uuid == "p-1")
+        #expect(record.values["quantity"] == .int(7))
+    }
+
+    @Test("A permanently rejected write surfaces without wedging the queue behind it")
+    func poisonWriteDoesNotStall() async throws {
+        backing.writeErrors = [CKError(.networkFailure), CKError(.networkFailure)]
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "poison")
+        try await store.write(makePurchase(uuid: "good").values, entity: "purchase", uuid: "good")
+        #expect(cache.pendingWrites == 2)
+
+        // The first replayed save is rejected for a non-transport reason; the
+        // second is valid. The bad one is surfaced as a failure, both leave the
+        // queue, and the good write still lands — it is not stuck behind the
+        // poison forever.
+        backing.writeErrors = [CKError(.permissionFailure)]
+        do {
+            try await cache.flush()
+            Issue.record("Expected an OfflineFlushError")
+        } catch let error as OfflineFlushError {
+            #expect(error.failures.count == 1)
+            #expect(error.conflicts.isEmpty)
+        }
+        #expect(cache.pendingWrites == 0)
+        #expect(try await store.read(entity: "purchase").map(\.uuid) == ["good"])
+    }
 }
