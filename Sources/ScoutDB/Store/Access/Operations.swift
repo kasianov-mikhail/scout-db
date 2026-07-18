@@ -55,7 +55,11 @@ extension EntityStore {
                 rewrite = merged
                 prepared = nil
             } else {
-                guard let stored = existing else {
+                // A tombstone is logically absent — reads and fetches filter it,
+                // and update (the path counters and list mutations ride) must too,
+                // rather than silently mutating a deleted record. Lift a tombstone
+                // through `restore`, not `update`.
+                guard let stored = existing, !Self.isTombstone(stored) else {
                     throw SchemaError.notFound(uuid)
                 }
                 rewrite = try coder.rewrite(stored, using: definition, transform: transform)
@@ -396,6 +400,13 @@ extension EntityStore {
 
     // Chunk lookups are independent, so they run concurrently; the shared request
     // limiter still bounds the actual CloudKit fan-out.
+    // Whether a fetched record is a tombstone. `items(entity:uuids:)` returns
+    // deleted records too (so `restore` can lift them), so mutations that should
+    // treat a deleted record as absent must filter with this.
+    static func isTombstone(_ record: CKRecord) -> Bool {
+        (record["deleted"] as? Int64 ?? 0) > 0
+    }
+
     func items(entity: String, uuids: [String]) async throws -> [CKRecord] {
         // CKRecord gains its Sendable annotation above this deployment target; each
         // chunk's records are freshly fetched and handed over whole, never shared
