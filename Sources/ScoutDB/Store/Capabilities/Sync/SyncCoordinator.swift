@@ -27,6 +27,9 @@ public final class SyncCoordinator: @unchecked Sendable {
     private var inFlight: Task<ZoneDelta, any Error>?
     private var trailing: Task<ZoneDelta, any Error>?
     private var runner: Task<Void, Never>?
+    // Bumped by reset(); a pass that started before a reset drops its now-stale
+    // token instead of re-persisting it over the cleared one.
+    private var generation = 0
 
     /// With `projecting`, every pass pulls only the projected fields — see
     /// `EntityStore.zoneChanges(since:projecting:)` for the trade-offs.
@@ -132,9 +135,9 @@ public final class SyncCoordinator: @unchecked Sendable {
                 onError?(error)
             }
         }
-        let since = lock.withLock { token }
+        let (since, generation) = lock.withLock { (token, self.generation) }
         if let batchSize {
-            return try await batchedPass(since: since, batchSize: batchSize)
+            return try await batchedPass(since: since, batchSize: batchSize, generation: generation)
         }
         let delta: ZoneDelta
         if let projections {
@@ -142,19 +145,19 @@ public final class SyncCoordinator: @unchecked Sendable {
         } else {
             delta = try await store.zoneChanges(since: since)
         }
-        apply(delta)
+        apply(delta, generation: generation)
         return delta
     }
 
     // Pulls the pass in batches, applying each one — token, persistence, live
     // queries, progress — before the next, so an interrupted walk resumes from
     // its last applied batch. Returns the batches combined.
-    private func batchedPass(since: Data?, batchSize: Int) async throws -> ZoneDelta {
+    private func batchedPass(since: Data?, batchSize: Int, generation: Int) async throws -> ZoneDelta {
         var records: [EntityRecord] = []
         var deleted: [String] = []
         var last = since
         for try await batch in store.zoneChanges(since: since, batchSize: batchSize, projecting: projections) {
-            apply(batch)
+            apply(batch, generation: generation)
             records += batch.records
             deleted += batch.deleted
             last = batch.token ?? last
@@ -163,12 +166,18 @@ public final class SyncCoordinator: @unchecked Sendable {
         return ZoneDelta(records: records, deleted: deleted, token: last)
     }
 
-    private func apply(_ delta: ZoneDelta) {
-        lock.withLock {
+    private func apply(_ delta: ZoneDelta, generation: Int) {
+        // Read and update the token under the lock, but persist it outside: a slow
+        // atomic disk write must not block join()/isRunning/start(). A reset that
+        // landed since this pass began (a newer generation) drops the stale token
+        // rather than re-persisting it over the cleared one.
+        let persist: Data? = lock.withLock {
+            guard generation == self.generation else { return nil }
             token = delta.token ?? token
-            if let tokenURL, let token {
-                try? token.write(to: tokenURL, options: .atomic)
-            }
+            return token
+        }
+        if let tokenURL, let persist {
+            try? persist.write(to: tokenURL, options: .atomic)
         }
         // Applied remote changes tick this process's live queries too.
         for entity in Set(delta.records.map(\.entity)) {
@@ -225,6 +234,10 @@ public final class SyncCoordinator: @unchecked Sendable {
     public func reset() {
         lock.withLock {
             token = nil
+            // Any pass already in flight read the old token before this reset;
+            // bumping the generation makes its later apply() drop the stale token
+            // instead of re-persisting it over the cleared one.
+            generation += 1
             if let tokenURL {
                 try? FileManager.default.removeItem(at: tokenURL)
             }
