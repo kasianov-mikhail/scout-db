@@ -21,11 +21,20 @@ public enum PredicateEvaluator {
             let results = (compound.subpredicates as? [NSPredicate] ?? []).map { evaluate($0, record: record) }
             switch compound.compoundPredicateType {
             case .and:
-                return results.allSatisfy { $0 == true }
+                // Kleene AND: any false wins; otherwise an unknown (a compared
+                // field missing) keeps the whole result unknown rather than
+                // collapsing to a concrete Bool a wrapping NOT could flip.
+                if results.contains(where: { $0 == false }) { return false }
+                return results.contains(where: { $0 == nil }) ? nil : true
             case .or:
-                return results.contains { $0 == true }
+                // Kleene OR: any true wins; otherwise an unknown keeps it unknown.
+                if results.contains(where: { $0 == true }) { return true }
+                return results.contains(where: { $0 == nil }) ? nil : false
             case .not:
-                return results.first.flatMap { $0.map { !$0 } } ?? false
+                // Kleene NOT: unknown stays unknown, so a record missing the
+                // field stays excluded (the caller keeps only `== true`) whether
+                // the leaf sits directly under NOT or inside a compound.
+                return results.first.map { $0.map { !$0 } } ?? false
             @unknown default:
                 return false
             }
