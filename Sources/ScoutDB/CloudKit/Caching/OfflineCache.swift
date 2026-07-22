@@ -723,6 +723,22 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         return record
     }
 
+    public func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
+        let records = try await backing.fetchRecords(ids: ids)
+        guard records.count > 0 else { return records }
+        lock.withLock {
+            // Whole records straight from the server: exactly what a merge
+            // baseline is, like the single-record fetch above.
+            for record in records {
+                baselines[record.recordID] = record
+                touchBaselineLocked(record.recordID)
+            }
+            enforceQuotasLocked()
+            persistLocked()
+        }
+        return records
+    }
+
     public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int?) async throws -> (
         changed: [CKRecord], deleted: [CKRecord.ID], token: Data?
     ) {

@@ -42,6 +42,14 @@ public protocol CloudDatabase: Sendable {
     func save(zone: CKRecordZone) async throws
     /// The record behind an ID, or nil when the server has none.
     func fetchRecord(id: CKRecord.ID) async throws -> CKRecord?
+    /// The records behind a set of IDs, in request order; an ID the server has
+    /// no record for is simply absent from the result.
+    ///
+    /// Records ScoutDB writes carry deterministic names, so the store reaches
+    /// them by ID rather than by predicate — one request either way, but a
+    /// fetch skips the query index, which lags a just-written record.
+    ///
+    func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord]
     /// One pass of a zone's change feed from an opaque continuation token;
     /// `desiredKeys` trims every changed record to those fields (nil fetches
     /// whole records). A `resultsLimit` stops the pass after roughly that many
@@ -61,6 +69,18 @@ public protocol CloudDatabase: Sendable {
 
 extension CloudDatabase {
     static var maxBatchSize: Int { 400 }
+
+    /// Fetches the IDs one at a time; a conformance that can fetch a batch in
+    /// one request overrides this.
+    public func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
+        var records: [CKRecord] = []
+        for id in ids {
+            if let record = try await fetchRecord(id: id) {
+                records.append(record)
+            }
+        }
+        return records
+    }
 
     func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?) async throws -> (changed: [CKRecord], deleted: [CKRecord.ID], token: Data?) {
         try await zoneChanges(zoneID: zoneID, since: token, desiredKeys: nil, resultsLimit: nil)
@@ -234,6 +254,24 @@ extension CKDatabase: CloudDatabase {
                 return try await database.records(for: [id])[id]?.get()
             } catch let error as CKError where error.code == .unknownItem {
                 return nil
+            }
+        }
+    }
+
+    public func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
+        guard ids.count > 0 else { return [] }
+        return try await throttled { database in
+            let results = try await database.records(for: ids)
+            return try ids.compactMap { id in
+                guard let result = results[id] else { return nil }
+                do {
+                    return try result.get()
+                } catch let error as CKError where error.code == .unknownItem {
+                    // The caller asked about a record the server does not have,
+                    // which is an absence, not a failure — the same answer
+                    // `fetchRecord(id:)` gives for a missing record.
+                    return nil
+                }
             }
         }
     }

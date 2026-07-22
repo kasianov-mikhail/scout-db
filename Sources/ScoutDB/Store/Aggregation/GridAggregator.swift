@@ -180,6 +180,20 @@ struct GridAggregator {
     }
 
     private func lookup(entity: String, view: String, group: String, day: Date) async throws -> CKRecord {
+        let digest = contentDigest(of: [entity, view, group, "\(day.millisecondsSince1970)"])
+        let recordID = CKRecord.ID(recordName: "grid-" + digest)
+        // The name is derived from the slot itself, so the record is addressable
+        // without a query — and a fetch sees a slot created moments ago, which the
+        // query index need not yet reflect. A miss there costs the write a retry
+        // against the record it failed to see.
+        if let existing = try await database.fetchRecord(id: recordID) {
+            return existing
+        }
+
+        // A slot whose group holds a separator character was named before the
+        // digest escaped them, so its record carries a different name. Only a
+        // query finds it, and adopting it is what keeps its running totals from
+        // being stranded behind a fresh, empty slot.
         let query = ckQuery(
             Aggregate.recordType,
             filters: [
@@ -192,8 +206,7 @@ struct GridAggregator {
             return existing
         }
 
-        let digest = contentDigest(of: [entity, view, group, "\(day.millisecondsSince1970)"])
-        let record = CKRecord(recordType: Aggregate.recordType, recordID: CKRecord.ID(recordName: "grid-" + digest))
+        let record = CKRecord(recordType: Aggregate.recordType, recordID: recordID)
         record["entity"] = entity
         record["view"] = view
         record["group_key"] = group
