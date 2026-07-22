@@ -1259,6 +1259,53 @@ struct OperationsTests {
         #expect(values["b-3"] == .strings(["a-9"]))
     }
 
+    @Test("A cascade detaches every dead key of a record in one rewrite")
+    func detachesManyKeysAtOnce() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "author",
+                fields: [
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
+                ]))
+        try await registry.publish(
+            makeDefinition(
+                entity: "book",
+                fields: [
+                    FieldDefinition(name: "title", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "author_id", type: .string, storage: .slot(.string, "s_01"), references: "author"),
+                ]))
+        try await registry.publish(
+            makeDefinition(
+                entity: "shelf",
+                fields: [
+                    FieldDefinition(name: "label", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "book_ids", type: .stringList, storage: .slot(.stringList, "ls_00"), references: "book"),
+                ]))
+
+        try await store.write(["name": .string("Twain")], entity: "author", uuid: "a-1")
+        try await store.write(["name": .string("Verne")], entity: "author", uuid: "a-2")
+        // b-1 and b-2 die with their author; b-3 survives.
+        try await store.write(["title": .string("One"), "author_id": .string("a-1")], entity: "book", uuid: "b-1")
+        try await store.write(["title": .string("Two"), "author_id": .string("a-1")], entity: "book", uuid: "b-2")
+        try await store.write(["title": .string("Three"), "author_id": .string("a-2")], entity: "book", uuid: "b-3")
+        // The first shelf names both doomed books, so both disjunction branches
+        // match it — it must still be rewritten once, losing both keys.
+        try await store.write(["label": .string("Both"), "book_ids": .strings(["b-1", "b-2"])], entity: "shelf", uuid: "s-1")
+        try await store.write(["label": .string("Mixed"), "book_ids": .strings(["b-1", "b-3"])], entity: "shelf", uuid: "s-2")
+        try await store.write(["label": .string("Live"), "book_ids": .strings(["b-3"])], entity: "shelf", uuid: "s-3")
+
+        // Deleting the author cascades to its books, which detaches them from
+        // every shelf in a single disjunctive pass.
+        try await store.delete(entity: "author", uuid: "a-1", cascade: true)
+
+        #expect(try await store.read(entity: "book").map(\.uuid) == ["b-3"])
+        let shelves = try await store.read(entity: "shelf")
+        let values = Dictionary(uniqueKeysWithValues: shelves.map { ($0.uuid, $0.values["book_ids"]) })
+        #expect(values["s-1"] == .strings([]))
+        #expect(values["s-2"] == .strings(["b-3"]))
+        #expect(values["s-3"] == .strings(["b-3"]))
+    }
+
     @Test("Children reads the records referencing a parent, scalar and list alike")
     func children() async throws {
         try await registry.publish(

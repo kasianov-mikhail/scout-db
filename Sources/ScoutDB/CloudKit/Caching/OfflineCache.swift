@@ -84,13 +84,20 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     }
 
     private func enforceQuotasLocked() {
-        while snapshots.count > snapshotLimit, let victim = snapshots.keys.min(by: { snapshotUsage[$0] ?? 0 < snapshotUsage[$1] ?? 0 }) {
-            snapshots[victim] = nil
-            snapshotUsage[victim] = nil
-        }
-        while baselines.count > baselineLimit, let victim = baselines.keys.min(by: { baselineUsage[$0] ?? 0 < baselineUsage[$1] ?? 0 }) {
-            baselines[victim] = nil
-            baselineUsage[victim] = nil
+        Self.evict(&snapshots, usage: &snapshotUsage, limit: snapshotLimit)
+        Self.evict(&baselines, usage: &baselineUsage, limit: baselineLimit)
+    }
+
+    // Drops the least recently used entries until the store fits its quota,
+    // ordering the keys once instead of rescanning every entry for a fresh
+    // minimum per victim. The rescan cost most on the restore path, where an
+    // oversized archive sheds its whole overflow at once and every restored
+    // entry ties at the oldest usage.
+    static func evict<Key: Hashable, Value>(_ store: inout [Key: Value], usage: inout [Key: Int64], limit: Int) {
+        guard store.count > limit else { return }
+        for victim in store.keys.sorted(by: { usage[$0] ?? 0 < usage[$1] ?? 0 }).prefix(store.count - limit) {
+            store[victim] = nil
+            usage[victim] = nil
         }
     }
 
