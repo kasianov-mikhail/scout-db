@@ -292,13 +292,14 @@ extension EntityStore {
     {
         let definition = try await registry.definition(for: entity)
         let coder = EntityCoder(keyProvider: keyProvider)
+        // The branches are independent reads, so they run concurrently and are
+        // reassembled in branch order — the transform then applies once per
+        // record, on the caller's task, and never needs to be Sendable.
         var seen: Set<String> = []
         var pending: [EntityCoder.Rewrite] = []
-        for branch in branches {
-            for item in try await matchedItems(entity: entity, filters: branch, using: definition) {
-                guard let uuid = item["uuid"] as? String, seen.insert(uuid).inserted else { continue }
-                pending.append(try coder.rewrite(item, using: definition, transform: transform))
-            }
+        for item in try await matchedBranches(entity: entity, branches: branches, using: definition) {
+            guard let uuid = item["uuid"] as? String, seen.insert(uuid).inserted else { continue }
+            pending.append(try coder.rewrite(item, using: definition, transform: transform))
         }
 
         var applied: [EntityCoder.Rewrite] = []
@@ -328,6 +329,29 @@ extension EntityStore {
             throw RecordConflictError(serverRecord: unresolved)
         }
         return applied.count
+    }
+
+    // Every branch's live records, concatenated in branch order. The branches are
+    // independent server queries, so they run concurrently; the shared request
+    // limiter still bounds the actual CloudKit fan-out.
+    private func matchedBranches(entity: String, branches: [[Filter]], using definition: EntityDefinition) async throws -> [CKRecord] {
+        // CKRecord gains its Sendable annotation above this deployment target; each
+        // branch's records are freshly fetched and handed over whole, never shared
+        // between tasks.
+        struct Branch: @unchecked Sendable {
+            let index: Int
+            let records: [CKRecord]
+        }
+        return try await withThrowingTaskGroup(of: Branch.self) { group in
+            for (index, branch) in branches.enumerated() {
+                group.addTask { Branch(index: index, records: try await self.matchedItems(entity: entity, filters: branch, using: definition)) }
+            }
+            var collected: [Int: [CKRecord]] = [:]
+            for try await branch in group {
+                collected[branch.index] = branch.records
+            }
+            return collected.sorted { $0.key < $1.key }.flatMap(\.value)
+        }
     }
 
     // The live stored records behind a filtered read, kept as CKRecords rather than
