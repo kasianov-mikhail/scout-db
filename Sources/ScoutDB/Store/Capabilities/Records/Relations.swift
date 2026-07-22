@@ -165,16 +165,15 @@ extension EntityStore {
         }
     }
 
-    // Strips the deleted parents' keys out of every list reference naming them. One
-    // filtered rewrite per deleted parent, but each rewrite drops every dead key it
-    // touches, so later passes only match records the earlier ones missed.
+    // Strips the deleted parents' keys out of every list reference naming them, in
+    // one disjunctive rewrite. A record listing several dead parents is matched by
+    // each of their branches but transformed once, so it costs one save instead of
+    // one per parent it happened to reference.
     private func detach(entity: String, field: String, uuids: [String]) async throws {
         let dead = Set(uuids)
-        for uuid in uuids {
-            try await updateAll(entity: entity, filters: [Filter(field: field, op: .contains, value: .string(uuid))]) { record in
-                guard case .strings(let keys)? = record.values[field] else { return }
-                record.values[field] = .strings(keys.filter { !dead.contains($0) })
-            }
+        try await updateAll(entity: entity, any: Filter.containsAny(field, uuids)) { record in
+            guard case .strings(let keys)? = record.values[field] else { return }
+            record.values[field] = .strings(keys.filter { !dead.contains($0) })
         }
     }
 }
