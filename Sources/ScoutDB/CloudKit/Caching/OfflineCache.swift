@@ -734,7 +734,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
                 touchBaselineLocked(record.recordID)
             }
             enforceQuotasLocked()
-            persistLocked()
+            scheduleArchiveLocked()
         }
         return records
     }
