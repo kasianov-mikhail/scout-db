@@ -250,9 +250,58 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         var landedCount = 0
         var transportFailure: (any Error)?
         do {
-            for record in effectiveSaves {
+            // The queue replays as conditional batches; only the records that
+            // actually lost a race need the per-record merge below, so an
+            // uncontended flush costs one request per chunk rather than one per
+            // record.
+            // The records the batch could not settle, each with the winning
+            // server record when the batch named one.
+            var contested: [(record: CKRecord, server: CKRecord?)] = []
+            for chunk in effectiveSaves.chunked(into: Self.maxBatchSize) {
+                let batch: [(CKRecord.ID, Result<CKRecord, any Error>)]
                 do {
-                    if let conflict = try await push(record) {
+                    batch = try await backing.saveIfUnchanged(chunk)
+                } catch  where Self.isOffline(error) {
+                    throw error
+                } catch {
+                    // The call failed as a whole, so it cannot say which record
+                    // was at fault. Replay the chunk one record at a time, which
+                    // attributes the failure instead of blaming all of them.
+                    contested += chunk.map { ($0, nil) }
+                    continue
+                }
+                let byID = Dictionary(chunk.map { ($0.recordID, $0) }, uniquingKeysWith: { first, _ in first })
+                for (id, result) in batch {
+                    guard let record = byID[id] else { continue }
+                    do {
+                        _ = try result.get()
+                        landedCount += 1
+                        EntityCoder.discardStagedAssets(in: [record])
+                    } catch  where Self.isOffline(error) {
+                        throw error
+                    } catch {
+                        guard let server = Self.conflictingServerRecord(in: error) else {
+                            // A permanent per-record failure (permission, quota,
+                            // invalid argument) will never land on replay. Surface
+                            // it and drop the write instead of wedging the whole
+                            // queue behind it forever.
+                            failures.append(OfflineFlushError.Failure(recordID: id, error: error))
+                            EntityCoder.discardStagedAssets(in: [record])
+                            resolved.insert(id)
+                            continue
+                        }
+                        contested.append((record, server))
+                        continue
+                    }
+                    resolved.insert(id)
+                }
+            }
+            for (record, server) in contested {
+                do {
+                    // The batch already surfaced the winning record, so the merge
+                    // starts from it instead of re-attempting a save that would
+                    // lose the same race again.
+                    if let conflict = try await push(record, losingTo: server) {
                         // Handed to the caller; its staged assets stay in case the
                         // caller re-saves the record.
                         conflicts.append(conflict)
@@ -263,9 +312,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
                 } catch  where Self.isOffline(error) {
                     throw error
                 } catch {
-                    // A permanent per-record failure (permission, quota, invalid
-                    // argument) will never land on replay. Surface it and drop the
-                    // write instead of wedging the whole queue behind it forever.
                     failures.append(OfflineFlushError.Failure(recordID: record.recordID, error: error))
                     EntityCoder.discardStagedAssets(in: [record])
                 }
@@ -334,31 +380,42 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     // Replays one queued save under the if-unchanged policy, re-merging against
     // the moving server record a bounded number of times. Returns the conflict
     // when the edits overlap; transport and other non-conflict errors throw.
-    private func push(_ record: CKRecord) async throws -> OfflineFlushError.Conflict? {
+    //
+    // `losingTo` carries the winning record of a race the caller already ran, so
+    // the merge starts there rather than re-attempting a save known to conflict.
+    private func push(_ record: CKRecord, losingTo initial: CKRecord? = nil) async throws -> OfflineFlushError.Conflict? {
         var attempt = record
+        var pending = initial
         var retries = 3
         while true {
-            do {
-                for (_, result) in try await backing.saveIfUnchanged([attempt]) {
-                    _ = try result.get()
-                }
-                return nil
-            } catch {
-                guard let server = Self.conflictingServerRecord(in: error) else { throw error }
-                retries -= 1
-                guard retries > 0 else { return OfflineFlushError.Conflict(queued: record, server: server) }
-                if let merged = graft(record, onto: server) {
-                    attempt = merged
-                    continue
-                }
-                switch await resolve(record, against: server) {
-                case .save(let resolved):
-                    attempt = resolved
-                case .keepServer:
+            let server: CKRecord
+            if let known = pending {
+                server = known
+                pending = nil
+            } else {
+                do {
+                    for (_, result) in try await backing.saveIfUnchanged([attempt]) {
+                        _ = try result.get()
+                    }
                     return nil
-                case .surface:
-                    return OfflineFlushError.Conflict(queued: record, server: server)
+                } catch {
+                    guard let conflicting = Self.conflictingServerRecord(in: error) else { throw error }
+                    server = conflicting
                 }
+            }
+            retries -= 1
+            guard retries > 0 else { return OfflineFlushError.Conflict(queued: record, server: server) }
+            if let merged = graft(record, onto: server) {
+                attempt = merged
+                continue
+            }
+            switch await resolve(record, against: server) {
+            case .save(let resolved):
+                attempt = resolved
+            case .keepServer:
+                return nil
+            case .surface:
+                return OfflineFlushError.Conflict(queued: record, server: server)
             }
         }
     }
