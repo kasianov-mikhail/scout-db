@@ -543,6 +543,28 @@ struct OfflineCacheTests {
         #expect(record.values["quantity"] == .int(7))
     }
 
+    @Test("A flush replays the queue in batches, not a request per record")
+    func flushReplaysInBatches() async throws {
+        let recorder = Recorder()
+        let server = InMemoryDatabase()
+        let cache = OfflineCache(backing: ObservedDatabase(backing: server, observer: recorder))
+        let registry = SchemaRegistry(database: cache)
+        let store = EntityStore(database: cache, registry: registry)
+        try await registry.publish(makePurchaseDefinition())
+
+        // One offline batch write queues every record behind a single failure.
+        server.writeErrors = [CKError(.networkFailure)]
+        try await store.write((0..<10).map { EntityWrite(values: makePurchase().values, uuid: "p-\($0)") }, entity: "purchase")
+        #expect(cache.pendingWrites == 10)
+
+        recorder.reset()
+        #expect(try await cache.flush() == 10)
+        // Uncontended, the whole queue settles in one conditional save.
+        #expect(recorder.operations.filter { $0.kind == .conditionalSave }.count == 1)
+        #expect(cache.pendingWrites == 0)
+        #expect(try await store.read(entity: "purchase").count == 10)
+    }
+
     @Test("A permanently rejected write surfaces without wedging the queue behind it")
     func poisonWriteDoesNotStall() async throws {
         backing.writeErrors = [CKError(.networkFailure), CKError(.networkFailure)]

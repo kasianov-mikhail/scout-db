@@ -83,26 +83,56 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     }
 
     public func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
-        if let error = writeErrors.popLast() ?? errors.popLast() {
-            // A queued conflict fails only the record it names, mirroring the
-            // per-record results of a non-atomic CloudKit save; anything else
-            // fails the whole call the way `save` does.
-            guard let conflict = error as? RecordConflictError else { throw error }
-            return records.map { record in
-                guard record.recordID == conflict.serverRecord.recordID else {
-                    upsert(record)
-                    return (record.recordID, .success(record))
-                }
-                return (record.recordID, .failure(conflict))
+        // This save is non-atomic, so the server answers per record and one call
+        // can settle several outcomes at once. Take every queued conflict that
+        // names a record of this batch — but only the first per record, so a
+        // stack of conflicts aimed at one record still feeds its retries one at
+        // a time.
+        var queued: [CKRecord.ID: any Error] = [:]
+        let batch = Set(records.map(\.recordID))
+        while let next = (writeErrors.last ?? errors.last) as? RecordConflictError, batch.contains(next.serverRecord.recordID),
+            queued[next.serverRecord.recordID] == nil
+        {
+            if writeErrors.isEmpty {
+                errors.removeLast()
+            } else {
+                writeErrors.removeLast()
+            }
+            queued[next.serverRecord.recordID] = next
+        }
+        if queued.isEmpty, let error = writeErrors.popLast() ?? errors.popLast() {
+            if let conflict = error as? RecordConflictError {
+                // A conflict aimed at a record outside this batch still applies
+                // to the call that drew it.
+                queued[conflict.serverRecord.recordID] = conflict
+            } else if Self.isTransport(error) {
+                // A transport failure takes the whole call down with it.
+                throw error
+            } else {
+                // The server rejecting one record — permission, quota, an invalid
+                // argument — is reported against that record, not the batch. A
+                // plain error carries no record id, so it lands on the first.
+                queued[records[0].recordID] = error
             }
         }
         return records.map { record in
+            if let failure = queued[record.recordID] {
+                return (record.recordID, .failure(failure))
+            }
             if let server = conflictingServer(for: record) {
                 return (record.recordID, .failure(RecordConflictError(serverRecord: server)))
             }
             upsert(record)
             return (record.recordID, .success(record))
         }
+    }
+
+    // Whether the transport, rather than the request, is at fault — the failures
+    // that take a whole CloudKit call down instead of one of its records.
+    private static func isTransport(_ error: any Error) -> Bool {
+        if error is URLError { return true }
+        guard let error = error as? CKError else { return false }
+        return [.networkUnavailable, .networkFailure, .serviceUnavailable].contains(error.code)
     }
 
     // The stored copy that beats a conditional save: present when the incoming
