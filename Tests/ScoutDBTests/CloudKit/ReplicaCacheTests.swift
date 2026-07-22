@@ -158,6 +158,7 @@ struct ReplicaCacheTests {
         let first = ReplicaCache(backing: backing, zoneID: zone, storeURL: url, readPolicy: .localFirst)
         try await first.refresh()
         #expect(first.hasCompleteMirror)
+        first.persistNow()
 
         // The relaunched replica serves locally from the first read.
         let second = ReplicaCache(backing: backing, zoneID: zone, storeURL: url, readPolicy: .localFirst)
@@ -201,6 +202,7 @@ struct ReplicaCacheTests {
         values["quantity"] = .int(7)
         try await firstStore.write(values, entity: "purchase", uuid: "p-persist")
         try await first.refresh()
+        first.persistNow()
 
         // The relaunched replica serves offline reads and resumes the feed
         // from its persisted position.
@@ -211,6 +213,25 @@ struct ReplicaCacheTests {
         backing.errors = [CKError(.networkUnavailable)]
         let offline = try await secondStore.read(entity: "purchase", filters: [.init(field: "quantity", op: .equals, value: .int(7))])
         #expect(offline.map(\.uuid) == ["p-persist"])
+    }
+
+    @Test("A deferred mirror write reaches the store without being forced")
+    func deferredPersistLandsOnItsOwn() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("scout-replica-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let replica = ReplicaCache(backing: backing, zoneID: zone, storeURL: url)
+        let store = EntityStore(database: replica, registry: SchemaRegistry(database: replica), zoneID: zone)
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-deferred")
+
+        // No persistNow() here: the scheduled write has to settle on its own,
+        // or a replica that is never forced would never reach disk at all.
+        var restored = 0
+        for _ in 0..<40 where restored == 0 {
+            try await Task.sleep(for: .milliseconds(50))
+            restored = ReplicaCache(backing: backing, zoneID: zone, storeURL: url).recordCount
+        }
+        #expect(restored > 0)
     }
 
     @Test("One replica mirrors several zones with per-zone completeness")

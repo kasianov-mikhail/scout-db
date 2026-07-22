@@ -264,6 +264,26 @@ struct OfflineCacheTests {
         #expect(OfflineCache(backing: server, storeURL: url).pendingWrites == 0)
     }
 
+    @Test("A queued offline write is archived without waiting for the delayed write")
+    func queuedWritesArchiveImmediately() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("scout-offline-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let server = InMemoryDatabase()
+        let cache = OfflineCache(backing: server, storeURL: url)
+        let registry = SchemaRegistry(database: cache)
+        let store = EntityStore(database: cache, registry: registry)
+        try await registry.publish(makePurchaseDefinition())
+
+        server.writeErrors = [CKError(.networkFailure)]
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+
+        // The caller was told this write succeeded, so it has to be on disk
+        // already — nothing forces the archive here, and a crash now would
+        // otherwise lose a write the app believes it made.
+        #expect(OfflineCache(backing: server, storeURL: url).pendingWrites == 1)
+    }
+
     @Test("Flush grafts disjoint offline edits onto a server record that moved")
     func flushGraftsDisjointEdits() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")

@@ -54,10 +54,30 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     private var snapshotUsage: [String: Int64] = [:]
     private var baselineUsage: [CKRecord.ID: Int64] = [:]
     private var clock: Int64 = 0
+    // Whether the archive is behind the freshness held in memory, and the
+    // delayed write that will settle it.
+    private var archiveStale = false
+    private var archiveTask: Task<Void, Never>?
+    private static let archiveDelay: Duration = .milliseconds(250)
 
-    /// With a `storeURL`, snapshots and the write queue persist across launches:
-    /// every mutation archives the state to the file (best-effort — a failed
-    /// write costs freshness, not correctness), and init restores it.
+    deinit {
+        archiveTask?.cancel()
+        // The cache is going away with freshness the archive never saw; this is
+        // the last chance to hand it over.
+        if archiveStale {
+            persistLocked()
+        }
+    }
+
+    /// With a `storeURL`, snapshots and the write queue persist across launches,
+    /// and init restores them.
+    ///
+    /// Queueing or replaying a write archives the state immediately: the caller
+    /// was told an offline write succeeded, so it must survive a crash. Snapshot
+    /// and baseline refreshes are archived on a short delay instead, since every
+    /// read produces them and losing the tail costs freshness, not correctness —
+    /// `persistNow()` forces one. Either way the write is best-effort; a failed
+    /// one costs freshness, not correctness.
     ///
     /// The quotas keep the cache bounded: at most `snapshotLimit` query
     /// snapshots and `baselineLimit` merge baselines, evicted least-recently
@@ -133,9 +153,43 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         baselines = (root["baselines"] as? [CKRecord] ?? []).reduce(into: [:]) { $0[$1.recordID] = $1 }
     }
 
+    // Marks the archive stale and lets one delayed write settle it, instead of
+    // rewriting the whole file inline.
+    //
+    // Only freshness rides this path. Every read refreshes snapshots and merge
+    // baselines, and each rewrite serializes the entire cache under the lock, so
+    // a burst of reads otherwise costs a burst of full rewrites. Losing the tail
+    // of that costs staleness, nothing more. The write queue does not come here:
+    // a queued write was reported to its caller as successful, so it is archived
+    // synchronously and must survive a crash.
+    private func scheduleArchiveLocked() {
+        guard storeURL != nil, !archiveStale else { return }
+        archiveStale = true
+        archiveTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.archiveDelay)
+            self?.persistNow()
+        }
+    }
+
+    /// Archives the cache now, if a freshness update is still waiting.
+    ///
+    /// Snapshot and baseline refreshes are written on a short delay, so a caller
+    /// that cannot afford to lose them — a scene heading for the background —
+    /// forces the write with this. Queued offline writes never need it; they are
+    /// archived as they are made.
+    ///
+    public func persistNow() {
+        lock.withLock {
+            guard archiveStale else { return }
+            persistLocked()
+        }
+    }
+
     // Callers hold the lock; the archive is a full rewrite, small by design
-    // (complete query snapshots plus the pending queue).
+    // (complete query snapshots plus the pending queue). It carries whatever
+    // freshness was waiting, so the scheduled write has nothing left to do.
     private func persistLocked() {
+        archiveStale = false
         guard let storeURL else { return }
         let ops: [[String: Any]] = pending.map { op in
             switch op {
@@ -477,7 +531,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
                 }
                 if desiredKeys == nil || response.queryCursor == nil {
                     enforceQuotasLocked()
-                    persistLocked()
+                    scheduleArchiveLocked()
                 }
             }
             return response
@@ -527,7 +581,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
                     touchBaselineLocked(record.recordID)
                 }
                 enforceQuotasLocked()
-                persistLocked()
+                scheduleArchiveLocked()
             }
         }
         return response
@@ -606,7 +660,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
                 baselines[record.recordID] = record
                 touchBaselineLocked(record.recordID)
                 enforceQuotasLocked()
-                persistLocked()
+                scheduleArchiveLocked()
             }
         }
         return record
