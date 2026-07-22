@@ -284,6 +284,32 @@ struct OfflineCacheTests {
         #expect(OfflineCache(backing: server, storeURL: url).pendingWrites == 1)
     }
 
+    @Test("Both fetch paths defer their archive write, since a baseline is only freshness")
+    func fetchesDeferTheArchive() async throws {
+        // Every mutation path rides one of these two fetches — `items` batches,
+        // `fetchRecord` does not — so they must agree about what is durable.
+        func archivesInline(_ refresh: (OfflineCache, CKRecord.ID) async throws -> Void) async throws -> Bool {
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("scout-offline-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: url) }
+
+            let server = InMemoryDatabase()
+            let seeded = CKRecord(recordType: "Entity", recordID: CKRecord.ID(recordName: "p-1"))
+            seeded["uuid"] = "p-1"
+            try await server.modifyRecords(saving: [seeded], deleting: [])
+
+            let cache = OfflineCache(backing: server, storeURL: url)
+            try await refresh(cache, seeded.recordID)
+            let inline = FileManager.default.fileExists(atPath: url.path)
+            // Whichever way it went, forcing it must produce the archive.
+            cache.persistNow()
+            #expect(FileManager.default.fileExists(atPath: url.path))
+            return inline
+        }
+
+        #expect(try await archivesInline { cache, id in _ = try await cache.fetchRecord(id: id) } == false)
+        #expect(try await archivesInline { cache, id in _ = try await cache.fetchRecords(ids: [id]) } == false)
+    }
+
     @Test("Flush grafts disjoint offline edits onto a server record that moved")
     func flushGraftsDisjointEdits() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
