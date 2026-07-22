@@ -66,7 +66,12 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
     private let fields: Set<CKRecord.FieldKey>?
     private let lock = NSLock()
     private var zones: Set<CKRecordZone.ID>
-    private var mirror: [CKRecord.ID: CKRecord] = [:]
+    private var mirror: [CKRecord.ID: CKRecord] = [:] {
+        didSet { scanOrder = nil }
+    }
+    // The memoized scan order, dropped by any change to the mirror above and
+    // rebuilt on the next read that needs it.
+    private var scanOrder: [CKRecord]?
     // Each zone's own feed position — advanced only by refresh(), the one
     // path that guarantees the mirror saw everything before it.
     private var tokens: [CKRecordZone.ID: Data] = [:]
@@ -398,9 +403,15 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
     // MARK: - Reads
 
     // The mirror in a stable scan order: offset cursors page a dictionary, so
-    // consecutive pages must walk the same sequence.
-    private var scanOrderLocked: [CKRecord] {
-        mirror.values.sorted { $0.recordID.recordName < $1.recordID.recordName }
+    // consecutive pages must walk the same sequence. Sorting it per page made a
+    // paged scan quadratic in the mirror — the localFirst read path pays it on
+    // every page — so the order is memoized until the mirror changes. A change
+    // mid-scan reshuffles the sequence exactly as re-sorting always did.
+    private func scanOrderLocked() -> [CKRecord] {
+        if let scanOrder { return scanOrder }
+        let ordered = mirror.values.sorted { $0.recordID.recordName < $1.recordID.recordName }
+        scanOrder = ordered
+        return ordered
     }
 
     public func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws
@@ -408,7 +419,7 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
     {
         if servesLocally(zoneID), answers(query, desiredKeys: desiredKeys) {
             return lock.withLock {
-                LocalQuery.page(scanOrderLocked, matching: query, inZone: zoneID, desiredKeys: desiredKeys, offset: 0, resultsLimit: resultsLimit)
+                LocalQuery.page(scanOrderLocked(), matching: query, inZone: zoneID, desiredKeys: desiredKeys, offset: 0, resultsLimit: resultsLimit)
             }
         }
         do {
@@ -421,7 +432,7 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
             return response
         } catch  where OfflineCache.isOffline(error) && mirrors(zoneID) && answers(query, desiredKeys: desiredKeys) {
             return lock.withLock {
-                LocalQuery.page(scanOrderLocked, matching: query, inZone: zoneID, desiredKeys: desiredKeys, offset: 0, resultsLimit: resultsLimit)
+                LocalQuery.page(scanOrderLocked(), matching: query, inZone: zoneID, desiredKeys: desiredKeys, offset: 0, resultsLimit: resultsLimit)
             }
         }
     }
@@ -436,7 +447,7 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
         // end — its offset cursors are the mirror's own.
         if case .offset(let query, let zoneID, let offset) = cursor, servesLocally(zoneID), answers(query, desiredKeys: desiredKeys) {
             return lock.withLock {
-                LocalQuery.page(scanOrderLocked, matching: query, inZone: zoneID, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit)
+                LocalQuery.page(scanOrderLocked(), matching: query, inZone: zoneID, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit)
             }
         }
         do {
@@ -446,7 +457,7 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
                 OfflineCache.isOffline(error) || (error as? CKError)?.code == .invalidArguments
             else { throw error }
             return lock.withLock {
-                LocalQuery.page(scanOrderLocked, matching: query, inZone: zoneID, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit)
+                LocalQuery.page(scanOrderLocked(), matching: query, inZone: zoneID, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit)
             }
         }
     }

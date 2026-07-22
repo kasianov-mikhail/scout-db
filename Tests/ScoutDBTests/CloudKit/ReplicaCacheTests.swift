@@ -68,6 +68,41 @@ struct ReplicaCacheTests {
         #expect(Set(collected).count == 5)
     }
 
+    @Test("The scan order follows the mirror through writes and deletes")
+    func scanOrderTracksMirror() async throws {
+        try await writePurchases([1, 2, 3])
+
+        // Serve a local scan first, so the order is memoized before the mirror moves.
+        backing.errors = [CKError(.networkUnavailable)]
+        #expect(try await store.read(entity: "purchase").map(\.uuid).sorted() == ["p-0", "p-1", "p-2"])
+
+        // A record added after that scan must still join the next one, in order.
+        try await writePurchases([4], through: store)
+        var values = makePurchase().values
+        values["quantity"] = .int(9)
+        try await store.write(values, entity: "purchase", uuid: "p-9")
+        backing.errors = [CKError(.networkUnavailable)]
+        #expect(try await store.read(entity: "purchase").map(\.uuid).sorted() == ["p-0", "p-1", "p-2", "p-9"])
+
+        // And a deleted one must leave it.
+        try await store.delete(entity: "purchase", uuid: "p-9")
+        backing.errors = [CKError(.networkUnavailable)]
+        #expect(try await store.read(entity: "purchase").map(\.uuid).sorted() == ["p-0", "p-1", "p-2"])
+
+        // Paging the refreshed mirror still walks one stable, sorted sequence.
+        backing.errors = [CKError(.networkUnavailable), CKError(.networkUnavailable), CKError(.networkUnavailable)]
+        let query = CKQuery(recordType: "Entity", predicate: NSPredicate(value: true))
+        var collected: [String] = []
+        var response = try await replica.records(matching: query, inZone: zone, desiredKeys: nil, resultsLimit: 2)
+        collected += response.matchResults.map(\.0.recordName)
+        while let cursor = response.queryCursor {
+            response = try await replica.records(continuingMatchFrom: cursor, desiredKeys: nil, resultsLimit: 2)
+            collected += response.matchResults.map(\.0.recordName)
+        }
+        #expect(collected == collected.sorted())
+        #expect(Set(collected).count == collected.count)
+    }
+
     @Test("refresh walks the feed from the replica's own token")
     func refreshBuildsMirror() async throws {
         // Records written behind the replica's back — straight into the backing.
