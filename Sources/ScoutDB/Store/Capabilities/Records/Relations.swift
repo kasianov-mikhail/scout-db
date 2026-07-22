@@ -111,11 +111,20 @@ extension EntityStore {
                 }
                 owners[key] = record.uuid
             }
-            for (key, owner) in owners.sorted(by: { $0.key < $1.key }) {
-                let holders = try await read(entity: entity, filters: [Filter(field: field.name, op: .equals, value: .string(key))])
-                if holders.contains(where: { $0.uuid != owner }) {
-                    throw SchemaError.duplicateReference(field: field.name, key: key)
+            guard owners.count > 0 else { continue }
+            // One membership read per chunk of claimed keys rather than one read
+            // per key. A rejection names the lowest colliding key, so the batch
+            // fails the same way whatever order the holders come back in.
+            var collisions: [String] = []
+            for chunk in owners.keys.sorted().chunked(into: 100) {
+                let holders = try await read(entity: entity, filters: [Filter(field: field.name, op: .in, value: .strings(chunk))])
+                for holder in holders {
+                    guard case .string(let key)? = holder.values[field.name], let owner = owners[key], owner != holder.uuid else { continue }
+                    collisions.append(key)
                 }
+            }
+            if let key = collisions.min() {
+                throw SchemaError.duplicateReference(field: field.name, key: key)
             }
         }
     }
