@@ -19,7 +19,9 @@ import Foundation
 /// full-fidelity `zoneChanges` pass flowing through applies its delta (a
 /// `SyncCoordinator` keeps it fresh for free), and `refresh()` walks each
 /// zone's feed from the replica's own token for a complete mirror. With a
-/// `storeURL` the mirror persists across launches.
+/// `storeURL` the mirror persists across launches, written on a short delay
+/// so a burst of changes costs one rewrite; `persistNow()` forces it, and a
+/// write lost to a crash is re-read from the feed rather than lost.
 ///
 /// One replica can mirror several zones — the shape of a shared database,
 /// where every accepted share lives in its own zone. Configure the initial
@@ -72,6 +74,18 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
     private var completed: Set<CKRecordZone.ID> = []
     // The discovery position of discoverZones() in the database feed.
     private var databaseToken: Data?
+    // Whether the store on disk is behind the mirror, and the delayed write
+    // that will settle it.
+    private var archiveStale = false
+    private var archiveTask: Task<Void, Never>?
+    private static let archiveDelay: Duration = .milliseconds(250)
+
+    deinit {
+        archiveTask?.cancel()
+        if archiveStale {
+            persistLocked()
+        }
+    }
 
     /// A `fields` list makes the replica partial.
     ///
@@ -127,7 +141,7 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
     public func add(zone: CKRecordZone.ID) {
         lock.withLock {
             zones.insert(zone)
-            persistLocked()
+            scheduleArchiveLocked()
         }
     }
 
@@ -152,7 +166,7 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
                 purgeLocked(zone)
             }
             databaseToken = next ?? databaseToken
-            persistLocked()
+            scheduleArchiveLocked()
             return added
         }
     }
@@ -188,14 +202,14 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
             } catch let error as CKError where error.code == .zoneNotFound {
                 lock.withLock {
                     purgeLocked(zone)
-                    persistLocked()
+                    scheduleArchiveLocked()
                 }
                 return applied
             }
             guard changed.count + deleted.count > 0 else {
                 lock.withLock {
                     completed.insert(zone)
-                    persistLocked()
+                    scheduleArchiveLocked()
                 }
                 return applied
             }
@@ -204,7 +218,7 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
                 applyLocked(changed: changed, deleted: deleted)
                 let previous = tokens[zone]
                 tokens[zone] = next ?? previous
-                persistLocked()
+                scheduleArchiveLocked()
                 return next != nil && next != previous
             }
             // The feed returned changes but no fresh token: re-querying from the
@@ -213,7 +227,7 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
             guard advanced else {
                 lock.withLock {
                     completed.insert(zone)
-                    persistLocked()
+                    scheduleArchiveLocked()
                 }
                 return applied
             }
@@ -306,7 +320,7 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
             let gone = deleted.filter { zones.contains($0.zoneID) }
             guard mine.count + gone.count > 0 else { return }
             applyLocked(changed: mine, deleted: gone)
-            persistLocked()
+            scheduleArchiveLocked()
         }
     }
 
@@ -333,7 +347,40 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
         databaseToken = root["databaseToken"] as? Data
     }
 
+    // Marks the store stale and lets one delayed write settle it, instead of
+    // rewriting the whole mirror inline.
+    //
+    // The archive is a full rewrite of every mirrored record, so writing it per
+    // change made a refresh quadratic in the zone and put a serialization of the
+    // entire mirror on the critical path of every read that fed it. Nothing here
+    // is authoritative — the mirror is a copy of the server's — so a write lost
+    // to a crash only means resuming from an older feed token and replaying.
+    private func scheduleArchiveLocked() {
+        guard storeURL != nil, !archiveStale else { return }
+        archiveStale = true
+        archiveTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.archiveDelay)
+            self?.persistNow()
+        }
+    }
+
+    /// Writes the mirror to its `storeURL` now, if a change is still waiting.
+    ///
+    /// Changes are written on a short delay, so a caller that wants the store
+    /// current — a scene heading for the background, or one about to relaunch
+    /// from it — forces the write with this. Skipping it costs no data: an
+    /// unwritten change is re-read from the zone's feed on the next refresh.
+    ///
+    public func persistNow() {
+        lock.withLock {
+            guard archiveStale else { return }
+            persistLocked()
+        }
+    }
+
+    // Carries whatever the scheduled write was waiting to hand over.
     private func persistLocked() {
+        archiveStale = false
         guard let storeURL else { return }
         var root: [String: Any] = [
             "records": Array(mirror.values),
