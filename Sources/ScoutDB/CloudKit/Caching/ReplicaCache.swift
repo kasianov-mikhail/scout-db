@@ -421,6 +421,22 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
         }
     }
 
+    public func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
+        // A partial mirror cannot stand in for whole records, and a batch is
+        // served locally only when the mirror covers every zone it spans.
+        let local = fields == nil && ids.allSatisfy { servesLocally($0.zoneID) }
+        if local {
+            return lock.withLock { ids.compactMap { mirror[$0].map { LocalQuery.project($0, keys: nil) } } }
+        }
+        do {
+            let records = try await backing.fetchRecords(ids: ids)
+            upsert(records)
+            return records
+        } catch  where OfflineCache.isOffline(error) && fields == nil && ids.allSatisfy({ mirrors($0.zoneID) }) {
+            return lock.withLock { ids.compactMap { mirror[$0].map { LocalQuery.project($0, keys: nil) } } }
+        }
+    }
+
     // MARK: - Writes feed the mirror
 
     public func save(_ record: CKRecord) async throws -> CKRecord {

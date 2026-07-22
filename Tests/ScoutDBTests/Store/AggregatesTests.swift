@@ -6,6 +6,7 @@
 // https://opensource.org/licenses/MIT.
 
 import CloudKit
+import CryptoKit
 import Foundation
 import ScoutDBTesting
 import Testing
@@ -39,6 +40,34 @@ struct AggregatesTests {
         for amount in amounts {
             try await store.write(["product": .string(product), "amount": .double(amount), "date": .date(noon)], entity: "payment")
         }
+    }
+
+    @Test("A grid slot named before separators were escaped is still adopted")
+    func legacyGridSlotAdoption() async throws {
+        try await publishPayment(views: [AggregateView(name: "daily", groupBy: "product", bucket: .day)])
+
+        // Only a group holding a separator hashes differently than it did before
+        // contentDigest escaped one, so that slot alone carries a pre-escaping name.
+        let group = "a|b"
+        let period = EntityCoder.periodStart(of: .month, for: noon)
+        let legacyKey = "payment|daily|\(group)|\(period.millisecondsSince1970)"
+        let legacyName = "grid-" + SHA256.hash(data: Data(legacyKey.utf8)).hexString
+        #expect(legacyName != "grid-" + contentDigest(of: ["payment", "daily", group, "\(period.millisecondsSince1970)"]))
+
+        let legacy = CKRecord(recordType: "Aggregate", recordID: CKRecord.ID(recordName: legacyName))
+        legacy["entity"] = "payment"
+        legacy["view"] = "daily"
+        legacy["group_key"] = group
+        legacy["date"] = period
+        legacy["c_00"] = Int64(5)
+        try await database.write(records: [legacy])
+
+        try await writePayments([1], product: group)
+
+        // The write folded into the slot that already held the totals rather than
+        // stranding them behind a fresh, empty one.
+        #expect(database.records.filter { $0.recordType == "Aggregate" }.count == 1)
+        #expect(try await store.totals(entity: "payment", view: "daily").map(\.count) == [6])
     }
 
     @Test("A unique-key upsert counts once in aggregate views")

@@ -145,6 +145,14 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         return records.first { $0.recordID == id }.map { project($0, keys: nil) }
     }
 
+    public func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
+        if let error = errors.popLast() {
+            throw error
+        }
+        let stored = Dictionary(records.map { ($0.recordID, $0) }, uniquingKeysWith: { first, _ in first })
+        return ids.compactMap { stored[$0].map { project($0, keys: nil) } }
+    }
+
     public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int?) async throws -> (
         changed: [CKRecord], deleted: [CKRecord.ID], token: Data?
     ) {

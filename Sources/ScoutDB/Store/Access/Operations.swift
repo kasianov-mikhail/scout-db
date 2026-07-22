@@ -416,23 +416,23 @@ extension EntityStore {
             let records: [CKRecord]
         }
         let database = database
+        let zoneID = zoneID
         return try await withThrowingTaskGroup(of: Chunk.self) { group in
             for (index, chunk) in uuids.chunked(into: 100).enumerated() {
                 group.addTask {
-                    let query = ckQuery(
-                        Entity.recordType,
-                        filters: [
-                            ServerFilter(field: "entity", op: .equals, value: .string(entity)),
-                            ServerFilter(field: "uuid", op: .in, value: .strings(chunk)),
-                        ])
-                    return Chunk(index: index, records: try await database.allRecords(matching: query, inZone: zoneID))
+                    // A record's name is its uuid, so the batch is addressable by ID.
+                    let ids = chunk.map { CKRecord.ID(recordName: $0, zoneID: zoneID ?? .default) }
+                    return Chunk(index: index, records: try await database.fetchRecords(ids: ids))
                 }
             }
             var chunks: [Int: [CKRecord]] = [:]
             for try await chunk in group {
                 chunks[chunk.index] = chunk.records
             }
-            return chunks.sorted { $0.key < $1.key }.flatMap(\.value)
+            // The query this replaced was scoped to the entity; a fetch is scoped
+            // only by name, and a natural uuid is a digest of the record's own key
+            // fields, which two entities could in principle both produce.
+            return chunks.sorted { $0.key < $1.key }.flatMap(\.value).filter { $0["entity"] as? String == entity }
         }
     }
 }

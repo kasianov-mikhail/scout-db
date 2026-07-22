@@ -929,6 +929,29 @@ struct OperationsTests {
         #expect(try await store.fetch(uuid: "p-1") == nil)
     }
 
+    @Test("Fetching by uuid stays scoped to the asked-for entity")
+    func fetchStaysScopedToEntity() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "ticket",
+                fields: [
+                    FieldDefinition(name: "label", type: .string, storage: .slot(.string, "s_00"))
+                ]))
+
+        // One record name, claimed by a second entity — the shape a natural uuid
+        // could produce if two entities digested their key fields to the same
+        // value. Records are addressed by name, so the later write takes it over.
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "shared")
+        try await store.write(["label": .string("t")], entity: "ticket", uuid: "shared")
+
+        #expect(try await store.fetch(entity: "purchase", uuids: ["shared"]).isEmpty)
+        #expect(try await store.fetch(entity: "ticket", uuids: ["shared"]).map(\.uuid) == ["shared"])
+        // The mutation paths ride the same lookup, so they must agree.
+        await #expect(throws: SchemaError.self) {
+            try await store.update(entity: "purchase", uuid: "shared") { $0.values["quantity"] = .int(1) }
+        }
+    }
+
     @Test("Reap tombstones expired records")
     func reap() async throws {
         try await registry.publish(
