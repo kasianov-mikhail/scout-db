@@ -41,6 +41,33 @@ struct ObservedDatabaseTests {
         #expect(query.recordCount == 1)
     }
 
+    @Test("Constraint validation reads a batch, not a record at a time")
+    func constraintValidationBatches() async throws {
+        try await registry.publish(
+            EntityDefinition(
+                entity: "seat", version: 1,
+                fields: [
+                    FieldDefinition(name: "row", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "number", type: .int, storage: .slot(.int, "i_00")),
+                    FieldDefinition(name: "badge", type: .string, storage: .slot(.string, "s_01"), references: "person", exclusive: true),
+                ], uniqueKeys: [["row", "number"]]))
+
+        func reads(writing count: Int, from start: Int) async throws -> Int {
+            recorder.reset()
+            try await store.write(
+                (start..<(start + count)).map { index in
+                    EntityWrite(values: ["row": .string("r"), "number": .int(Int64(index)), "badge": .string("b-\(index)")], uuid: "s-\(index)")
+                }, entity: "seat")
+            return recorder.operations.filter { $0.kind == .query || $0.kind == .continuation }.count
+        }
+
+        // The reads behind a write are the constraint checks; batching means their
+        // number is a property of the schema, not of how many records arrive.
+        let one = try await reads(writing: 1, from: 0)
+        let many = try await reads(writing: 20, from: 100)
+        #expect(many == one)
+    }
+
     @Test("A failing call reports its error and still throws")
     func observesFailures() async throws {
         recorder.reset()
