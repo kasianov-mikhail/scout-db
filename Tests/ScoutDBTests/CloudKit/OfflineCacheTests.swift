@@ -408,6 +408,24 @@ struct OfflineCacheTests {
         }
     }
 
+    @Test("Eviction sheds the whole overflow at once, least recently used first")
+    func evictionOrder() {
+        // Four entries against a quota of two: the overflow leaves in one pass,
+        // which is the restore path's shape — an oversized archive never sheds
+        // its entries one at a time.
+        var store = ["a": 1, "b": 2, "c": 3, "d": 4]
+        var usage: [String: Int64] = ["a": 4, "b": 1, "c": 3, "d": 2]
+        OfflineCache.evict(&store, usage: &usage, limit: 2)
+        #expect(store.keys.sorted() == ["a", "c"])
+        // The recency bookkeeping follows the entries out; a stale usage entry
+        // would keep ranking a key that no longer exists.
+        #expect(usage.keys.sorted() == ["a", "c"])
+
+        // Already within quota: nothing moves.
+        OfflineCache.evict(&store, usage: &usage, limit: 2)
+        #expect(store.keys.sorted() == ["a", "c"])
+    }
+
     @Test("An evicted baseline degrades a conflicting flush to a surfaced conflict")
     func baselineQuota() async throws {
         let cache = OfflineCache(backing: backing, baselineLimit: 1)
