@@ -16,25 +16,41 @@ import Foundation
 /// tri-state result lets `NOT (field IN ...)` stay false for missing fields too.
 ///
 public enum PredicateEvaluator {
+    private nonisolated(unsafe) static let truePredicate = NSPredicate(value: true)
+
     public static func evaluate(_ predicate: NSPredicate, record: CKRecord) -> Bool? {
         if let compound = predicate as? NSCompoundPredicate {
-            let results = (compound.subpredicates as? [NSPredicate] ?? []).map { evaluate($0, record: record) }
+            let subpredicates = compound.subpredicates as? [NSPredicate] ?? []
             switch compound.compoundPredicateType {
             case .and:
                 // Kleene AND: any false wins; otherwise an unknown (a compared
                 // field missing) keeps the whole result unknown rather than
                 // collapsing to a concrete Bool a wrapping NOT could flip.
-                if results.contains(where: { $0 == false }) { return false }
-                return results.contains(where: { $0 == nil }) ? nil : true
+                var sawUnknown = false
+                for subpredicate in subpredicates {
+                    switch evaluate(subpredicate, record: record) {
+                    case .some(false): return false
+                    case .none: sawUnknown = true
+                    case .some(true): break
+                    }
+                }
+                return sawUnknown ? nil : true
             case .or:
                 // Kleene OR: any true wins; otherwise an unknown keeps it unknown.
-                if results.contains(where: { $0 == true }) { return true }
-                return results.contains(where: { $0 == nil }) ? nil : false
+                var sawUnknown = false
+                for subpredicate in subpredicates {
+                    switch evaluate(subpredicate, record: record) {
+                    case .some(true): return true
+                    case .none: sawUnknown = true
+                    case .some(false): break
+                    }
+                }
+                return sawUnknown ? nil : false
             case .not:
                 // Kleene NOT: unknown stays unknown, so a record missing the
                 // field stays excluded (the caller keeps only `== true`) whether
                 // the leaf sits directly under NOT or inside a compound.
-                return results.first.map { $0.map { !$0 } } ?? false
+                return subpredicates.first.map { evaluate($0, record: record).map { !$0 } } ?? false
             @unknown default:
                 return false
             }
@@ -42,7 +58,7 @@ public enum PredicateEvaluator {
         if let comparison = predicate as? NSComparisonPredicate {
             return evaluate(comparison, record: record)
         }
-        return predicate == NSPredicate(value: true) ? true : false
+        return predicate == Self.truePredicate ? true : false
     }
 
     private static func evaluate(_ comparison: NSComparisonPredicate, record: CKRecord) -> Bool? {
@@ -104,12 +120,16 @@ public enum PredicateEvaluator {
     // treats `self CONTAINS`: each needle token must appear somewhere on the record.
     private static func evaluateSearch(_ comparison: NSComparisonPredicate, record: CKRecord) -> Bool? {
         guard let needle = (comparison.rightExpression.constantValue as? String)?.lowercased() else { return false }
-        var tokens: Set<Substring> = []
+        var required = Set(needle.split { !$0.isLetter && !$0.isNumber })
+        guard !required.isEmpty else { return true }
         for key in record.allKeys() {
             guard let text = record[key] as? String else { continue }
-            tokens.formUnion(text.lowercased().split { !$0.isLetter && !$0.isNumber })
+            for token in text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }) {
+                required.remove(token)
+                if required.isEmpty { return true }
+            }
         }
-        return needle.split { !$0.isLetter && !$0.isNumber }.allSatisfy(tokens.contains)
+        return false
     }
 
     public static func compare(_ lhs: Any?, _ rhs: Any?) -> ComparisonResult {
