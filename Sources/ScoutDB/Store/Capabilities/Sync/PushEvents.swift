@@ -57,4 +57,42 @@ extension EntityStore {
         guard event.kind != .deleted else { return nil }
         return try await fetch(uuid: event.uuid)
     }
+
+    /// The record behind a push, without a fetch when the payload carries it.
+    ///
+    /// A subscription made with `subscribe(entity:filters:id:projecting:)`
+    /// delivers the projected fields inside the notification; they decode
+    /// here directly, and the fields the projection dropped read as nil. A
+    /// push without fields — an unprojected subscription, or a payload the
+    /// transport trimmed — falls back to `fetch(uuid:)`. Nil for hard
+    /// deletes, tombstones, and non-query notifications.
+    ///
+    public func record(fromPush userInfo: [AnyHashable: Any]) async throws -> EntityRecord? {
+        guard let notification = CKNotification(fromRemoteNotificationDictionary: userInfo) as? CKQueryNotification else { return nil }
+        return try await record(for: notification)
+    }
+
+    /// The record behind a query notification; see `record(fromPush:)`.
+    public func record(for notification: CKQueryNotification) async throws -> EntityRecord? {
+        guard notification.queryNotificationReason != .recordDeleted, let uuid = notification.recordID?.recordName else { return nil }
+        let fields = (notification.recordFields ?? [:]).compactMapValues { $0 as? any CKRecordValue }
+        return try await record(uuid: uuid, pushedFields: fields)
+    }
+
+    func record(uuid: String, pushedFields: [String: any CKRecordValue]) async throws -> EntityRecord? {
+        guard let entity = pushedFields["entity"] as? String, pushedFields["schema_version"] != nil else {
+            return try await fetch(uuid: uuid)
+        }
+        let definition = try await registry.definition(for: entity)
+        let record = CKRecord(recordType: Entity.recordType, recordID: CKRecord.ID(recordName: uuid, zoneID: zoneID ?? .default))
+        for (key, value) in pushedFields {
+            record[key] = value
+        }
+        record["uuid"] = record["uuid"] ?? uuid
+        let coder = EntityCoder(keyProvider: keyProvider, zoneID: zoneID)
+        guard let decoded = try? coder.decode(record, using: definition) else {
+            return try await fetch(uuid: uuid)
+        }
+        return decoded.deleted ? nil : decoded
+    }
 }
