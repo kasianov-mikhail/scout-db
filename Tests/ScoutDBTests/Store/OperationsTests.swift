@@ -1158,6 +1158,35 @@ struct OperationsTests {
         #expect(steps.map(\.kind) == [.write, .delete])
     }
 
+    @Test("Interleaved entities and grouped deletes land the same records")
+    func transactionBatching() async throws {
+        try await registry.publish(EntityStore.transactionDefinition)
+        try await registry.publish(makeSeatDefinition())
+
+        try await store.transaction { draft in
+            draft.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+            draft.write(["row": .string("a"), "number": .int(1)], entity: "seat", uuid: "s-1")
+            draft.write(makePurchase().values, entity: "purchase", uuid: "p-2")
+            draft.write(["row": .string("a"), "number": .int(2)], entity: "seat", uuid: "s-2")
+            var repeated = makePurchase().values
+            repeated["quantity"] = .int(9)
+            draft.write(repeated, entity: "purchase", uuid: "p-1")
+        }
+        #expect(try await store.read(entity: "purchase").map(\.uuid).sorted() == ["p-1", "p-2"])
+        #expect(try await store.read(entity: "seat").map(\.uuid).sorted() == ["s-1", "s-2"])
+        #expect(try await store.fetch(entity: "purchase", uuids: ["p-1"]).first?.values["quantity"] == .int(9))
+
+        try await store.transaction { draft in
+            draft.delete(entity: "purchase", uuid: "p-1")
+            draft.delete(entity: "purchase", uuid: "p-2")
+            draft.delete(entity: "seat", uuid: "s-1")
+        }
+        #expect(try await store.read(entity: "purchase").isEmpty)
+        #expect(try await store.read(entity: "seat").map(\.uuid) == ["s-2"])
+        try await store.restore(entity: "purchase", uuid: "p-1")
+        #expect(try await store.fetch(entity: "purchase", uuids: ["p-1"]).first?.values["quantity"] == .int(9))
+    }
+
     @Test("A transaction patches existing records with update steps")
     func transactionUpdates() async throws {
         try await registry.publish(EntityStore.transactionDefinition)
