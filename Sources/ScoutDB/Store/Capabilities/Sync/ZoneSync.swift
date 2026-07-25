@@ -141,19 +141,28 @@ extension EntityStore {
             throw SchemaError.invalidDefinition("Zone sync requires a store configured with a custom zone")
         }
         let (changed, deleted, next) = try await database.zoneChanges(zoneID: zoneID, since: token, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+        var definitions: [String: EntityDefinition?] = [:]
+        let coder = EntityCoder(keyProvider: keyProvider)
         var records: [EntityRecord] = []
+        records.reserveCapacity(changed.count)
         for record in changed where record.recordType == Entity.recordType {
             guard let entity = record["entity"] as? String else { continue }
+            let definition: EntityDefinition?
+            if let cached = definitions[entity] {
+                definition = cached
+            } else {
+                do {
+                    definition = try await registry.definition(for: entity)
+                } catch is SchemaError {
+                    definition = nil
+                }
+                definitions[entity] = definition
+            }
+            guard let definition else { continue }
             do {
-                let definition = try await registry.definition(for: entity)
-                records += try decode([record], using: definition)
+                guard let decoded = try decode(record, with: coder, using: definition) else { continue }
+                records.append(decoded)
             } catch is SchemaError {
-                // A record of a retired or unknown entity, or one a peer wrote
-                // under a schema newer than this device knows: skip it, as
-                // documented. Only schema-shaped failures are swallowed — a
-                // transient lookup error (network) or a corrupt payload now
-                // propagates instead of silently dropping the record while the
-                // token advances past it.
                 continue
             }
         }
