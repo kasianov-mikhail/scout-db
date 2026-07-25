@@ -73,6 +73,52 @@ public struct Migrator: Sendable {
         return migrated.count
     }
 
+    /// Rebuilds one view's grid from the entity's live records.
+    ///
+    /// The pass for a view declared after data already exists — its grid only
+    /// counts contributions from the moment of declaration, and this recounts
+    /// the past. It drops the view's existing grid records first, so repeating
+    /// an interrupted run is safe and the same call repairs a drifted grid.
+    /// Quiesce writers for the duration: a write landing mid-rebuild can count
+    /// twice or not at all. Returns how many records contributed.
+    ///
+    @discardableResult public func backfill(view viewName: String, entity: String, batchSize: Int = 400) async throws -> Int {
+        let definition = try await registry.definition(for: entity)
+        guard let view = definition.view(named: viewName) else {
+            throw SchemaError.unknownField(viewName)
+        }
+
+        let grid = try await database.allRecords(
+            matching: ckQuery(
+                Aggregate.recordType,
+                filters: [
+                    ServerFilter(field: "entity", op: .equals, value: .string(entity)),
+                    ServerFilter(field: "view", op: .equals, value: .string(viewName)),
+                ]))
+        for chunk in grid.map(\.recordID).chunked(into: batchSize) {
+            try await database.modifyRecords(saving: [], deleting: chunk)
+        }
+
+        var scoped = definition
+        scoped.views = [view]
+        let records = try await database.allRecords(
+            matching: ckQuery(
+                Entity.recordType,
+                filters: [
+                    ServerFilter(field: "entity", op: .equals, value: .string(entity)),
+                    ServerFilter(field: "deleted", op: .equals, value: .int(0)),
+                ]))
+        let coder = EntityCoder(keyProvider: keyProvider)
+        let aggregator = GridAggregator(database: database)
+        var counted = 0
+        for chunk in records.chunked(into: batchSize) {
+            let decoded = try chunk.map { try coder.decode($0, using: definition) }
+            try await aggregator.record(decoded, using: scoped)
+            counted += decoded.count
+        }
+        return counted
+    }
+
     /// Re-encrypts every live record of an entity under a new key and republishes
     /// the definition with the new keyID.
     ///

@@ -152,6 +152,42 @@ struct MigratorTests {
         #expect(reread.values["state"] == .string("new"))
         #expect(reread.values["email"] == .string("alice@example.com"))
     }
+
+    @Test("View backfill recounts existing records into a freshly declared view")
+    func viewBackfill() async throws {
+        var definition = makeDefinition(
+            entity: "sale",
+            fields: [
+                FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00")),
+                FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
+            ], views: [AggregateView(name: "all_time", bucket: .lifetime)])
+        try await registry.publish(definition)
+        let store = EntityStore(database: database, registry: registry)
+        try await store.write(["product": .string("app"), "amount": .double(10)], entity: "sale")
+        try await store.write(["product": .string("app"), "amount": .double(5)], entity: "sale")
+        try await store.write(["product": .string("book"), "amount": .double(2)], entity: "sale")
+
+        definition.views? += [AggregateView(name: "by_product", groupBy: "product", bucket: .lifetime, sum: "amount")]
+        try await registry.publish(definition)
+        #expect(try await store.totals(entity: "sale", view: "by_product").isEmpty)
+
+        #expect(try await migrator.backfill(view: "by_product", entity: "sale") == 3)
+        var totals = try await store.totals(entity: "sale", view: "by_product")
+        #expect(totals.first { $0.group == "app" }?.count == 2)
+        #expect(totals.first { $0.group == "app" }?.value == 15)
+        #expect(totals.first { $0.group == "book" }?.count == 1)
+        #expect(try await store.totals(entity: "sale", view: "all_time").map(\.count) == [3])
+
+        #expect(try await migrator.backfill(view: "by_product", entity: "sale") == 3)
+        totals = try await store.totals(entity: "sale", view: "by_product")
+        #expect(totals.first { $0.group == "app" }?.count == 2)
+        #expect(totals.first { $0.group == "app" }?.value == 15)
+        #expect(try await store.totals(entity: "sale", view: "all_time").map(\.count) == [3])
+
+        await #expect(throws: SchemaError.unknownField("ghost")) {
+            try await migrator.backfill(view: "ghost", entity: "sale")
+        }
+    }
 }
 
 func makeRenameDefinition(version: Int) -> EntityDefinition {
