@@ -117,7 +117,7 @@ extension EntityStore {
             // fails the same way whatever order the holders come back in.
             var collisions: [String] = []
             for chunk in owners.keys.sorted().chunked(into: 100) {
-                let holders = try await read(entity: entity, filters: [Filter(field: field.name, op: .in, value: .strings(chunk))])
+                let holders = try await read(entity: entity, filters: [Filter(field: field.name, op: .in, value: .strings(chunk))], fields: [field.name])
                 for holder in holders {
                     guard case .string(let key)? = holder.values[field.name], let owner = owners[key], owner != holder.uuid else { continue }
                     collisions.append(key)
