@@ -74,6 +74,27 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
         views?.first { $0.name == name }
     }
 
+    /// The publish-time validation: everything `validate()` checks, plus the
+    /// shapes that are legal to read back but wasteful to ever publish anew.
+    ///
+    /// A `uniqueKeys` tuple with no slot-backed field gives the server nothing
+    /// to narrow on, so every write batch would scan the whole entity; it is
+    /// rejected here while already-published definitions keep decoding.
+    ///
+    public func validateForPublish() throws {
+        try validate()
+        for key in uniqueKeys ?? [] {
+            let backed = key.contains { name in
+                guard case .slot? = field(named: name, at: version)?.storage else { return false }
+                return true
+            }
+            guard backed else {
+                throw SchemaError.invalidDefinition(
+                    "Unique key '\(key.joined(separator: ", "))' has no slot-backed field, so every write would scan the whole entity")
+            }
+        }
+    }
+
     public func validate() throws {
         let names = Set(fields.map(\.name))
         for field in fields {
