@@ -89,7 +89,8 @@ struct EntityCoder {
                 if let maximum = field.maximum, scalar > maximum { throw SchemaError.invalidValue(field.name) }
             }
         }
-        for name in resolved.keys where !fields.contains(where: { $0.name == name }) {
+        let known = definition.fieldsByName(at: version)
+        for name in resolved.keys where known[name] == nil {
             throw SchemaError.unknownField(name)
         }
         return resolved
