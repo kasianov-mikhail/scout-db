@@ -64,13 +64,12 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
     // A partial replica's field whitelist: mirrored records are trimmed to
     // these keys, and only queries the keys fully cover are served locally.
     private let fields: Set<CKRecord.FieldKey>?
+    private let projectedFields: [CKRecord.FieldKey]?
     private let lock = NSLock()
     private var zones: Set<CKRecordZone.ID>
-    private var mirror: [CKRecord.ID: CKRecord] = [:] {
-        didSet { scanOrder = nil }
-    }
-    // The memoized scan order, dropped by any change to the mirror above and
-    // rebuilt on the next read that needs it.
+    private var mirror: [CKRecord.ID: CKRecord] = [:]
+    // The memoized scan order. Small mirror changes maintain it in place; a
+    // batch apply or a purge drops it for the next read to rebuild.
     private var scanOrder: [CKRecord]?
     // Each zone's own feed position — advanced only by refresh(), the one
     // path that guarantees the mirror saw everything before it.
@@ -110,6 +109,7 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
         self.storeURL = storeURL
         self.readPolicy = readPolicy
         self.fields = fields.map(Set.init)
+        projectedFields = fields
         if let storeURL, let data = try? Data(contentsOf: storeURL) {
             restore(from: data)
         }
@@ -254,13 +254,66 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
     // MARK: - Mirror maintenance
 
     private func applyLocked(changed: [CKRecord], deleted: [CKRecord.ID]) {
+        if changed.count + deleted.count > 64 {
+            scanOrder = nil
+        }
         for record in changed {
             // A partial replica stores records trimmed to its whitelist.
-            mirror[record.recordID] = LocalQuery.project(record, keys: fields.map(Array.init))
+            let trimmed = LocalQuery.project(record, keys: projectedFields)
+            mirror[record.recordID] = trimmed
+            placeLocked(trimmed)
         }
-        for id in deleted {
-            mirror[id] = nil
+        for id in deleted where mirror.removeValue(forKey: id) != nil {
+            removeLocked(id)
         }
+    }
+
+    private func placeLocked(_ record: CKRecord) {
+        guard var order = scanOrder else { return }
+        scanOrder = nil
+        let name = record.recordID.recordName
+        var index = Self.orderedIndex(of: name, in: order)
+        var placed = false
+        while index < order.count, order[index].recordID.recordName == name {
+            if order[index].recordID == record.recordID {
+                order[index] = record
+                placed = true
+                break
+            }
+            index += 1
+        }
+        if !placed {
+            order.insert(record, at: index)
+        }
+        scanOrder = order
+    }
+
+    private func removeLocked(_ id: CKRecord.ID) {
+        guard var order = scanOrder else { return }
+        scanOrder = nil
+        var index = Self.orderedIndex(of: id.recordName, in: order)
+        while index < order.count, order[index].recordID.recordName == id.recordName {
+            if order[index].recordID == id {
+                order.remove(at: index)
+                break
+            }
+            index += 1
+        }
+        scanOrder = order
+    }
+
+    private static func orderedIndex(of name: String, in order: [CKRecord]) -> Int {
+        var low = 0
+        var high = order.count
+        while low < high {
+            let mid = (low + high) / 2
+            if order[mid].recordID.recordName < name {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        return low
     }
 
     // Whether records carrying only these keys can feed the mirror: full
@@ -334,6 +387,7 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
         tokens[zone] = nil
         completed.remove(zone)
         mirror = mirror.filter { $0.key.zoneID != zone }
+        scanOrder = nil
     }
 
     private func restore(from data: Data) {
@@ -344,6 +398,7 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
         // shape, so the replica starts fresh.
         guard (root["fields"] as? [String]).map(Set.init) == fields else { return }
         mirror = (root["records"] as? [CKRecord] ?? []).reduce(into: [:]) { $0[$1.recordID] = $1 }
+        scanOrder = nil
         zones.formUnion(root["zones"] as? [CKRecordZone.ID] ?? [])
         let tokenZones = root["tokenZones"] as? [CKRecordZone.ID] ?? []
         let tokenValues = root["tokenValues"] as? [Data] ?? []
