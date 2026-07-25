@@ -8,11 +8,19 @@
 import CryptoKit
 import Foundation
 
+private let hexDigits: [Character] = Array("0123456789abcdef")
+
 extension Sequence where Element == UInt8 {
     /// Lowercase hex encoding of the bytes — the shared spelling for digest and
     /// MAC record ids across the store.
     var hexString: String {
-        map { String(format: "%02x", $0) }.joined()
+        var encoded = ""
+        encoded.reserveCapacity(underestimatedCount * 2)
+        for byte in self {
+            encoded.append(hexDigits[Int(byte >> 4)])
+            encoded.append(hexDigits[Int(byte & 0x0F)])
+        }
+        return encoded
     }
 }
 
@@ -28,6 +36,9 @@ extension Sequence where Element == UInt8 {
 /// "|" and "\" encode byte-for-byte as an unescaped join would, so ids minted
 /// before this escaping stay valid.
 func contentDigest(of components: [String]) -> String {
-    let escaped = components.map { $0.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "|", with: "\\|") }
+    let escaped = components.map { component in
+        guard component.contains(where: { $0 == "\\" || $0 == "|" }) else { return component }
+        return component.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "|", with: "\\|")
+    }
     return SHA256.hash(data: Data(escaped.joined(separator: "|").utf8)).hexString
 }
