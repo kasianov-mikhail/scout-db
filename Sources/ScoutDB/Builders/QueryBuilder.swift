@@ -144,10 +144,13 @@ public struct QueryBuilder: Sendable {
 
     /// Runs the query and returns the number of matching records.
     ///
-    /// A query a declared lifetime view covers — no groups, no creator scope,
-    /// and no filters or one equality on the view's `groupBy` — is answered
-    /// from the view's grid in one request. Every other query scans, fetching
-    /// only the envelope and the filtered fields rather than full payloads.
+    /// A query a declared view covers — no groups, no creator scope, and
+    /// filters limited to an equality on the view's `groupBy`, an
+    /// `envelopeDate` range aligned with the view's cell resolution (hours for
+    /// an hour view, days for day and weekday views), or a threshold landing
+    /// on a histogram bound — is answered from the view's grid without
+    /// scanning records. Every other query scans, fetching only the envelope
+    /// and the filtered fields rather than full payloads.
     ///
     public func count() async throws -> Int {
         if groups.isEmpty, creator == nil, let counted = try await store.viewCount(entity: entity, filters: filters) {
