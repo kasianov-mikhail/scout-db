@@ -112,6 +112,33 @@ struct AggregatesTests {
         #expect(rows.first?.value == 25)
     }
 
+    @Test("A sharded view spreads a hot slot over several records and reads back whole")
+    func shardedView() async throws {
+        try await publishPayment(views: [AggregateView(name: "revenue", bucket: .lifetime, sum: "amount", shards: 3)])
+        for index in 0..<6 {
+            try await store.write(
+                ["product": .string("app"), "amount": .double(Double(index + 1)), "date": .date(noon)], entity: "payment", uuid: "p-\(index)")
+        }
+        let shards = Set((0..<6).map { GridAggregator.shard(of: "p-\($0)", among: 3) })
+        #expect(shards.count > 1)
+        #expect(database.records.filter { $0.recordType == "Aggregate" }.count == shards.count)
+
+        let rows = try await store.aggregate(entity: "payment", view: "revenue")
+        #expect(rows.count == 1)
+        #expect(rows.first?.count == 6)
+        #expect(rows.first?.value == 21)
+
+        try await store.delete(entity: "payment", uuid: "p-3")
+        #expect(try await store.totals(entity: "payment", view: "revenue").map(\.count) == [5])
+        #expect(try await store.query("payment").count() == 5)
+
+        let invalid = makeDefinition(
+            entity: "e",
+            fields: [FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))],
+            views: [AggregateView(name: "x", bucket: .lifetime, shards: 1)])
+        #expect(throws: SchemaError.self) { try invalid.validate() }
+    }
+
     @Test("Deleting a record reverses its aggregate contribution")
     func deleteReversesAggregate() async throws {
         try await publishPayment(views: [AggregateView(name: "revenue", sum: "amount")])

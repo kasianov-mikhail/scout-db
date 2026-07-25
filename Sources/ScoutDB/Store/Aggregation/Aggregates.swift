@@ -67,7 +67,7 @@ extension EntityStore {
         let kind = view.metric?.kind
         let isStats = view.stats != nil
 
-        return records.compactMap { record -> AggregateRow? in
+        let rows = records.compactMap { record -> AggregateRow? in
             guard let period = record["date"] as? Date, let group = record["group_key"] as? String else { return nil }
             var count = 0
             var value: Double?
@@ -82,6 +82,18 @@ extension EntityStore {
                 }
             }
             return AggregateRow(group: group, period: period, count: count, value: value, squares: squares)
+        }
+        // A sharded view stores one slot as several records; they fold back into
+        // the one row the caller expects.
+        return Dictionary(grouping: rows) { "\($0.period.millisecondsSince1970)|\($0.group)" }.values.map { shards -> AggregateRow in
+            shards.dropFirst().reduce(shards[0]) { merged, shard in
+                let values = [merged.value, shard.value].compactMap { $0 }
+                let squares = [merged.squares, shard.squares].compactMap { $0 }
+                return AggregateRow(
+                    group: merged.group, period: merged.period, count: merged.count + shard.count,
+                    value: values.count > 0 ? (values.count == 2 ? (kind?.combine(values[0], values[1]) ?? values[0] + values[1]) : values[0]) : nil,
+                    squares: squares.count > 0 ? squares.reduce(0, +) : nil)
+            }
         }.sorted { ($0.period, $0.group) < ($1.period, $1.group) }
     }
 
@@ -95,6 +107,7 @@ extension EntityStore {
         }
         let bucket = view.bucket ?? .hour
         let isStats = view.stats != nil
+        let kind = view.metric?.kind
         var points: [AggregateSeriesPoint] = []
 
         for record in try await gridRecords(entity: entity, view: viewName, from: from, to: to) {
@@ -106,7 +119,15 @@ extension EntityStore {
                 points.append(AggregateSeriesPoint(group: group, date: Self.cellDate(bucket, period: period, index: index), count: count, value: value))
             }
         }
-        return points.sorted { ($0.date, $0.group) < ($1.date, $1.group) }
+        // A sharded view yields one point per shard record; fold them per cell.
+        return Dictionary(grouping: points) { "\($0.date.millisecondsSince1970)|\($0.group)" }.values.map { shards -> AggregateSeriesPoint in
+            shards.dropFirst().reduce(shards[0]) { merged, shard in
+                let values = [merged.value, shard.value].compactMap { $0 }
+                return AggregateSeriesPoint(
+                    group: merged.group, date: merged.date, count: merged.count + shard.count,
+                    value: values.count > 0 ? (values.count == 2 ? (kind?.combine(values[0], values[1]) ?? values[0] + values[1]) : values[0]) : nil)
+            }
+        }.sorted { ($0.date, $0.group) < ($1.date, $1.group) }
     }
 
     private static func cellDate(_ bucket: AggregateView.Bucket, period: Date, index: Int) -> Date {
