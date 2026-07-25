@@ -51,6 +51,30 @@ struct ReplicaCacheTests {
         #expect(sorted.first?.values["product_id"] == nil)
     }
 
+    @Test("The scan order absorbs single writes and deletes without a rebuild")
+    func incrementalScanOrder() async throws {
+        try await writePurchases([1, 2, 3, 4, 5])
+
+        backing.errors = [CKError(.networkUnavailable)]
+        let query = CKQuery(recordType: "Entity", predicate: NSPredicate(value: true))
+        _ = try await replica.records(matching: query, inZone: zone, desiredKeys: nil, resultsLimit: 0)
+
+        var values = makePurchase().values
+        values["quantity"] = .int(9)
+        try await store.write(values, entity: "purchase", uuid: "p-0a")
+        try await store.write(values, entity: "purchase", uuid: "p-2")
+        try await store.delete(entity: "purchase", uuid: "p-4")
+
+        backing.errors = [CKError(.networkUnavailable)]
+        let scanned = try await replica.records(matching: query, inZone: zone, desiredKeys: nil, resultsLimit: 0)
+        let names = scanned.matchResults.map(\.0.recordName)
+        #expect(names == names.sorted())
+        #expect(names.contains("p-0a"))
+        #expect(Set(names).count == names.count)
+        let rewritten = try #require(scanned.matchResults.first { $0.0.recordName == "p-2" }.flatMap { try? $0.1.get() })
+        #expect(rewritten["i_01"] as? Int64 == 9)
+    }
+
     @Test("Offline pagination walks the mirror with offset cursors")
     func offlinePagination() async throws {
         try await writePurchases([1, 2, 3, 4, 5])
