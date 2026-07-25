@@ -27,6 +27,7 @@ extension EntityStore {
     ///
     func claimUniqueKeys(of records: [EntityRecord], using definition: EntityDefinition) async throws {
         try await claimKeys(definition.enforcedKeys ?? [], of: records, using: definition)
+        try await claimExclusivity(of: records, using: definition)
     }
 
     func claimKeys(_ keys: [[String]], of records: [EntityRecord], using definition: EntityDefinition) async throws {
@@ -40,11 +41,42 @@ extension EntityStore {
                 owners[digest] = record.uuid
             }
             guard owners.count > 0 else { continue }
-            try await claim(owners, key: key, using: definition)
+            try await claim(owners, key: key, using: definition) { _ in .duplicateKey(fields: key) }
         }
     }
 
-    private func claim(_ owners: [String: String], key: [String], using definition: EntityDefinition) async throws {
+    /// Wins a claim for every exclusive-reference value of the batch, the way
+    /// enforced keys are claimed — the create is conditional, so of two racing
+    /// suitors exactly one wins the one-to-one link.
+    ///
+    func claimExclusivity(of records: [EntityRecord], using definition: EntityDefinition, fields: [FieldDefinition]? = nil) async throws {
+        for field in fields ?? Self.exclusiveFields(of: definition) {
+            let key = [field.name]
+            var owners: [String: String] = [:]
+            var values: [String: String] = [:]
+            for record in records {
+                guard case .string(let value)? = record.values[field.name], let digest = Self.keyDigest(key, in: record.values) else { continue }
+                if let owner = owners[digest], owner != record.uuid {
+                    throw SchemaError.duplicateReference(field: field.name, key: value)
+                }
+                owners[digest] = record.uuid
+                values[digest] = value
+            }
+            guard owners.count > 0 else { continue }
+            let display = values
+            try await claim(owners, key: key, using: definition) { digest in
+                .duplicateReference(field: field.name, key: display[digest] ?? "")
+            }
+        }
+    }
+
+    static func exclusiveFields(of definition: EntityDefinition) -> [FieldDefinition] {
+        definition.fields(at: definition.version).filter { $0.exclusive == true }
+    }
+
+    private func claim(
+        _ owners: [String: String], key: [String], using definition: EntityDefinition, conflict: @escaping @Sendable (String) -> SchemaError
+    ) async throws {
         var digests: [CKRecord.ID: String] = [:]
         for digest in owners.keys {
             digests[UniqueClaim.recordID(entity: definition.entity, digest: digest, zoneID: zoneID)] = digest
@@ -78,28 +110,31 @@ extension EntityStore {
             }
         }
         for (digest, server) in contested {
-            try await adjudicate(server, digest: digest, key: key, owner: owners[digest]!, using: definition)
+            try await adjudicate(server, digest: digest, key: key, owner: owners[digest]!, using: definition, conflict: conflict)
         }
     }
 
-    private func adjudicate(_ claim: CKRecord, digest: String, key: [String], owner uuid: String, using definition: EntityDefinition) async throws {
+    private func adjudicate(
+        _ claim: CKRecord, digest: String, key: [String], owner uuid: String, using definition: EntityDefinition,
+        conflict: @escaping @Sendable (String) -> SchemaError
+    ) async throws {
         var server = claim
         for _ in 0..<3 {
             let holder = server["owner"] as? String
             if holder == uuid { return }
             if let holder, try await holds(holder, digest: digest, key: key, using: definition) {
-                throw SchemaError.duplicateKey(fields: key)
+                throw conflict(digest)
             }
             server["owner"] = uuid
             let outcome = try await database.saveIfUnchanged([server])
             do {
                 for (_, result) in outcome { _ = try result.get() }
                 return
-            } catch let conflict as RecordConflictError {
-                server = conflict.serverRecord
+            } catch let raced as RecordConflictError {
+                server = raced.serverRecord
             }
         }
-        throw SchemaError.duplicateKey(fields: key)
+        throw conflict(digest)
     }
 
     private func holds(_ uuid: String, digest: String, key: [String], using definition: EntityDefinition) async throws -> Bool {
@@ -115,7 +150,8 @@ extension EntityStore {
     /// stays behind is adopted by the next writer of the value through the
     /// liveness check.
     func releaseUniqueClaims(of records: [EntityRecord], using definition: EntityDefinition) async {
-        guard let keys = definition.enforcedKeys, !keys.isEmpty, records.count > 0 else { return }
+        let keys = (definition.enforcedKeys ?? []) + Self.exclusiveFields(of: definition).map { [$0.name] }
+        guard !keys.isEmpty, records.count > 0 else { return }
         var owners: [CKRecord.ID: String] = [:]
         for record in records {
             for key in keys {

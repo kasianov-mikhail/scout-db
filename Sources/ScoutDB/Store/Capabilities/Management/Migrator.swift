@@ -92,7 +92,7 @@ public struct Migrator: Sendable {
     ///
     @discardableResult public func backfillClaims(entity: String, batchSize: Int = 400) async throws -> Int {
         let definition = try await registry.definition(for: entity)
-        guard definition.enforcedKeys?.isEmpty == false else { return 0 }
+        guard definition.enforcedKeys?.isEmpty == false || !EntityStore.exclusiveFields(of: definition).isEmpty else { return 0 }
         let store = EntityStore(database: database, registry: registry, keyProvider: keyProvider)
         let records = try await store.read(entity: entity)
         for chunk in records.chunked(into: batchSize) {
