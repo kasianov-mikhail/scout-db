@@ -197,6 +197,9 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
                     throw SchemaError.invalidDefinition("View '\(view.name)' aggregates non-numeric '\(field)'")
                 }
             }
+            if let shards = view.shards, !(2...64).contains(shards) {
+                throw SchemaError.invalidDefinition("View '\(view.name)' must shard into 2...64 records")
+            }
             if let histogram = view.histogram {
                 guard histogram.bounds.count > 0, histogram.bounds.count < 64, histogram.bounds == histogram.bounds.sorted() else {
                     throw SchemaError.invalidDefinition("View '\(view.name)' has invalid histogram bounds")

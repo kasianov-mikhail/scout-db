@@ -73,10 +73,12 @@ struct GridAggregator {
 
             for view in definition.views ?? [] {
                 let group = view.groupBy.flatMap { entityRecord.values[$0]?.canonical } ?? ""
+                let shard = view.shards.map { Self.shard(of: entityRecord.uuid, among: $0) }
 
                 if let histogram = view.histogram {
                     guard let date = envelope, let value = entityRecord.values[histogram.field]?.scalar else { continue }
-                    let slot = GridSlot(entity: entityRecord.entity, view: view.name, group: group, day: EntityCoder.periodStart(of: .day, for: date))
+                    let slot = GridSlot(
+                        entity: entityRecord.entity, view: view.name, group: group, day: EntityCoder.periodStart(of: .day, for: date), shard: shard)
                     let index = histogram.bounds.firstIndex { value < $0 } ?? histogram.bounds.count
                     deltas[slot, default: [:]][index, default: CellDelta()].count += sign
                     continue
@@ -85,7 +87,7 @@ struct GridAggregator {
                 let bucket = view.bucket ?? .hour
                 guard let date = envelope ?? (bucket == .lifetime ? Date(timeIntervalSince1970: 0) : nil) else { continue }
                 let (period, index) = Self.bucket(bucket, for: date)
-                let slot = GridSlot(entity: entityRecord.entity, view: view.name, group: group, day: period)
+                let slot = GridSlot(entity: entityRecord.entity, view: view.name, group: group, day: period, shard: shard)
                 var delta = deltas[slot, default: [:]][index, default: CellDelta()]
                 delta.count += sign
                 if let (kind, field) = view.metric, let value = entityRecord.values[field]?.scalar {
@@ -120,6 +122,13 @@ struct GridAggregator {
         let view: String
         let group: String
         let day: Date
+        let shard: Int?
+    }
+
+    // A record's shard must be stable across launches, so a later removal
+    // cancels the very cells its write incremented.
+    static func shard(of uuid: String, among count: Int) -> Int {
+        Int(uuid.utf8.reduce(UInt64(0)) { $0 &* 31 &+ UInt64($1) } % UInt64(count))
     }
 
     private struct CellDelta {
@@ -154,7 +163,7 @@ struct GridAggregator {
     // A stats view keeps the running sum in f_index and the sum of squares in
     // f_(index + 32); time buckets never exceed index 30, so the halves cannot clash.
     private func apply(_ cells: [Int: CellDelta], to slot: GridSlot) async throws {
-        var record = try await lookup(entity: slot.entity, view: slot.view, group: slot.group, day: slot.day)
+        var record = try await lookup(entity: slot.entity, view: slot.view, group: slot.group, day: slot.day, shard: slot.shard)
 
         for _ in 0..<maxRetry {
             for (index, delta) in cells {
@@ -179,15 +188,29 @@ struct GridAggregator {
         throw RecordConflictError(serverRecord: record)
     }
 
-    private func lookup(entity: String, view: String, group: String, day: Date) async throws -> CKRecord {
-        let digest = contentDigest(of: [entity, view, group, "\(day.millisecondsSince1970)"])
-        let recordID = CKRecord.ID(recordName: "grid-" + digest)
+    private func lookup(entity: String, view: String, group: String, day: Date, shard: Int?) async throws -> CKRecord {
+        var components = [entity, view, group, "\(day.millisecondsSince1970)"]
+        if let shard, shard > 0 {
+            components.append("shard-\(shard)")
+        }
+        let recordID = CKRecord.ID(recordName: "grid-" + contentDigest(of: components))
         // The name is derived from the slot itself, so the record is addressable
         // without a query — and a fetch sees a slot created moments ago, which the
         // query index need not yet reflect. A miss there costs the write a retry
         // against the record it failed to see.
         if let existing = try await database.fetchRecord(id: recordID) {
             return existing
+        }
+        // A sharded slot never adopts by query: its sibling shards carry the very
+        // same envelope fields, so the legacy lookup below would fold this shard
+        // into one of them.
+        if shard != nil {
+            let record = CKRecord(recordType: Aggregate.recordType, recordID: recordID)
+            record["entity"] = entity
+            record["view"] = view
+            record["group_key"] = group
+            record["date"] = day
+            return record
         }
 
         // A slot whose group holds a separator character was named before the

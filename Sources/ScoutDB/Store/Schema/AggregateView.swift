@@ -16,10 +16,16 @@ public struct AggregateView: Codable, Equatable, Sendable {
     public var max: String?
     public var stats: String?
     public var histogram: Histogram?
+    /// Spreads each grid slot over this many shard records.
+    ///
+    /// Concurrent writers of one hot slot stop contending on a single CAS
+    /// record; readers sum the shards. Worth declaring only for slots many
+    /// devices hit at once — every reader still fetches all shard records.
+    public var shards: Int?
 
     public init(
         name: String, groupBy: String? = nil, bucket: Bucket? = nil, sum: String? = nil, min: String? = nil, max: String? = nil, stats: String? = nil,
-        histogram: Histogram? = nil
+        histogram: Histogram? = nil, shards: Int? = nil
     ) {
         self.name = name
         self.groupBy = groupBy
@@ -29,6 +35,7 @@ public struct AggregateView: Codable, Equatable, Sendable {
         self.max = max
         self.stats = stats
         self.histogram = histogram
+        self.shards = shards
     }
 
     public struct Histogram: Codable, Equatable, Sendable {
