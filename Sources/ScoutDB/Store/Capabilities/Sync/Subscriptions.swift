@@ -16,10 +16,15 @@ extension EntityStore {
     /// cannot narrow a push subscription and throws `invalidValue`. A delete in
     /// ScoutDB is a tombstone rewrite, so deletions arrive as record updates.
     ///
+    /// `projecting` puts the named fields (plus the record envelope) into the
+    /// push payload itself, so `record(fromPush:)` decodes the change without a
+    /// follow-up fetch. Keep the projection light — the payload shares the
+    /// notification's size budget.
+    ///
     /// Saving under an existing `id` replaces that subscription. Returns the id.
     ///
     @discardableResult
-    public func subscribe(entity: String, filters: [Filter] = [], id: String? = nil) async throws -> String {
+    public func subscribe(entity: String, filters: [Filter] = [], id: String? = nil, projecting fields: [String]? = nil) async throws -> String {
         let definition = try await registry.definition(for: entity)
         let (server, client) = try split(filters, entity: entity, using: definition)
         guard client.isEmpty else {
@@ -33,6 +38,9 @@ extension EntityStore {
             options: [.firesOnRecordCreation, .firesOnRecordUpdate, .firesOnRecordDeletion])
         let info = CKSubscription.NotificationInfo()
         info.shouldSendContentAvailable = true
+        if let fields {
+            info.desiredKeys = try desiredKeys(fields, using: definition)
+        }
         subscription.notificationInfo = info
 
         try await database.save(subscription: subscription)

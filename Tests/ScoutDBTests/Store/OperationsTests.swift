@@ -504,6 +504,34 @@ struct OperationsTests {
         #expect(try await store.record(for: deleted) == nil)
     }
 
+    @Test("A projected subscription carries its fields, and the pushed fields decode without a fetch")
+    func projectedPush() async throws {
+        try await store.subscribe(entity: "purchase", projecting: ["product_id", "quantity"])
+        let stored = try #require(database.storedSubscriptions.first as? CKQuerySubscription)
+        let keys = try #require(stored.notificationInfo?.desiredKeys)
+        #expect(Set(keys).isSuperset(of: ["entity", "schema_version", "uuid", "deleted", "s_00", "i_01"]))
+
+        database.errors = [CKError(.networkUnavailable)]
+        let pushed = try await store.record(
+            uuid: "p-1",
+            pushedFields: [
+                "entity": "purchase" as NSString, "schema_version": 2 as NSNumber, "uuid": "p-1" as NSString, "deleted": 0 as NSNumber,
+                "s_00": "sku-42" as NSString, "i_01": 7 as NSNumber,
+            ])
+        #expect(pushed?.values["product_id"] == .string("sku-42"))
+        #expect(pushed?.values["quantity"] == .int(7))
+        #expect(pushed?.values["comment"] == nil)
+        database.errors = []
+
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
+        #expect(try await store.record(uuid: "p-2", pushedFields: [:])?.values["product_id"] == .string("sku-42"))
+
+        let tombstone: [String: any CKRecordValue] = [
+            "entity": "purchase" as NSString, "schema_version": 2 as NSNumber, "uuid": "p-1" as NSString, "deleted": 1 as NSNumber,
+        ]
+        #expect(try await store.record(uuid: "p-1", pushedFields: tombstone) == nil)
+    }
+
     @Test("The sync coordinator advances its token, persists it, and flushes the offline queue")
     func syncCoordinator() async throws {
         let zone = CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName)
