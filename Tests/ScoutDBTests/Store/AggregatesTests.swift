@@ -379,4 +379,31 @@ struct AggregatesTests {
             views: [AggregateView(name: "hourly", groupBy: "product", bucket: .hour)])
         #expect(throws: SchemaError.self) { try dated.validate() }
     }
+
+    @Test("count() reads a covering lifetime view's grid instead of scanning")
+    func countThroughLifetimeView() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "sale",
+                fields: [
+                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
+                ], views: [AggregateView(name: "by_product", groupBy: "product", bucket: .lifetime)]))
+        try await store.write(["product": .string("app"), "amount": .double(10)], entity: "sale")
+        try await store.write(["product": .string("app"), "amount": .double(5)], entity: "sale")
+        try await store.write(["product": .string("book"), "amount": .double(2)], entity: "sale")
+
+        #expect(try await store.query("sale").count() == 3)
+        #expect(try await store.query("sale").filter("product", .equals, "app").count() == 2)
+        #expect(try await store.query("sale").limit(1).count() == 1)
+
+        let grid = try #require(database.records.first { $0.recordType == "Aggregate" && $0["group_key"] as? String == "book" })
+        grid["c_00"] = Int64(41)
+        #expect(try await store.query("sale").count() == 43)
+        #expect(try await store.query("sale").filter("product", .equals, "book").count() == 41)
+
+        #expect(try await store.query("sale").filter("amount" > 4).count() == 2)
+        #expect(try await store.query("sale").exclude("product", .equals, "app").count() == 1)
+        #expect(try await store.query("sale").filter("product", .equals, "app").filter("amount" > 1).count() == 2)
+    }
 }
