@@ -119,17 +119,19 @@ struct EntityCoder {
     // across a keyless rewrite, so every rewrite path — update, updateAll,
     // backfill — must come through here instead of encoding a fresh record.
     func rewrite(_ record: CKRecord, using definition: EntityDefinition, transform: (inout EntityRecord) throws -> Void) throws -> Rewrite {
-        let previous = try decode(record, using: definition)
+        let (previous, payload) = try decodeWithPayload(record, using: definition)
         var next = previous
         try transform(&next)
         next.values = try resolve(next.values, at: next.schemaVersion, using: definition)
-        return Rewrite(previous: previous, next: next, record: try encode(next, using: definition, into: record))
+        return Rewrite(previous: previous, next: next, record: try encode(next, using: definition, into: record, basePayload: payload))
     }
 
     // The record's values must already be resolved (defaults filled, derivations
     // applied, constraints validated) — callers run `resolve` once and encode the
     // result, so the derivation fixpoint never runs twice per write.
-    func encode(_ entityRecord: EntityRecord, using definition: EntityDefinition, into base: CKRecord? = nil) throws -> CKRecord {
+    func encode(_ entityRecord: EntityRecord, using definition: EntityDefinition, into base: CKRecord? = nil, basePayload: [String: RecordValue]? = nil)
+        throws -> CKRecord
+    {
         let fields = definition.fields(at: entityRecord.schemaVersion)
         let values = entityRecord.values
 
@@ -165,7 +167,9 @@ struct EntityCoder {
         //
         // Only without a key: a keyed read round-trips encrypted fields faithfully, so an
         // absent one was deliberately cleared by the transform and must not be resurrected.
-        if keyProvider == nil, let base, let data = base["payload"] as? Data, let existing = try? jsonDecoder.decode([String: RecordValue].self, from: data) {
+        if keyProvider == nil, let base,
+            let existing = basePayload ?? (base["payload"] as? Data).flatMap({ try? jsonDecoder.decode([String: RecordValue].self, from: $0) })
+        {
             for field in fields where field.encrypted == true && payload[field.name] == nil {
                 payload[field.name] = existing[field.name]
             }
@@ -177,6 +181,10 @@ struct EntityCoder {
     }
 
     func decode(_ record: CKRecord, using definition: EntityDefinition) throws -> EntityRecord {
+        try decodeWithPayload(record, using: definition).record
+    }
+
+    func decodeWithPayload(_ record: CKRecord, using definition: EntityDefinition) throws -> (record: EntityRecord, payload: [String: RecordValue]) {
         guard let version = record["schema_version"] as? Int64, let uuid = record["uuid"] as? String else {
             throw SchemaError.staleSchema(entity: definition.entity, version: 0)
         }
@@ -210,7 +218,7 @@ struct EntityCoder {
         }
 
         let deleted = (record["deleted"] as? Int64 ?? 0) > 0
-        return EntityRecord(entity: definition.entity, uuid: uuid, schemaVersion: Int(version), values: values, deleted: deleted)
+        return (EntityRecord(entity: definition.entity, uuid: uuid, schemaVersion: Int(version), values: values, deleted: deleted), payload)
     }
 
     static func trigrams(of text: String) -> [String] {
