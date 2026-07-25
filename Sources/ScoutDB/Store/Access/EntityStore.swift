@@ -126,13 +126,16 @@ public struct EntityStore: Sendable {
             return EntityRecord(entity: entity, uuid: uuid, schemaVersion: definition.version, values: resolved)
         }
 
-        if enforceReferences {
-            try await validateReferences(of: entityRecords, using: definition)
-        }
         // Exclusivity and unique keys are declared in the schema itself, so they
         // hold regardless of the store's integrity flag.
-        try await validateExclusivity(of: entityRecords, entity: entity, using: definition)
-        try await validateUniqueKeys(of: entityRecords, using: definition)
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            if enforceReferences {
+                group.addTask { try await validateReferences(of: entityRecords, using: definition) }
+            }
+            group.addTask { try await validateExclusivity(of: entityRecords, entity: entity, using: definition) }
+            group.addTask { try await validateUniqueKeys(of: entityRecords, using: definition) }
+            try await group.waitForAll()
+        }
         try await claimUniqueKeys(of: entityRecords, using: definition)
 
         // Views count contributions per live record. A first write adds its

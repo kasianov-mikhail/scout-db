@@ -186,12 +186,12 @@ extension EntityStore {
         // one per record.
         let values = probe.map { field in records.compactMap { $0.values[field] } } ?? []
         guard let probe, Self.membership(of: values) != nil else {
-            return try await read(entity: definition.entity)
+            return try await read(entity: definition.entity, fields: key)
         }
         var holders: [EntityRecord] = []
         for chunk in values.chunked(into: 100) {
             guard let list = Self.membership(of: chunk) else { continue }
-            holders += try await read(entity: definition.entity, filters: [Filter(field: probe, op: .in, value: list)])
+            holders += try await read(entity: definition.entity, filters: [Filter(field: probe, op: .in, value: list)], fields: key)
         }
         return holders
     }
