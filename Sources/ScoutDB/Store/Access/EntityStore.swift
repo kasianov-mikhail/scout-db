@@ -353,11 +353,13 @@ public struct EntityStore: Sendable {
 
     func decode(_ records: [CKRecord], using definition: EntityDefinition) throws -> [EntityRecord] {
         let coder = EntityCoder(keyProvider: keyProvider)
-        return try records.compactMap { record in
-            if let trustedWriters {
-                guard let creator = record.recordCreator, trustedWriters.contains(creator) else { return nil }
-            }
-            return try coder.decode(record, using: definition)
+        return try records.compactMap { try decode($0, with: coder, using: definition) }
+    }
+
+    func decode(_ record: CKRecord, with coder: EntityCoder, using definition: EntityDefinition) throws -> EntityRecord? {
+        if let trustedWriters {
+            guard let creator = record.recordCreator, trustedWriters.contains(creator) else { return nil }
         }
+        return try coder.decode(record, using: definition)
     }
 }
