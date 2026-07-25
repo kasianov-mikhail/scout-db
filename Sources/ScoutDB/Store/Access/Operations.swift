@@ -64,8 +64,12 @@ extension EntityStore {
                 }
                 rewrite = try coder.rewrite(stored, using: definition, transform: transform)
             }
-            // An update can move a unique-key field onto another record's values.
-            try await validateUniqueKeys(of: [rewrite.next], using: definition)
+            if let keys = definition.uniqueKeys, !keys.isEmpty {
+                let changed = Self.changedFields(from: rewrite.previous, to: rewrite.next)
+                if keys.contains(where: { $0.contains { changed.keys.contains($0) } }) {
+                    try await validateUniqueKeys(of: [rewrite.next], using: definition)
+                }
+            }
             do {
                 try await database.write(record: rewrite.record)
             } catch let conflict as RecordConflictError {

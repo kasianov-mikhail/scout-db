@@ -245,6 +245,17 @@ func makeDefinition(
     EntityDefinition(entity: entity, version: version, fields: fields, envelopeDate: envelopeDate, unique: unique, views: views, keyID: keyID, ttl: ttl)
 }
 
+func makeSeatDefinition() -> EntityDefinition {
+    EntityDefinition(
+        entity: "seat", version: 1,
+        fields: [
+            FieldDefinition(name: "row", type: .string, storage: .slot(.string, "s_00")),
+            FieldDefinition(name: "number", type: .int, storage: .slot(.int, "i_00")),
+            FieldDefinition(name: "label", type: .string, storage: .slot(.string, "s_01")),
+        ],
+        uniqueKeys: [["row", "number"]])
+}
+
 func makePurchaseDefinition() -> EntityDefinition {
     makeDefinition(
         fields: [

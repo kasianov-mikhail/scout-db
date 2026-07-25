@@ -47,6 +47,32 @@ struct OperationsTests {
         #expect(records.first?.values["quantity"] == .int(9))
     }
 
+    @Test("An update that moves a unique key onto a taken value throws")
+    func updateUniqueKeyCollision() async throws {
+        try await registry.publish(makeSeatDefinition())
+        try await store.write(["row": .string("a"), "number": .int(1)], entity: "seat", uuid: "seat-1")
+        try await store.write(["row": .string("a"), "number": .int(2)], entity: "seat", uuid: "seat-2")
+        await #expect(throws: SchemaError.duplicateKey(fields: ["row", "number"])) {
+            try await store.update(entity: "seat", uuid: "seat-2") { record in
+                record.values["number"] = .int(1)
+            }
+        }
+    }
+
+    @Test("An update that leaves unique keys untouched skips their validation")
+    func updateUntouchedUniqueKeys() async throws {
+        try await registry.publish(makeSeatDefinition())
+        try await store.write(["row": .string("a"), "number": .int(1)], entity: "seat", uuid: "seat-1")
+        try await store.write(["row": .string("a"), "number": .int(2)], entity: "seat", uuid: "seat-2")
+        let raced = try #require(database.records.first { $0["uuid"] as? String == "seat-2" })
+        raced["i_00"] = Int64(1)
+        try await store.update(entity: "seat", uuid: "seat-2") { record in
+            record.values["label"] = .string("window")
+        }
+        let records = try await store.read(entity: "seat", filters: [.init(field: "label", op: .equals, value: .string("window"))])
+        #expect(records.map(\.uuid) == ["seat-2"])
+    }
+
     @Test("A transform that clears fields clears their stored slot and payload values")
     func updateClears() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
