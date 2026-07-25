@@ -160,10 +160,12 @@ extension EntityStore {
                     try await detach(entity: child.entity, field: field.name, uuids: uuids)
                     continue
                 }
-                var victims: [EntityRecord] = []
-                for chunk in uuids.chunked(into: 100) {
-                    victims += try await read(entity: child.entity, filters: [Filter(field: field.name, op: .in, value: .strings(chunk))])
-                }
+                let victims = try await withThrowingTaskGroup(of: [EntityRecord].self) { group in
+                    for chunk in uuids.chunked(into: 100) {
+                        group.addTask { try await read(entity: child.entity, filters: [Filter(field: field.name, op: .in, value: .strings(chunk))]) }
+                    }
+                    return try await group.reduce(into: [EntityRecord]()) { $0 += $1 }
+                }.sorted { $0.uuid < $1.uuid }
                 guard victims.count > 0 else { continue }
                 let tombstones = try victims.map { try tombstone(entity: child.entity, uuid: $0.uuid, definition: child, values: $0.values) }
                 try await database.write(records: tombstones)
