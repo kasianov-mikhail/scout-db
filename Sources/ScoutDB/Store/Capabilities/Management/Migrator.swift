@@ -82,6 +82,25 @@ public struct Migrator: Sendable {
     /// Quiesce writers for the duration: a write landing mid-rebuild can count
     /// twice or not at all. Returns how many records contributed.
     ///
+    /// Wins a claim for every enforced-key value the entity's live records hold.
+    ///
+    /// Run once after declaring `enforcedKey(on:)` over existing data: claims
+    /// exist only for records written after the declaration, so until this pass
+    /// completes an old value can be re-taken. A duplicate already present in
+    /// the data surfaces as `duplicateKey` — resolve it and run again; repeating
+    /// the run is safe. Returns how many records were processed.
+    ///
+    @discardableResult public func backfillClaims(entity: String, batchSize: Int = 400) async throws -> Int {
+        let definition = try await registry.definition(for: entity)
+        guard definition.enforcedKeys?.isEmpty == false else { return 0 }
+        let store = EntityStore(database: database, registry: registry, keyProvider: keyProvider)
+        let records = try await store.read(entity: entity)
+        for chunk in records.chunked(into: batchSize) {
+            try await store.claimUniqueKeys(of: chunk, using: definition)
+        }
+        return records.count
+    }
+
     @discardableResult public func backfill(view viewName: String, entity: String, batchSize: Int = 400) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         guard let view = definition.view(named: viewName) else {

@@ -64,11 +64,15 @@ extension EntityStore {
                 }
                 rewrite = try coder.rewrite(stored, using: definition, transform: transform)
             }
+            let touched = Self.changedFields(from: rewrite.previous, to: rewrite.next)
             if let keys = definition.uniqueKeys, !keys.isEmpty {
-                let changed = Self.changedFields(from: rewrite.previous, to: rewrite.next)
-                if keys.contains(where: { $0.contains { changed.keys.contains($0) } }) {
+                if keys.contains(where: { $0.contains { touched.keys.contains($0) } }) {
                     try await validateUniqueKeys(of: [rewrite.next], using: definition)
                 }
+            }
+            let rekeyed = (definition.enforcedKeys ?? []).filter { $0.contains { touched.keys.contains($0) } }
+            if !rekeyed.isEmpty {
+                try await claimKeys(rekeyed, of: [rewrite.next], using: definition)
             }
             do {
                 try await database.write(record: rewrite.record)
@@ -95,6 +99,9 @@ extension EntityStore {
             // The staged asset copies existed only for the upload; the landed
             // rewrite retires them.
             EntityCoder.discardStagedAssets(in: [rewrite.record])
+            if !rekeyed.isEmpty {
+                await releaseStaleClaims(for: rekeyed, from: rewrite.previous, to: rewrite.next, using: definition)
+            }
             // Rebalance the views outside the CAS loop: drop the stored record's old
             // contribution, add the new one. A grid conflict here must not retry the update.
             try await GridAggregator(database: database).rebalance(removing: [rewrite.previous], adding: [rewrite.next], using: definition)
@@ -381,6 +388,7 @@ extension EntityStore {
         let victims = try await read(entity: entity, any: branches)
         let tombstones = try victims.map { try tombstone(entity: entity, uuid: $0.uuid, definition: definition, values: $0.values) }
         try await database.write(records: tombstones)
+        await releaseUniqueClaims(of: victims, using: definition)
         try await GridAggregator(database: database).remove(victims, using: definition)
         try await recordRevisions(victims, using: definition)
         if victims.count > 0 {

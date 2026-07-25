@@ -417,6 +417,21 @@ DEFINE SCHEMA
         GRANT READ TO "_world"
     );
 
+    RECORD TYPE UniqueClaim (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE QUERYABLE,
+        entity          STRING QUERYABLE SEARCHABLE SORTABLE,
+        key             STRING QUERYABLE SEARCHABLE SORTABLE,
+        owner           STRING QUERYABLE SEARCHABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE, WRITE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
     RECORD TYPE User (
         "___createTime" TIMESTAMP,
         "___createdBy"  REFERENCE,

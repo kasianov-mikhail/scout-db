@@ -133,6 +133,7 @@ public struct EntityStore: Sendable {
         // hold regardless of the store's integrity flag.
         try await validateExclusivity(of: entityRecords, entity: entity, using: definition)
         try await validateUniqueKeys(of: entityRecords, using: definition)
+        try await claimUniqueKeys(of: entityRecords, using: definition)
 
         // Views count contributions per live record. A first write adds its
         // contribution; a re-write over an existing live row (a unique-key upsert or
@@ -183,6 +184,7 @@ public struct EntityStore: Sendable {
         // last-write-wins batch path: the single-record save is conditional and a
         // real server rejects it whenever the record already exists.
         try await database.write(records: [tombstone(entity: entity, uuid: uuid, definition: definition, values: removed.first?.values ?? [:])])
+        await releaseUniqueClaims(of: removed, using: definition)
         try await GridAggregator(database: database).remove(removed, using: definition)
         try await recordRevisions(removed, using: definition)
         noteChange(entity: entity)

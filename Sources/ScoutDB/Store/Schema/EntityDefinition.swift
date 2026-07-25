@@ -17,6 +17,10 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
     /// Enforced uniqueness constraints, one field tuple each — unlike `unique`,
     /// they reject duplicates instead of deriving the record's identity.
     public var uniqueKeys: [[String]]?
+    /// Claim-backed uniqueness constraints: each key value is held by a claim
+    /// record whose creation is a compare-and-swap, so two racing writers cannot
+    /// both win — unlike `uniqueKeys`, which validates by a separate read.
+    public var enforcedKeys: [[String]]?
     public var views: [AggregateView]?
     public var keyID: String?
     public var ttl: Double?
@@ -26,7 +30,8 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
 
     public init(
         entity: String, version: Int, fields: [FieldDefinition], envelopeDate: String? = nil, unique: [String]? = nil,
-        uniqueKeys: [[String]]? = nil, views: [AggregateView]? = nil, keyID: String? = nil, ttl: Double? = nil, audited: Bool? = nil
+        uniqueKeys: [[String]]? = nil, enforcedKeys: [[String]]? = nil, views: [AggregateView]? = nil, keyID: String? = nil, ttl: Double? = nil,
+        audited: Bool? = nil
     ) {
         self.entity = entity
         self.version = version
@@ -34,6 +39,7 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
         self.envelopeDate = envelopeDate
         self.unique = unique
         self.uniqueKeys = uniqueKeys
+        self.enforcedKeys = enforcedKeys
         self.views = views
         self.keyID = keyID
         self.ttl = ttl
@@ -41,13 +47,13 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case entity, version, fields, envelopeDate, unique, uniqueKeys, views, keyID, ttl, audited
+        case entity, version, fields, envelopeDate, unique, uniqueKeys, enforcedKeys, views, keyID, ttl, audited
     }
 
     public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.entity == rhs.entity && lhs.version == rhs.version && lhs.fields == rhs.fields && lhs.envelopeDate == rhs.envelopeDate
-            && lhs.unique == rhs.unique && lhs.uniqueKeys == rhs.uniqueKeys && lhs.views == rhs.views && lhs.keyID == rhs.keyID
-            && lhs.ttl == rhs.ttl && lhs.audited == rhs.audited
+            && lhs.unique == rhs.unique && lhs.uniqueKeys == rhs.uniqueKeys && lhs.enforcedKeys == rhs.enforcedKeys && lhs.views == rhs.views
+            && lhs.keyID == rhs.keyID && lhs.ttl == rhs.ttl && lhs.audited == rhs.audited
     }
 
     public func fields(at version: Int) -> [FieldDefinition] {
@@ -143,7 +149,7 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
         for key in unique ?? [] where !names.contains(key) {
             throw SchemaError.invalidDefinition("Unique key '\(key)' is not a field")
         }
-        for key in uniqueKeys ?? [] {
+        for key in (uniqueKeys ?? []) + (enforcedKeys ?? []) {
             guard !key.isEmpty else {
                 throw SchemaError.invalidDefinition("A unique key cannot be empty")
             }

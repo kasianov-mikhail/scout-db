@@ -32,6 +32,7 @@ public struct SchemaBuilder {
     private var envelopeDate: String?
     private var unique: [String]?
     private var uniqueKeys: [[String]]?
+    private var enforcedKeys: [[String]]?
     private var views: [AggregateView]?
     private var keyID: String?
     private var ttl: Double?
@@ -98,6 +99,22 @@ public struct SchemaBuilder {
     public func uniqueKey(on fields: String...) -> Self {
         var builder = self
         builder.uniqueKeys = (uniqueKeys ?? []) + [fields]
+        return builder
+    }
+
+    /// Adds a claim-backed uniqueness constraint over the named fields.
+    ///
+    /// Atomic where `uniqueKey(on:)` is best-effort: every key value is held by
+    /// a claim record whose creation is a compare-and-swap, so of two racing
+    /// writers exactly one wins and the other fails with `duplicateKey`. The
+    /// claim costs one extra write per created or re-keyed record and is
+    /// released on delete. Writes of the entity fail offline — a claim cannot
+    /// be won without the server. Existing data needs one
+    /// `Migrator.backfillClaims(entity:)` pass before the constraint holds.
+    ///
+    public func enforcedKey(on fields: String...) -> Self {
+        var builder = self
+        builder.enforcedKeys = (enforcedKeys ?? []) + [fields]
         return builder
     }
 
@@ -169,6 +186,7 @@ public struct SchemaBuilder {
             envelopeDate: envelopeDate ?? previous?.envelopeDate,
             unique: unique ?? previous?.unique,
             uniqueKeys: uniqueKeys ?? previous?.uniqueKeys,
+            enforcedKeys: enforcedKeys ?? previous?.enforcedKeys,
             views: views ?? previous?.views,
             keyID: keyID ?? previous?.keyID,
             ttl: ttl ?? previous?.ttl
