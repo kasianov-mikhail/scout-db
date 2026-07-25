@@ -179,24 +179,131 @@ extension EntityStore {
         return values
     }
 
-    /// The count a declared lifetime view answers without scanning records, or
-    /// nil when no view covers the query.
+    /// The count a declared view answers without scanning records, or nil when
+    /// no view covers the query.
+    ///
+    /// Covered shapes: no filters or a `groupBy` equality (lifetime view); an
+    /// `envelopeDate` range whose bounds align with a view's cell resolution
+    /// (hour cells for an hour view, day cells for day and weekday views); a
+    /// threshold on a histogram's field that lands exactly on a declared bound.
+    ///
     package func viewCount(entity: String, filters: [Filter]) async throws -> Int? {
         let definition = try await registry.definition(for: entity)
-        guard let (view, group) = Self.countingView(for: filters, in: definition) else { return nil }
+        guard definition.views?.isEmpty == false, let query = CountQuery(filters, envelopeDate: definition.envelopeDate) else { return nil }
+
+        if query.numericField != nil {
+            guard query.from == nil, query.to == nil, let (view, cells) = Self.histogramPlan(for: query, in: definition) else { return nil }
+            let records = try await gridRecords(entity: entity, view: view.name, from: nil, to: nil)
+            var total = 0
+            for record in records where query.groupKey == nil || record["group_key"] as? String == query.groupKey {
+                for index in cells {
+                    total += Int(record[Aggregate.countCell(index)] as? Int64 ?? 0)
+                }
+            }
+            return total
+        }
+
+        if query.from != nil || query.to != nil {
+            guard let (view, bucket) = Self.rangePlan(for: query, in: definition) else { return nil }
+            let period: Calendar.Component = bucket == .hour ? .day : (bucket == .weekday ? .weekOfYear : .month)
+            let records = try await gridRecords(
+                entity: entity, view: view.name, from: query.from.map { EntityCoder.periodStart(of: period, for: $0) }, to: query.to)
+            var total = 0
+            for record in records where query.groupKey == nil || record["group_key"] as? String == query.groupKey {
+                guard let start = record["date"] as? Date else { continue }
+                for index in 0..<Aggregate.cellCount {
+                    let count = Int(record[Aggregate.countCell(index)] as? Int64 ?? 0)
+                    guard count != 0 else { continue }
+                    let date = Self.cellDate(bucket, period: start, index: index)
+                    if let from = query.from, date < from { continue }
+                    if let to = query.to, date >= to { continue }
+                    total += count
+                }
+            }
+            return total
+        }
+
+        guard let (view, group) = Self.lifetimePlan(for: query, in: definition) else { return nil }
         let rows = try await totals(entity: entity, view: view.name)
         return rows.filter { group == nil || $0.group == group }.reduce(0) { $0 + $1.count }
     }
 
-    private static func countingView(for filters: [Filter], in definition: EntityDefinition) -> (view: AggregateView, group: String?)? {
-        for view in definition.views ?? [] where view.bucket == .lifetime && view.histogram == nil {
-            if filters.isEmpty {
-                return (view, nil)
+    private struct CountQuery {
+        var groupField: String?
+        var groupKey: String?
+        var from: Date?
+        var to: Date?
+        var numericField: String?
+        var numericGTE: Double?
+        var numericLT: Double?
+
+        init?(_ filters: [Filter], envelopeDate: String?) {
+            for filter in filters {
+                guard !filter.negated, filter.radius == nil else { return nil }
+                switch (filter.op, filter.value) {
+                case (.greaterThanOrEquals, .date(let date)) where filter.field == envelopeDate:
+                    guard from == nil else { return nil }
+                    from = date
+                case (.lessThan, .date(let date)) where filter.field == envelopeDate:
+                    guard to == nil else { return nil }
+                    to = date
+                case (.equals, let value):
+                    guard groupField == nil else { return nil }
+                    groupField = filter.field
+                    groupKey = value.canonical
+                case (.greaterThanOrEquals, let value):
+                    guard let scalar = value.scalar, numericField == nil || numericField == filter.field, numericGTE == nil else { return nil }
+                    numericField = filter.field
+                    numericGTE = scalar
+                case (.lessThan, let value):
+                    guard let scalar = value.scalar, numericField == nil || numericField == filter.field, numericLT == nil else { return nil }
+                    numericField = filter.field
+                    numericLT = scalar
+                default:
+                    return nil
+                }
             }
-            guard filters.count == 1, let filter = filters.first, !filter.negated, filter.radius == nil, filter.op == .equals,
-                filter.field == view.groupBy, case .string(let value) = filter.value
-            else { continue }
-            return (view, value)
+        }
+
+        func matchesGrouping(of view: AggregateView) -> Bool {
+            groupField == nil || groupField == view.groupBy
+        }
+    }
+
+    private static func lifetimePlan(for query: CountQuery, in definition: EntityDefinition) -> (view: AggregateView, group: String?)? {
+        for view in definition.views ?? [] where view.bucket == .lifetime && view.histogram == nil && query.matchesGrouping(of: view) {
+            return (view, query.groupKey)
+        }
+        return nil
+    }
+
+    private static func rangePlan(for query: CountQuery, in definition: EntityDefinition) -> (view: AggregateView, bucket: AggregateView.Bucket)? {
+        for view in definition.views ?? [] where view.histogram == nil && query.matchesGrouping(of: view) {
+            let bucket = view.bucket ?? .hour
+            guard bucket != .lifetime else { continue }
+            let unit: Calendar.Component = bucket == .hour ? .hour : .day
+            let aligned = [query.from, query.to].compactMap { $0 }.allSatisfy { EntityCoder.periodStart(of: unit, for: $0) == $0 }
+            guard aligned else { continue }
+            return (view, bucket)
+        }
+        return nil
+    }
+
+    private static func histogramPlan(for query: CountQuery, in definition: EntityDefinition) -> (view: AggregateView, cells: ClosedRange<Int>)? {
+        for view in definition.views ?? [] {
+            guard let histogram = view.histogram, histogram.field == query.numericField, query.matchesGrouping(of: view) else { continue }
+            var first = 0
+            var last = histogram.bounds.count
+            if let gte = query.numericGTE {
+                guard let bound = histogram.bounds.firstIndex(of: gte) else { continue }
+                first = bound + 1
+            }
+            if let below = query.numericLT {
+                guard let bound = histogram.bounds.firstIndex(of: below) else { continue }
+                last = bound
+            }
+            guard first <= last else { continue }
+            return (view, first...last)
         }
         return nil
     }

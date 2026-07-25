@@ -406,4 +406,68 @@ struct AggregatesTests {
         #expect(try await store.query("sale").exclude("product", .equals, "app").count() == 1)
         #expect(try await store.query("sale").filter("product", .equals, "app").filter("amount" > 1).count() == 2)
     }
+
+    @Test("count() over an aligned date range reads the view's cells instead of scanning")
+    func countThroughRange() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "visit",
+                fields: [
+                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
+                ], envelopeDate: "date", views: [AggregateView(name: "hourly", groupBy: "product", bucket: .hour)]))
+        func hour(_ offset: Int) -> Date { Date(timeIntervalSince1970: TimeInterval(offset * 3_600)) }
+        try await store.write(["product": .string("app"), "date": .date(hour(0))], entity: "visit")
+        try await store.write(["product": .string("app"), "date": .date(hour(1))], entity: "visit")
+        try await store.write(["product": .string("book"), "date": .date(hour(1))], entity: "visit")
+        try await store.write(["product": .string("app"), "date": .date(hour(30))], entity: "visit")
+
+        let grid = try #require(database.records.first { $0.recordType == "Aggregate" && $0["group_key"] as? String == "app" && $0["c_00"] != nil })
+        grid["c_00"] = Int64(41)
+
+        #expect(
+            try await store.query("visit")
+                .filter("date", .greaterThanOrEquals, .date(hour(0)))
+                .filter("date", .lessThan, .date(hour(2)))
+                .count() == 43)
+        #expect(try await store.query("visit").filter("date", .greaterThanOrEquals, .date(hour(1))).filter("date", .lessThan, .date(hour(2))).count() == 2)
+        #expect(try await store.query("visit").filter("date", .greaterThanOrEquals, .date(hour(2))).count() == 1)
+        #expect(
+            try await store.query("visit")
+                .filter("product", .equals, "app")
+                .filter("date", .greaterThanOrEquals, .date(hour(0)))
+                .filter("date", .lessThan, .date(hour(2)))
+                .count() == 42)
+
+        let misaligned = Date(timeIntervalSince1970: 1_800)
+        #expect(try await store.query("visit").filter("date", .lessThan, .date(misaligned)).count() == 1)
+    }
+
+    @Test("count() at a histogram bound reads the histogram's cells instead of scanning")
+    func countThroughHistogram() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "metric",
+                fields: [
+                    FieldDefinition(name: "value", type: .double, storage: .slot(.double, "d_00")),
+                    FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
+                ], envelopeDate: "date",
+                views: [AggregateView(name: "dist", histogram: AggregateView.Histogram(field: "value", bounds: [1, 5, 10]))]))
+        let date = Date(timeIntervalSince1970: 0)
+        for value in [0.5, 3, 7, 12] {
+            try await store.write(["value": .double(value), "date": .date(date)], entity: "metric")
+        }
+
+        let grid = try #require(database.records.first { $0.recordType == "Aggregate" && $0["view"] as? String == "dist" })
+        grid["c_00"] = Int64(41)
+
+        #expect(try await store.query("metric").filter("value", .lessThan, .double(5)).count() == 42)
+        #expect(try await store.query("metric").filter("value", .greaterThanOrEquals, .double(5)).count() == 2)
+        #expect(
+            try await store.query("metric")
+                .filter("value", .greaterThanOrEquals, .double(1))
+                .filter("value", .lessThan, .double(10))
+                .count() == 2)
+        #expect(try await store.query("metric").filter("value", .lessThan, .double(3)).count() == 1)
+    }
 }
