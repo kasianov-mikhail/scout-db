@@ -1454,6 +1454,36 @@ struct OperationsTests {
         }
     }
 
+    @Test("An update cannot move an exclusive reference onto a taken key, and a re-key frees the old one")
+    func exclusiveReferenceUpdate() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "person",
+                fields: [
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
+                ]))
+        try await registry.publish(
+            makeDefinition(
+                entity: "passport",
+                fields: [
+                    FieldDefinition(name: "number", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "person_id", type: .string, storage: .slot(.string, "s_01"), references: "person", exclusive: true),
+                ]))
+        try await store.write(["number": .string("111"), "person_id": .string("h-1")], entity: "passport", uuid: "d-1")
+        try await store.write(["number": .string("222"), "person_id": .string("h-2")], entity: "passport", uuid: "d-2")
+
+        await #expect(throws: SchemaError.duplicateReference(field: "person_id", key: "h-1")) {
+            try await store.update(entity: "passport", uuid: "d-2") { record in
+                record.values["person_id"] = .string("h-1")
+            }
+        }
+
+        try await store.update(entity: "passport", uuid: "d-2") { record in
+            record.values["person_id"] = .string("h-3")
+        }
+        try await store.write(["number": .string("333"), "person_id": .string("h-2")], entity: "passport", uuid: "d-3")
+    }
+
     @Test("A multi-field join resolves every reference in one call")
     func multiJoin() async throws {
         try await registry.publish(

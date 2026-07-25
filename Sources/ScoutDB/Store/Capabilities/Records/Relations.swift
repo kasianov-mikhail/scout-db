@@ -97,38 +97,6 @@ extension EntityStore {
         }
     }
 
-    // Enforces one-to-one references: an exclusive field's key may be held by at
-    // most one live record, so a second suitor is rejected — within the batch and
-    // against the store alike. Best-effort like the integrity gate: two racing
-    // writers can still both win.
-    func validateExclusivity(of records: [EntityRecord], entity: String, using definition: EntityDefinition) async throws {
-        for field in definition.fields(at: definition.version) where field.exclusive == true {
-            var owners: [String: String] = [:]
-            for record in records {
-                guard case .string(let key)? = record.values[field.name] else { continue }
-                if let owner = owners[key], owner != record.uuid {
-                    throw SchemaError.duplicateReference(field: field.name, key: key)
-                }
-                owners[key] = record.uuid
-            }
-            guard owners.count > 0 else { continue }
-            // One membership read per chunk of claimed keys rather than one read
-            // per key. A rejection names the lowest colliding key, so the batch
-            // fails the same way whatever order the holders come back in.
-            var collisions: [String] = []
-            for chunk in owners.keys.sorted().chunked(into: 100) {
-                let holders = try await read(entity: entity, filters: [Filter(field: field.name, op: .in, value: .strings(chunk))], fields: [field.name])
-                for holder in holders {
-                    guard case .string(let key)? = holder.values[field.name], let owner = owners[key], owner != holder.uuid else { continue }
-                    collisions.append(key)
-                }
-            }
-            if let key = collisions.min() {
-                throw SchemaError.duplicateReference(field: field.name, key: key)
-            }
-        }
-    }
-
     // A scalar reference names one parent, a list reference names many — the
     // many-to-many shape, where several records share several parents.
     private static func referencedKeys(_ value: RecordValue?) -> [String] {

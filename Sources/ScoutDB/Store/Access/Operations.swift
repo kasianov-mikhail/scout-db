@@ -74,6 +74,10 @@ extension EntityStore {
             if !rekeyed.isEmpty {
                 try await claimKeys(rekeyed, of: [rewrite.next], using: definition)
             }
+            let reassigned = Self.exclusiveFields(of: definition).filter { touched.keys.contains($0.name) }
+            if !reassigned.isEmpty {
+                try await claimExclusivity(of: [rewrite.next], using: definition, fields: reassigned)
+            }
             do {
                 try await database.write(record: rewrite.record)
             } catch let conflict as RecordConflictError {
@@ -99,8 +103,9 @@ extension EntityStore {
             // The staged asset copies existed only for the upload; the landed
             // rewrite retires them.
             EntityCoder.discardStagedAssets(in: [rewrite.record])
-            if !rekeyed.isEmpty {
-                await releaseStaleClaims(for: rekeyed, from: rewrite.previous, to: rewrite.next, using: definition)
+            let released = rekeyed + reassigned.map { [$0.name] }
+            if !released.isEmpty {
+                await releaseStaleClaims(for: released, from: rewrite.previous, to: rewrite.next, using: definition)
             }
             // Rebalance the views outside the CAS loop: drop the stored record's old
             // contribution, add the new one. A grid conflict here must not retry the update.

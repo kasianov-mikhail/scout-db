@@ -132,7 +132,6 @@ public struct EntityStore: Sendable {
             if enforceReferences {
                 group.addTask { try await validateReferences(of: entityRecords, using: definition) }
             }
-            group.addTask { try await validateExclusivity(of: entityRecords, entity: entity, using: definition) }
             group.addTask { try await validateUniqueKeys(of: entityRecords, using: definition) }
             try await group.waitForAll()
         }
