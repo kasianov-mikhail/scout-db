@@ -7,6 +7,7 @@
 
 import CloudKit
 import Foundation
+import ScoutDBTesting
 import Testing
 
 @testable import ScoutDB
@@ -235,6 +236,29 @@ struct EntityDefinitionTests {
                 FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"), minimum: 0)
             ])
         #expect(throws: SchemaError.self) { try definition.validate() }
+    }
+
+    @Test("Publishing rejects a unique key with no slot-backed field, decoding tolerates it")
+    func slotlessUniqueKey() async throws {
+        var definition = EntityDefinition(
+            entity: "note", version: 1,
+            fields: [FieldDefinition(name: "body", type: .string, storage: .payload)])
+        definition.uniqueKeys = [["body"]]
+        try definition.validate()
+        #expect(throws: SchemaError.self) { try definition.validateForPublish() }
+
+        let database = InMemoryDatabase()
+        let registry = SchemaRegistry(database: database)
+        await #expect(throws: SchemaError.self) { try await registry.publish(definition) }
+        await #expect(throws: SchemaError.self) { try await registry.register(definition) }
+
+        let descriptor = CKRecord(recordType: "SchemaDescriptor", recordID: CKRecord.ID(recordName: "note@1"))
+        descriptor["entity"] = "note"
+        descriptor["entity_version"] = Int64(1)
+        descriptor["status"] = "active"
+        descriptor["definition"] = try JSONEncoder().encode(definition)
+        database.records.append(descriptor)
+        #expect(try await registry.definition(for: "note").uniqueKeys == [["body"]])
     }
 }
 

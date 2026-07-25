@@ -52,7 +52,7 @@ public actor SchemaRegistry {
     /// the database — reads and writes can proceed before `publish` lands in SchemaDescriptor.
     ///
     public func register(_ definition: EntityDefinition) throws {
-        try definition.validate()
+        try definition.validateForPublish()
         cache[definition.entity] = definition
     }
 
@@ -75,7 +75,7 @@ public actor SchemaRegistry {
     }
 
     public func publish(_ definition: EntityDefinition) async throws {
-        try definition.validate()
+        try definition.validateForPublish()
         let record = CKRecord(recordType: SchemaDescriptorEntry.recordType, recordID: CKRecord.ID(recordName: "\(definition.entity)@\(definition.version)"))
         record["entity"] = definition.entity
         record["entity_version"] = Int64(definition.version)
