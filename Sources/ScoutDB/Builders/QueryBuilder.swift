@@ -255,11 +255,25 @@ public struct QueryBuilder: Sendable {
     }
 
     // Distributes the AND-ed base filters over the OR groups into disjunctive
-    // normal form: one branch per combination of picks, one query per branch.
+    // normal form: one branch per combination of picks, one query per branch. A
+    // group of plain equalities over one field is a membership test, so it folds
+    // into a single `in` filter instead of multiplying the branches.
     private func branches() -> [[EntityStore.Filter]] {
         groups.reduce([filters]) { branches, group in
-            branches.flatMap { branch in group.map { branch + $0 } }
+            if let folded = Self.folded(group) {
+                return branches.map { $0 + [folded] }
+            }
+            return branches.flatMap { branch in group.map { branch + $0 } }
         }
+    }
+
+    private static func folded(_ group: [[EntityStore.Filter]]) -> EntityStore.Filter? {
+        let single = group.compactMap { $0.count == 1 ? $0[0] : nil }
+        guard single.count == group.count, single.count > 1, let field = single.first?.field,
+            single.allSatisfy({ $0.field == field && $0.op == .equals && !$0.negated && $0.radius == nil }),
+            let list = EntityStore.membership(of: single.map(\.value))
+        else { return nil }
+        return EntityStore.Filter(field: field, op: .in, value: list)
     }
 }
 

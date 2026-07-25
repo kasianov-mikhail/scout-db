@@ -97,9 +97,8 @@ struct FluentTests {
         #expect(flat.count == 1)
         #expect(!flat[0].server.isEmpty)
 
-        // Two picks in one group fan out into two plans, each carrying the base
-        // filter plus its own pick — not the base filters alone. (Server
-        // predicates render with storage-slot names.)
+        // Equality picks over one field are a membership test: one plan with an
+        // `in` filter, not one query per pick.
         let grouped = try await store.query("purchase")
             .filter("quantity" > 0)
             .group {
@@ -107,11 +106,21 @@ struct FluentTests {
                 $0.filter("product_id", .equals, "sku-2")
             }
             .explain()
-        #expect(grouped.count == 2)
-        // The base filter is shared by both branches; each branch adds its pick.
-        #expect(!Set(grouped[0].server).intersection(grouped[1].server).isEmpty)
-        #expect(grouped.contains { plan in plan.server.contains { $0.contains("sku-0") } })
-        #expect(grouped.contains { plan in plan.server.contains { $0.contains("sku-2") } })
+        #expect(grouped.count == 1)
+        #expect(grouped[0].server.contains { $0.contains("sku-0") && $0.contains("sku-2") })
+
+        // Picks over different fields cannot fold and still fan out, each branch
+        // carrying the shared base filter plus its own pick.
+        let fanned = try await store.query("purchase")
+            .filter("quantity" > 0)
+            .group {
+                $0.filter("product_id", .equals, "sku-0")
+                $0.filter("quantity", .equals, .int(2))
+            }
+            .explain()
+        #expect(fanned.count == 2)
+        #expect(!Set(fanned[0].server).intersection(fanned[1].server).isEmpty)
+        #expect(fanned.contains { plan in plan.server.contains { $0.contains("sku-0") } })
     }
 
     @Test("Builder update and delete rewrite matching records")
