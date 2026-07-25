@@ -493,6 +493,26 @@ struct OfflineCacheTests {
         #expect(store.keys.sorted() == ["a", "c"])
     }
 
+    @Test("Eviction waits for ten percent overflow, then sheds back to the limit")
+    func evictionHysteresis() {
+        var store: [String: Int] = [:]
+        var usage: [String: Int64] = [:]
+        for index in 0..<22 {
+            store["k-\(index)"] = index
+            usage["k-\(index)"] = Int64(index)
+            OfflineCache.evict(&store, usage: &usage, limit: 20)
+        }
+        #expect(store.count == 22)
+
+        store["k-22"] = 22
+        usage["k-22"] = 22
+        OfflineCache.evict(&store, usage: &usage, limit: 20)
+        #expect(store.count == 20)
+        #expect(store["k-0"] == nil)
+        #expect(store["k-1"] == nil)
+        #expect(store["k-2"] == nil)
+    }
+
     @Test("An evicted baseline degrades a conflicting flush to a surfaced conflict")
     func baselineQuota() async throws {
         let cache = OfflineCache(backing: backing, baselineLimit: 1)
