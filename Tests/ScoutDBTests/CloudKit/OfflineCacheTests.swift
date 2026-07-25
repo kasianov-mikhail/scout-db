@@ -248,6 +248,7 @@ struct OfflineCacheTests {
         server.writeErrors = [CKError(.networkFailure)]
         try await firstStore.write(makePurchase().values, entity: "purchase", uuid: "p-2")
         #expect(first.pendingWrites == 1)
+        first.persistNow()
 
         // Second launch restores both: the offline read and the pending queue.
         let second = OfflineCache(backing: server, storeURL: url)
@@ -281,6 +282,26 @@ struct OfflineCacheTests {
         // The caller was told this write succeeded, so it has to be on disk
         // already — nothing forces the archive here, and a crash now would
         // otherwise lose a write the app believes it made.
+        #expect(OfflineCache(backing: server, storeURL: url).pendingWrites == 1)
+    }
+
+    @Test("A legacy single-file archive still restores its queue")
+    func legacyArchiveQueue() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("scout-offline-\(UUID().uuidString)")
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: url.appendingPathExtension("queue"))
+        }
+
+        let record = CKRecord(recordType: "Entity", recordID: CKRecord.ID(recordName: "p-1"))
+        let root: [String: Any] = [
+            "snapshots": [String: [CKRecord]](), "ops": [["t": "s", "r": record]], "baselines": [CKRecord](),
+        ]
+        let data = try NSKeyedArchiver.archivedData(withRootObject: root, requiringSecureCoding: true)
+        try data.write(to: url)
+
+        let server = InMemoryDatabase()
+        #expect(OfflineCache(backing: server, storeURL: url).pendingWrites == 1)
         #expect(OfflineCache(backing: server, storeURL: url).pendingWrites == 1)
     }
 
