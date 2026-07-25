@@ -178,14 +178,27 @@ public struct EntityStore: Sendable {
     }
 
     public func delete(entity: String, uuid: String) async throws {
+        try await delete(entity: entity, uuids: [uuid])
+    }
+
+    // The batched tombstone pass behind single deletes and transaction steps:
+    // one read, one write, one claims release, one grid pass, one revision pass
+    // for the whole list. The read is unconditional — the tombstone keeps the
+    // record's values so `restore` can lift it later — and the tombstones take
+    // the last-write-wins batch path, since a fresh record with no change tag
+    // would fail the conditional single-record save.
+    func delete(entity: String, uuids: [String]) async throws {
+        guard uuids.count > 0 else { return }
+        var targets: [String] = []
+        var seen: Set<String> = []
+        for uuid in uuids where seen.insert(uuid).inserted {
+            targets.append(uuid)
+        }
         let definition = try await registry.definition(for: entity)
-        // The read is unconditional now: the tombstone keeps the record's values
-        // so `restore` can lift it later.
-        let removed = try decode(try await items(entity: entity, uuids: [uuid]), using: definition).filter { !$0.deleted }
-        // The tombstone is a fresh record with no change tag, so it must take the
-        // last-write-wins batch path: the single-record save is conditional and a
-        // real server rejects it whenever the record already exists.
-        try await database.write(records: [tombstone(entity: entity, uuid: uuid, definition: definition, values: removed.first?.values ?? [:])])
+        let removed = try decode(try await items(entity: entity, uuids: targets), using: definition).filter { !$0.deleted }
+        let values = Dictionary(removed.map { ($0.uuid, $0.values) }, uniquingKeysWith: { first, _ in first })
+        let tombstones = try targets.map { try tombstone(entity: entity, uuid: $0, definition: definition, values: values[$0] ?? [:]) }
+        try await database.write(records: tombstones)
         await releaseUniqueClaims(of: removed, using: definition)
         try await GridAggregator(database: database).remove(removed, using: definition)
         try await recordRevisions(removed, using: definition)

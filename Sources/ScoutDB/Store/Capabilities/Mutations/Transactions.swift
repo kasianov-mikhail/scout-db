@@ -103,37 +103,79 @@ extension EntityStore {
         try await write(["status": .string(status), "date": .date(Date()), "steps": .bytes(steps)], entity: Self.transactionEntity, uuid: uuid)
     }
 
-    // Consecutive write steps on one entity flush as a single batched write — order
-    // across entities and kinds is preserved, and a repeated uuid starts a new batch
-    // so later steps still overwrite earlier ones the way sequential writes did.
-    // Deletes tombstone one by one and updates patch through the CAS rewrite; both
-    // replay idempotently. An update of a missing record throws, leaving the
-    // transaction pending for a later repair.
+    // A run of consecutive write steps flushes as one batched write per entity,
+    // even when the entities interleave; per-entity step order is preserved and
+    // a repeated uuid starts that entity's next batch, so later steps still
+    // overwrite earlier ones the way sequential writes did. A store enforcing
+    // references keeps the strict step order instead — a child written between
+    // two parents must not be batched ahead of the parent it names. A run of
+    // consecutive deletes tombstones as one batch per entity. Updates patch one
+    // at a time through the CAS rewrite. All three replay idempotently; an
+    // update of a missing record throws, leaving the transaction pending for a
+    // later repair.
     private func apply(_ steps: [TransactionStep]) async throws {
         var index = 0
         while index < steps.count {
-            guard steps[index].kind == .write else {
+            switch steps[index].kind {
+            case .update:
                 let step = steps[index]
-                if step.kind == .delete {
-                    try await delete(entity: step.entity, uuid: step.uuid)
-                } else {
-                    try await update(entity: step.entity, uuid: step.uuid) { record in
-                        for (name, value) in step.values {
-                            record.values[name] = value
-                        }
+                try await update(entity: step.entity, uuid: step.uuid) { record in
+                    for (name, value) in step.values {
+                        record.values[name] = value
                     }
                 }
                 index += 1
-                continue
+            case .delete:
+                var order: [String] = []
+                var targets: [String: [String]] = [:]
+                while index < steps.count, steps[index].kind == .delete {
+                    if targets[steps[index].entity] == nil {
+                        order.append(steps[index].entity)
+                    }
+                    targets[steps[index].entity, default: []].append(steps[index].uuid)
+                    index += 1
+                }
+                for entity in order {
+                    try await delete(entity: entity, uuids: targets[entity] ?? [])
+                }
+            case .write:
+                if enforceReferences {
+                    let entity = steps[index].entity
+                    var uuids: Set<String> = []
+                    var batch: [EntityWrite] = []
+                    while index < steps.count, steps[index].kind == .write, steps[index].entity == entity,
+                        uuids.insert(steps[index].uuid).inserted
+                    {
+                        batch.append(EntityWrite(values: steps[index].values, uuid: steps[index].uuid))
+                        index += 1
+                    }
+                    try await write(batch, entity: entity)
+                    continue
+                }
+                var order: [String] = []
+                var batches: [String: [[EntityWrite]]] = [:]
+                var seen: [String: Set<String>] = [:]
+                while index < steps.count, steps[index].kind == .write {
+                    let step = steps[index]
+                    if batches[step.entity] == nil {
+                        order.append(step.entity)
+                        batches[step.entity] = [[]]
+                        seen[step.entity] = []
+                    }
+                    if seen[step.entity]?.insert(step.uuid).inserted == false {
+                        batches[step.entity]?.append([])
+                        seen[step.entity] = [step.uuid]
+                    }
+                    let last = (batches[step.entity]?.count ?? 1) - 1
+                    batches[step.entity]?[last].append(EntityWrite(values: step.values, uuid: step.uuid))
+                    index += 1
+                }
+                for entity in order {
+                    for batch in batches[entity] ?? [] {
+                        try await write(batch, entity: entity)
+                    }
+                }
             }
-            let entity = steps[index].entity
-            var uuids: Set<String> = []
-            var batch: [EntityWrite] = []
-            while index < steps.count, steps[index].kind == .write, steps[index].entity == entity, uuids.insert(steps[index].uuid).inserted {
-                batch.append(EntityWrite(values: steps[index].values, uuid: steps[index].uuid))
-                index += 1
-            }
-            try await write(batch, entity: entity)
         }
     }
 }
