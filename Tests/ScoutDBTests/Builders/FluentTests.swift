@@ -41,6 +41,33 @@ struct FluentTests {
         }
     }
 
+    @Test("shadow() declares a derived field the query planner narrows on")
+    func shadowFields() async throws {
+        try await store.schema("contact")
+            .field("email", .string, .required)
+            .field("bio", .text)
+            .shadow("email", .reversed)
+            .shadow("bio", .ngrams)
+            .create()
+
+        let definition = try await registry.definition(for: "contact")
+        let reversed = try #require(definition.field(named: "email_reversed", at: 1))
+        #expect(reversed.derived == Derivation(source: "email", transform: .reversed))
+        #expect(reversed.storage != .payload)
+        let ngrams = try #require(definition.field(named: "bio_ngrams", at: 1))
+        #expect(ngrams.type == .stringList)
+        #expect(ngrams.derived == Derivation(source: "bio", transform: .ngrams))
+
+        try await store.write(["email": .string("ada@gmail.com"), "bio": .string("systems engineer")], entity: "contact", uuid: "c-1")
+        try await store.write(["email": .string("bob@icloud.com"), "bio": .string("designer")], entity: "contact", uuid: "c-2")
+
+        #expect(try await store.query("contact").filter("email", .endsWith, "gmail.com").all().map(\.uuid) == ["c-1"])
+        #expect(try await store.query("contact").filter("bio", .contains, "engineer").all().map(\.uuid) == ["c-1"])
+
+        let plans = try await store.query("contact").filter("email", .endsWith, "gmail.com").explain()
+        #expect(plans.first?.server.contains { $0.contains("moc.liamg") } == true)
+    }
+
     @Test("The schema builder assigns slots in declaration order")
     func slotAllocation() async throws {
         let definition = try await registry.definition(for: "purchase")
