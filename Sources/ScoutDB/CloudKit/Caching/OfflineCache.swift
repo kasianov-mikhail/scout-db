@@ -72,12 +72,14 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     /// With a `storeURL`, snapshots and the write queue persist across launches,
     /// and init restores them.
     ///
-    /// Queueing or replaying a write archives the state immediately: the caller
-    /// was told an offline write succeeded, so it must survive a crash. Snapshot
-    /// and baseline refreshes are archived on a short delay instead, since every
-    /// read produces them and losing the tail costs freshness, not correctness —
-    /// `persistNow()` forces one. Either way the write is best-effort; a failed
-    /// one costs freshness, not correctness.
+    /// Queueing or replaying a write archives the queue immediately: the caller
+    /// was told an offline write succeeded, so it must survive a crash. The queue
+    /// lives in its own small file next to `storeURL`, so that synchronous write
+    /// never re-serializes the snapshots and baselines; those are archived to
+    /// `storeURL` on a short delay instead, since every read refreshes them and
+    /// losing the tail costs freshness, not correctness — `persistNow()` forces
+    /// one. Either way the write is best-effort; a failed one costs freshness,
+    /// not correctness.
     ///
     /// The quotas keep the cache bounded: at most `snapshotLimit` query
     /// snapshots and `baselineLimit` merge baselines, evicted least-recently
@@ -101,6 +103,17 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
             restore(from: data)
             lock.withLock { enforceQuotasLocked() }
         }
+        if let queueURL {
+            if let data = try? Data(contentsOf: queueURL) {
+                pending = Self.decodeOps(from: data) ?? pending
+            } else if !pending.isEmpty {
+                lock.withLock { persistQueueLocked() }
+            }
+        }
+    }
+
+    private var queueURL: URL? {
+        storeURL?.appendingPathExtension("queue")
     }
 
     private func enforceQuotasLocked() {
@@ -131,18 +144,13 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         baselineUsage[id] = clock
     }
 
+    private static let archiveClasses = [NSDictionary.self, NSArray.self, NSString.self, CKRecord.self, CKRecord.ID.self]
+
     private func restore(from data: Data) {
-        let classes = [NSDictionary.self, NSArray.self, NSString.self, CKRecord.self, CKRecord.ID.self]
-        guard let root = try? NSKeyedUnarchiver.unarchivedObject(ofClasses: classes, from: data) as? [String: Any] else { return }
+        guard let root = try? NSKeyedUnarchiver.unarchivedObject(ofClasses: Self.archiveClasses, from: data) as? [String: Any] else { return }
         snapshots = root["snapshots"] as? [String: [CKRecord]] ?? [:]
         if let ops = root["ops"] as? [[String: Any]] {
-            pending = ops.compactMap { entry in
-                switch entry["t"] as? String {
-                case "s": return (entry["r"] as? CKRecord).map(PendingWrite.save)
-                case "d": return (entry["r"] as? CKRecord.ID).map(PendingWrite.delete)
-                default: return nil
-                }
-            }
+            pending = Self.decodeOps(ops)
         } else {
             // A queue archived before the ordered log: saves replayed first, then
             // deletes, so restore it in that order.
@@ -151,6 +159,23 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
             pending = saves + deletes
         }
         baselines = (root["baselines"] as? [CKRecord] ?? []).reduce(into: [:]) { $0[$1.recordID] = $1 }
+    }
+
+    private static func decodeOps(from data: Data) -> [PendingWrite]? {
+        guard let root = try? NSKeyedUnarchiver.unarchivedObject(ofClasses: archiveClasses, from: data) as? [String: Any],
+            let ops = root["ops"] as? [[String: Any]]
+        else { return nil }
+        return decodeOps(ops)
+    }
+
+    private static func decodeOps(_ ops: [[String: Any]]) -> [PendingWrite] {
+        ops.compactMap { entry in
+            switch entry["t"] as? String {
+            case "s": return (entry["r"] as? CKRecord).map(PendingWrite.save)
+            case "d": return (entry["r"] as? CKRecord.ID).map(PendingWrite.delete)
+            default: return nil
+            }
+        }
     }
 
     // Marks the archive stale and lets one delayed write settle it, instead of
@@ -185,23 +210,26 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    // Callers hold the lock; the archive is a full rewrite, small by design
-    // (complete query snapshots plus the pending queue). It carries whatever
-    // freshness was waiting, so the scheduled write has nothing left to do.
     private func persistLocked() {
         archiveStale = false
         guard let storeURL else { return }
+        let root: [String: Any] = [
+            "snapshots": snapshots, "baselines": Array(baselines.values),
+        ]
+        guard let data = try? NSKeyedArchiver.archivedData(withRootObject: root, requiringSecureCoding: true) else { return }
+        try? data.write(to: storeURL, options: .atomic)
+    }
+
+    private func persistQueueLocked() {
+        guard let queueURL else { return }
         let ops: [[String: Any]] = pending.map { op in
             switch op {
             case .save(let record): return ["t": "s", "r": record]
             case .delete(let id): return ["t": "d", "r": id]
             }
         }
-        let root: [String: Any] = [
-            "snapshots": snapshots, "ops": ops, "baselines": Array(baselines.values),
-        ]
-        guard let data = try? NSKeyedArchiver.archivedData(withRootObject: root, requiringSecureCoding: true) else { return }
-        try? data.write(to: storeURL, options: .atomic)
+        guard let data = try? NSKeyedArchiver.archivedData(withRootObject: ["ops": ops], requiringSecureCoding: true) else { return }
+        try? data.write(to: queueURL, options: .atomic)
     }
 
     /// Installs or replaces the flush conflict policy.
@@ -260,7 +288,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
             let removed = before - pending.count
             guard removed > 0 else { return 0 }
             EntityCoder.discardStagedAssets(in: dropped)
-            persistLocked()
+            persistQueueLocked()
             return removed
         }
     }
@@ -434,7 +462,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
                     return true
                 }
             }
-            persistLocked()
+            persistQueueLocked()
         }
     }
 
@@ -651,7 +679,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
             let queued = Self.retainingStagedAssets(record)
             lock.withLock {
                 pending.append(.save(queued))
-                persistLocked()
+                persistQueueLocked()
             }
             return record
         }
@@ -665,7 +693,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
             lock.withLock {
                 pending.append(contentsOf: queued.map(PendingWrite.save))
                 pending.append(contentsOf: recordIDs.map(PendingWrite.delete))
-                persistLocked()
+                persistQueueLocked()
             }
         }
     }
