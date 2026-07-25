@@ -81,11 +81,14 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     /// one. Either way the write is best-effort; a failed one costs freshness,
     /// not correctness.
     ///
-    /// The quotas keep the cache bounded: at most `snapshotLimit` query
+    /// The quotas keep the cache bounded: about `snapshotLimit` query
     /// snapshots and `baselineLimit` merge baselines, evicted least-recently
-    /// used. An evicted snapshot costs offline coverage of that query; an
-    /// evicted baseline degrades a conflicting flush from a merge to a
-    /// surfaced conflict — never correctness.
+    /// used. Eviction runs in batches once a store overflows its limit by ten
+    /// percent, shedding the overflow down to the limit in one ordering pass,
+    /// so a read-heavy steady state does not pay an eviction sort per fetch.
+    /// An evicted snapshot costs offline coverage of that query; an evicted
+    /// baseline degrades a conflicting flush from a merge to a surfaced
+    /// conflict — never correctness.
     ///
     /// A `conflictResolver` decides the conflicts the graft cannot merge —
     /// without one they surface as `OfflineFlushError`.
@@ -127,7 +130,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     // oversized archive sheds its whole overflow at once and every restored
     // entry ties at the oldest usage.
     static func evict<Key: Hashable, Value>(_ store: inout [Key: Value], usage: inout [Key: Int64], limit: Int) {
-        guard store.count > limit else { return }
+        guard store.count > limit + limit / 10 else { return }
         for victim in store.keys.sorted(by: { usage[$0] ?? 0 < usage[$1] ?? 0 }).prefix(store.count - limit) {
             store[victim] = nil
             usage[victim] = nil
