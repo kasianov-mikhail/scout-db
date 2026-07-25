@@ -179,6 +179,28 @@ extension EntityStore {
         return values
     }
 
+    /// The count a declared lifetime view answers without scanning records, or
+    /// nil when no view covers the query.
+    package func viewCount(entity: String, filters: [Filter]) async throws -> Int? {
+        let definition = try await registry.definition(for: entity)
+        guard let (view, group) = Self.countingView(for: filters, in: definition) else { return nil }
+        let rows = try await totals(entity: entity, view: view.name)
+        return rows.filter { group == nil || $0.group == group }.reduce(0) { $0 + $1.count }
+    }
+
+    private static func countingView(for filters: [Filter], in definition: EntityDefinition) -> (view: AggregateView, group: String?)? {
+        for view in definition.views ?? [] where view.bucket == .lifetime && view.histogram == nil {
+            if filters.isEmpty {
+                return (view, nil)
+            }
+            guard filters.count == 1, let filter = filters.first, !filter.negated, filter.radius == nil, filter.op == .equals,
+                filter.field == view.groupBy, case .string(let value) = filter.value
+            else { continue }
+            return (view, value)
+        }
+        return nil
+    }
+
     private func gridRecords(entity: String, view: String, from: Date?, to: Date?) async throws -> [CKRecord] {
         var filters = [
             ServerFilter(field: "entity", op: .equals, value: .string(entity)),

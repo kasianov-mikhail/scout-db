@@ -142,9 +142,17 @@ public struct QueryBuilder: Sendable {
         try await limit(1).all().first
     }
 
-    /// Runs the query and returns the number of matching records, fetching only the
-    /// envelope and the filtered fields rather than full payloads.
+    /// Runs the query and returns the number of matching records.
+    ///
+    /// A query a declared lifetime view covers — no groups, no creator scope,
+    /// and no filters or one equality on the view's `groupBy` — is answered
+    /// from the view's grid in one request. Every other query scans, fetching
+    /// only the envelope and the filtered fields rather than full payloads.
+    ///
     public func count() async throws -> Int {
+        if groups.isEmpty, creator == nil, let counted = try await store.viewCount(entity: entity, filters: filters) {
+            return Swift.min(counted, ceiling ?? Int.max)
+        }
         if groups.count > 0 {
             return try await store.read(entity: entity, any: branches(), sort: sorts, fields: [], limit: ceiling, createdBy: creator).count
         }
