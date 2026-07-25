@@ -41,8 +41,10 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         if let error = errors.popLast() {
             throw error
         }
-        guard case .offset(let query, let zoneID, let offset) = cursor else { throw CKError(.invalidArguments) }
-        return page(query: query, zoneID: zoneID, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit)
+        guard let page = LocalQuery.resume(records, from: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit, pageLimit: pageLimit) else {
+            throw CKError(.invalidArguments)
+        }
+        return page
     }
 
     // Re-evaluates the query and serves one page from `offset`, mirroring the

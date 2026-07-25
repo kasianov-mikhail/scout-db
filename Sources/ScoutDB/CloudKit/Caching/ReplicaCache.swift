@@ -444,21 +444,20 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
         // A localFirst scan of a replicated zone stays on the mirror to its
-        // end — its offset cursors are the mirror's own.
-        if case .offset(let query, let zoneID, let offset) = cursor, servesLocally(zoneID), answers(query, desiredKeys: desiredKeys) {
-            return lock.withLock {
-                LocalQuery.page(scanOrderLocked(), matching: query, inZone: zoneID, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit)
-            }
+        // end — its local cursors are the mirror's own.
+        if let scan = cursor.localScan, servesLocally(scan.zoneID), answers(scan.query, desiredKeys: desiredKeys),
+            let page = lock.withLock({ LocalQuery.resume(scanOrderLocked(), from: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit) })
+        {
+            return page
         }
         do {
             return try await backing.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
         } catch {
-            guard case .offset(let query, let zoneID, let offset) = cursor, mirrors(zoneID), answers(query, desiredKeys: desiredKeys),
-                OfflineCache.isOffline(error) || (error as? CKError)?.code == .invalidArguments
+            guard let scan = cursor.localScan, mirrors(scan.zoneID), answers(scan.query, desiredKeys: desiredKeys),
+                OfflineCache.isOffline(error) || (error as? CKError)?.code == .invalidArguments,
+                let page = lock.withLock({ LocalQuery.resume(scanOrderLocked(), from: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit) })
             else { throw error }
-            return lock.withLock {
-                LocalQuery.page(scanOrderLocked(), matching: query, inZone: zoneID, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit)
-            }
+            return page
         }
     }
 

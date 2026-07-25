@@ -34,8 +34,42 @@ package enum LocalQuery {
         let capacity = Swift.min(resultsLimit > 0 ? resultsLimit : Int.max, pageLimit ?? Int.max)
         let page = matched.dropFirst(offset).prefix(capacity).map { project($0, keys: desiredKeys) }
         let end = offset + page.count
-        let cursor: QueryCursor? = end < matched.count ? .offset(query: query, zoneID: zoneID, offset: end) : nil
+        let cursor: QueryCursor? =
+            end < matched.count ? .materialized(query: query, zoneID: zoneID, remaining: matched.dropFirst(end).map(\.recordID)) : nil
         return (page.map { ($0.recordID, .success($0)) }, cursor)
+    }
+
+    /// Serves the next page of a local scan, or nil for a CloudKit cursor.
+    ///
+    /// A `materialized` cursor is answered from its carried id order — no
+    /// re-filtering and no re-sorting; an id whose record left the store is
+    /// skipped, and an updated record is served in its current state. A legacy
+    /// `offset` cursor re-evaluates the query the way the first page did.
+    ///
+    package static func resume(
+        _ records: [CKRecord], from cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int, pageLimit: Int? = nil
+    ) -> (matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?)? {
+        switch cursor {
+        case .cloudKit:
+            return nil
+        case .offset(let query, let zoneID, let offset):
+            return page(records, matching: query, inZone: zoneID, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit, pageLimit: pageLimit)
+        case .materialized(let query, let zoneID, let remaining):
+            let capacity = Swift.min(resultsLimit > 0 ? resultsLimit : Int.max, pageLimit ?? Int.max)
+            let byID = Dictionary(records.map { ($0.recordID, $0) }, uniquingKeysWith: { first, _ in first })
+            var served: [(CKRecord.ID, Result<CKRecord, any Error>)] = []
+            var index = 0
+            while index < remaining.count, served.count < capacity {
+                if let record = byID[remaining[index]] {
+                    let projected = project(record, keys: desiredKeys)
+                    served.append((projected.recordID, .success(projected)))
+                }
+                index += 1
+            }
+            let rest = remaining.dropFirst(index)
+            let cursor: QueryCursor? = rest.isEmpty ? nil : .materialized(query: query, zoneID: zoneID, remaining: Array(rest))
+            return (served, cursor)
+        }
     }
 
     /// A response copy of a stored record, trimmed to `keys` when given.

@@ -58,6 +58,28 @@ struct PaginationTests {
         #expect(record["rank"] == nil)
     }
 
+    @Test("A continuation serves the matched order without re-running the query")
+    func materializedContinuation() async throws {
+        let database = makeItemDatabase(count: 6)
+        let query = CKQuery(recordType: "Item", predicate: NSPredicate(value: true))
+        query.sortDescriptors = [NSSortDescriptor(key: "rank", ascending: true)]
+
+        var (batch, cursor) = try await database.records(matching: query, desiredKeys: nil, resultsLimit: 2)
+        #expect(batch.map(\.0.recordName) == ["i-0", "i-1"])
+
+        database.records.removeAll { $0.recordID.recordName == "i-3" }
+        let inserted = CKRecord(recordType: "Item", recordID: CKRecord.ID(recordName: "i-9"))
+        inserted["rank"] = -1
+        database.records.append(inserted)
+
+        var names = batch.map(\.0.recordName)
+        while let token = cursor {
+            (batch, cursor) = try await database.records(continuingMatchFrom: token, desiredKeys: nil, resultsLimit: 2)
+            names += batch.map(\.0.recordName)
+        }
+        #expect(names == ["i-0", "i-1", "i-2", "i-4", "i-5"])
+    }
+
     @Test("A queued error surfaces from a continuation read")
     func continuationError() async throws {
         let database = makeItemDatabase(count: 4)
