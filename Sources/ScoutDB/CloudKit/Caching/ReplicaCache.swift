@@ -305,6 +305,7 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
     }
 
     private func answers(_ query: CKQuery, desiredKeys: [CKRecord.FieldKey]?) -> Bool {
+        guard PredicateEvaluator.supports(query.predicate) else { return false }
         guard let fields else { return true }
         guard let desiredKeys, fields.isSuperset(of: desiredKeys) else { return false }
         guard let compared = Self.referencedKeys(of: query.predicate), fields.isSuperset(of: compared) else { return false }

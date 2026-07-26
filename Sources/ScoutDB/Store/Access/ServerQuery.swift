@@ -21,7 +21,7 @@ public struct QueryPlan: Equatable, Sendable, CustomStringConvertible {
 }
 
 struct ServerFilter: Equatable, Sendable {
-    enum Operator: String, Sendable {
+    enum Operator: String, CaseIterable, Sendable {
         case equals
         case notEquals
         case greaterThan
