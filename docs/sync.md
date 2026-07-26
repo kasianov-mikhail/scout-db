@@ -111,6 +111,12 @@ struct PurchaseListView: View {
 worth running even when nothing in the UI is polling directly — a live query updates itself
 the moment a coordinator pass lands.
 
+Changes that land while a pass is running coalesce into the single pass that follows it, so a
+loop of writes — or a delta that touches the entity many times — costs the pass in flight and
+one that picks up everything the burst changed, not one full query per change. The view sees
+the settled result instead of every step. `changeTicks(entity:)` is the uncoalesced stream
+underneath, one tick per landed mutation, if you want to drive something else with it.
+
 ## ⚖️ Trade-offs
 
 - Progress from a batched walk is a running count, not a fraction — the total size of an

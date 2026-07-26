@@ -42,6 +42,13 @@ public struct FieldCursor: Codable, Equatable, Sendable {
 }
 
 extension EntityStore {
+    /// Rewrites one record under compare-and-swap, retrying a lost race.
+    ///
+    /// A conflict whose winning fields are disjoint from the transform's is
+    /// merged onto the winner instead of re-running the transform, and the
+    /// retry only re-validates and re-claims the keys the merge actually moved
+    /// — the claims of the keys it left alone are already ours.
+    ///
     public func update(entity: String, uuid: String, maxRetry: Int = 3, transform: (inout EntityRecord) throws -> Void) async throws {
         try await update(entity: entity, uuids: [uuid], maxRetry: maxRetry, transform: transform)
     }
@@ -66,6 +73,7 @@ extension EntityStore {
         guard uuids.count > 0 else { return }
         let definition = try await registry.definition(for: entity)
         let coder = EntityCoder(keyProvider: keyProvider)
+        let owned = (definition.enforcedKeys ?? []) + Self.exclusiveFields(of: definition).map { [$0.name] }
         var targets: [String] = []
         var seen: Set<String> = []
         for uuid in uuids where seen.insert(uuid).inserted {
@@ -82,11 +90,14 @@ extension EntityStore {
         }
 
         var applied: [EntityCoder.Rewrite] = []
-        var released: [[String]] = []
+        var claimed: [String: EntityRecord] = [:]
         var attempt = 0
         var unresolved: CKRecord?
         while pending.count > 0 {
-            released += try await claimRewrites(pending, using: definition)
+            try await claimRewrites(pending, since: claimed, using: definition)
+            for rewrite in pending {
+                claimed[rewrite.next.uuid] = rewrite.next
+            }
             let conflicts = try await save(pending.map(\.record))
             let losers = Dictionary(conflicts.map { ($0.recordID, $0) }, uniquingKeysWith: { first, _ in first })
             applied += pending.filter { losers[$0.record.recordID] == nil }
@@ -102,11 +113,16 @@ extension EntityStore {
         }
 
         EntityCoder.discardStagedAssets(in: applied.map(\.record))
-        if !released.isEmpty {
-            await releaseStaleClaims(for: released, of: applied.map { ($0.previous, $0.next) }, using: definition)
+        let previous = applied.map(\.previous)
+        let next = applied.map(\.next)
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            if !owned.isEmpty, applied.count > 0 {
+                group.addTask { await releaseStaleClaims(for: owned, of: Array(zip(previous, next)), using: definition) }
+            }
+            group.addTask { try await aggregator.rebalance(removing: previous, adding: next, using: definition) }
+            group.addTask { try await recordRevisions(previous, using: definition) }
+            try await group.waitForAll()
         }
-        try await aggregator.rebalance(removing: applied.map(\.previous), adding: applied.map(\.next), using: definition)
-        try await recordRevisions(applied.map(\.previous), using: definition)
         if applied.count > 0 {
             noteChange(entity: entity)
         }
@@ -134,10 +150,12 @@ extension EntityStore {
         return try await database.writeIfUnchanged(records: records)
     }
 
-    private func claimRewrites(_ rewrites: [EntityCoder.Rewrite], using definition: EntityDefinition) async throws -> [[String]] {
+    /// Validates and claims the keys the batch moved since the state whose
+    /// claims are already ours — on a retry, the ones the merge actually moved.
+    private func claimRewrites(_ rewrites: [EntityCoder.Rewrite], since claimed: [String: EntityRecord], using definition: EntityDefinition) async throws {
         var touched: Set<String> = []
         for rewrite in rewrites {
-            touched.formUnion(Self.changedFields(from: rewrite.previous, to: rewrite.next).keys)
+            touched.formUnion(Self.changedFields(from: claimed[rewrite.next.uuid] ?? rewrite.previous, to: rewrite.next).keys)
         }
         let next = rewrites.map(\.next)
         if let keys = definition.uniqueKeys, keys.contains(where: { $0.contains { touched.contains($0) } }) {
@@ -151,7 +169,6 @@ extension EntityStore {
         if !reassigned.isEmpty {
             try await claimExclusivity(of: next, using: definition, fields: reassigned)
         }
-        return rekeyed + reassigned.map { [$0.name] }
     }
 
     private func remerge(

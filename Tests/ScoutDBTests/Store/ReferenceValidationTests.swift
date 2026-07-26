@@ -69,10 +69,10 @@ struct ReferenceValidationTests {
     }
 }
 
-/// Forwards to an in-memory database while recording how many `fetchRecords`
-/// calls ran and how many overlapped.
+/// Forwards to an in-memory database while recording how many record fetches
+/// ran and how many requests of any kind overlapped.
 ///
-/// Each call parks briefly, so overlapping callers are visibly in flight
+/// Every call parks briefly, so overlapping callers are visibly in flight
 /// together and a sequential caller never is.
 ///
 final class CountingFetches: CloudDatabase, @unchecked Sendable {
@@ -102,9 +102,11 @@ final class CountingFetches: CloudDatabase, @unchecked Sendable {
         var total: Int { lock.withLock { counts.total } }
         var peak: Int { lock.withLock { counts.peak } }
 
-        func enter() {
+        func enter(fetch: Bool) {
             lock.withLock {
-                counts.total += 1
+                if fetch {
+                    counts.total += 1
+                }
                 counts.inFlight += 1
                 counts.peak = Swift.max(counts.peak, counts.inFlight)
             }
@@ -119,35 +121,43 @@ final class CountingFetches: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
-        tally.enter()
+    private func request<T>(fetch: Bool = false, _ body: () async throws -> T) async rethrows -> T {
+        tally.enter(fetch: fetch)
         defer { tally.leave() }
         try? await Task.sleep(for: .milliseconds(20))
-        return try await backing.fetchRecords(ids: ids)
+        return try await body()
+    }
+
+    func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
+        try await request(fetch: true) { try await backing.fetchRecords(ids: ids) }
+    }
+
+    func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
+        try await request(fetch: true) { try await backing.fetchRecord(id: id) }
     }
 
     func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        try await backing.records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+        try await request { try await backing.records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: resultsLimit) }
     }
 
     func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        try await backing.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+        try await request { try await backing.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit) }
     }
 
     func save(_ record: CKRecord) async throws -> CKRecord {
-        try await backing.save(record)
+        try await request { try await backing.save(record) }
     }
 
     func modifyRecords(saving: [CKRecord], deleting: [CKRecord.ID]) async throws {
-        try await backing.modifyRecords(saving: saving, deleting: deleting)
+        try await request { try await backing.modifyRecords(saving: saving, deleting: deleting) }
     }
 
     func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
-        try await backing.saveIfUnchanged(records)
+        try await request { try await backing.saveIfUnchanged(records) }
     }
 
     func save(subscription: CKSubscription) async throws {
@@ -164,10 +174,6 @@ final class CountingFetches: CloudDatabase, @unchecked Sendable {
 
     func save(zone: CKRecordZone) async throws {
         try await backing.save(zone: zone)
-    }
-
-    func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
-        try await backing.fetchRecord(id: id)
     }
 
     func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int?) async throws -> (
