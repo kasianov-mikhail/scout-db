@@ -294,21 +294,24 @@ struct EntityStoreTests {
         #expect(records.count == 0)
     }
 
-    @Test("Change feed returns records after the cursor with tombstones")
+    @Test("Change feed returns an entity's records after the token with tombstones")
     func changeFeed() async throws {
+        let store = EntityStore(database: database, registry: registry, zoneID: CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName))
+        try await registry.publish(
+            makeDefinition(entity: "receipt", fields: [FieldDefinition(name: "note", type: .string, storage: .slot(.string, "s_00"))]))
         try await store.write(makePurchase(uuid: "p-1").values, entity: "purchase", uuid: "p-1")
         try await store.write(makePurchase(uuid: "p-2").values, entity: "purchase", uuid: "p-2")
+        try await store.write(["note": .string("other")], entity: "receipt", uuid: "r-1")
         try await store.delete(entity: "purchase", uuid: "p-1")
-        stampModTime(uuid: "p-1", at: Date(timeIntervalSince1970: 100))
-        stampModTime(uuid: "p-2", at: Date(timeIntervalSince1970: 200))
 
-        let (all, cursor) = try await store.changes(entity: "purchase")
-        #expect(all.count == 2)
-        #expect(all.first { $0.uuid == "p-1" }?.deleted == true)
-        #expect(cursor == Date(timeIntervalSince1970: 200))
+        let all = try await store.changes(entity: "purchase")
+        #expect(all.records.map(\.uuid).sorted() == ["p-1", "p-2"])
+        #expect(all.records.first { $0.uuid == "p-1" }?.deleted == true)
 
-        let (tail, _) = try await store.changes(entity: "purchase", since: Date(timeIntervalSince1970: 150))
-        #expect(tail.map(\.uuid) == ["p-2"])
+        try await store.write(makePurchase(uuid: "p-3").values, entity: "purchase", uuid: "p-3")
+        try await store.write(["note": .string("later")], entity: "receipt", uuid: "r-2")
+        let tail = try await store.changes(entity: "purchase", since: all.token)
+        #expect(tail.records.map(\.uuid) == ["p-3"])
     }
 
     @Test("List fields support server-side contains filters")
@@ -524,12 +527,6 @@ struct EntityStoreTests {
                 ], keyID: "k9"))
         await #expect(throws: SchemaError.missingKey("k9")) {
             try await store.write(["token": .string("shh")], entity: "secret")
-        }
-    }
-
-    private func stampModTime(uuid: String, at date: Date) {
-        for record in database.records where record.recordType == "Entity" && record.recordID.recordName == uuid {
-            record.overrideModificationDate(date)
         }
     }
 }

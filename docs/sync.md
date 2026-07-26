@@ -17,8 +17,9 @@ let delta = try await store.zoneChanges(since: savedToken)
 | `delta.deleted` | `[String]` — hard-deleted uuids |
 | `delta.token` | `Data?` — persist this, pass it back next time |
 
-`since: nil` replays the zone from the beginning. Decode into typed items instead of raw
-records:
+`since: nil` replays the zone from the beginning. `changes(entity:since:)` narrows the same
+feed to one entity — the cost still scales with what changed, not with the entity's size.
+Decode into typed items instead of raw records:
 
 ```swift
 let purchases: [Purchase] = delta.items(Purchase.self)
