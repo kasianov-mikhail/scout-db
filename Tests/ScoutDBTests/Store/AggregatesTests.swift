@@ -311,6 +311,67 @@ struct AggregatesTests {
         #expect(products.count == 2)
     }
 
+    @Test("DISTINCT reads a covering view's grid instead of scanning")
+    func distinctThroughLifetimeView() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "sale",
+                fields: [
+                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00"), required: true),
+                    FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
+                ], views: [AggregateView(name: "by_product", groupBy: "product", bucket: .lifetime)]))
+        try await store.write(["product": .string("app"), "amount": .double(10)], entity: "sale")
+        try await store.write(["product": .string("app"), "amount": .double(5)], entity: "sale")
+        try await store.write(["product": .string("book"), "amount": .double(2)], entity: "sale", uuid: "s-book")
+
+        let grid = try #require(database.records.first { $0.recordType == "Aggregate" && $0["group_key"] as? String == "book" })
+        grid["group_key"] = "pen"
+        #expect(try await store.distinct(entity: "sale", field: "product").map(\.canonical) == ["app", "pen"])
+        #expect(
+            try await store.distinct(entity: "sale", field: "product", filters: [EntityStore.Filter(field: "product", op: .equals, value: .string("app"))]).map(
+                \.canonical) == ["app"])
+
+        grid["group_key"] = "book"
+        try await store.delete(entity: "sale", uuid: "s-book")
+        #expect(try await store.distinct(entity: "sale", field: "product").map(\.canonical) == ["app"])
+
+        #expect(
+            Set(
+                try await store.distinct(entity: "sale", field: "product", filters: [EntityStore.Filter(field: "amount", op: .greaterThan, value: .double(1))])
+                    .map(\.canonical)) == ["app"])
+    }
+
+    @Test("A grid-served DISTINCT rebuilds typed values from group keys")
+    func distinctRebuildsTypedValues() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "reading",
+                fields: [
+                    FieldDefinition(name: "level", type: .int, storage: .slot(.int, "i_00"), required: true)
+                ], views: [AggregateView(name: "by_level", groupBy: "level", bucket: .lifetime)]))
+        try await store.write(["level": .int(5)], entity: "reading")
+        try await store.write(["level": .int(12)], entity: "reading")
+        try await store.write(["level": .int(5)], entity: "reading")
+
+        let levels = try await store.distinct(entity: "reading", field: "level")
+        #expect(levels.count == 2)
+        #expect(levels.contains(.int(5)) && levels.contains(.int(12)))
+    }
+
+    @Test("DISTINCT of an optional field scans even under a covering view")
+    func distinctOptionalFieldScans() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "device",
+                fields: [
+                    FieldDefinition(name: "model", type: .string, storage: .slot(.string, "s_00"))
+                ], views: [AggregateView(name: "by_model", groupBy: "model", bucket: .lifetime)]))
+        try await store.write(["model": .string("mk1")], entity: "device")
+        try await store.write([:], entity: "device")
+
+        #expect(try await store.distinct(entity: "device", field: "model") == [.string("mk1")])
+    }
+
     @Test("Stats views expose variance and standard deviation")
     func stats() async throws {
         try await publishPayment(views: [AggregateView(name: "spread", stats: "amount")])

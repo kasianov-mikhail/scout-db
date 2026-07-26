@@ -46,8 +46,10 @@ let products = try await store.distinct(entity: "payment", field: "product")
 ```
 
 `aggregate` returns one row per group and period; `totals` folds periods per group and
-filters with the `having:` closure. `distinct` is a client-side scan — materialize a view
-for large entities.
+filters with the `having:` closure. `distinct` reads the grid of a view grouped by the
+field when one covers the query (a `lifetime` view covers the unfiltered call) and the
+field is required or defaulted — one grid row per live value, no record scan. Without a
+covering view it falls back to a client-side scan — materialize a view for large entities.
 
 ## ⚖️ Trade-offs
 
