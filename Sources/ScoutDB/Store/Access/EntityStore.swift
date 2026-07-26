@@ -262,15 +262,20 @@ public struct EntityStore: Sendable {
         matching query: CKQuery, desiredKeys: [String]?, limit: Int, using definition: EntityDefinition, where included: (EntityRecord) -> Bool
     ) async throws -> [EntityRecord] {
         var collected: [EntityRecord] = []
-        var page = Swift.min(limit, CKQueryOperation.maximumResults)
+        var page = Self.cappedPage(limit)
         var (batch, token) = try await database.records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: page)
         while true {
             collected += try decode(batch.map { try $0.1.get() }, using: definition).filter(included)
             guard collected.count < limit, let cursor = token else { break }
-            page = Swift.min(page * 2, CKQueryOperation.maximumResults)
+            page = page < Int.max / 2 ? Self.cappedPage(page * 2) : page
             (batch, token) = try await database.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: page)
         }
         return collected
+    }
+
+    private static func cappedPage(_ rows: Int) -> Int {
+        let maximum = CKQueryOperation.maximumResults
+        return maximum > 0 ? Swift.min(rows, maximum) : rows
     }
 
     private func clientRanked(_ sort: [Sort], using definition: EntityDefinition) throws -> Bool {
