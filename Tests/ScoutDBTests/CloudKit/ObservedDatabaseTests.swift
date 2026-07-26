@@ -198,6 +198,31 @@ extension ObservedDatabaseTests {
         #expect(try await store.fetch(entity: "purchase", uuids: ["p-119"]).first?.values["quantity"] == .int(119))
     }
 
+    @Test("A keyset page after a cursor costs the same requests as the first")
+    func keysetPageRequestParity() async throws {
+        for index in 0..<6 {
+            try await store.write(
+                ["product_id": .string("sku-\(index)"), "date": .date(Date(timeIntervalSince1970: TimeInterval(index * 1_000)))],
+                entity: "purchase", uuid: "p-\(index)")
+        }
+
+        func requests(_ body: () async throws -> Void) async throws -> Int {
+            recorder.reset()
+            try await body()
+            return recorder.operations.filter { $0.kind == .query || $0.kind == .continuation }.count
+        }
+
+        var first = EntityPage(records: [], cursor: nil)
+        let opening = try await requests { first = try await store.read(entity: "purchase", limit: 3) }
+        #expect(first.records.map(\.uuid) == ["p-0", "p-1", "p-2"])
+        #expect(opening == 1)
+
+        var second = EntityPage(records: [], cursor: nil)
+        let continued = try await requests { second = try await store.read(entity: "purchase", limit: 3, after: first.cursor) }
+        #expect(second.records.map(\.uuid) == ["p-3", "p-4", "p-5"])
+        #expect(continued == 1)
+    }
+
     @Test("A capped read escalates its page size instead of one request per scanned record")
     func boundedReadEscalatesPages() async throws {
         for index in 0..<60 {
@@ -252,10 +277,10 @@ extension ObservedDatabaseTests {
         #expect(top.map { $0.values["quantity"] } == [39, 38, 37, 36, 35].map { RecordValue.int(Int64($0)) })
         let pages = recorder.operations.filter { $0.kind == .query || $0.kind == .continuation }
         #expect(pages.count == 2)
-        #expect(pages.allSatisfy { $0.recordCount <= 5 })
+        #expect(pages.allSatisfy { $0.recordCount <= 6 })
     }
 
-    @Test("A capped read asks its first page for the rows it needs, not for every match")
+    @Test("A capped read asks its first page for the rows it needs plus the boundary row, not for every match")
     func boundedReadSizesItsFirstPage() async throws {
         for index in 0..<60 {
             try await store.write(
@@ -268,7 +293,7 @@ extension ObservedDatabaseTests {
         #expect(served.count == 5)
 
         let first = try #require(recorder.operations.first { $0.kind == .query })
-        #expect(first.recordCount == 5)
+        #expect(first.recordCount == 6)
     }
 }
 
