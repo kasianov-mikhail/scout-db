@@ -89,12 +89,9 @@ extension EntityStore {
         }
         if fresh.count > 0 {
             for (id, result) in try await database.saveIfUnchanged(fresh) {
-                do {
-                    _ = try result.get()
-                } catch let conflict as RecordConflictError {
-                    guard let digest = digests[id] else { throw conflict }
-                    contested.append((digest, conflict.serverRecord))
-                }
+                guard case .failure(let error) = result else { continue }
+                guard let raced = RecordConflictError(error), let digest = digests[id] else { throw error }
+                contested.append((digest, raced.serverRecord))
             }
         }
         for (digest, server) in contested {
@@ -114,13 +111,14 @@ extension EntityStore {
                 throw conflict(digest)
             }
             server["owner"] = uuid
-            let outcome = try await database.saveIfUnchanged([server])
-            do {
-                for (_, result) in outcome { _ = try result.get() }
-                return
-            } catch let raced as RecordConflictError {
-                server = raced.serverRecord
+            var raced: CKRecord?
+            for (_, result) in try await database.saveIfUnchanged([server]) {
+                guard case .failure(let error) = result else { continue }
+                guard let lost = RecordConflictError(error) else { throw error }
+                raced = lost.serverRecord
             }
+            guard let raced else { return }
+            server = raced
         }
         throw conflict(digest)
     }

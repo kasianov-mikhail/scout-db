@@ -122,6 +122,39 @@ struct UniqueClaimsTests {
         #expect(claims.first?["owner"] as? String == "b-2")
     }
 
+    private func racedClaim(owner: String, code: String) -> [String: Any] {
+        let record = CKRecord(recordType: "UniqueClaim", recordID: UniqueClaim.recordID(entity: "badge", digest: "code=\(code)", zoneID: nil))
+        record["entity"] = "badge"
+        record["key"] = "code"
+        record["owner"] = owner
+        return [CKRecordChangedErrorServerRecordKey: record]
+    }
+
+    @Test("A claim lost to CloudKit's own conflict error still reports the duplicate")
+    func rawConflictRejectsDuplicate() async throws {
+        database.rawConflictErrors = true
+        try await store.write(["code": .string("gold")], entity: "badge", uuid: "b-1")
+        database.records.removeAll { $0.recordType == "UniqueClaim" }
+        database.writeErrors = [CKError(.serverRecordChanged, userInfo: racedClaim(owner: "b-1", code: "gold"))]
+
+        await #expect(throws: SchemaError.duplicateKey(fields: ["code"])) {
+            try await store.write(["code": .string("gold")], entity: "badge", uuid: "b-2")
+        }
+        #expect(try await store.read(entity: "badge").map(\.uuid) == ["b-1"])
+    }
+
+    @Test("A claim lost to CloudKit's own conflict error still adopts an orphaned claim")
+    func rawConflictAdoptsOrphanedClaim() async throws {
+        database.rawConflictErrors = true
+        try await store.write(["code": .string("gold")], entity: "badge", uuid: "b-1")
+        database.records.removeAll { $0.recordType == "UniqueClaim" || $0["uuid"] as? String == "b-1" }
+        database.writeErrors = [CKError(.serverRecordChanged, userInfo: racedClaim(owner: "b-1", code: "gold"))]
+
+        try await store.write(["code": .string("gold")], entity: "badge", uuid: "b-2")
+        #expect(claims.count == 1)
+        #expect(claims.first?["owner"] as? String == "b-2")
+    }
+
     @Test("An enforced write fails offline instead of queueing a false success")
     func offlineWriteFails() async throws {
         let cache = OfflineCache(backing: database)
