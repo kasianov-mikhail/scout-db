@@ -1485,6 +1485,62 @@ struct OperationsTests {
         #expect(values["b-3"] == .strings(["a-9"]))
     }
 
+    @Test("A cascade probes every referring entity in one round")
+    func cascadeProbesInParallel() async throws {
+        let backing = InMemoryDatabase()
+        let counting = CountingFetches(backing: backing)
+        let registry = SchemaRegistry(database: counting)
+        let store = EntityStore(database: counting, registry: registry)
+        let children = ["book", "note", "photo"]
+
+        try await registry.publish(
+            makeDefinition(entity: "author", fields: [FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))]))
+        for child in children {
+            try await registry.publish(
+                makeDefinition(
+                    entity: child,
+                    fields: [FieldDefinition(name: "author_id", type: .string, storage: .slot(.string, "s_00"), references: "author")]))
+        }
+
+        try await store.write(["name": .string("Twain")], entity: "author", uuid: "a-1")
+        for child in children {
+            try await store.write(["author_id": .string("a-1")], entity: child, uuid: "\(child)-1")
+        }
+
+        counting.reset()
+        try await store.delete(entity: "author", uuid: "a-1", cascade: true)
+        #expect(counting.peakInFlight >= children.count)
+        for child in children {
+            #expect(try await store.read(entity: child).isEmpty)
+        }
+    }
+
+    @Test("A child referred to through two fields is removed from its view once")
+    func cascadeDedupesAcrossFields() async throws {
+        try await registry.publish(
+            makeDefinition(entity: "author", fields: [FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))]))
+        try await registry.publish(
+            makeDefinition(
+                entity: "note",
+                fields: [
+                    FieldDefinition(name: "author_id", type: .string, storage: .slot(.string, "s_00"), references: "author"),
+                    FieldDefinition(name: "editor_id", type: .string, storage: .slot(.string, "s_01"), references: "author"),
+                    FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
+                ], envelopeDate: "date", views: [AggregateView(name: "total", bucket: .lifetime)]))
+
+        try await store.write(["name": .string("Twain")], entity: "author", uuid: "a-1")
+        try await store.write(
+            ["author_id": .string("a-1"), "editor_id": .string("a-1"), "date": .date(Date())], entity: "note", uuid: "n-1")
+
+        try await store.delete(entity: "author", uuid: "a-1", cascade: true)
+        #expect(try await store.read(entity: "note").isEmpty)
+
+        let counts = database.records.filter { $0.recordType == "Aggregate" }
+            .flatMap { record in (0..<Aggregate.cellCount).map { record[Aggregate.countCell($0)] as? Int64 ?? 0 } }
+        #expect(counts.allSatisfy { $0 >= 0 })
+        #expect(counts.reduce(0, +) == 0)
+    }
+
     @Test("A cascade detaches every dead key of a record in one rewrite")
     func detachesManyKeysAtOnce() async throws {
         try await registry.publish(
