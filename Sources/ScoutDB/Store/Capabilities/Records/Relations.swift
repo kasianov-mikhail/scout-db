@@ -83,13 +83,28 @@ extension EntityStore {
     }
 
     func validateReferences(of records: [EntityRecord], using definition: EntityDefinition) async throws {
+        var probes: [(field: String, parent: String, keys: Set<String>)] = []
         for field in definition.fields(at: definition.version) {
             guard let parent = field.references else { continue }
             let keys = Set(records.flatMap { Self.referencedKeys($0.values[field.name]) })
             guard keys.count > 0 else { continue }
-            let alive = Set(try await fetch(entity: parent, uuids: keys.sorted()).map(\.uuid))
-            if let missing = keys.subtracting(alive).sorted().first {
-                throw SchemaError.brokenReference(field: field.name, key: missing)
+            probes.append((field.name, parent, keys))
+        }
+        guard probes.count > 0 else { return }
+
+        let alive = try await withThrowingTaskGroup(of: (Int, Set<String>).self) { group in
+            for (index, probe) in probes.enumerated() {
+                group.addTask { (index, Set(try await self.fetch(entity: probe.parent, uuids: probe.keys.sorted()).map(\.uuid))) }
+            }
+            var collected: [Int: Set<String>] = [:]
+            for try await (index, uuids) in group {
+                collected[index] = uuids
+            }
+            return collected
+        }
+        for (index, probe) in probes.enumerated() {
+            if let missing = probe.keys.subtracting(alive[index] ?? []).sorted().first {
+                throw SchemaError.brokenReference(field: probe.field, key: missing)
             }
         }
     }
