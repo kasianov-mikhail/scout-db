@@ -19,8 +19,82 @@ import ScoutDB
 /// (`records`, `errors`, `writeErrors`, `pageLimit`) go through the same lock.
 ///
 public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
+    /// The stored records, in the order a query scans them, alongside an index
+    /// from record id to its place in that order.
+    ///
+    /// Query results follow the order records were written in, so the order is
+    /// kept as an array; every other access — a fetch, a conflict check, the
+    /// record behind a change-log entry — goes through the index instead of
+    /// scanning. A record leaving the table clears its slot rather than closing
+    /// the gap, which would move every record after it, and the slots are
+    /// compacted once the emptied ones outnumber the rest.
+    ///
+    private struct RecordTable {
+        private var slots: [CKRecord?] = []
+        private var positions: [CKRecord.ID: Int] = [:]
+        private var emptied = 0
+        private var dense: [CKRecord]?
+
+        mutating func all() -> [CKRecord] {
+            if let dense { return dense }
+            let records = slots.compactMap { $0 }
+            dense = records
+            return records
+        }
+
+        func record(id: CKRecord.ID) -> CKRecord? {
+            positions[id].flatMap { slots[$0] }
+        }
+
+        mutating func replaceAll(with records: [CKRecord]) {
+            slots = records
+            positions = [:]
+            positions.reserveCapacity(records.count)
+            for (position, record) in records.enumerated() where positions[record.recordID] == nil {
+                positions[record.recordID] = position
+            }
+            emptied = 0
+            dense = records
+        }
+
+        mutating func put(_ record: CKRecord) {
+            if let position = positions[record.recordID] {
+                slots[position] = nil
+                emptied += 1
+            }
+            positions[record.recordID] = slots.count
+            slots.append(record)
+            dense = nil
+            compact()
+        }
+
+        mutating func remove(_ ids: some Sequence<CKRecord.ID>) {
+            var removed = false
+            for id in ids {
+                guard let position = positions.removeValue(forKey: id) else { continue }
+                slots[position] = nil
+                emptied += 1
+                removed = true
+            }
+            guard removed else { return }
+            dense = nil
+            compact()
+        }
+
+        private mutating func compact() {
+            guard emptied > 64, emptied * 2 >= slots.count else { return }
+            let records = slots.compactMap { $0 }
+            positions.removeAll(keepingCapacity: true)
+            for (position, record) in records.enumerated() {
+                positions[record.recordID] = position
+            }
+            slots = records
+            emptied = 0
+        }
+    }
+
     private struct State {
-        var records: [CKRecord] = []
+        var table = RecordTable()
         var subscriptions: [CKSubscription] = []
         var zones: [CKRecordZone.ID] = []
         var changeLog: [(sequence: Int64, id: CKRecord.ID, deleted: Bool)] = []
@@ -37,8 +111,8 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     private var state = State()
 
     public var records: [CKRecord] {
-        get { lock.withLock { state.records } }
-        set { lock.withLock { state.records = newValue } }
+        get { lock.withLock { state.table.all() } }
+        set { lock.withLock { state.table.replaceAll(with: newValue) } }
     }
 
     public var storedSubscriptions: [CKSubscription] {
@@ -124,7 +198,8 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     }
 
     private func indexedLocked() -> [CKRecord] {
-        state.unindexed.isEmpty ? state.records : state.records.filter { !state.unindexed.contains($0.recordID) }
+        let records = state.table.all()
+        return state.unindexed.isEmpty ? records : records.filter { !state.unindexed.contains($0.recordID) }
     }
 
     private func pageLocked(query: CKQuery, zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, offset: Int, resultsLimit: Int) -> (
@@ -154,8 +229,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
                 throw error
             }
             records.forEach(upsertLocked)
-            let deleting = Set(recordIDs)
-            state.records.removeAll { deleting.contains($0.recordID) }
+            state.table.remove(recordIDs)
             for id in recordIDs {
                 state.sequence += 1
                 state.changeLog.append((state.sequence, id, true))
@@ -212,7 +286,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     }
 
     private func conflictingServerLocked(for record: CKRecord) -> CKRecord? {
-        guard let stored = state.records.first(where: { $0.recordType == record.recordType && $0.recordID == record.recordID }),
+        guard let stored = state.table.record(id: record.recordID), stored.recordType == record.recordType,
             stored.recordVersionTag != record.recordVersionTag
         else { return nil }
         return project(stored, keys: nil)
@@ -251,7 +325,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
             if let error = state.errors.popLast() {
                 throw error
             }
-            return state.records.first { $0.recordID == id }.map { project($0, keys: nil) }
+            return state.table.record(id: id).map { project($0, keys: nil) }
         }
     }
 
@@ -260,8 +334,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
             if let error = state.errors.popLast() {
                 throw error
             }
-            let stored = Dictionary(state.records.map { ($0.recordID, $0) }, uniquingKeysWith: { first, _ in first })
-            return ids.compactMap { stored[$0].map { project($0, keys: nil) } }
+            return ids.compactMap { state.table.record(id: $0).map { project($0, keys: nil) } }
         }
     }
 
@@ -284,7 +357,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
                 next = entries.last?.sequence ?? state.sequence
             }
             let changed = entries.filter { !$0.deleted }
-                .compactMap { entry in state.records.first { $0.recordID == entry.id }.map { project($0, keys: desiredKeys) } }
+                .compactMap { entry in state.table.record(id: entry.id).map { project($0, keys: desiredKeys) } }
             let deleted = entries.filter(\.deleted).map(\.id).sorted { $0.recordName < $1.recordName }
             return (changed.sorted { $0.recordID.recordName < $1.recordID.recordName }, deleted, Data("\(next)".utf8))
         }
@@ -337,8 +410,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
 
     private func upsertLocked(_ record: CKRecord) {
         let record = retainingAssets(of: record)
-        state.records.removeAll { $0.recordType == record.recordType && $0.recordID == record.recordID }
-        state.records.append(record)
+        state.table.put(record)
         record.overrideModificationDate(Date())
         record.overrideChangeTag(UUID().uuidString)
         state.sequence += 1
