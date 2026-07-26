@@ -24,6 +24,16 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     /// `CKQueryOperation.maximumResults`. `nil` leaves only `resultsLimit` in effect.
     public var pageLimit: Int?
 
+    /// Reports a lost conditional save the way `CKDatabase` reports it — a raw
+    /// `CKError.serverRecordChanged` carrying the server record — rather than a
+    /// `RecordConflictError`.
+    ///
+    /// Both shapes reach `saveIfUnchanged` callers in production, so a test
+    /// double that only ever produces the friendlier one hides the paths that
+    /// match on the error's type.
+    ///
+    public var rawConflictErrors = false
+
     public init() {}
 
     public func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
@@ -105,11 +115,16 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
                 return (record.recordID, .failure(failure))
             }
             if let server = conflictingServer(for: record) {
-                return (record.recordID, .failure(RecordConflictError(serverRecord: server)))
+                return (record.recordID, .failure(Self.conflict(with: server, raw: rawConflictErrors)))
             }
             upsert(record)
             return (record.recordID, .success(record))
         }
+    }
+
+    private static func conflict(with server: CKRecord, raw: Bool) -> any Error {
+        guard raw else { return RecordConflictError(serverRecord: server) }
+        return CKError(.serverRecordChanged, userInfo: [CKRecordChangedErrorServerRecordKey: server])
     }
 
     private static func isTransport(_ error: any Error) -> Bool {

@@ -146,15 +146,8 @@ extension CloudDatabase {
         for chunk in records.chunked(into: Self.maxBatchSize) {
             for (_, result) in try await saveIfUnchanged(chunk) {
                 guard case .failure(let error) = result else { continue }
-                if let conflict = error as? RecordConflictError {
-                    conflicts.append(conflict.serverRecord)
-                } else if let error = error as? CKError, error.code == .serverRecordChanged,
-                    let server = error.userInfo[CKRecordChangedErrorServerRecordKey] as? CKRecord
-                {
-                    conflicts.append(server)
-                } else {
-                    throw error
-                }
+                guard let conflict = RecordConflictError(error) else { throw error }
+                conflicts.append(conflict.serverRecord)
             }
         }
         return conflicts
@@ -219,7 +212,13 @@ extension CKDatabase: CloudDatabase {
         try await throttled { database in
             let results = try await database.modifyRecords(saving: records, deleting: [], savePolicy: .ifServerRecordUnchanged, atomically: false)
             return records.map { record in
-                (record.recordID, results.saveResults[record.recordID] ?? .failure(CKError(.internalError)))
+                guard let result = results.saveResults[record.recordID] else {
+                    return (record.recordID, .failure(CKError(.internalError)))
+                }
+                guard case .failure(let error) = result, let conflict = RecordConflictError(error) else {
+                    return (record.recordID, result)
+                }
+                return (record.recordID, .failure(conflict))
             }
         }
     }
@@ -421,6 +420,24 @@ public struct RecordConflictError: LocalizedError {
 
     public init(serverRecord: CKRecord) {
         self.serverRecord = serverRecord
+    }
+
+    /// The conflict behind a failed conditional save, whether the database
+    /// reported it as this error or as CloudKit's own `serverRecordChanged`.
+    ///
+    /// Nil for anything else — a permission, quota or validation failure is
+    /// not a lost race and must not be retried as one.
+    ///
+    public init?(_ error: any Error) {
+        if let conflict = error as? RecordConflictError {
+            self = conflict
+        } else if let error = error as? CKError, error.code == .serverRecordChanged,
+            let server = error.userInfo[CKRecordChangedErrorServerRecordKey] as? CKRecord
+        {
+            self.init(serverRecord: server)
+        } else {
+            return nil
+        }
     }
 
     public let errorDescription: String? = "The record was changed on the server"

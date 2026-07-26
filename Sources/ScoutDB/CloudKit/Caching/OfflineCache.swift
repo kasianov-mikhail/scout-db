@@ -454,11 +454,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     }
 
     private static func conflictingServerRecord(in error: any Error) -> CKRecord? {
-        if let conflict = error as? RecordConflictError { return conflict.serverRecord }
-        if let error = error as? CKError, error.code == .serverRecordChanged {
-            return error.userInfo[CKRecordChangedErrorServerRecordKey] as? CKRecord
-        }
-        return nil
+        RecordConflictError(error)?.serverRecord
     }
 
     private func graft(_ queued: CKRecord, onto server: CKRecord) -> CKRecord? {
