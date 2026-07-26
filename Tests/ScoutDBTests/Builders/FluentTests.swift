@@ -176,6 +176,29 @@ struct FluentTests {
         }
     }
 
+    @Test("Exclude runs on the server when the field cannot be missing")
+    func excludePushdown() async throws {
+        let required = try await store.query("purchase").exclude("product_id", .equals, "sku-1").explain()
+        #expect(required[0].server.contains("s_00 notEquals sku-1"))
+        #expect(required[0].client.isEmpty)
+
+        let optional = try await store.query("purchase").exclude("quantity", .greaterThan, .int(1)).explain()
+        #expect(optional[0].client.contains("quantity greaterThan i1"))
+
+        let payload = try await store.query("purchase").exclude("comment", .equals, "gift").explain()
+        #expect(payload[0].client.contains("comment equals gift"))
+
+        try await store.schema("shipment")
+            .field("carrier", .string, .required)
+            .field("weight", .double, .defaultValue(.double(0)))
+            .create()
+        let defaulted = try await store.query("shipment").exclude("weight", .lessThan, .double(5)).explain()
+        #expect(defaulted[0].server.contains("d_00 greaterThanOrEquals d5.0"))
+
+        let excluded = try await store.query("shipment").exclude("carrier", .in, .strings(["ups", "dhl"])).explain()
+        #expect(excluded[0].server.contains { $0.hasPrefix("s_00 notIn") })
+    }
+
     @Test("A malformed regex filter throws instead of matching nothing")
     func malformedPatternFilter() async throws {
         await #expect(throws: SchemaError.invalidValue("product_id")) {
