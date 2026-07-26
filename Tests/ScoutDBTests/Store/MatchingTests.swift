@@ -82,6 +82,36 @@ struct MatchingTests {
         #expect(client == [filter])
     }
 
+    @Test("A slot the schema cannot query or sort is refused up front")
+    func unqueryableSlots() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "shot",
+                fields: [
+                    FieldDefinition(name: "frame", type: .asset, storage: .slot(.asset, "a_00")),
+                    FieldDefinition(name: "takes", type: .assetList, storage: .slot(.assetList, "la_00")),
+                    FieldDefinition(name: "blob", type: .bytes, storage: .slot(.bytes, "b_00")),
+                    FieldDefinition(name: "spot", type: .location, storage: .slot(.location, "g_00")),
+                    FieldDefinition(name: "tags", type: .stringList, storage: .slot(.stringList, "ls_00")),
+                ]))
+        let definition = try await registry.definition(for: "shot")
+
+        for field in ["frame", "takes"] {
+            #expect(throws: SchemaError.invalidValue(field)) {
+                _ = try store.split([EntityStore.Filter(field: field, op: .equals, value: .asset(URL(filePath: "/tmp/a")))], entity: "shot", using: definition)
+            }
+        }
+        for field in ["blob", "spot", "tags"] {
+            #expect(throws: SchemaError.invalidValue(field)) {
+                _ = try store.serverSort([EntityStore.Sort(field: field)], using: definition)
+            }
+        }
+
+        #expect(try store.split([EntityStore.Filter(field: "blob", op: .isNull, value: .int(0))], entity: "shot", using: definition).client.count == 1)
+        let nearest = EntityStore.Sort.distance(from: "spot", latitude: 1, longitude: 2)
+        #expect(try store.serverSort([nearest], using: definition).count == 1)
+    }
+
     @Test("Short needles skip the trigram prefilter")
     func shortNeedle() async throws {
         #expect(try await read("title", .contains, "lo") == ["n-1"])

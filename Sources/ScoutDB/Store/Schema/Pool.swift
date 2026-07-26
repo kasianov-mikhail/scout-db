@@ -26,6 +26,20 @@ public enum Pool: String, Codable, CaseIterable, Sendable {
 
     public var capacity: Int { 16 }
 
+    var isQueryable: Bool {
+        switch self {
+        case .asset, .assetList: false
+        default: true
+        }
+    }
+
+    var isSortable: Bool {
+        switch self {
+        case .string, .text, .int, .double, .timestamp: true
+        default: false
+        }
+    }
+
     func slotName(_ index: Int) -> String {
         "\(rawValue)_\(String(format: "%02d", index))"
     }
