@@ -22,6 +22,19 @@ still queued locally, instead of throwing:
 let purchases = try await store.read(entity: "purchase")   // served from cache offline
 ```
 
+Reads by ID — `store.fetch(uuid:)`, `store.fetch(entity:uuids:)`, and the read half of every
+`update`, `increment`, or `delete` — are answered the same way, from the merge baselines the
+cache keeps of every record it has seen whole, overlaid with the queue. So a read-modify-write
+completes offline instead of failing at its read:
+
+```swift
+try await store.update(entity: "purchase", uuid: "p-1") { $0.values["quantity"] = .int(9) }
+```
+
+An ID no baseline covers keeps throwing rather than reading as absent — answering "the server
+has no such record" would turn an update into a create. For the same reason a multi-ID fetch
+falls back only when the cache covers every ID asked for.
+
 A write made while offline is queued and reported to the caller as if it had succeeded:
 
 ```swift
@@ -33,6 +46,20 @@ Continuation pages and conditional (compare-and-swap) saves are never cached or 
 only the first page of plain reads and plain writes get this treatment. A batched
 `update(entity:uuids:)` saves its records conditionally and so refuses offline, where a
 single `update(entity:uuid:)` still queues.
+
+## 🚧 What counts as offline
+
+Besides the outright transport errors — `networkUnavailable`, `networkFailure`,
+`serviceUnavailable`, and any `URLError` — the fallback also covers:
+
+| Failure | Why |
+|---|---|
+| a request that outlived the 30s backstop timeout | a captive portal swallows requests instead of refusing them, so the caller is unblocked with a timeout, not a network error |
+| `notAuthenticated`, `accountTemporarilyUnavailable` | iCloud is re-authenticating; the account comes back on its own, and a write queued meanwhile flushes then |
+| any of the above wrapped as another error's underlying cause | CloudKit reports a transport failure nested as often as directly |
+
+A queued write still needs a *live* flush eventually: an account that never returns leaves the
+queue where it is, inspectable through `cache.queuedWrites`.
 
 ## 🔀 Flushing and conflicts
 
@@ -116,4 +143,6 @@ if another owner already holds it.
   server: writes still need a live network eventually to actually flush.
 - A partial replica's un-mirrored fields decode as `nil` — don't write a partial record back
   whole, same caveat as a projected sync delta.
+- `store.lease(...)` taken offline is decided against a cached record, so it says nothing about
+  what another process holds; it settles on `flush()`, as a landed write or a surfaced conflict.
 - Conflict resolution only ever runs on `flush()` — a read never triggers it.

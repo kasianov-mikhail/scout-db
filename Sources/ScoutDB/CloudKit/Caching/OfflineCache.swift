@@ -11,9 +11,12 @@ import Foundation
 /// A `CloudDatabase` decorator that keeps working through network outages.
 ///
 /// Reads are served from the last complete response of the same query when the
-/// network fails — stale by definition, but present. Plain writes made offline
-/// are queued and reported successful; `flush()` replays them once the network
-/// is back, and record uuids make the replay idempotent. The replay is
+/// network fails — stale by definition, but present. A read by ID is served the
+/// same way from the merge baselines the cache already keeps, so a
+/// read-modify-write reaches its record offline; an ID no baseline covers stays
+/// failed rather than answering "the server has no such record". Plain writes
+/// made offline are queued and reported successful; `flush()` replays them once
+/// the network is back, and record uuids make the replay idempotent. The replay is
 /// conflict-aware: every save runs under the if-unchanged policy, offline edits
 /// are grafted onto a server record that moved when the two sides touched
 /// disjoint fields, and overlapping edits surface as `OfflineFlushError`
@@ -551,10 +554,19 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         }
     }
 
+    private static let offlineCodes: Set<CKError.Code> = [
+        .networkUnavailable, .networkFailure, .serviceUnavailable, .notAuthenticated, .accountTemporarilyUnavailable,
+    ]
+
     static func isOffline(_ error: any Error) -> Bool {
-        if error is URLError { return true }
-        guard let error = error as? CKError else { return false }
-        return [.networkUnavailable, .networkFailure, .serviceUnavailable].contains(error.code)
+        var current: (any Error)? = error
+        for _ in 0..<4 {
+            guard let error = current else { return false }
+            if error is URLError || error is RequestTimeoutError { return true }
+            if let code = (error as? CKError)?.code, offlineCodes.contains(code) { return true }
+            current = (error as NSError).userInfo[NSUnderlyingErrorKey] as? any Error
+        }
+        return false
     }
 
     private func cacheKey(_ query: CKQuery, _ zoneID: CKRecordZone.ID?, _ desiredKeys: [CKRecord.FieldKey]?, _ limit: Int) -> String {
@@ -617,14 +629,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         let response = try await backing.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
         if desiredKeys == nil {
             let page = response.matchResults.compactMap { try? $0.1.get() }
-            lock.withLock {
-                for record in page {
-                    baselines[record.recordID] = record
-                    touchBaselineLocked(record.recordID)
-                }
-                enforceQuotasLocked()
-                scheduleArchiveLocked()
-            }
+            lock.withLock { rememberLocked(page) }
         }
         return response
     }
@@ -689,30 +694,70 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     }
 
     public func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
-        let record = try await backing.fetchRecord(id: id)
-        if let record {
-            lock.withLock {
-                baselines[record.recordID] = record
-                touchBaselineLocked(record.recordID)
-                enforceQuotasLocked()
-                scheduleArchiveLocked()
+        do {
+            let record = try await backing.fetchRecord(id: id)
+            if let record {
+                lock.withLock { rememberLocked([record]) }
+            }
+            return record
+        } catch  where Self.isOffline(error) {
+            switch lock.withLock({ cachedLocked(id) }) {
+            case .record(let cached): return cached
+            case .deleted: return nil
+            case .unknown: throw error
             }
         }
-        return record
     }
 
     public func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
-        let records = try await backing.fetchRecords(ids: ids)
-        guard records.count > 0 else { return records }
-        lock.withLock {
-            for record in records {
-                baselines[record.recordID] = record
-                touchBaselineLocked(record.recordID)
+        do {
+            let records = try await backing.fetchRecords(ids: ids)
+            guard records.count > 0 else { return records }
+            lock.withLock { rememberLocked(records) }
+            return records
+        } catch  where Self.isOffline(error) {
+            let cached = lock.withLock { () -> [CKRecord]? in
+                var known: [CKRecord] = []
+                for id in ids {
+                    switch cachedLocked(id) {
+                    case .record(let record): known.append(record)
+                    case .deleted: continue
+                    case .unknown: return nil
+                    }
+                }
+                return known
             }
-            enforceQuotasLocked()
-            scheduleArchiveLocked()
+            guard let cached else { throw error }
+            return cached
         }
-        return records
+    }
+
+    private enum CachedRecord {
+        case record(CKRecord)
+        case deleted
+        case unknown
+    }
+
+    private func cachedLocked(_ id: CKRecord.ID) -> CachedRecord {
+        switch pending.last(where: { $0.recordID == id }) {
+        case .delete:
+            return .deleted
+        case .save(let queued):
+            return .record(queued.copy() as! CKRecord)
+        case nil:
+            guard let baseline = baselines[id] else { return .unknown }
+            touchBaselineLocked(id)
+            return .record(baseline.copy() as! CKRecord)
+        }
+    }
+
+    private func rememberLocked(_ records: [CKRecord]) {
+        for record in records {
+            baselines[record.recordID] = record
+            touchBaselineLocked(record.recordID)
+        }
+        enforceQuotasLocked()
+        scheduleArchiveLocked()
     }
 
     public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int?) async throws -> (
