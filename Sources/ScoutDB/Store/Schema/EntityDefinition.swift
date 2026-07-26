@@ -156,10 +156,6 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
             }
         }
         if let envelopeDate {
-            // Check the field active at this version, not any historical one: an
-            // update() that stops re-declaring the envelope-date field closes it,
-            // and the closed field would still satisfy a whole-fields search while
-            // TTL and pagination key on a field inactive at this version.
             guard field(named: envelopeDate, at: version)?.type == .timestamp else {
                 throw SchemaError.invalidDefinition("Envelope date '\(envelopeDate)' is not an active timestamp field at version \(version)")
             }
@@ -179,7 +175,6 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
             }
         }
         for view in views ?? [] {
-            // A lifetime view has no time grid, so it alone works without a date.
             if view.bucket != .lifetime || view.histogram != nil {
                 guard envelopeDate != nil else {
                     throw SchemaError.invalidDefinition("View '\(view.name)' requires an envelope date")

@@ -48,8 +48,6 @@ struct LiveQueryModelTests {
         let model = store.query("purchase").filter("quantity" > 5).live()
         try await poll { model.items.map(\.uuid) == ["p-big"] }
 
-        // A write leaving the filter untouched still ticks a pass; the result
-        // stays filtered.
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-small-2")
         try await poll { model.items.map(\.uuid) == ["p-big"] }
     }
@@ -61,8 +59,6 @@ struct LiveQueryModelTests {
         let model = store.query("purchase").live()
         try await poll { model.items.count == 1 }
 
-        // The next tick's read fails; the model keeps the last result and
-        // reports the failure.
         database.errors = [CKError(.notAuthenticated)]
         store.noteChange(entity: "purchase")
         try await poll { model.error != nil }

@@ -46,8 +46,6 @@ struct AssetsTests {
 
     @Test("Several asset fields live side by side on one record")
     func multipleAssets() async throws {
-        // Unique bytes per test: landed writes retire their content-addressed
-        // staged files, so parallel tests must not share payloads.
         let dump = Data("minidump-\(UUID().uuidString)".utf8)
         let screenshot = Data("png-\(UUID().uuidString)".utf8)
         try await store.write(["dump": .bytes(dump), "screenshot": .bytes(screenshot)], entity: "report", uuid: "r-3")
@@ -64,12 +62,9 @@ struct AssetsTests {
 
         let dump = try await store.export(entity: "report")
 
-        // The dump must carry the bytes, not a path into an ephemeral cache that
-        // is useless on another machine or container.
         let decoded = try JSONDecoder().decode([EntityRecord].self, from: dump)
         #expect(decoded.first?.values["dump"] == .bytes(payload))
 
-        // And a fresh store's import restores the asset from those bytes.
         let target = InMemoryDatabase()
         let targetRegistry = SchemaRegistry(database: target)
         try await targetRegistry.publish(
@@ -135,7 +130,6 @@ struct AssetsTests {
         try await store.write(["dump": .bytes(payload)], entity: "report", uuid: "r-gc")
 
         #expect(!FileManager.default.fileExists(atPath: staged.path))
-        // The bytes were uploaded during the save, so reads keep working.
         let record = try #require(try await store.read(entity: "report").first { $0.uuid == "r-gc" })
         #expect(try record.assetData(for: "dump") == payload)
     }
@@ -154,7 +148,6 @@ struct AssetsTests {
         }
         #expect(FileManager.default.fileExists(atPath: staged.path))
 
-        // The retry reuses the staged file and retires it once it lands.
         try await store.write(["dump": .bytes(payload)], entity: "report", uuid: "r-retry")
         #expect(!FileManager.default.fileExists(atPath: staged.path))
         let record = try #require(try await store.read(entity: "report").first { $0.uuid == "r-retry" })
@@ -188,7 +181,6 @@ struct AssetsTests {
         defer { try? FileManager.default.removeItem(at: fresh) }
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -7_200)], ofItemAtPath: stale.path)
 
-        // Other suites stage files too, so only this test's own files are asserted.
         #expect(EntityStore.sweepStagedAssets(olderThan: 3_600) >= 1)
         #expect(!FileManager.default.fileExists(atPath: stale.path))
         #expect(FileManager.default.fileExists(atPath: fresh.path))

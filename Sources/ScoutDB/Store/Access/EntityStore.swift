@@ -126,8 +126,6 @@ public struct EntityStore: Sendable {
             return EntityRecord(entity: entity, uuid: uuid, schemaVersion: definition.version, values: resolved)
         }
 
-        // Exclusivity and unique keys are declared in the schema itself, so they
-        // hold regardless of the store's integrity flag.
         try await withThrowingTaskGroup(of: Void.self) { group in
             if enforceReferences {
                 group.addTask { try await validateReferences(of: entityRecords, using: definition) }
@@ -137,29 +135,16 @@ public struct EntityStore: Sendable {
         }
         try await claimUniqueKeys(of: entityRecords, using: definition)
 
-        // Views count contributions per live record. A first write adds its
-        // contribution; a re-write over an existing live row (a unique-key upsert or
-        // an explicit repeat uuid) rebalances — removing the old contribution and
-        // adding the new — so a changed value or group does not leave the grid
-        // stale, while an unchanged re-write nets to zero and never inflates it.
-        // Skip the lookup entirely when the entity declares no views.
         let (removedFromViews, addedToViews) = try await aggregationRebalance(entityRecords, using: definition)
 
         let encoded = try entityRecords.map { try coder.encode($0, using: definition) }
         try await database.write(records: encoded)
-        // The staged asset copies existed only for the upload; the landed write
-        // retires them.
         EntityCoder.discardStagedAssets(in: encoded)
         try await GridAggregator(database: database).rebalance(removing: removedFromViews, adding: addedToViews, using: definition)
         noteChange(entity: entity)
         return entityRecords.map(\.uuid)
     }
 
-    // How a batch write should move the aggregate grid: the live rows it overwrites
-    // come out (`removing`) and the batch's records go in (`adding`), so a changed
-    // value rebalances instead of drifting. Within the batch the last write per uuid
-    // wins, mirroring the last-write-wins server save. Returns nothing when the
-    // entity has no views, so a viewless write never pays for the lookup.
     private func aggregationRebalance(_ records: [EntityRecord], using definition: EntityDefinition) async throws -> (
         removing: [EntityRecord], adding: [EntityRecord]
     ) {
@@ -181,12 +166,6 @@ public struct EntityStore: Sendable {
         try await delete(entity: entity, uuids: [uuid])
     }
 
-    // The batched tombstone pass behind single deletes and transaction steps:
-    // one read, one write, one claims release, one grid pass, one revision pass
-    // for the whole list. The read is unconditional — the tombstone keeps the
-    // record's values so `restore` can lift it later — and the tombstones take
-    // the last-write-wins batch path, since a fresh record with no change tag
-    // would fail the conditional single-record save.
     func delete(entity: String, uuids: [String]) async throws {
         guard uuids.count > 0 else { return }
         var targets: [String] = []
@@ -205,17 +184,11 @@ public struct EntityStore: Sendable {
         noteChange(entity: entity)
     }
 
-    // The live records behind a set of uuids, used to reverse their aggregate contributions
-    // before tombstoning them. Skips the read when the entity has no views.
     func liveRecords(entity: String, uuids: [String], using definition: EntityDefinition) async throws -> [EntityRecord] {
         guard definition.views?.isEmpty == false else { return [] }
         return try decode(try await items(entity: entity, uuids: uuids), using: definition).filter { !$0.deleted }
     }
 
-    // A tombstone is the record envelope with `deleted` set, carrying the values
-    // it retired so a restore can bring them back; encoding it through the coder
-    // keeps the envelope defined in one place — and, like any write, in the
-    // store's zone.
     func tombstone(entity: String, uuid: String, definition: EntityDefinition, values: [String: RecordValue] = [:]) throws -> CKRecord {
         try EntityCoder(keyProvider: keyProvider, zoneID: zoneID)
             .encode(EntityRecord(entity: entity, uuid: uuid, schemaVersion: definition.version, values: values, deleted: true), using: definition)
@@ -225,9 +198,6 @@ public struct EntityStore: Sendable {
         entity: String, filters: [Filter] = [], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil, createdBy creator: String? = nil
     ) async throws -> [EntityRecord] {
         let definition = try await registry.definition(for: entity)
-        // A payload field has no sortable slot, so a sort touching one ranks
-        // client-side — every key together, to keep the total order coherent.
-        // The scan is unbounded: a cap can only apply after the ranking.
         if try clientRanked(sort, using: definition) {
             let projection = fields.map { $0 + sort.map(\.field) }
             let ranked = try await read(entity: entity, filters: filters, fields: projection, createdBy: creator)
@@ -237,19 +207,12 @@ public struct EntityStore: Sendable {
         }
         let (query, included) = try liveQuery(filters, entity: entity, sort: try serverSort(sort, using: definition), createdBy: creator, using: definition)
         let keys = try fields.map { try desiredKeys($0 + filters.map(\.field), using: definition) }
-        // A capped read stops following the cursor once enough rows are in hand. The
-        // sort ran server-side, so the first `limit` post-filter rows in arrival order
-        // are the same records a full scan would keep after `prefix(limit)`.
         if let limit {
             return Array(try await boundedRecords(matching: query, desiredKeys: keys, limit: limit, using: definition, where: included).prefix(limit))
         }
         return try decode(try await database.allRecords(matching: query, inZone: zoneID, desiredKeys: keys), using: definition).filter(included)
     }
 
-    // Assembles the pieces every live read shares: tombstones excluded server-side and
-    // re-checked after decode, client-side matchers reapplied to each decoded record.
-    // A creator scopes the query server-side — the public-database pattern, where
-    // every user's records share one database and rows are personal by creator.
     func liveQuery(_ filters: [Filter], entity: String, sort: [ServerSort] = [], createdBy creator: String? = nil, using definition: EntityDefinition)
         throws
         -> (query: CKQuery, included: (EntityRecord) -> Bool)
@@ -269,10 +232,6 @@ public struct EntityStore: Sendable {
         )
     }
 
-    // Pages through the query, following the cursor only until `limit` post-filter
-    // rows are collected — so a bounded read costs about one page of records, not
-    // the whole result set. May return slightly more than `limit` (the tail of the
-    // final batch); callers trim.
     func boundedRecords(
         matching query: CKQuery, desiredKeys: [String]?, limit: Int, using definition: EntityDefinition, where included: (EntityRecord) -> Bool
     ) async throws -> [EntityRecord] {
@@ -286,8 +245,6 @@ public struct EntityStore: Sendable {
         return collected
     }
 
-    // Whether any sort clause names a payload-stored field; an unknown field
-    // still fails loudly here, matching the server-sort path.
     private func clientRanked(_ sort: [Sort], using definition: EntityDefinition) throws -> Bool {
         try sort.contains { clause in
             guard let field = definition.field(named: clause.field, at: definition.version) else {
@@ -317,13 +274,7 @@ public struct EntityStore: Sendable {
     public func read(
         entity: String, any branches: [[Filter]], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil, createdBy creator: String? = nil
     ) async throws -> [EntityRecord] {
-        // Sort fields join the projection so the client-side ranking below has values
-        // to rank on.
         let branchFields = fields.map { $0 + sort.map(\.field) }
-        // A sorted union must rank every branch's records before capping, so only an
-        // unsorted union can bound its branch reads and stop early. A branch holding
-        // `limit` matching rows always fills the union to `limit` on its own (dupes
-        // it skips are already counted), so capped branches never under-collect.
         if let limit, sort.isEmpty {
             var seen: Set<String> = []
             var union: [EntityRecord] = []
@@ -336,8 +287,6 @@ public struct EntityStore: Sendable {
             }
             return union
         }
-        // Every branch must be read in full, so the independent reads run concurrently;
-        // the union then dedupes in branch order.
         let results = try await withThrowingTaskGroup(of: (Int, [EntityRecord]).self) { group in
             for (index, branch) in branches.enumerated() {
                 group.addTask { (index, try await self.read(entity: entity, filters: branch, fields: branchFields, createdBy: creator)) }

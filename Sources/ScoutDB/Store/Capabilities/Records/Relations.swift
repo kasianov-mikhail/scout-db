@@ -82,9 +82,6 @@ extension EntityStore {
         }
     }
 
-    // Verifies every reference key of the batch names a live parent record; the
-    // integrity gate behind the store's `enforceReferences` flag. Best-effort: a
-    // parent deleted between this check and the save still slips through.
     func validateReferences(of records: [EntityRecord], using definition: EntityDefinition) async throws {
         for field in definition.fields(at: definition.version) {
             guard let parent = field.references else { continue }
@@ -97,8 +94,6 @@ extension EntityStore {
         }
     }
 
-    // A scalar reference names one parent, a list reference names many — the
-    // many-to-many shape, where several records share several parents.
     private static func referencedKeys(_ value: RecordValue?) -> [String] {
         switch value {
         case .string(let key): [key]
@@ -110,17 +105,10 @@ extension EntityStore {
     public func delete(entity: String, uuid: String, cascade: Bool) async throws {
         try await delete(entity: entity, uuid: uuid)
         guard cascade else { return }
-        // The cascade walks the registry's definitions, so every published entity
-        // must be in the cache first — an entity never read in this session would
-        // otherwise silently keep its referencing records.
         try await registry.preload()
         try await cascadeDelete(entity: entity, uuids: [uuid])
     }
 
-    // Tombstones every record referencing the deleted parents, level by level: each
-    // referencing entity costs one chunked read, one batched tombstone write, and one
-    // aggregate pass — not a per-record delete. A list reference is a many-to-many
-    // link, so its records are detached instead of deleted and the cascade stops there.
     private func cascadeDelete(entity: String, uuids: [String]) async throws {
         for child in await registry.definitions() {
             for field in child.fields(at: child.version) where field.references == entity {
@@ -145,10 +133,6 @@ extension EntityStore {
         }
     }
 
-    // Strips the deleted parents' keys out of every list reference naming them, in
-    // one disjunctive rewrite. A record listing several dead parents is matched by
-    // each of their branches but transformed once, so it costs one save instead of
-    // one per parent it happened to reference.
     private func detach(entity: String, field: String, uuids: [String]) async throws {
         let dead = Set(uuids)
         try await updateAll(entity: entity, any: Filter.containsAny(field, uuids)) { record in

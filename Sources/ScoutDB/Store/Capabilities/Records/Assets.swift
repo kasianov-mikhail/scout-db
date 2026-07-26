@@ -16,8 +16,6 @@ extension EntityCoder {
         FileManager.default.temporaryDirectory.appendingPathComponent("ScoutDBAssets", isDirectory: true)
     }
 
-    // Content-addressed staging: retries of the same payload reuse the same file,
-    // so an interrupted write never leaves a second copy behind.
     static func stage(_ data: Data, limit: Int = maxAssetSize) throws -> RecordValue {
         guard data.count <= limit else { throw SchemaError.invalidValue("asset") }
 
@@ -36,10 +34,6 @@ extension EntityCoder {
         guard size <= limit else { throw SchemaError.invalidValue("asset") }
     }
 
-    // Deletes the staged files a landed write no longer needs; caller-provided
-    // URLs outside the staging directory are theirs to manage. Removal is
-    // best-effort: a concurrent write staging identical bytes shares the
-    // content-addressed file, and its retry re-stages if the file is gone.
     static func discardStagedAssets(in records: [CKRecord]) {
         for record in records {
             for key in record.allKeys() {
@@ -87,8 +81,6 @@ extension EntityStore {
 }
 
 extension EntityRecord {
-    // A downloaded asset URL points into CloudKit's ephemeral cache — read the
-    // contents promptly instead of holding on to the URL.
     public func assetData(for field: String) throws -> Data? {
         guard case .asset(let url)? = values[field] else { return nil }
         return try Data(contentsOf: url)

@@ -61,25 +61,15 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
     private let backing: any CloudDatabase
     private let storeURL: URL?
     private let readPolicy: ReadPolicy
-    // A partial replica's field whitelist: mirrored records are trimmed to
-    // these keys, and only queries the keys fully cover are served locally.
     private let fields: Set<CKRecord.FieldKey>?
     private let projectedFields: [CKRecord.FieldKey]?
     private let lock = NSLock()
     private var zones: Set<CKRecordZone.ID>
     private var mirror: [CKRecord.ID: CKRecord] = [:]
-    // The memoized scan order. Small mirror changes maintain it in place; a
-    // batch apply or a purge drops it for the next read to rebuild.
     private var scanOrder: [CKRecord]?
-    // Each zone's own feed position — advanced only by refresh(), the one
-    // path that guarantees the mirror saw everything before it.
     private var tokens: [CKRecordZone.ID: Data] = [:]
-    // The zones whose refresh() ever drained the feed; the localFirst gate.
     private var completed: Set<CKRecordZone.ID> = []
-    // The discovery position of discoverZones() in the database feed.
     private var databaseToken: Data?
-    // Whether the store on disk is behind the mirror, and the delayed write
-    // that will settle it.
     private var archiveStale = false
     private var archiveTask: Task<Void, Never>?
     private static let archiveDelay: Duration = .milliseconds(250)
@@ -226,9 +216,6 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
                 scheduleArchiveLocked()
                 return next != nil && next != previous
             }
-            // The feed returned changes but no fresh token: re-querying from the
-            // same cursor would replay the same batch forever, so stop rather
-            // than spin.
             guard advanced else {
                 lock.withLock {
                     completed.insert(zone)
@@ -239,26 +226,21 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    // Whether this read of the zone should skip the network entirely.
     private func servesLocally(_ zoneID: CKRecordZone.ID?) -> Bool {
         guard case .localFirst = readPolicy, let zoneID else { return false }
         return lock.withLock { completed.contains(zoneID) }
     }
 
-    // Whether the zone is replicated, so its offline reads have a fallback.
     private func mirrors(_ zoneID: CKRecordZone.ID?) -> Bool {
         guard let zoneID else { return false }
         return lock.withLock { zones.contains(zoneID) }
     }
-
-    // MARK: - Mirror maintenance
 
     private func applyLocked(changed: [CKRecord], deleted: [CKRecord.ID]) {
         if changed.count + deleted.count > 64 {
             scanOrder = nil
         }
         for record in changed {
-            // A partial replica stores records trimmed to its whitelist.
             let trimmed = LocalQuery.project(record, keys: projectedFields)
             mirror[record.recordID] = trimmed
             placeLocked(trimmed)
@@ -316,18 +298,12 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
         return low
     }
 
-    // Whether records carrying only these keys can feed the mirror: full
-    // fidelity always can, and a projected page can when it covers every
-    // field the (partial) mirror keeps.
     private func feeds(_ desiredKeys: [CKRecord.FieldKey]?) -> Bool {
         guard let desiredKeys else { return true }
         guard let fields else { return false }
         return fields.isSubset(of: desiredKeys)
     }
 
-    // Whether the (partial) mirror can answer this query honestly: the
-    // requested keys, every field the predicate compares, and every sort key
-    // must be mirrored. A full replica answers anything.
     private func answers(_ query: CKQuery, desiredKeys: [CKRecord.FieldKey]?) -> Bool {
         guard let fields else { return true }
         guard let desiredKeys, fields.isSuperset(of: desiredKeys) else { return false }
@@ -335,8 +311,6 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
         return (query.sortDescriptors ?? []).allSatisfy { descriptor in descriptor.key.map(fields.contains) ?? true }
     }
 
-    // The field keys a predicate compares, or nil when it holds constructs
-    // the walker does not understand — the partial replica then refuses.
     private static func referencedKeys(of predicate: NSPredicate) -> Set<String>? {
         if let compound = predicate as? NSCompoundPredicate {
             var keys: Set<String> = []
@@ -393,9 +367,6 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
     private func restore(from data: Data) {
         let classes = [NSDictionary.self, NSArray.self, NSString.self, NSData.self, NSNumber.self, CKRecord.self, CKRecordZone.ID.self]
         guard let root = try? NSKeyedUnarchiver.unarchivedObject(ofClasses: classes, from: data) as? [String: Any] else { return }
-        // A store archived under a different field whitelist cannot be
-        // trusted — wider or narrower, its records are not this mirror's
-        // shape, so the replica starts fresh.
         guard (root["fields"] as? [String]).map(Set.init) == fields else { return }
         mirror = (root["records"] as? [CKRecord] ?? []).reduce(into: [:]) { $0[$1.recordID] = $1 }
         scanOrder = nil
@@ -407,14 +378,6 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
         databaseToken = root["databaseToken"] as? Data
     }
 
-    // Marks the store stale and lets one delayed write settle it, instead of
-    // rewriting the whole mirror inline.
-    //
-    // The archive is a full rewrite of every mirrored record, so writing it per
-    // change made a refresh quadratic in the zone and put a serialization of the
-    // entire mirror on the critical path of every read that fed it. Nothing here
-    // is authoritative — the mirror is a copy of the server's — so a write lost
-    // to a crash only means resuming from an older feed token and replaying.
     private func scheduleArchiveLocked() {
         guard storeURL != nil, !archiveStale else { return }
         archiveStale = true
@@ -438,7 +401,6 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    // Carries whatever the scheduled write was waiting to hand over.
     private func persistLocked() {
         archiveStale = false
         guard let storeURL else { return }
@@ -455,13 +417,6 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
         try? data.write(to: storeURL, options: .atomic)
     }
 
-    // MARK: - Reads
-
-    // The mirror in a stable scan order: offset cursors page a dictionary, so
-    // consecutive pages must walk the same sequence. Sorting it per page made a
-    // paged scan quadratic in the mirror — the localFirst read path pays it on
-    // every page — so the order is memoized until the mirror changes. A change
-    // mid-scan reshuffles the sequence exactly as re-sorting always did.
     private func scanOrderLocked() -> [CKRecord] {
         if let scanOrder { return scanOrder }
         let ordered = mirror.values.sorted { $0.recordID.recordName < $1.recordID.recordName }
@@ -479,8 +434,6 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
         }
         do {
             let response = try await backing.records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
-            // A page carrying every mirrored field is fresh server truth —
-            // fold it in; one missing fields the mirror keeps cannot.
             if feeds(desiredKeys) {
                 upsert(response.matchResults.compactMap { try? $0.1.get() })
             }
@@ -492,14 +445,9 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    // A continuation the replica minted offline carries an offset cursor. The
-    // backing rejects it as invalid when the network is back mid-scan — the
-    // mirror keeps serving that scan to its end either way.
     public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        // A localFirst scan of a replicated zone stays on the mirror to its
-        // end — its local cursors are the mirror's own.
         if let scan = cursor.localScan, servesLocally(scan.zoneID), answers(scan.query, desiredKeys: desiredKeys),
             let page = lock.withLock({ LocalQuery.resume(scanOrderLocked(), from: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit) })
         {
@@ -517,8 +465,6 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
     }
 
     public func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
-        // A partial mirror cannot stand in for a whole record — fetches are
-        // served locally by full replicas only.
         if fields == nil, servesLocally(id.zoneID) {
             return lock.withLock { mirror[id].map { LocalQuery.project($0, keys: nil) } }
         }
@@ -534,8 +480,6 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
     }
 
     public func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
-        // A partial mirror cannot stand in for whole records, and a batch is
-        // served locally only when the mirror covers every zone it spans.
         let local = fields == nil && ids.allSatisfy { servesLocally($0.zoneID) }
         if local {
             return lock.withLock { ids.compactMap { mirror[$0].map { LocalQuery.project($0, keys: nil) } } }
@@ -548,8 +492,6 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
             return lock.withLock { ids.compactMap { mirror[$0].map { LocalQuery.project($0, keys: nil) } } }
         }
     }
-
-    // MARK: - Writes feed the mirror
 
     public func save(_ record: CKRecord) async throws -> CKRecord {
         let saved = try await backing.save(record)
@@ -568,21 +510,15 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
         return results
     }
 
-    // MARK: - Feed passes flowing through
-
     public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int?) async throws -> (
         changed: [CKRecord], deleted: [CKRecord.ID], token: Data?
     ) {
         let response = try await backing.zoneChanges(zoneID: zoneID, since: token, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
-        // A pass feeds the mirror only when it carries every mirrored field:
-        // overwriting a stored record with a narrower one would lose fields.
         if feeds(desiredKeys) {
             upsert(response.changed, deleting: response.deleted)
         }
         return response
     }
-
-    // MARK: - Pass-throughs
 
     public func save(subscription: CKSubscription) async throws {
         try await backing.save(subscription: subscription)

@@ -12,29 +12,18 @@ struct EntityCoder {
     var keyProvider: (any EncryptionKeyProvider)?
     var zoneID: CKRecordZone.ID?
 
-    // One coder pair per store operation instead of one per record — payload
-    // encoding and decoding run once for every record in a batch.
     let jsonEncoder = JSONEncoder()
     let jsonDecoder = JSONDecoder()
 
-    /// The envelope keys `encode` writes on every record; projections always fetch them.
     static let envelopeKeys = ["entity", "schema_version", "uuid", "deleted"]
 
     static let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
-        // Pin the week to Sunday so period truncation is deterministic across
-        // locales, and so the weekday grid buckets line up: a weekday index is
-        // stored as `component(.weekday) - 1` (0 = Sunday) against the week's
-        // start, which the series reconstructs as `weekStart + index days`. That
-        // only holds when the week starts on Sunday; leaving firstWeekday at the
-        // platform default misdated weekday cells in Monday-first locales.
         calendar.firstWeekday = 1
         return calendar
     }()
 
-    // The canonical calendar-period truncation. Derived date fields and grid slot
-    // keys both build on it, so the two always line up.
     static func periodStart(of component: Calendar.Component, for date: Date) -> Date {
         calendar.dateInterval(of: component, for: date)?.start ?? date
     }
@@ -56,9 +45,6 @@ struct EntityCoder {
                 break
             }
         }
-        // Derivations can chain — one derived field's source may itself be a derived
-        // field declared later. Iterate to a fixpoint instead of relying on declaration
-        // order; a DAG settles within one pass per link, and the bound caps a bad cycle.
         let derivations = fields.filter { $0.derived != nil }
         for _ in 0...derivations.count {
             var changed = false
@@ -105,19 +91,12 @@ struct EntityCoder {
         return contentDigest(of: key)
     }
 
-    // One rewritten record: the decoded state before the transform, the state
-    // after, and the CKRecord encoded back into the source.
     struct Rewrite {
         let previous: EntityRecord
         let next: EntityRecord
         let record: CKRecord
     }
 
-    // The one read-modify-write pipeline: decode the stored record, apply the
-    // transform, resolve, and encode back into the source CKRecord. Encoding into
-    // the source is what carries the untouched ciphertext of encrypted fields
-    // across a keyless rewrite, so every rewrite path — update, updateAll,
-    // backfill — must come through here instead of encoding a fresh record.
     func rewrite(_ record: CKRecord, using definition: EntityDefinition, transform: (inout EntityRecord) throws -> Void) throws -> Rewrite {
         let (previous, payload) = try decodeWithPayload(record, using: definition)
         var next = previous
@@ -126,9 +105,6 @@ struct EntityCoder {
         return Rewrite(previous: previous, next: next, record: try encode(next, using: definition, into: record, basePayload: payload))
     }
 
-    // The record's values must already be resolved (defaults filled, derivations
-    // applied, constraints validated) — callers run `resolve` once and encode the
-    // result, so the derivation fixpoint never runs twice per write.
     func encode(_ entityRecord: EntityRecord, using definition: EntityDefinition, into base: CKRecord? = nil, basePayload: [String: RecordValue]? = nil)
         throws -> CKRecord
     {
@@ -145,9 +121,6 @@ struct EntityCoder {
             record["expires"] = date.addingTimeInterval(ttl)
         }
 
-        // Walk the declared fields, not the present values: a field the transform
-        // cleared must nil out its slot on the base record, or the old value would
-        // survive the rewrite as a stale read.
         var payload: [String: RecordValue] = [:]
         for field in fields {
             guard let value = values[field.name] else {
@@ -161,12 +134,6 @@ struct EntityCoder {
                 payload[field.name] = field.encrypted == true ? try seal(value, keyID: definition.keyID) : value
             }
         }
-        // A keyless read leaves encrypted fields absent (decode cannot open them without a
-        // key), so a read-modify-write would otherwise drop their ciphertext. Carry the
-        // untouched ciphertext over verbatim from the base record's payload.
-        //
-        // Only without a key: a keyed read round-trips encrypted fields faithfully, so an
-        // absent one was deliberately cleared by the transform and must not be resurrected.
         if keyProvider == nil, let base,
             let existing = basePayload ?? (base["payload"] as? Data).flatMap({ try? jsonDecoder.decode([String: RecordValue].self, from: $0) })
         {
@@ -174,8 +141,6 @@ struct EntityCoder {
                 payload[field.name] = existing[field.name]
             }
         }
-        // The payload blob is rebuilt from scratch, so an emptied one must clear the
-        // key rather than leave the base record's old blob behind.
         record["payload"] = payload.count > 0 ? try jsonEncoder.encode(payload) : nil
         return record
     }
@@ -202,8 +167,6 @@ struct EntityCoder {
             switch field.storage {
             case .slot(_, let slot):
                 var value = record.scoutValue(forKey: slot)
-                // CloudKit erases the element type of an empty array, so an empty typed
-                // list bridges back as `.strings([])`. Restore the field's declared kind.
                 if let decoded = value, field.type.isList, decoded.isEmptyList {
                     value = field.type.emptyList
                 }
@@ -308,8 +271,6 @@ extension RecordValue {
         }
     }
 
-    // The string members an `allowed` domain constrains: the scalar for a string, every
-    // element for a string list, and none (a vacuous pass) for any other kind.
     var strings: [String] {
         switch self {
         case .string(let value): [value]
@@ -318,8 +279,6 @@ extension RecordValue {
         }
     }
 
-    // The numeric members a `minimum`/`maximum` bound constrains: the scalar for an int or
-    // double, every element for an int or double list, and none for any other kind.
     var scalars: [Double] {
         switch self {
         case .int(let value): [Double(value)]

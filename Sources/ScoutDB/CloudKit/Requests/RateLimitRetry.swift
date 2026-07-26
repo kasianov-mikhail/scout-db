@@ -8,13 +8,6 @@
 import CloudKit
 import Foundation
 
-/// Retries an operation the server rate-limited, sleeping out the
-/// server-suggested `retryAfterSeconds` between attempts.
-///
-/// Only `requestRateLimited` and `zoneBusy` retry, and only while the error
-/// carries a retry-after hint; anything else — and the final failure once
-/// `maxRetry` attempts are spent — propagates unchanged.
-///
 func withRateLimitRetry<R>(maxRetry: Int = 3, operation: () async throws -> R) async throws -> R {
     var attempt = 0
     while true {

@@ -19,16 +19,10 @@ public struct RequestTimeoutError: LocalizedError {
     }
 }
 
-// Carries a request result across the timeout task boundary even when the payload
-// (e.g. CKRecord) is not Sendable; only one task ever produces it.
 private struct UncheckedBox<T>: @unchecked Sendable {
     let value: T
 }
 
-// Races `operation` against a timer; the loser is cancelled. Both racers run as
-// unstructured tasks so the timeout (or the caller's cancellation) surfaces
-// immediately even when the operation never honors its cancellation - a structured
-// group would swallow the timeout error until the stuck child resumed.
 func withRequestTimeout<R>(
     _ timeout: Duration, _ operation: @Sendable @escaping () async throws -> R
 ) async throws -> R {
@@ -55,8 +49,6 @@ func withRequestTimeout<R>(
     }
 }
 
-// Delivers whichever racer finishes first and drops the rest, letting the caller
-// abandon a loser that never finishes.
 private actor ResultRelay<T: Sendable> {
     private var result: Result<T, any Error>?
     private var continuation: CheckedContinuation<T, any Error>?

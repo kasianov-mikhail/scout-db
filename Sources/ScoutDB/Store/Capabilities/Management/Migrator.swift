@@ -42,8 +42,6 @@ public struct Migrator: Sendable {
         }
     }
 
-    // The full rewrite loop; `transform` also receives the record as decoded at its
-    // stored version, before rekeying — the only place a renamed-away value survives.
     @discardableResult public func backfill(entity: String, transform: (inout EntityRecord, _ previous: EntityRecord) throws -> Void) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         let query = ckQuery(
@@ -55,10 +53,6 @@ public struct Migrator: Sendable {
             ])
         let outdated = try await database.allRecords(matching: query)
 
-        // Rewriting goes back into the stored records, so backends upsert in place. Slots
-        // freed by the new version keep their old values on the server — correctness relies
-        // on the registry invariant that a slot is never reassigned while old records exist.
-        // Interrupted runs are safe to repeat: migrated records leave the query above.
         let coder = EntityCoder(keyProvider: keyProvider)
         let migrated = try outdated.map { record in
             try coder.rewrite(record, using: definition) { entityRecord in

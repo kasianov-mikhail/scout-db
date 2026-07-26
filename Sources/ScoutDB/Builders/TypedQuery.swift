@@ -125,8 +125,6 @@ public struct TypedQueryBuilder<T: EntityRepresentable> {
     }
 }
 
-// The streaming terminals hand decoded values across task boundaries, which
-// only a Sendable entity struct can do; the structs codegen emits qualify.
 extension TypedQueryBuilder where T: Sendable {
     /// Streams every matching value page by page.
     public func stream(pageSize: Int = 100) -> AsyncThrowingStream<T, any Error> {

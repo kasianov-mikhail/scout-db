@@ -31,9 +31,6 @@ extension EntityStore {
             Filter(field: "record_uuid", op: .equals, value: .string(uuid)),
         ]
         let revisions = try await read(entity: Self.revisionEntity, filters: filters, sort: [Sort(field: "date")])
-        // Revision dates are millisecond-resolution, so two updates within the
-        // same millisecond tie on `date`. Break the tie by the revision record's
-        // own uuid for a stable, reproducible order instead of an arbitrary one.
         return
             revisions
             .sorted { lhs, rhs in
@@ -47,9 +44,6 @@ extension EntityStore {
             }
     }
 
-    // Appends one revision per overwritten record. A mutation of an audited
-    // entity calls this after its write lands, so the log can lag by one crash
-    // but never invents a revision.
     func recordRevisions(_ previous: [EntityRecord], using definition: EntityDefinition) async throws {
         guard definition.audited == true, previous.count > 0 else { return }
         let encoder = JSONEncoder()

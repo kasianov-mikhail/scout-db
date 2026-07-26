@@ -209,9 +209,6 @@ struct EntityStoreTests {
         #expect(record.values["scores"] == .doubles([9.5]))
         #expect(record.values["times"] == .dates([t0]))
 
-        // A whole-number double list must decode as doubles, not ints: every
-        // element is integer-representable, so an [Int64]-first cast would
-        // silently swallow it.
         let whole = try #require(try await store.read(entity: "sample").first { $0.uuid == "s-2" })
         #expect(whole.values["scores"] == .doubles([1.0]))
 
@@ -468,7 +465,6 @@ struct EntityStoreTests {
 
         try await secure.write(["email": .string("alice@example.com"), "status": .string("new")], entity: "account", uuid: "a-1")
 
-        // `store` has no key provider, so it reads the encrypted field back as nil.
         try await store.update(entity: "account", uuid: "a-1") { $0.values["status"] = .string("active") }
 
         let reread = try #require(try await secure.read(entity: "account").first { $0.uuid == "a-1" })
@@ -490,7 +486,6 @@ struct EntityStoreTests {
 
         try await secure.write(["email": .string("alice@example.com"), "status": .string("new")], entity: "account", uuid: "a-1")
 
-        // `store` has no key provider, so it reads the encrypted field back as nil.
         try await store.updateAll(entity: "account") { $0.values["status"] = .string("active") }
 
         let reread = try #require(try await secure.read(entity: "account").first { $0.uuid == "a-1" })
@@ -512,8 +507,6 @@ struct EntityStoreTests {
 
         try await secure.write(["email": .string("alice@example.com"), "status": .string("new")], entity: "account", uuid: "a-1")
 
-        // With the key present, decode round-trips the encrypted field, so a
-        // deliberate clear must stick rather than restore the old ciphertext.
         try await secure.update(entity: "account", uuid: "a-1") { $0.values["email"] = nil }
 
         let reread = try #require(try await secure.read(entity: "account").first { $0.uuid == "a-1" })

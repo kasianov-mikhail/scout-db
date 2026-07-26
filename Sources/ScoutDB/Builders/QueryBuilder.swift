@@ -257,10 +257,6 @@ public struct QueryBuilder: Sendable {
         try await store.explain(entity: entity, any: branches(), sort: sorts)
     }
 
-    // Distributes the AND-ed base filters over the OR groups into disjunctive
-    // normal form: one branch per combination of picks, one query per branch. A
-    // group of plain equalities over one field is a membership test, so it folds
-    // into a single `in` filter instead of multiplying the branches.
     private func branches() -> [[EntityStore.Filter]] {
         groups.reduce([filters]) { branches, group in
             if let folded = Self.folded(group) {

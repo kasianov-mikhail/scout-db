@@ -14,7 +14,6 @@ extension Notification.Name {
 }
 
 extension EntityStore {
-    // Announces a landed mutation so live queries over this database re-run.
     func noteChange(entity: String) {
         NotificationCenter.default.post(
             name: .scoutDBEntityDidChange, object: nil,
@@ -27,8 +26,6 @@ extension EntityStore {
     /// after `changeTicks` cannot slip by.
     ///
     public func changeTicks(entity: String) -> AsyncStream<Void> {
-        // The observation token is immutable and only ever handed back to the
-        // notification center; the box just carries it across the Sendable line.
         final class Token: @unchecked Sendable {
             let observer: any NSObjectProtocol
             init(_ observer: any NSObjectProtocol) { self.observer = observer }

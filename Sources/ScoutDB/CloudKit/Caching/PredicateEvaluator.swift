@@ -23,9 +23,6 @@ public enum PredicateEvaluator {
             let subpredicates = compound.subpredicates as? [NSPredicate] ?? []
             switch compound.compoundPredicateType {
             case .and:
-                // Kleene AND: any false wins; otherwise an unknown (a compared
-                // field missing) keeps the whole result unknown rather than
-                // collapsing to a concrete Bool a wrapping NOT could flip.
                 var sawUnknown = false
                 for subpredicate in subpredicates {
                     switch evaluate(subpredicate, record: record) {
@@ -36,7 +33,6 @@ public enum PredicateEvaluator {
                 }
                 return sawUnknown ? nil : true
             case .or:
-                // Kleene OR: any true wins; otherwise an unknown keeps it unknown.
                 var sawUnknown = false
                 for subpredicate in subpredicates {
                     switch evaluate(subpredicate, record: record) {
@@ -47,9 +43,6 @@ public enum PredicateEvaluator {
                 }
                 return sawUnknown ? nil : false
             case .not:
-                // Kleene NOT: unknown stays unknown, so a record missing the
-                // field stays excluded (the caller keeps only `== true`) whether
-                // the leaf sits directly under NOT or inside a compound.
                 return subpredicates.first.map { evaluate($0, record: record).map { !$0 } } ?? false
             @unknown default:
                 return false
@@ -116,8 +109,6 @@ public enum PredicateEvaluator {
         return point.distance(from: center) < radius
     }
 
-    // Token-based full-text match across every string field, the way the server
-    // treats `self CONTAINS`: each needle token must appear somewhere on the record.
     private static func evaluateSearch(_ comparison: NSComparisonPredicate, record: CKRecord) -> Bool? {
         guard let needle = (comparison.rightExpression.constantValue as? String)?.lowercased() else { return false }
         var required = Set(needle.split { !$0.isLetter && !$0.isNumber })
@@ -143,7 +134,6 @@ public enum PredicateEvaluator {
         case (let lhs as String, let rhs as String):
             return order(lhs, rhs)
         case (let lhs as String, let rhs as CKRecord.Reference):
-            // The creator's server value is a reference; the double stores the name.
             return order(lhs, rhs.recordID.recordName)
         case (let lhs as Date, let rhs as Date):
             return order(lhs, rhs)

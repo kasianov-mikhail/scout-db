@@ -252,8 +252,6 @@ public struct SchemaBuilder {
     }
 }
 
-// Hands out the lowest free slot per pool. Slots of every historical field stay
-// reserved: reusing one while old records exist would mix values of two fields.
 private struct SlotAllocator {
     private var used: [Pool: Set<String>] = [:]
 

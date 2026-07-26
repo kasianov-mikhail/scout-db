@@ -37,7 +37,6 @@ struct OperationsTests {
     @Test("CAS update retries after a conflict")
     func updateConflict() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        // A real conflict carries the winning server record; the retry transforms it.
         let server = try #require(database.records.first { $0["uuid"] as? String == "p-1" })
         database.writeErrors = [RecordConflictError(serverRecord: server)]
         try await store.update(entity: "purchase", uuid: "p-1") { record in
@@ -107,8 +106,6 @@ struct OperationsTests {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
         let server = try #require(database.records.first { $0["uuid"] as? String == "p-1" })
-        // Each conflict carries its own copy of the winning record, the way the
-        // server materializes one per response.
         database.writeErrors = (0..<3).map { _ in RecordConflictError(serverRecord: server.copy() as! CKRecord) }
 
         await #expect(throws: RecordConflictError.self) {
@@ -126,10 +123,6 @@ struct OperationsTests {
     func conflictFieldMerge() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
 
-        // The winner changed product_id (s_00); this side changes quantity. The
-        // fetched copy keeps the current change tag, so the merge's retried save
-        // passes the double's conditional-save comparison the way a real
-        // conflict's server record would.
         let winner = try #require(try await database.fetchRecord(id: CKRecord.ID(recordName: "p-1")))
         winner["s_00"] = "sku-99"
         database.writeErrors = [RecordConflictError(serverRecord: winner)]
@@ -143,7 +136,6 @@ struct OperationsTests {
         #expect(merged.values["quantity"] == .int(9))
         #expect(merged.values["product_id"] == .string("sku-99"))
 
-        // Overlapping edits still re-run the transform on the winner.
         let overlap = try #require(try await database.fetchRecord(id: CKRecord.ID(recordName: "p-1")))
         overlap["i_01"] = Int64(100)
         database.writeErrors = [RecordConflictError(serverRecord: overlap)]
@@ -189,7 +181,6 @@ struct OperationsTests {
             try await store.write(values, entity: "purchase", uuid: "p-\(index)")
         }
 
-        // Ascending: p-1(1), p-2(2), p-3(2), p-0(3) — the tie falls back to uuids.
         let first = try await store.read(entity: "purchase", orderedBy: "quantity", limit: 2)
         #expect(first.records.map(\.uuid) == ["p-1", "p-2"])
         let second = try await store.read(entity: "purchase", orderedBy: "quantity", limit: 2, after: try #require(first.cursor))
@@ -201,7 +192,6 @@ struct OperationsTests {
         #expect(rest.records.map(\.uuid) == ["p-1"])
         #expect(rest.cursor == nil)
 
-        // A payload field cannot key a page.
         await #expect(throws: SchemaError.invalidValue("comment")) {
             _ = try await store.read(entity: "purchase", orderedBy: "comment", limit: 1)
         }
@@ -220,11 +210,9 @@ struct OperationsTests {
         try await store.write(["name": .string("Bo"), "score": .int(5)], entity: "player", uuid: "u-2")
         try await store.write(["name": .string("Cy")], entity: "player", uuid: "u-3")
 
-        // A missing value ranks first ascending, mirroring the union ranking.
         let ranked = try await store.read(entity: "player", sort: [.init(field: "score")])
         #expect(ranked.map(\.uuid) == ["u-3", "u-2", "u-1"])
 
-        // The cap applies after the ranking, and the builder path inherits it.
         let top = try await store.read(entity: "player", sort: [.init(field: "score", ascending: false)], limit: 2)
         #expect(top.map(\.uuid) == ["u-1", "u-2"])
         #expect(try await store.query("player").sort("score", .descending).first()?.uuid == "u-1")
@@ -258,7 +246,6 @@ struct OperationsTests {
         #expect(try await uuids([.init(field: "score", op: .lessThanOrEquals, value: .int(5))]) == ["u-2"])
         #expect(try await uuids([.init(field: "score", op: .in, value: .ints([5, 7]))]) == ["u-2"])
         #expect(try await uuids([.init(field: "tags", op: .contains, value: .string("swift"))]) == ["u-1"])
-        // A record missing the field never matches, mirroring the server.
         #expect(try await uuids([.init(field: "score", op: .notEquals, value: .int(10))]) == ["u-2"])
         #expect(try await uuids([.init(field: "score", op: .notIn, value: .ints([10]))]) == ["u-2"])
 
@@ -278,7 +265,6 @@ struct OperationsTests {
         #expect(stored.notificationInfo?.shouldSendContentAvailable == true)
         #expect(try await store.subscriptions().count == 1)
 
-        // A filter that only runs client-side cannot narrow a push subscription.
         await #expect(throws: SchemaError.invalidValue("product_id")) {
             try await store.subscribe(entity: "purchase", filters: [.init(field: "product_id", op: .like, value: .string("sku*"))])
         }
@@ -305,7 +291,6 @@ struct OperationsTests {
         #expect(tombstone.recordID.zoneID == zone)
         #expect(try await zoned.read(entity: "purchase").isEmpty)
 
-        // Schema bookkeeping stays in the default zone.
         let descriptor = try #require(database.records.first { $0.recordType == "SchemaDescriptor" })
         #expect(descriptor.recordID.zoneID != zone)
     }
@@ -321,12 +306,10 @@ struct OperationsTests {
             _ = try await store.read(entity: "purchase")
         }
 
-        // A fresh registry no longer preloads the retired entity.
         let fresh = SchemaRegistry(database: database)
         try await fresh.preload()
         #expect(await fresh.definitions().isEmpty)
 
-        // Republishing reactivates the schema, without the dropped records.
         try await registry.publish(makePurchaseDefinition())
         #expect(try await store.read(entity: "purchase").isEmpty)
 
@@ -346,7 +329,6 @@ struct OperationsTests {
         #expect(share.recordID.zoneID == zone)
         #expect(share.recordID.recordName == CKRecordNameZoneWideShare)
 
-        // A second call returns the existing share instead of minting a new one.
         let again = try await zoned.shareZone()
         #expect(again.recordID == share.recordID)
         #expect(database.records.filter { $0 is CKShare }.count == 1)
@@ -354,7 +336,6 @@ struct OperationsTests {
         try await zoned.stopSharing()
         #expect(try await zoned.zoneShare() == nil)
 
-        // A store without a custom zone cannot share.
         await #expect(throws: SchemaError.self) {
             try await store.shareZone()
         }
@@ -362,8 +343,6 @@ struct OperationsTests {
 
     @Test("A batch write unwraps a partial failure to the records that caused it")
     func partialFailureUnwrapped() async throws {
-        // The atomic batch rolls back: one real cause, one innocent record
-        // marked batchRequestFailed. Only the cause survives the unwrap.
         let culprit = CKRecord.ID(recordName: "p-1")
         let innocent = CKRecord.ID(recordName: "p-2")
         let partial = CKError(
@@ -379,7 +358,6 @@ struct OperationsTests {
             #expect((error.reasons[culprit] as? CKError)?.code == .quotaExceeded)
         }
 
-        // A partial failure carrying no real cause stays a raw CKError.
         database.writeErrors = [CKError(.partialFailure)]
         do {
             try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
@@ -401,23 +379,19 @@ struct OperationsTests {
         #expect(share[CKShare.SystemFieldKey.title] as? String == "Trip")
         #expect(share.recordID.zoneID == zone)
 
-        // Idempotent: a second call returns the existing share.
         let again = try await zoned.shareRecord(entity: "purchase", uuid: "p-1")
         #expect(again.recordID == share.recordID)
         #expect(database.records.filter { $0 is CKShare }.count == 1)
 
-        // The sibling record stays unshared; a foreign entity name is a miss.
         #expect(try await zoned.recordShare(entity: "purchase", uuid: "p-2") == nil)
         await #expect(throws: SchemaError.notFound("p-1")) {
             _ = try await zoned.shareRecord(entity: "order", uuid: "p-1")
         }
 
-        // Un-sharing removes the share, not the record.
         try await zoned.stopSharing(entity: "purchase", uuid: "p-1")
         #expect(try await zoned.recordShare(entity: "purchase", uuid: "p-1") == nil)
         #expect(try await zoned.read(entity: "purchase").count == 2)
 
-        // A store without a custom zone cannot share a record.
         await #expect(throws: SchemaError.self) {
             _ = try await store.shareRecord(entity: "purchase", uuid: "p-1")
         }
@@ -434,18 +408,15 @@ struct OperationsTests {
         #expect(first.records.map(\.uuid) == ["p-1"])
         #expect(first.deleted.isEmpty)
 
-        // Nothing new: the token fences off what the first pass already served.
         let idle = try await zoned.zoneChanges(since: first.token)
         #expect(idle.records.isEmpty)
 
-        // A tombstone arrives as a changed record with `deleted` set.
         try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-2")
         try await zoned.delete(entity: "purchase", uuid: "p-1")
         let second = try await zoned.zoneChanges(since: first.token)
         #expect(Set(second.records.map(\.uuid)) == ["p-1", "p-2"])
         #expect(second.records.first { $0.uuid == "p-1" }?.deleted == true)
 
-        // A store without a custom zone cannot delta-sync.
         await #expect(throws: SchemaError.self) {
             _ = try await store.zoneChanges()
         }
@@ -467,15 +438,12 @@ struct OperationsTests {
         #expect(batches.map(\.records.count) == [2, 2, 1])
         #expect(batches.flatMap { $0.records.map(\.uuid) }.sorted() == ["b-0", "b-1", "b-2", "b-3", "b-4"])
 
-        // Every batch carries its own token: a walk resumed from the first
-        // batch's token picks up exactly the rest of the feed.
         var resumed: [String] = []
         for try await delta in zoned.zoneChanges(since: batches[0].token, batchSize: 2) {
             resumed += delta.records.map(\.uuid)
         }
         #expect(resumed.sorted() == ["b-2", "b-3", "b-4"])
 
-        // A drained feed ends the walk without yielding.
         var idle = 0
         for try await _ in zoned.zoneChanges(since: batches.last?.token, batchSize: 2) {
             idle += 1
@@ -489,14 +457,12 @@ struct OperationsTests {
         #expect(ChangeEvent(reason: .recordUpdated, recordName: "p-1", subscriptionID: nil)?.kind == .updated)
         #expect(ChangeEvent(reason: .recordDeleted, recordName: "p-1", subscriptionID: nil)?.kind == .deleted)
         #expect(ChangeEvent(reason: .recordCreated, recordName: nil, subscriptionID: nil) == nil)
-        // A payload that is not a CloudKit query notification parses to nil.
         #expect(ChangeEvent(userInfo: ["aps": ["alert": "hi"]]) == nil)
 
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
         let created = try #require(ChangeEvent(reason: .recordCreated, recordName: "p-1", subscriptionID: "scout-purchase"))
         #expect(try await store.record(for: created)?.values["product_id"] == .string("sku-42"))
 
-        // Tombstoned records and hard deletes resolve to nil.
         try await store.delete(entity: "purchase", uuid: "p-1")
         let updated = try #require(ChangeEvent(reason: .recordUpdated, recordName: "p-1", subscriptionID: nil))
         #expect(try await store.record(for: updated) == nil)
@@ -547,20 +513,16 @@ struct OperationsTests {
         #expect(try await coordinator.sync().records.map(\.uuid) == ["p-1"])
         #expect(try await coordinator.sync().records.isEmpty)
 
-        // A push triggers a pass; a foreign payload does not.
         try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-2")
         let pushed = try await coordinator.handlePush(["ck": ["nid": "n", "qry": ["sid": "scout-purchase", "fo": 1]]])
         #expect(pushed?.records.map(\.uuid) == ["p-2"])
         #expect(try await coordinator.handlePush(["aps": ["alert": "hi"]]) == nil)
 
-        // The token survives a relaunch; reset replays the zone.
         let relaunched = SyncCoordinator(store: zoned, cache: cache, tokenURL: tokenURL)
         #expect(try await relaunched.sync().records.isEmpty)
         relaunched.reset()
         #expect(try await relaunched.sync().records.count == 2)
 
-        // An offline write queues in the cache; the next pass replays it first,
-        // so the delta already carries it.
         database.writeErrors = [CKError(.networkFailure)]
         try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-3")
         #expect(cache.pendingWrites == 1)
@@ -575,7 +537,6 @@ struct OperationsTests {
         let zoned = EntityStore(database: database, registry: registry, zoneID: zone)
         try await zoned.ensureZone()
 
-        // Unshared: no participants, and permission changes fail loudly.
         #expect(try await zoned.shareParticipants().isEmpty)
         await #expect(throws: SchemaError.notFound(CKRecordNameZoneWideShare)) {
             try await zoned.setSharePublicPermission(.readOnly)
@@ -589,7 +550,6 @@ struct OperationsTests {
         try await zoned.setSharePublicPermission(.readOnly)
         #expect(try await zoned.zoneShare()?.publicPermission == .readOnly)
 
-        // The owner cannot be removed — a plain error, not CloudKit's exception.
         await #expect(throws: SchemaError.invalidValue("owner")) {
             try await zoned.removeShareParticipant(try #require(participants.first))
         }
@@ -605,11 +565,9 @@ struct OperationsTests {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-default")
         try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-zoned")
 
-        // The zoned store sees only its zone; the unzoned store searches all zones.
         #expect(try await zoned.read(entity: "purchase").map(\.uuid) == ["p-zoned"])
         #expect(Set(try await store.read(entity: "purchase").map(\.uuid)) == ["p-default", "p-zoned"])
 
-        // Point lookups and bounded page reads scope the same way.
         #expect(try await zoned.fetch(uuid: "p-default") == nil)
         #expect(try await zoned.fetch(uuid: "p-zoned")?.uuid == "p-zoned")
         #expect(try await zoned.read(entity: "purchase", limit: 5).records.map(\.uuid) == ["p-zoned"])
@@ -624,7 +582,6 @@ struct OperationsTests {
         #expect(stored.subscriptionID == "scout-database")
         #expect(stored.notificationInfo?.shouldSendContentAvailable == true)
 
-        // Re-subscribing replaces rather than duplicates; unsubscribe removes.
         _ = try await store.subscribeToDatabase()
         #expect(database.storedSubscriptions.count == 1)
         try await store.unsubscribe(id: id)
@@ -647,11 +604,9 @@ struct OperationsTests {
         let ranked = try await store.read(entity: "place", sort: [.distance(from: "spot", latitude: 0, longitude: 0)])
         #expect(ranked.map(\.uuid) == ["l-near", "l-far", "l-none"])
 
-        // The builder sugar reads the same, from another origin.
         let closest = try await store.query("place").nearest("spot", latitude: 9, longitude: 9).first()
         #expect(closest?.uuid == "l-far")
 
-        // Distance only orders location fields.
         await #expect(throws: SchemaError.invalidValue("name")) {
             _ = try await store.read(entity: "place", sort: [.distance(from: "name", latitude: 0, longitude: 0)])
         }
@@ -665,13 +620,11 @@ struct OperationsTests {
         #expect(try await store.increment(entity: "purchase", uuid: "p-1", field: "quantity", by: -2) == 2)
         #expect(try await store.increment(entity: "purchase", uuid: "p-1", field: "total", by: 1) == 30.97)
 
-        // A missing value counts from zero.
         var sparse = makePurchase().values
         sparse["quantity"] = nil
         try await store.write(sparse, entity: "purchase", uuid: "p-2")
         #expect(try await store.increment(entity: "purchase", uuid: "p-2", field: "quantity", by: 5) == 5)
 
-        // A lost race re-applies the delta to the winning record.
         let server = try #require(database.records.first { $0["uuid"] as? String == "p-1" })
         database.writeErrors = [RecordConflictError(serverRecord: server.copy() as! CKRecord)]
         #expect(try await store.increment(entity: "purchase", uuid: "p-1", field: "quantity") == 3)
@@ -692,8 +645,6 @@ struct OperationsTests {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "t-1")
         try await store.delete(entity: "purchase", uuid: "t-1")
 
-        // A tombstone is logically gone: an increment (which rides update) or a
-        // lease must fail rather than silently mutate the dead record.
         await #expect(throws: SchemaError.notFound("t-1")) {
             try await store.increment(entity: "purchase", uuid: "t-1", field: "quantity")
         }
@@ -704,7 +655,6 @@ struct OperationsTests {
             _ = try await store.leaseHolder(entity: "purchase", uuid: "t-1")
         }
 
-        // restore still reaches the tombstone — items() keeps returning it.
         _ = try await store.restore(entity: "purchase", uuid: "t-1")
         #expect(try await store.read(entity: "purchase").map(\.uuid) == ["t-1"])
     }
@@ -715,15 +665,12 @@ struct OperationsTests {
         try await store.delete(entity: "purchase", uuid: "p-1")
         #expect(try await store.read(entity: "purchase").isEmpty)
 
-        // The tombstone kept the values, so the restored record is whole.
         let restored = try await store.restore(entity: "purchase", uuid: "p-1")
         #expect(restored.values["product_id"] == .string("sku-42"))
         #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-1"])
 
-        // Restoring a live record is a no-op.
         #expect(try await store.restore(entity: "purchase", uuid: "p-1").deleted == false)
 
-        // Compact removes tombstones past the cutoff — and only those.
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
         try await store.delete(entity: "purchase", uuid: "p-1")
         #expect(try await store.compact(entity: "purchase", olderThan: Date(timeIntervalSince1970: 0)) == 0)
@@ -750,12 +697,10 @@ struct OperationsTests {
         }
         try await store.delete(entity: "purchase", uuid: "p-1")
 
-        // Three overwrites, three revisions — each the state right before it.
         let history = try await store.history(entity: "purchase", uuid: "p-1")
         #expect(history.map { $0.values["quantity"] } == [.int(3), .int(9), .int(11)])
         #expect(history.allSatisfy { $0.uuid == "p-1" })
 
-        // An unaudited sibling writes no revisions.
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
         var plain = makePurchaseDefinition()
         plain.audited = nil
@@ -768,8 +713,6 @@ struct OperationsTests {
     func revisionTieBreak() async throws {
         try await registry.publish(EntityStore.revisionDefinition)
 
-        // Two revisions of one record sharing a timestamp, written out of uuid
-        // order so a date-only sort could not settle them by insertion.
         let date = Date(timeIntervalSince1970: 1_000)
         func revision(uuid: String, tag: String) throws -> EntityWrite {
             let snapshot = try JSONEncoder().encode(EntityRecord(entity: "doc", uuid: "d-1", schemaVersion: 1, values: ["p": .string(tag)]))
@@ -778,7 +721,6 @@ struct OperationsTests {
         }
         try await store.write([revision(uuid: "rev-b", tag: "b"), revision(uuid: "rev-a", tag: "a")], entity: EntityStore.revisionEntity)
 
-        // The tie breaks by revision uuid (rev-a before rev-b), and it repeats.
         #expect(try await store.history(entity: "doc", uuid: "d-1").map { $0.values["p"] } == [.string("a"), .string("b")])
         #expect(try await store.history(entity: "doc", uuid: "d-1").map { $0.values["p"] } == [.string("a"), .string("b")])
     }
@@ -791,7 +733,6 @@ struct OperationsTests {
         try await store.write(second, entity: "purchase", uuid: "p-2")
         try await store.delete(entity: "purchase", uuid: "p-2")
 
-        // Tombstoned records stay out of the dump.
         let dump = try await store.export(entity: "purchase")
 
         let target = InMemoryDatabase()
@@ -803,11 +744,9 @@ struct OperationsTests {
         #expect(imported.map(\.uuid) == ["p-1"])
         #expect(imported.first?.values["product_id"] == .string("sku-42"))
 
-        // A record of a foreign entity is rejected before anything is written.
         await #expect(throws: SchemaError.invalidValue("purchase")) {
             _ = try await targetStore.importRecords(dump, entity: "profile")
         }
-        // A repeated import upserts instead of duplicating.
         #expect(try await targetStore.importRecords(dump, entity: "purchase") == 1)
         #expect(try await targetStore.read(entity: "purchase").count == 1)
     }
@@ -828,7 +767,6 @@ struct OperationsTests {
         try await store.delete(entity: "purchase", uuid: "p-1")
         #expect(try await live.next() == [])
 
-        // The builder variant re-runs the full query, filters included.
         var filtered = store.query("purchase").filter("quantity" > 5).observe().makeAsyncIterator()
         #expect(try await filtered.next() == [])
         var big = makePurchase().values
@@ -848,12 +786,10 @@ struct OperationsTests {
                 ]))
         try await store.write(["name": .string("Ada")], entity: "profile", uuid: "u-1")
 
-        // Insert creates the list, dedupes, and keeps order.
         #expect(try await store.insert(["swift", "db"], into: "tags", entity: "profile", uuid: "u-1") == ["swift", "db"])
         #expect(try await store.insert(["db", "ck"], into: "tags", entity: "profile", uuid: "u-1") == ["swift", "db", "ck"])
         #expect(try await store.remove(["db", "ghost"], from: "tags", entity: "profile", uuid: "u-1") == ["swift", "ck"])
 
-        // A lost race re-applies the union to the winning list.
         let server = try #require(database.records.first { $0["uuid"] as? String == "u-1" })
         database.writeErrors = [RecordConflictError(serverRecord: server.copy() as! CKRecord)]
         #expect(try await store.insert(["new"], into: "tags", entity: "profile", uuid: "u-1") == ["swift", "ck", "new"])
@@ -873,25 +809,21 @@ struct OperationsTests {
         let granted = try await store.lease(entity: "purchase", uuid: "p-1", owner: "alice", for: 60)
         #expect(try await store.leaseHolder(entity: "purchase", uuid: "p-1") == granted)
 
-        // A second suitor is turned away; the holder renews freely.
         await #expect(throws: SchemaError.self) {
             try await store.lease(entity: "purchase", uuid: "p-1", owner: "bob", for: 60)
         }
         _ = try await store.lease(entity: "purchase", uuid: "p-1", owner: "alice", for: 120)
 
-        // A foreign release is a no-op; the owner's release frees the record.
         try await store.release(entity: "purchase", uuid: "p-1", owner: "bob")
         #expect(try await store.leaseHolder(entity: "purchase", uuid: "p-1") != nil)
         try await store.release(entity: "purchase", uuid: "p-1", owner: "alice")
         #expect(try await store.leaseHolder(entity: "purchase", uuid: "p-1") == nil)
 
-        // An expired lease is taken over.
         _ = try await store.lease(entity: "purchase", uuid: "p-1", owner: "alice", for: -1)
         #expect(try await store.leaseHolder(entity: "purchase", uuid: "p-1") == nil)
         _ = try await store.lease(entity: "purchase", uuid: "p-1", owner: "bob", for: 60)
         #expect(try await store.leaseHolder(entity: "purchase", uuid: "p-1")?.owner == "bob")
 
-        // The lease is advisory: the store's own writes proceed regardless.
         try await store.update(entity: "purchase", uuid: "p-1") { record in
             record.values["quantity"] = .int(9)
         }
@@ -918,7 +850,6 @@ struct OperationsTests {
         #expect(try await store.read(entity: "purchase", createdBy: "user-b").map(\.uuid) == ["p-2"])
         #expect(try await store.read(entity: "purchase", createdBy: "ghost").isEmpty)
 
-        // The builder composes the scope with filters and groups.
         #expect(try await store.query("purchase").createdBy("user-a").filter("quantity" > 5).count() == 1)
         let grouped = try await store.query("purchase")
             .createdBy("user-a")
@@ -945,7 +876,6 @@ struct OperationsTests {
         await #expect(throws: SchemaError.invalidValue("email")) {
             try await store.write(["email": .string("not-an-email")], entity: "account", uuid: "a-2")
         }
-        // Every element of a list must match; the whole string, not a substring.
         await #expect(throws: SchemaError.invalidValue("codes")) {
             try await store.write(["email": .string("bo@example.com"), "codes": .strings(["ABC", "nope"])], entity: "account", uuid: "a-3")
         }
@@ -953,7 +883,6 @@ struct OperationsTests {
             try await store.write(["email": .string("ada@example.com !!")], entity: "account", uuid: "a-4")
         }
 
-        // The schema rejects patterns on non-string fields and malformed regexes.
         let numeric = makeDefinition(fields: [
             FieldDefinition(name: "count", type: .int, storage: .slot(.int, "i_00"), pattern: "[0-9]+")
         ])
@@ -992,15 +921,11 @@ struct OperationsTests {
                     FieldDefinition(name: "label", type: .string, storage: .slot(.string, "s_00"))
                 ]))
 
-        // One record name, claimed by a second entity — the shape a natural uuid
-        // could produce if two entities digested their key fields to the same
-        // value. Records are addressed by name, so the later write takes it over.
         try await store.write(makePurchase().values, entity: "purchase", uuid: "shared")
         try await store.write(["label": .string("t")], entity: "ticket", uuid: "shared")
 
         #expect(try await store.fetch(entity: "purchase", uuids: ["shared"]).isEmpty)
         #expect(try await store.fetch(entity: "ticket", uuids: ["shared"]).map(\.uuid) == ["shared"])
-        // The mutation paths ride the same lookup, so they must agree.
         await #expect(throws: SchemaError.self) {
             try await store.update(entity: "purchase", uuid: "shared") { $0.values["quantity"] = .int(1) }
         }
@@ -1067,8 +992,6 @@ struct OperationsTests {
             try await store.write(values, entity: "purchase", uuid: "p-\(index)")
         }
 
-        // `contains` on a payload field is a client-side matcher, so the page reader has to
-        // keep fetching until each page holds `limit` records that survive the filter.
         let filter = EntityStore.Filter(field: "comment", op: .contains, value: .string("gif"))
         var uuids: [String] = []
         var cursor: EntityCursor?
@@ -1148,7 +1071,6 @@ struct OperationsTests {
         }
 
         #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-2"])
-        // A replay tombstones the same uuid again — idempotent by design.
         let committed = try await store.read(entity: EntityStore.transactionEntity)
         guard case .bytes(let data)? = committed.first?.values["steps"] else {
             Issue.record("missing steps")
@@ -1200,8 +1122,6 @@ struct OperationsTests {
         #expect(patched.values["quantity"] == .int(9))
         #expect(patched.values["product_id"] == .string("sku-42"))
 
-        // An update of a missing record surfaces and leaves the envelope pending
-        // for a later repair.
         await #expect(throws: SchemaError.notFound("ghost")) {
             try await store.transaction { draft in
                 draft.update(["quantity": .int(1)], entity: "purchase", uuid: "ghost")
@@ -1319,8 +1239,6 @@ struct OperationsTests {
         try await store.write(["name": .string("Twain")], entity: "author", uuid: "a-1")
         try await store.write(["title": .string("Tom"), "author_id": .string("a-1")], entity: "book", uuid: "b-1")
 
-        // A fresh registry has an empty cache; the delete itself only loads the
-        // parent's definition, so the cascade must discover 'book' on its own.
         let fresh = EntityStore(database: database, registry: SchemaRegistry(database: database))
         try await fresh.delete(entity: "author", uuid: "a-1", cascade: true)
 
@@ -1390,18 +1308,13 @@ struct OperationsTests {
 
         try await store.write(["name": .string("Twain")], entity: "author", uuid: "a-1")
         try await store.write(["name": .string("Verne")], entity: "author", uuid: "a-2")
-        // b-1 and b-2 die with their author; b-3 survives.
         try await store.write(["title": .string("One"), "author_id": .string("a-1")], entity: "book", uuid: "b-1")
         try await store.write(["title": .string("Two"), "author_id": .string("a-1")], entity: "book", uuid: "b-2")
         try await store.write(["title": .string("Three"), "author_id": .string("a-2")], entity: "book", uuid: "b-3")
-        // The first shelf names both doomed books, so both disjunction branches
-        // match it — it must still be rewritten once, losing both keys.
         try await store.write(["label": .string("Both"), "book_ids": .strings(["b-1", "b-2"])], entity: "shelf", uuid: "s-1")
         try await store.write(["label": .string("Mixed"), "book_ids": .strings(["b-1", "b-3"])], entity: "shelf", uuid: "s-2")
         try await store.write(["label": .string("Live"), "book_ids": .strings(["b-3"])], entity: "shelf", uuid: "s-3")
 
-        // Deleting the author cascades to its books, which detaches them from
-        // every shelf in a single disjunctive pass.
         try await store.delete(entity: "author", uuid: "a-1", cascade: true)
 
         #expect(try await store.read(entity: "book").map(\.uuid) == ["b-3"])
@@ -1473,7 +1386,6 @@ struct OperationsTests {
             try await enforcing.write(values, entity: "book", uuid: "b-3")
         }
 
-        // The default store stays permissive.
         try await store.write(["title": .string("Free"), "author_id": .string("a-9")], entity: "book", uuid: "b-4")
         #expect(Set(try await store.read(entity: "book").map(\.uuid)) == ["b-1", "b-4"])
     }
@@ -1496,7 +1408,6 @@ struct OperationsTests {
         try await store.write(["name": .string("Ada")], entity: "person", uuid: "h-1")
 
         try await store.write(["number": .string("111"), "person_id": .string("h-1")], entity: "passport", uuid: "d-1")
-        // The holder may re-write its own reference.
         try await store.write(["number": .string("112"), "person_id": .string("h-1")], entity: "passport", uuid: "d-1")
 
         await #expect(throws: SchemaError.duplicateReference(field: "person_id", key: "h-1")) {
@@ -1612,7 +1523,6 @@ struct OperationsTests {
         #expect(levels[0].keys.sorted() == ["a-1", "a-2"])
         #expect(levels[1]["g-1"]?.values["name"] == .string("Salt"))
 
-        // A hop through a non-reference field fails loudly.
         await #expect(throws: SchemaError.unknownField("name")) {
             _ = try await store.join(entity: "book", records: books, path: ["author_ids", "name"])
         }
@@ -1636,7 +1546,6 @@ struct OperationsTests {
         #expect(source.contains("import ScoutDB"))
         #expect(source.contains("struct Purchase: EntityRepresentable {"))
 
-        // An invalid definition is rejected before any source is generated.
         let broken = makeDefinition(fields: [FieldDefinition(name: "x", type: .string, storage: .slot(.int, "i_00"))])
         #expect(throws: SchemaError.self) {
             _ = try DefinitionCodeGenerator().source(forJSON: JSONEncoder().encode(broken))
@@ -1664,7 +1573,6 @@ struct OperationsTests {
         #expect(rates == [1.5, 2.5])
         let days: [Date]? = record["days"]
         #expect(days == [Date(timeIntervalSince1970: 0)])
-        // A kind mismatch reads back as nil, same as the scalar subscript.
         let mismatched: [Int64]? = record["tags"]
         #expect(mismatched == nil)
     }

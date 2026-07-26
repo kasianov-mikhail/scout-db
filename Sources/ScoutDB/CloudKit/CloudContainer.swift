@@ -85,10 +85,6 @@ public struct AccountUnavailableError: LocalizedError {
     }
 }
 
-// The conformance bodies must not spell a call matching a requirement's own
-// signature — within this module it would resolve back to the conformance
-// itself (see the CloudDatabase conformance for the full story). CKContainer's
-// own `accountStatus()` *is* the requirement, so it satisfies it directly.
 extension CKContainer: CloudContainer {
     public var privateDatabase: any CloudDatabase {
         privateCloudDatabase
@@ -104,8 +100,6 @@ extension CKContainer: CloudContainer {
 
     public func lookUpShareParticipants(_ lookupInfos: [CKUserIdentity.LookupInfo]) async throws -> [CKShare.Participant] {
         guard lookupInfos.count > 0 else { return [] }
-        // The operation reports through callbacks on its own queue, one at a
-        // time; the box only bridges that serial stream into the continuation.
         final class Collector: @unchecked Sendable {
             var participants: [CKShare.Participant] = []
             var failure: (any Error)?
@@ -118,8 +112,6 @@ extension CKContainer: CloudContainer {
                 case .success(let participant):
                     collector.participants.append(participant)
                 case .failure(let error):
-                    // Keep the first failure, not whichever callback fires last, so
-                    // the thrown error is deterministic when several lookups fail.
                     if collector.failure == nil { collector.failure = error }
                 }
             }
@@ -143,8 +135,6 @@ extension CKContainer: CloudContainer {
 
     public func shareMetadata(for url: URL) async throws -> CKShare.Metadata {
         try await withCheckedThrowingContinuation { continuation in
-            // One URL in, so the per-share callback alone decides the outcome;
-            // the completion block would only repeat it.
             final class Box: @unchecked Sendable {
                 var result: Result<CKShare.Metadata, any Error>?
             }
@@ -169,8 +159,6 @@ extension CKContainer: CloudContainer {
 
     public func accountStatusUpdates() -> AsyncStream<CKAccountStatus> {
         AsyncStream { continuation in
-            // The observer token is not Sendable; the box carries it into the
-            // termination handler unchanged.
             final class Token: @unchecked Sendable {
                 let value: NSObjectProtocol
 
@@ -178,11 +166,6 @@ extension CKContainer: CloudContainer {
                     self.value = value
                 }
             }
-            // Each notification triggers an async accountStatus() read. Spawning an
-            // independent Task per notification lets a later change's status resolve
-            // and yield before an earlier one's, so observers can settle on a stale
-            // status. Chain the reads so each completes and yields before the next
-            // begins, preserving notification order.
             final class Serial: @unchecked Sendable {
                 private let lock = NSLock()
                 private var tail = Task<Void, Never> {}

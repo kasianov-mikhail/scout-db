@@ -20,8 +20,6 @@ public struct QueryPlan: Equatable, Sendable, CustomStringConvertible {
     }
 }
 
-// The structured form of a server-side predicate, turned into an NSPredicate at
-// the single point the store talks to CloudKit.
 struct ServerFilter: Equatable, Sendable {
     enum Operator: String, Sendable {
         case equals

@@ -22,10 +22,6 @@ import Foundation
 /// a compare-and-swap would discard its comparison.
 ///
 public final class OfflineCache: CloudDatabase, @unchecked Sendable {
-    // One offline write in the replay log. Saves and deletes share a single
-    // ordered queue so their arrival order survives — a delete followed by a
-    // recreate of the same id, or the reverse, must replay in the order it
-    // happened, not saves-then-deletes.
     private enum PendingWrite {
         case save(CKRecord)
         case delete(CKRecord.ID)
@@ -43,27 +39,19 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     private let lock = NSLock()
     private var snapshots: [String: [CKRecord]] = [:]
     private var pending: [PendingWrite] = []
-    // The last full server copy seen per record — the merge base a conflicted
-    // flush diffs both sides against.
     private var baselines: [CKRecord.ID: CKRecord] = [:]
     private let snapshotLimit: Int
     private let baselineLimit: Int
     private var conflictResolver: (any ConflictResolver)?
-    // Recency bookkeeping for the LRU quotas; not persisted, so restored
-    // entries count as oldest until traffic touches them again.
     private var snapshotUsage: [String: Int64] = [:]
     private var baselineUsage: [CKRecord.ID: Int64] = [:]
     private var clock: Int64 = 0
-    // Whether the archive is behind the freshness held in memory, and the
-    // delayed write that will settle it.
     private var archiveStale = false
     private var archiveTask: Task<Void, Never>?
     private static let archiveDelay: Duration = .milliseconds(250)
 
     deinit {
         archiveTask?.cancel()
-        // The cache is going away with freshness the archive never saw; this is
-        // the last chance to hand it over.
         if archiveStale {
             persistLocked()
         }
@@ -124,11 +112,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         Self.evict(&baselines, usage: &baselineUsage, limit: baselineLimit)
     }
 
-    // Drops the least recently used entries until the store fits its quota,
-    // ordering the keys once instead of rescanning every entry for a fresh
-    // minimum per victim. The rescan cost most on the restore path, where an
-    // oversized archive sheds its whole overflow at once and every restored
-    // entry ties at the oldest usage.
     static func evict<Key: Hashable, Value>(_ store: inout [Key: Value], usage: inout [Key: Int64], limit: Int) {
         guard store.count > limit + limit / 10 else { return }
         for victim in store.keys.sorted(by: { usage[$0] ?? 0 < usage[$1] ?? 0 }).prefix(store.count - limit) {
@@ -155,8 +138,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         if let ops = root["ops"] as? [[String: Any]] {
             pending = Self.decodeOps(ops)
         } else {
-            // A queue archived before the ordered log: saves replayed first, then
-            // deletes, so restore it in that order.
             let saves = (root["saves"] as? [CKRecord] ?? []).map(PendingWrite.save)
             let deletes = (root["deletes"] as? [CKRecord.ID] ?? []).map(PendingWrite.delete)
             pending = saves + deletes
@@ -181,15 +162,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    // Marks the archive stale and lets one delayed write settle it, instead of
-    // rewriting the whole file inline.
-    //
-    // Only freshness rides this path. Every read refreshes snapshots and merge
-    // baselines, and each rewrite serializes the entire cache under the lock, so
-    // a burst of reads otherwise costs a burst of full rewrites. Losing the tail
-    // of that costs staleness, nothing more. The write queue does not come here:
-    // a queued write was reported to its caller as successful, so it is archived
-    // synchronously and must survive a crash.
     private func scheduleArchiveLocked() {
         guard storeURL != nil, !archiveStale else { return }
         archiveStale = true
@@ -309,12 +281,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         let snapshot = lock.withLock { pending }
         guard !snapshot.isEmpty else { return 0 }
 
-        // The net offline intent per record is its last queued op — exactly what
-        // offline reads surfaced through `overlaidLocked`. Replay only that: an
-        // earlier save superseded by a later one, or a delete cancelled by a
-        // later recreate, never uploads. This collapses repeated edits (which
-        // would otherwise conflict against their own predecessor and be lost)
-        // and honors save/delete order for a reused record id.
         var lastIndex: [CKRecord.ID: Int] = [:]
         for (index, op) in snapshot.enumerated() { lastIndex[op.recordID] = index }
         let effective = snapshot.enumerated().filter { lastIndex[$0.element.recordID] == $0.offset }.map(\.element)
@@ -324,9 +290,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
                 guard case .save(let record) = op.element else { return nil }
                 return record
             }
-        // Only one op survives per record id, so effective saves and deletes
-        // target disjoint records — deletes can batch, order between records
-        // does not matter.
         let effectiveSaves = effective.compactMap { op -> CKRecord? in
             guard case .save(let record) = op else { return nil }
             return record
@@ -342,12 +305,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         var landedCount = 0
         var transportFailure: (any Error)?
         do {
-            // The queue replays as conditional batches; only the records that
-            // actually lost a race need the per-record merge below, so an
-            // uncontended flush costs one request per chunk rather than one per
-            // record.
-            // The records the batch could not settle, each with the winning
-            // server record when the batch named one.
             var contested: [(record: CKRecord, server: CKRecord?)] = []
             for chunk in effectiveSaves.chunked(into: Self.maxBatchSize) {
                 let batch: [(CKRecord.ID, Result<CKRecord, any Error>)]
@@ -356,9 +313,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
                 } catch  where Self.isOffline(error) {
                     throw error
                 } catch {
-                    // The call failed as a whole, so it cannot say which record
-                    // was at fault. Replay the chunk one record at a time, which
-                    // attributes the failure instead of blaming all of them.
                     contested += chunk.map { ($0, nil) }
                     continue
                 }
@@ -373,10 +327,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
                         throw error
                     } catch {
                         guard let server = Self.conflictingServerRecord(in: error) else {
-                            // A permanent per-record failure (permission, quota,
-                            // invalid argument) will never land on replay. Surface
-                            // it and drop the write instead of wedging the whole
-                            // queue behind it forever.
                             failures.append(OfflineFlushError.Failure(recordID: id, error: error))
                             EntityCoder.discardStagedAssets(in: [record])
                             resolved.insert(id)
@@ -390,12 +340,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
             }
             for (record, server) in contested {
                 do {
-                    // The batch already surfaced the winning record, so the merge
-                    // starts from it instead of re-attempting a save that would
-                    // lose the same race again.
                     if let conflict = try await push(record, losingTo: server) {
-                        // Handed to the caller; its staged assets stay in case the
-                        // caller re-saves the record.
                         conflicts.append(conflict)
                     } else {
                         landedCount += 1
@@ -423,14 +368,9 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
                 for id in effectiveDeletes { resolved.insert(id) }
             }
         } catch {
-            // A transport failure stops the replay; keep every record not yet
-            // resolved queued for the next attempt.
             transportFailure = error
         }
 
-        // Drop the resolved records (landed, conflicted, or permanently failed)
-        // and retire the staged assets of their superseded copies. Records left
-        // unresolved by a transport failure stay queued verbatim.
         EntityCoder.discardStagedAssets(in: superseded.filter { resolved.contains($0.recordID) })
         dequeue(snapshot.filter { resolved.contains($0.recordID) })
 
@@ -441,9 +381,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         return landedCount
     }
 
-    // Removes the given ops from the queue — by identity for saves and one
-    // occurrence per id for deletes, so a concurrent enqueue (a fresh offline
-    // write of the same record made mid-flush) is never dropped by mistake.
     private func dequeue(_ ops: [PendingWrite]) {
         lock.withLock {
             let replayedSaves = Set(
@@ -469,12 +406,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    // Replays one queued save under the if-unchanged policy, re-merging against
-    // the moving server record a bounded number of times. Returns the conflict
-    // when the edits overlap; transport and other non-conflict errors throw.
-    //
-    // `losingTo` carries the winning record of a race the caller already ran, so
-    // the merge starts there rather than re-attempting a save known to conflict.
     private func push(_ record: CKRecord, losingTo initial: CKRecord? = nil) async throws -> OfflineFlushError.Conflict? {
         var attempt = record
         var pending = initial
@@ -512,9 +443,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    // Hands a graft-proof conflict to the app's resolver. A record it returns
-    // must compare as the server copy it saw, so the server's version tag is
-    // carried onto it before the retry.
     private func resolve(_ queued: CKRecord, against server: CKRecord) async -> ConflictResolution {
         guard let conflictResolver = lock.withLock({ conflictResolver }) else { return .surface }
         let ancestor = lock.withLock { baselines[queued.recordID] }
@@ -533,10 +461,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         return nil
     }
 
-    // The queued record's edits applied on top of the winning server record —
-    // but only when the two sides changed disjoint fields relative to the last
-    // server copy this cache saw. Without that baseline, or with both sides
-    // moving one field to different values, there is nothing safe to merge.
     private func graft(_ queued: CKRecord, onto server: CKRecord) -> CKRecord? {
         let ancestor = lock.withLock { () -> CKRecord? in
             guard let ancestor = baselines[queued.recordID] else { return nil }
@@ -551,9 +475,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
             return nil
         }
         let merged = server.copy() as! CKRecord
-        // A real record's change tag survives the copy; a testing override does
-        // not, so carry it over — the retried save must compare as the server
-        // copy it was built from.
         if let tag = server.recordVersionTag {
             merged.overrideChangeTag(tag)
         }
@@ -563,8 +484,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         return merged
     }
 
-    // The fields whose values differ between two states of one record; a field
-    // the later state removed carries nil.
     private static func changedValues(from ancestor: CKRecord, to record: CKRecord) -> [String: CKRecordValue?] {
         var changes: [String: CKRecordValue?] = [:]
         for key in Set(ancestor.allKeys()).union(record.allKeys()) where !equalValues(ancestor[key], record[key]) {
@@ -581,7 +500,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    // A failure counts as offline when the transport, not the request, is at fault.
     static func isOffline(_ error: any Error) -> Bool {
         if error is URLError { return true }
         guard let error = error as? CKError else { return false }
@@ -602,17 +520,12 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
             let response = try await backing.records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
             let page = response.matchResults.compactMap { try? $0.1.get() }
             lock.withLock {
-                // A full-fidelity response refreshes the merge baselines; a
-                // projected one cannot — its missing keys would later read as
-                // fields the offline edit removed.
                 if desiredKeys == nil {
                     for record in page {
                         baselines[record.recordID] = record
                         touchBaselineLocked(record.recordID)
                     }
                 }
-                // Only a complete response can stand in for the query later; a first
-                // page served offline would silently truncate the result set.
                 if response.queryCursor == nil {
                     snapshots[key] = page
                     touchSnapshotLocked(key)
@@ -634,15 +547,8 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    // The queued writes overlaid onto a snapshot: a queued rewrite of a record
-    // the snapshot already holds replaces it (read-your-updates, tombstones
-    // included), a queued delete drops it. A queued *new* record cannot join —
-    // the query's predicate cannot run offline.
     private func overlaidLocked(_ snapshot: [CKRecord]?) -> [CKRecord]? {
         guard let snapshot else { return nil }
-        // The net effect on a record is its last queued op: a later save replaces
-        // it, a later delete drops it, and a recreate after a delete brings it
-        // back — read-your-updates, tombstones included.
         var lastOp: [CKRecord.ID: PendingWrite] = [:]
         for op in pending { lastOp[op.recordID] = op }
         return snapshot.compactMap { record in
@@ -654,9 +560,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    // Continuation pages are never cached as snapshots — the cursor is opaque
-    // and a partial snapshot would truncate offline reads — but their full
-    // records still refresh the merge baselines.
     public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
@@ -701,11 +604,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    // A queued save must outlive the write that staged its assets: the caller
-    // is told the save succeeded and retires the staged files. Queue a copy
-    // whose assets point at private duplicates in the staging directory —
-    // the flush retires those once the record lands, and `sweepStagedAssets`
-    // eventually collects the copies of writes that never do.
     private static func retainingStagedAssets(_ record: CKRecord) -> CKRecord {
         let staged = record.allKeys().filter { (record[$0] as? CKAsset)?.fileURL.map(EntityCoder.isStaged) == true }
         guard staged.count > 0 else { return record }
@@ -719,8 +617,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         return copy
     }
 
-    // A conditional save compares against the server; offline there is nothing to
-    // compare with, so the failure propagates instead of queueing.
     public func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
         try await backing.saveIfUnchanged(records)
     }
@@ -758,8 +654,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         let records = try await backing.fetchRecords(ids: ids)
         guard records.count > 0 else { return records }
         lock.withLock {
-            // Whole records straight from the server: exactly what a merge
-            // baseline is, like the single-record fetch above.
             for record in records {
                 baselines[record.recordID] = record
                 touchBaselineLocked(record.recordID)

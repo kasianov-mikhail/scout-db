@@ -141,9 +141,6 @@ extension CloudDatabase {
         }
     }
 
-    // The CAS counterpart of `write(records:)`: attempts every record under the
-    // if-unchanged policy and returns the winning server records of the saves that
-    // lost their race; any failure that is not a lost race throws.
     func writeIfUnchanged(records: [CKRecord]) async throws -> [CKRecord] {
         var conflicts: [CKRecord] = []
         for chunk in records.chunked(into: Self.maxBatchSize) {
@@ -164,15 +161,6 @@ extension CloudDatabase {
     }
 }
 
-// Routes every real CloudKit call through a bounded operation configuration,
-// a backstop timeout, and rate-limit retries; the in-memory test double
-// bypasses all of that since it never talks to the network.
-//
-// The conformance bodies must never spell a call that matches a CloudDatabase
-// requirement's own signature: within this module such a call resolves back to
-// the conformance itself, not to CloudKit, and the resulting recursion never
-// reaches the server. Each body goes through a CloudKit API whose shape
-// differs from the requirement it implements.
 extension CKDatabase: CloudDatabase {
     public func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
@@ -183,10 +171,6 @@ extension CKDatabase: CloudDatabase {
                 return (results, cursor.map(QueryCursor.cloudKit))
             }
         } catch let error as CKError where error.code == .unknownItem {
-            // A record type nobody has written yet does not exist server-side and
-            // its query throws, unlike a written-then-emptied one. ScoutDB's
-            // record types are fixed internal names, so the miss can only mean
-            // "no rows yet" — the answer an empty type would give.
             return ([], nil)
         }
     }
@@ -194,8 +178,6 @@ extension CKDatabase: CloudDatabase {
     public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        // An offset cursor can only come from a test double; feeding it back into
-        // real CloudKit is a caller bug.
         guard case .cloudKit(let cursor) = cursor else { throw CKError(.invalidArguments) }
         return try await throttled { database in
             let (results, next): (matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?) =
@@ -217,10 +199,6 @@ extension CKDatabase: CloudDatabase {
                 }
                 return try result.get()
             } catch let error as CKError where error.code == .partialFailure {
-                // An atomic batch surfaces a per-record conflict as `partialFailure`
-                // with the real cause (a `.serverRecordChanged`) buried per item and
-                // never reaches `saveResults`. Unwrap it so `write(record:)` can
-                // normalize a lost compare-and-swap race into `RecordConflictError`.
                 guard let perItem = error.userInfo[CKPartialErrorsByItemIDKey] as? [CKRecord.ID: any Error],
                     let cause = perItem[record.recordID]
                 else {
@@ -279,9 +257,6 @@ extension CKDatabase: CloudDatabase {
                 do {
                     return try result.get()
                 } catch let error as CKError where error.code == .unknownItem {
-                    // The caller asked about a record the server does not have,
-                    // which is an absence, not a failure — the same answer
-                    // `fetchRecord(id:)` gives for a missing record.
                     return nil
                 }
             }
@@ -296,8 +271,6 @@ extension CKDatabase: CloudDatabase {
             return unarchived
         }
         return try await throttled { database in
-            // The operation reports through callbacks on its own queue, one at a
-            // time; the box only bridges that serial stream into the continuation.
             final class Collector: @unchecked Sendable {
                 var changed: [CKRecordZone.ID] = []
                 var deleted: [CKRecordZone.ID] = []
@@ -350,8 +323,6 @@ extension CKDatabase: CloudDatabase {
                 configuration.resultsLimit = resultsLimit
             }
 
-            // The operation reports through callbacks on its own queue, one at a
-            // time; the box only bridges that serial stream into the continuation.
             final class Collector: @unchecked Sendable {
                 var changed: [CKRecord] = []
                 var deleted: [CKRecord.ID] = []
@@ -362,18 +333,12 @@ extension CKDatabase: CloudDatabase {
 
             return try await withCheckedThrowingContinuation { continuation in
                 let operation = CKFetchRecordZoneChangesOperation(recordZoneIDs: [zoneID], configurationsByRecordZoneID: [zoneID: configuration])
-                // A limited pass returns one batch with its intermediate token
-                // instead of chasing moreComing to the end of the feed.
                 operation.fetchAllChanges = resultsLimit == nil
                 operation.recordWasChangedBlock = { _, result in
                     switch result {
                     case .success(let record):
                         collector.changed.append(record)
                     case .failure(let error):
-                        // A changed record that fails to materialize must not be
-                        // dropped while the token advances past it — that loses the
-                        // change silently and forever. Surface the failure so the
-                        // pass throws and its token is never committed.
                         if collector.failure == nil { collector.failure = error }
                     }
                 }
@@ -415,9 +380,6 @@ extension CKDatabase: CloudDatabase {
 
     public func subscriptions() async throws -> [CKSubscription] {
         try await throttled { database in
-            // Fetching by an empty ID list returns nothing, so the conformance goes
-            // through the all-subscriptions operation; its shape differs from the
-            // requirement, keeping the call out of the conformance itself.
             try await withCheckedThrowingContinuation { continuation in
                 database.fetchAllSubscriptions { subscriptions, error in
                     if let error {

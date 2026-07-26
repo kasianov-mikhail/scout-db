@@ -17,14 +17,6 @@ enum UniqueClaim {
 }
 
 extension EntityStore {
-    /// Wins a claim record for every enforced-key value of the batch, or throws
-    /// `duplicateKey` when another live record already holds one.
-    ///
-    /// The claim create is a conditional save, so of two racing writers exactly
-    /// one wins. A claim whose recorded owner no longer holds the value live —
-    /// an orphan of a crashed write or an unreleased re-key — is adopted
-    /// instead of rejected.
-    ///
     func claimUniqueKeys(of records: [EntityRecord], using definition: EntityDefinition) async throws {
         try await claimKeys(definition.enforcedKeys ?? [], of: records, using: definition)
         try await claimExclusivity(of: records, using: definition)
@@ -45,10 +37,6 @@ extension EntityStore {
         }
     }
 
-    /// Wins a claim for every exclusive-reference value of the batch, the way
-    /// enforced keys are claimed — the create is conditional, so of two racing
-    /// suitors exactly one wins the one-to-one link.
-    ///
     func claimExclusivity(of records: [EntityRecord], using definition: EntityDefinition, fields: [FieldDefinition]? = nil) async throws {
         for field in fields ?? Self.exclusiveFields(of: definition) {
             let key = [field.name]
@@ -144,11 +132,6 @@ extension EntityStore {
         return Self.keyDigest(key, in: decoded.values) == digest
     }
 
-    /// Releases the claims the records hold.
-    ///
-    /// Their key values free up for new writers. Best-effort: a claim that
-    /// stays behind is adopted by the next writer of the value through the
-    /// liveness check.
     func releaseUniqueClaims(of records: [EntityRecord], using definition: EntityDefinition) async {
         let keys = (definition.enforcedKeys ?? []) + Self.exclusiveFields(of: definition).map { [$0.name] }
         guard !keys.isEmpty, records.count > 0 else { return }
@@ -166,9 +149,6 @@ extension EntityStore {
         try? await database.modifyRecords(saving: [], deleting: mine)
     }
 
-    /// Releases the claims a re-key left behind: for each key whose value moved,
-    /// the previous value's claim frees up while the new value's claim — just
-    /// won by the caller — stays.
     func releaseStaleClaims(for keys: [[String]], from previous: EntityRecord, to next: EntityRecord, using definition: EntityDefinition) async {
         var owners: [CKRecord.ID: String] = [:]
         for key in keys {
@@ -182,11 +162,6 @@ extension EntityStore {
         try? await database.modifyRecords(saving: [], deleting: mine)
     }
 
-    // Rejects a write that would give a unique key the same values as another
-    // live record — one lookup per key per incoming record. Client-side and
-    // best-effort like the reference checks: the lookup and the write are
-    // separate round trips, so two simultaneous writers can still slip past
-    // each other. Records missing any of the key's fields are exempt.
     func validateUniqueKeys(of records: [EntityRecord], using definition: EntityDefinition) async throws {
         for key in definition.uniqueKeys ?? [] {
             var claims: [String: String] = [:]
@@ -205,21 +180,11 @@ extension EntityStore {
         }
     }
 
-    // The live records that could already hold one of the batch's key values.
-    //
-    // A holder of a claimed digest necessarily matches the batch on every field
-    // of the key, so narrowing on one of them — a membership test the server can
-    // run — keeps the read to a handful of requests for the whole batch instead
-    // of one per record. The exact digests are compared by the caller, since the
-    // narrowed set is a superset.
     private func keyHolders(_ key: [String], of records: [EntityRecord], using definition: EntityDefinition) async throws -> [EntityRecord] {
         let probe = key.first { field in
             guard case .slot? = definition.field(named: field, at: definition.version)?.storage else { return false }
             return true
         }
-        // Without a slot-backed field there is nothing the server can narrow on,
-        // so the batch costs one scan of the entity — still one read rather than
-        // one per record.
         let values = probe.map { field in records.compactMap { $0.values[field] } } ?? []
         guard let probe, Self.membership(of: values) != nil else {
             return try await read(entity: definition.entity, fields: key)
@@ -232,9 +197,6 @@ extension EntityStore {
         return holders
     }
 
-    // The values as a single list value, for an `in` filter — nil when they do
-    // not share one kind the server can compare, which sends the caller down
-    // its unnarrowed path.
     static func membership(of values: [RecordValue]) -> RecordValue? {
         switch values.first {
         case .string:
@@ -266,7 +228,6 @@ extension EntityStore {
         }
     }
 
-    // The key's canonical value tuple, or nil when the record misses a field.
     private static func keyDigest(_ key: [String], in values: [String: RecordValue]) -> String? {
         var parts: [String] = []
         for field in key {

@@ -83,8 +83,6 @@ extension EntityStore {
             }
             return AggregateRow(group: group, period: period, count: count, value: value, squares: squares)
         }
-        // A sharded view stores one slot as several records; they fold back into
-        // the one row the caller expects.
         return Dictionary(grouping: rows) { "\($0.period.millisecondsSince1970)|\($0.group)" }.values.map { shards -> AggregateRow in
             shards.dropFirst().reduce(shards[0]) { merged, shard in
                 let values = [merged.value, shard.value].compactMap { $0 }
@@ -119,7 +117,6 @@ extension EntityStore {
                 points.append(AggregateSeriesPoint(group: group, date: Self.cellDate(bucket, period: period, index: index), count: count, value: value))
             }
         }
-        // A sharded view yields one point per shard record; fold them per cell.
         return Dictionary(grouping: points) { "\($0.date.millisecondsSince1970)|\($0.group)" }.values.map { shards -> AggregateSeriesPoint in
             shards.dropFirst().reduce(shards[0]) { merged, shard in
                 let values = [merged.value, shard.value].compactMap { $0 }

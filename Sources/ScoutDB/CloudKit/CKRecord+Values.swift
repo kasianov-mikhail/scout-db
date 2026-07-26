@@ -40,10 +40,6 @@ extension RecordValue {
         case let value as [Date]:
             self = .dates(value)
         case let value as [NSNumber]:
-            // Mirror the scalar path below: an all-integer bridge to [Int64]
-            // would also swallow a whole-number double array (CloudKit returns
-            // numeric lists as [NSNumber]), so decide by element type instead of
-            // relying on cast order.
             if value.contains(where: { CFNumberIsFloatType($0) }) {
                 self = .doubles(value.map(\.doubleValue))
             } else {
@@ -101,8 +97,6 @@ extension RecordValue {
     }
 }
 
-// CloudKit sets the system fields server-side and exposes them read-only, so the
-// store reads them through these accessors and tests inject values underneath.
 private nonisolated(unsafe) var modificationDateKey: UInt8 = 0
 private nonisolated(unsafe) var creatorKey: UInt8 = 0
 private nonisolated(unsafe) var changeTagKey: UInt8 = 0

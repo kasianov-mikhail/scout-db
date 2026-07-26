@@ -73,10 +73,6 @@ public struct EntityMacro: ExtensionMacro {
         let opaque: Bool
     }
 
-    // The struct's stored properties, each mapped to its schema field: the
-    // `@Field` override when given, the snake_cased property name otherwise.
-    // `@Transient` and computed properties stay out; a participating property
-    // must be optional — a record is free to miss any field.
     private static func storedFields(of declaration: StructDeclSyntax) throws -> [Field] {
         var fields: [Field] = []
         for member in declaration.memberBlock.members {
@@ -103,14 +99,9 @@ public struct EntityMacro: ExtensionMacro {
         return fields
     }
 
-    // Whether a binding is a stored property. A bare binding is stored; a
-    // computed one (a `{ expr }` getter, or an accessor block with get/set) is
-    // not. A property with only observers (didSet/willSet) is still stored, so
-    // it must not be mistaken for computed and dropped from the schema mapping.
     private static func isStored(_ binding: PatternBindingSyntax) -> Bool {
         guard let accessorBlock = binding.accessorBlock else { return true }
         guard case .accessors(let accessors) = accessorBlock.accessors else {
-            // A `{ expr }` shorthand getter is computed.
             return false
         }
         return accessors.allSatisfy { accessor in

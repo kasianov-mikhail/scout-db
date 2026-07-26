@@ -25,8 +25,6 @@ struct SyncCoalescingTests {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
         let coordinator = SyncCoordinator(store: store)
 
-        // Hold the first pass open at the zone fetch, then raise a burst: every
-        // caller that arrives while it runs must share one trailing pass.
         let first = Task { try await coordinator.sync() }
         await gated.gate.awaitArrival()
         let burst = (0..<4).map { _ in Task { try await coordinator.sync() } }
@@ -35,13 +33,10 @@ struct SyncCoalescingTests {
 
         #expect(try await first.value.records.map(\.uuid) == ["p-1"])
         for task in burst {
-            // The shared trailing pass ran after the first advanced the token,
-            // so the burst sees an empty delta rather than p-1 five times over.
             #expect(try await task.value.records.isEmpty)
         }
         #expect(await gated.gate.calls == 2)
 
-        // Sequential syncs stay uncoalesced — each request its own pass.
         _ = try await coordinator.sync()
         #expect(await gated.gate.calls == 3)
     }
@@ -56,12 +51,9 @@ struct SyncCoalescingTests {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
 
-        // A peer wrote p-2 under a schema newer than this device knows.
         let stale = try #require(database.records.first { $0.recordType == "Entity" && ($0["uuid"] as? String) == "p-2" })
         stale["schema_version"] = Int64(9999)
 
-        // The pass skips the undecodable record and still delivers the good one,
-        // instead of throwing and stalling the whole zone behind p-2.
         let delta = try await store.zoneChanges()
         #expect(delta.records.map(\.uuid) == ["p-1"])
     }
@@ -86,16 +78,13 @@ struct SyncLifecycleTests {
         coordinator.start(every: .milliseconds(20)) { delta in
             seen.add(delta.records.map(\.uuid))
         }
-        coordinator.start(every: .milliseconds(20))  // idempotent: no second runner
+        coordinator.start(every: .milliseconds(20))
         #expect(coordinator.isRunning)
 
-        // The immediate first pass delivers p-1; a later write reaches a
-        // periodic pass without any push.
         try await poll { seen.uuids.contains("p-1") }
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
         try await poll { seen.uuids.contains("p-2") }
 
-        // After stop, the pass counter settles for good.
         coordinator.stop()
         #expect(!coordinator.isRunning)
         try? await Task.sleep(for: .milliseconds(60))
@@ -132,15 +121,12 @@ struct SyncLifecycleTests {
             try await store.write(makePurchase().values, entity: "purchase", uuid: "p-\(index)")
         }
 
-        // Progress ticks with the running count after every batch; the caller
-        // still receives the whole pass as one delta.
         let counts = Seen()
         let coordinator = SyncCoordinator(store: store, batchSize: 2, onProgress: { counts.add(["\($0)"]) })
         let delta = try await coordinator.sync()
         #expect(delta.records.count == 5)
         #expect(counts.uuids == ["2", "4", "5"])
 
-        // The next pass starts from the combined token: nothing new, no ticks.
         #expect(try await coordinator.sync().records.isEmpty)
         #expect(counts.uuids == ["2", "4", "5"])
     }
@@ -159,9 +145,6 @@ struct SyncLifecycleTests {
             store: store, cache: cache,
             onError: { errors.add([($0 as? CKError)?.code == .notAuthenticated ? "auth" : String(describing: type(of: $0))]) })
 
-        // Queue an offline write whose server copy moves in an overlapping way:
-        // the pass's flush conflicts, sync() itself still succeeds — the only
-        // trace of the conflict is the onError report.
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
         _ = try await store.read(entity: "purchase")
         database.writeErrors = [CKError(.networkFailure)]
@@ -175,7 +158,6 @@ struct SyncLifecycleTests {
         _ = try await coordinator.sync()
         #expect(errors.uuids.contains("OfflineFlushError"))
 
-        // A periodic pass that fails between ticks reports instead of vanishing.
         database.errors = [CKError(.notAuthenticated)]
         coordinator.start(every: .milliseconds(20))
         try await poll { errors.uuids.contains("auth") }
@@ -191,7 +173,6 @@ struct SyncLifecycleTests {
     }
 }
 
-// Collects the uuids periodic deltas delivered, from any thread.
 private final class Seen: @unchecked Sendable {
     private let lock = NSLock()
     private var collected: Set<String> = []
@@ -205,8 +186,6 @@ private final class Seen: @unchecked Sendable {
     }
 }
 
-// Forwards everything to the in-memory double, but parks zone-delta fetches
-// behind a gate so a test can hold a sync pass open and count the passes.
 private final class GatedDatabase: CloudDatabase, @unchecked Sendable {
     let backing: InMemoryDatabase
     let gate = Gate()
@@ -271,8 +250,6 @@ private final class GatedDatabase: CloudDatabase, @unchecked Sendable {
     }
 }
 
-// A one-way gate: calls park in `pass()` until `open()`, and a test can wait
-// for the first arrival to know a pass is parked.
 private actor Gate {
     private(set) var calls = 0
     private var isOpen = false

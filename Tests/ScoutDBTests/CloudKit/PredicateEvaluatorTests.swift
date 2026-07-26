@@ -14,16 +14,12 @@ import Testing
 struct PredicateEvaluatorTests {
     @Test("A missing field stays excluded under NOT, directly and inside a compound")
     func missingFieldUnderNot() {
-        // `b` is absent on the record, so a leaf comparing it is unknown.
         let record = CKRecord(recordType: "Entity", recordID: CKRecord.ID(recordName: "r"))
         let leaf = NSPredicate(format: "b == %d", 1)
 
-        // Directly under NOT: excluded (the caller keeps only `== true`).
         let notLeaf = NSCompoundPredicate(notPredicateWithSubpredicate: leaf)
         #expect(PredicateEvaluator.evaluate(notLeaf, record: record) != true)
 
-        // The same leaf wrapped in an AND must agree: collapsing the unknown to
-        // a concrete Bool would let this NOT flip it to a match.
         let compound = NSCompoundPredicate(andPredicateWithSubpredicates: [NSPredicate(value: true), leaf])
         let notCompound = NSCompoundPredicate(notPredicateWithSubpredicate: compound)
         #expect(PredicateEvaluator.evaluate(notCompound, record: record) != true)

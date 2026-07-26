@@ -111,8 +111,6 @@ struct PaginationTests {
             try await store.write(values, entity: "purchase", uuid: "p-\(index)")
         }
 
-        // `contains` on a payload field is a client-side matcher, so each 2-record server
-        // page yields one survivor and the bounded read has to follow the cursor.
         let filter = EntityStore.Filter(field: "comment", op: .contains, value: .string("gif"))
         let records = try await store.read(entity: "purchase", filters: [filter], sort: [EntityStore.Sort(field: "date")], limit: 2)
         #expect(records.map(\.uuid) == ["p-0", "p-2"])

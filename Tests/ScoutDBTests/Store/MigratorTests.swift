@@ -68,7 +68,6 @@ struct MigratorTests {
         #expect(records.first?.values["handle"] == .string("dana"))
         #expect(records.first?.values["user"] == nil)
 
-        // A plain backfill would have dropped the value: the slots differ.
         await #expect(throws: SchemaError.unknownField("ghost")) {
             try await migrator.rename(entity: "member", from: "user", to: "ghost")
         }
@@ -112,24 +111,18 @@ struct MigratorTests {
         let rotated = try await rotating.rotateKey(entity: "account", to: "k2")
         #expect(rotated == 1)
 
-        // The definition now names the new key, the ciphertext changed, and a
-        // provider-backed store still reads the plaintext.
         #expect(try await registry.definition(for: "account").keyID == "k2")
         let resealed = try #require(database.records.first { $0.recordType == "Entity" }?["payload"] as? Data)
         #expect(resealed != sealed)
         let reread = try #require(try await store.read(entity: "account").first)
         #expect(reread.values["email"] == .string("alice@example.com"))
 
-        // An interrupted run repeats safely: with the old-key definition still
-        // around, the fallback decode picks up records already sealed under the
-        // new key and re-seals them.
         var stale = try await registry.definition(for: "account")
         stale.keyID = "k1"
         try await registry.register(stale)
         #expect(try await rotating.rotateKey(entity: "account", to: "k2") == 1)
         #expect(try await store.read(entity: "account").first?.values["email"] == .string("alice@example.com"))
 
-        // Rotating to the key already in place is a caller error.
         await #expect(throws: SchemaError.missingKey("k2")) {
             try await rotating.rotateKey(entity: "account", to: "k2")
         }
@@ -143,7 +136,6 @@ struct MigratorTests {
         try await secure.write(["email": .string("alice@example.com"), "status": .string("new")], entity: "account", uuid: "a-1")
 
         try await registry.publish(makeSecureRenameDefinition(version: 2))
-        // `migrator` has no key provider, so it reads the encrypted field back as nil.
         let migrated = try await migrator.backfill(entity: "account")
         #expect(migrated == 1)
 

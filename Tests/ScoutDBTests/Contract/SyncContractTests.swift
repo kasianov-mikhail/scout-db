@@ -10,7 +10,6 @@ import Foundation
 import ScoutDB
 import Testing
 
-/// The zone, delta-sync, and concurrency behaviors of the `CloudDatabase` seam.
 @Suite("Contract: sync")
 struct SyncContractTests {
     @Test("Zones isolate records of the same entity")
@@ -27,8 +26,6 @@ struct SyncContractTests {
             try await eventually { try await f.store.read(entity: entity).map(\.uuid) == ["z-a"] }
             try await eventually { try await sibling.read(entity: entity).map(\.uuid) == ["z-b"] }
 
-            // Best-effort: a failed assertion above leaks the sibling zone, but
-            // the run-salted name keeps it inert either way.
             if let database = f.database as? CKDatabase {
                 _ = try? await database.modifyRecordZones(saving: [], deleting: [siblingZone])
             }
@@ -46,9 +43,6 @@ struct SyncContractTests {
             #expect(Set(initial.records.map(\.uuid)) == ["zc-1", "zc-2"])
             #expect(initial.token != nil)
 
-            // A ScoutDB delete is a tombstone rewrite, so it arrives in the
-            // incremental delta as a changed record with `deleted` set — and
-            // the untouched record stays out of the delta entirely.
             try await f.store.delete(entity: entity, uuid: "zc-1")
             let delta = try await f.store.zoneChanges(since: initial.token)
             #expect(delta.records.map(\.uuid) == ["zc-1"])
@@ -69,7 +63,6 @@ struct SyncContractTests {
                 return initial.changed.contains(f.zoneID)
             }
 
-            // Quiet zones stay out of the incremental feed until they move again.
             try await f.store.write(orderValues(), entity: entity, uuid: "zd-2")
             try await eventually {
                 try await f.database.databaseChanges(since: token).changed.contains(f.zoneID)
@@ -85,8 +78,6 @@ struct SyncContractTests {
                 try await f.store.write(orderValues(), entity: entity, uuid: "bz-\(index)")
             }
 
-            // The walk drains the feed in several small batches; each one
-            // carries a token the next incremental pass can start from.
             var uuids: [String] = []
             var batches = 0
             var last: Data?
@@ -98,7 +89,6 @@ struct SyncContractTests {
             #expect(Set(uuids) == ["bz-0", "bz-1", "bz-2", "bz-3", "bz-4"])
             #expect(batches >= 2)
 
-            // The combined walk left nothing behind.
             let after = try await f.store.zoneChanges(since: last)
             #expect(after.records.isEmpty)
         }
@@ -116,7 +106,6 @@ struct SyncContractTests {
             #expect(record.values["product"] == nil)
             #expect(record.values["note"] == nil)
 
-            // The unprojected pass still carries everything.
             let full = try await f.store.zoneChanges()
             #expect(try #require(full.records.first { $0.uuid == "pz-1" }).values["product"] == .string("sku-9"))
         }
@@ -134,9 +123,6 @@ struct SyncContractTests {
         }
     }
 
-    // A real network cannot be unplugged from a test, so reads fail through a
-    // wrapper while the feed stays reachable — the replica must then answer
-    // exactly what the server answered before the plug was pulled.
     @Test("A refreshed replica answers reads the server would")
     func replicaServesUnpluggedReads() async throws {
         try await withContract { f in
@@ -152,7 +138,6 @@ struct SyncContractTests {
                 return replica.recordCount >= 3
             }
 
-            // Filters, sorts, and projections all run against the mirror.
             let offline = EntityStore(database: replica, registry: f.registry, zoneID: f.zoneID)
             let filtered = try await offline.read(entity: entity, filters: [.init(field: "quantity", op: .greaterThan, value: .int(1))])
             #expect(Set(filtered.map(\.uuid)) == ["r-0", "r-2"])
@@ -162,8 +147,6 @@ struct SyncContractTests {
         }
     }
 
-    // Both backends compare change tags: the double stamps a fresh tag on
-    // every landed save, so a stale copy conflicts exactly like on the server.
     @Test("A stale conditional save loses to the server copy")
     func staleConditionalSave() async throws {
         try await withContract { f in
@@ -191,9 +174,6 @@ struct SyncContractTests {
     }
 }
 
-// Fails every query the way a dropped network would, while writes and the
-// change feed stay reachable — the harness for exercising the replica's
-// offline reads against a live container.
 private final class UnpluggedReads: CloudDatabase, @unchecked Sendable {
     let backing: any CloudDatabase
 

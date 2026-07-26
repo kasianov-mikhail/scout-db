@@ -12,22 +12,14 @@ struct GridAggregator {
     let database: any CloudDatabase
     let maxRetry = 3
 
-    // Adds the batch's contributions to the views: every write increments its cells.
     func record(_ batch: [EntityRecord], using definition: EntityDefinition) async throws {
         try await rebalance(removing: [], adding: batch, using: definition)
     }
 
-    // Removes the batch's contributions when records are deleted or updated. Count, sum,
-    // stats (Σx, Σx²) and histogram cells reverse exactly; a min/max extremum cannot be
-    // un-applied without rescanning, so its value cell is left untouched (best-effort) even
-    // though its count still decrements. See docs/aggregation.md.
     func remove(_ batch: [EntityRecord], using definition: EntityDefinition) async throws {
         try await rebalance(removing: batch, adding: [], using: definition)
     }
 
-    // Rebalances an update in one pass: the removed and the added contributions fold
-    // into a single delta map, so each touched grid record still costs one lookup and
-    // one write, and cells whose deltas cancel out skip the network entirely.
     func rebalance(removing old: [EntityRecord], adding new: [EntityRecord], using definition: EntityDefinition) async throws {
         var merged = deltas(for: old, using: definition, adding: false)
         for (slot, cells) in deltas(for: new, using: definition, adding: true) {
@@ -42,9 +34,6 @@ struct GridAggregator {
             })
     }
 
-    // Folds two deltas of one cell together. The value halves always carry the same
-    // view's metric kind, and a removal only sets a value for `sum` — so `combine`
-    // is the right merge for every kind.
     private static func merge(_ lhs: CellDelta, _ rhs: CellDelta) -> CellDelta {
         var merged = lhs
         merged.count += rhs.count
@@ -57,15 +46,11 @@ struct GridAggregator {
         return merged
     }
 
-    // Folds the whole batch into per-cell deltas first, so each touched grid record costs
-    // one lookup and one write no matter how many records feed it. `adding` flips every
-    // reversible delta's sign; a min/max value only accumulates when adding.
     private func deltas(for batch: [EntityRecord], using definition: EntityDefinition, adding: Bool) -> [GridSlot: [Int: CellDelta]] {
         let sign: Int64 = adding ? 1 : -1
         var deltas: [GridSlot: [Int: CellDelta]] = [:]
 
         for entityRecord in batch where entityRecord.deleted == false {
-            // A lifetime view needs no envelope date; every other bucket does.
             var envelope: Date?
             if let dateField = definition.envelopeDate, case .date(let date)? = entityRecord.values[dateField] {
                 envelope = date
@@ -106,8 +91,6 @@ struct GridAggregator {
         return deltas
     }
 
-    // Touched grid slots are distinct records, so their read-modify-write cycles run
-    // concurrently; the shared request limiter still bounds the actual CloudKit fan-out.
     private func apply(_ deltas: [GridSlot: [Int: CellDelta]]) async throws {
         try await withThrowingTaskGroup(of: Void.self) { group in
             for (slot, cells) in deltas {
@@ -125,8 +108,6 @@ struct GridAggregator {
         let shard: Int?
     }
 
-    // A record's shard must be stable across launches, so a later removal
-    // cancels the very cells its write incremented.
     static func shard(of uuid: String, among count: Int) -> Int {
         Int(uuid.utf8.reduce(UInt64(0)) { $0 &* 31 &+ UInt64($1) } % UInt64(count))
     }
@@ -136,9 +117,6 @@ struct GridAggregator {
         var value: (kind: AggregateView.Metric, total: Double)?
         var squares: Double?
 
-        // True when applying the delta cannot change the grid record: counts and
-        // squares cancelled out and the value is absent or a zero sum. A min/max
-        // value always applies — combining an extremum is never a no-op.
         var isNoop: Bool {
             count == 0 && (squares ?? 0) == 0 && (value.map { $0.kind == .sum && $0.total == 0 } ?? true)
         }
@@ -154,14 +132,10 @@ struct GridAggregator {
         case .day:
             return (EntityCoder.periodStart(of: .month, for: date), calendar.component(.day, from: date) - 1)
         case .lifetime:
-            // One period for everything: a single grid record per group holds
-            // the running total.
             return (Date(timeIntervalSince1970: 0), 0)
         }
     }
 
-    // A stats view keeps the running sum in f_index and the sum of squares in
-    // f_(index + 32); time buckets never exceed index 30, so the halves cannot clash.
     private func apply(_ cells: [Int: CellDelta], to slot: GridSlot) async throws {
         var record = try await lookup(entity: slot.entity, view: slot.view, group: slot.group, day: slot.day, shard: slot.shard)
 
@@ -194,16 +168,9 @@ struct GridAggregator {
             components.append("shard-\(shard)")
         }
         let recordID = CKRecord.ID(recordName: "grid-" + contentDigest(of: components))
-        // The name is derived from the slot itself, so the record is addressable
-        // without a query — and a fetch sees a slot created moments ago, which the
-        // query index need not yet reflect. A miss there costs the write a retry
-        // against the record it failed to see.
         if let existing = try await database.fetchRecord(id: recordID) {
             return existing
         }
-        // A sharded slot never adopts by query: its sibling shards carry the very
-        // same envelope fields, so the legacy lookup below would fold this shard
-        // into one of them.
         if shard != nil {
             let record = CKRecord(recordType: Aggregate.recordType, recordID: recordID)
             record["entity"] = entity
@@ -213,10 +180,6 @@ struct GridAggregator {
             return record
         }
 
-        // A slot whose group holds a separator character was named before the
-        // digest escaped them, so its record carries a different name. Only a
-        // query finds it, and adopting it is what keeps its running totals from
-        // being stranded behind a fresh, empty slot.
         let query = ckQuery(
             Aggregate.recordType,
             filters: [
@@ -241,15 +204,9 @@ struct GridAggregator {
 enum Aggregate {
     static let recordType = "Aggregate"
 
-    // Grid layout: 64 cells per record. Time buckets never exceed index 30 and a
-    // stats view keeps its sum of squares `squareOffset` cells above its value, so
-    // the two halves cannot clash.
     static let cellCount = 64
     static let squareOffset = 32
 
-    // Per-cell field names. Count cells hold occurrence counts; value cells hold the
-    // metric total. Precomputed once — analytics reads touch them up to 128 times
-    // per grid record.
     private static let countCells = (0..<cellCount).map { String(format: "c_%02d", $0) }
     private static let valueCells = (0..<cellCount).map { String(format: "f_%02d", $0) }
 
