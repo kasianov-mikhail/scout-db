@@ -783,6 +783,29 @@ struct OperationsTests {
         #expect(try await store.history(entity: "purchase", uuid: "p-2").isEmpty)
     }
 
+    @Test("Compaction trims the revision log to a window, by entity or across all")
+    func compactRevisions() async throws {
+        try await registry.publish(EntityStore.revisionDefinition)
+        var audited = makePurchaseDefinition()
+        audited.audited = true
+        try await registry.publish(audited)
+
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.update(entity: "purchase", uuid: "p-1") { record in
+            record.values["quantity"] = .int(9)
+        }
+        let horizon = Date()
+        try await store.update(entity: "purchase", uuid: "p-1") { record in
+            record.values["quantity"] = .int(11)
+        }
+
+        #expect(try await store.compactRevisions(olderThan: horizon, of: "invoice") == 0)
+        #expect(try await store.compactRevisions(olderThan: horizon) == 1)
+        #expect(try await store.history(entity: "purchase", uuid: "p-1").map { $0.values["quantity"] } == [.int(9)])
+        #expect(try await store.compactRevisions(olderThan: Date().addingTimeInterval(60)) == 1)
+        #expect(try await store.history(entity: "purchase", uuid: "p-1").isEmpty)
+    }
+
     @Test("Revisions sharing a millisecond order deterministically by revision id")
     func revisionTieBreak() async throws {
         try await registry.publish(EntityStore.revisionDefinition)
@@ -1145,6 +1168,25 @@ struct OperationsTests {
         #expect(records.allSatisfy { $0.values["quantity"] == .int(99) })
     }
 
+    @Test("A batched update patches every named record and rejects a missing one")
+    func updateBatch() async throws {
+        for index in 0..<3 {
+            try await store.write(makePurchase().values, entity: "purchase", uuid: "p-\(index)")
+        }
+
+        try await store.update(entity: "purchase", uuids: ["p-0", "p-2", "p-0"]) { record in
+            record.values["quantity"] = .int(record.uuid == "p-2" ? 20 : 10)
+        }
+        #expect(try await store.fetch(entity: "purchase", uuids: ["p-0", "p-1", "p-2"]).map { $0.values["quantity"] } == [.int(10), .int(3), .int(20)])
+
+        await #expect(throws: SchemaError.notFound("ghost")) {
+            try await store.update(entity: "purchase", uuids: ["p-1", "ghost"]) { record in
+                record.values["quantity"] = .int(99)
+            }
+        }
+        #expect(try await store.fetch(entity: "purchase", uuids: ["p-1"]).first?.values["quantity"] == .int(3))
+    }
+
     @Test("deleteAll tombstones every matching record")
     func deleteAll() async throws {
         try await store.write(makePurchase(uuid: "p-1").values, entity: "purchase", uuid: "p-1")
@@ -1242,6 +1284,54 @@ struct OperationsTests {
         let pending = try await store.read(
             entity: EntityStore.transactionEntity, filters: [.init(field: "status", op: .equals, value: .string("pending"))])
         #expect(pending.count == 1)
+    }
+
+    @Test("A run of update steps lands as one batch, the last patch of a record winning")
+    func transactionUpdateBatching() async throws {
+        try await registry.publish(EntityStore.transactionDefinition)
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
+
+        try await registry.publish(makeSeatDefinition())
+        try await store.write(["row": .string("a"), "number": .int(1)], entity: "seat", uuid: "s-1")
+
+        try await store.transaction { draft in
+            draft.update(["quantity": .int(1)], entity: "purchase", uuid: "p-1")
+            draft.update(["label": .string("aisle")], entity: "seat", uuid: "s-1")
+            draft.update(["quantity": .int(2)], entity: "purchase", uuid: "p-2")
+            draft.update(["quantity": .int(9), "product_id": .string("sku-9")], entity: "purchase", uuid: "p-1")
+        }
+
+        let patched = try await store.fetch(entity: "purchase", uuids: ["p-1", "p-2"])
+        #expect(patched.map { $0.values["quantity"] } == [.int(9), .int(2)])
+        #expect(patched.first?.values["product_id"] == .string("sku-9"))
+        #expect(try await store.fetch(entity: "seat", uuids: ["s-1"]).first?.values["label"] == .string("aisle"))
+
+        await #expect(throws: SchemaError.notFound("ghost")) {
+            try await store.transaction { draft in
+                draft.update(["quantity": .int(5)], entity: "purchase", uuid: "p-2")
+                draft.update(["quantity": .int(5)], entity: "purchase", uuid: "ghost")
+            }
+        }
+        #expect(try await store.fetch(entity: "purchase", uuids: ["p-2"]).first?.values["quantity"] == .int(2))
+    }
+
+    @Test("Compaction drops committed transaction envelopes and leaves pending ones")
+    func compactTransactions() async throws {
+        try await registry.publish(EntityStore.transactionDefinition)
+        try await store.transaction { draft in
+            draft.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        }
+        let steps = try JSONEncoder().encode([TransactionStep(entity: "purchase", uuid: "p-2", values: makePurchase().values)])
+        try await store.write(
+            ["status": .string("pending"), "date": .date(Date(timeIntervalSince1970: 1_000)), "steps": .bytes(steps)], entity: EntityStore.transactionEntity,
+            uuid: "t-pending")
+
+        #expect(try await store.compactTransactions(olderThan: Date(timeIntervalSince1970: 0)) == 0)
+        #expect(try await store.compactTransactions(olderThan: Date().addingTimeInterval(60)) == 1)
+        #expect(try await store.read(entity: EntityStore.transactionEntity).map(\.uuid) == ["t-pending"])
+        #expect(try await store.repairTransactions() == 1)
+        #expect(try await store.read(entity: "purchase").map(\.uuid).sorted() == ["p-1", "p-2"])
     }
 
     @Test("Steps persisted before deletes existed decode as writes")

@@ -115,6 +115,8 @@ The lifecycle API around them:
 | `delete(entity:uuid:)` | tombstone; values retained |
 | `restore(entity:uuid:)` | lift the tombstone |
 | `compact(entity:olderThan:)` | permanently erase old tombstones |
+| `compactTransactions(olderThan:)` | erase committed transaction envelopes |
+| `compactRevisions(olderThan:of:)` | trim the revision log to a window |
 | `drop(entity:)` | tombstone every record, retire the schema |
 | `reap(entity:asOf:)` | purge TTL-expired records |
 
@@ -148,3 +150,14 @@ try await registry.publish(definition)
 let history = try await store.history(entity: "purchase", uuid: "p-1")
 // each element is the record's state right before an update or delete overwrote it
 ```
+
+The log only grows, and `_rev` records ride every zone sync like any other entity — a device
+syncing for the first time pays for the whole history. Trim it to the window you actually
+answer questions about:
+
+```swift
+try await store.compactRevisions(olderThan: .now.addingTimeInterval(-90 * 24 * 3_600))
+try await store.compactRevisions(olderThan: cutoff, of: "purchase")   // one entity only
+```
+
+Compacted revisions are erased, not tombstoned — they are gone from `history` for good.

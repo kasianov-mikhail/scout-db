@@ -51,6 +51,20 @@ extension EntityStore {
         return victims.count
     }
 
+    /// Physically deletes the entity's live records matching the filters.
+    ///
+    /// The shape behind log compaction: a purged record leaves no tombstone, so
+    /// it stops riding the zone feed instead of shrinking to one.
+    ///
+    func purge(entity: String, filters: [Filter]) async throws -> Int {
+        let victims = try await read(entity: entity, filters: filters, fields: [])
+        let ids = victims.map { CKRecord.ID(recordName: $0.uuid, zoneID: zoneID ?? .default) }
+        for chunk in ids.chunked(into: 400) {
+            try await database.modifyRecords(saving: [], deleting: chunk)
+        }
+        return ids.count
+    }
+
     /// Tombstones every record of the entity, then retires its schema.
     ///
     /// Returns how many records were tombstoned. The tombstones stay behind for

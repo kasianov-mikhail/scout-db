@@ -174,6 +174,30 @@ struct ObservedDatabaseTests {
 }
 
 extension ObservedDatabaseTests {
+    @Test("A transaction's update steps cost the round trips of a single update")
+    func transactionUpdatesBatch() async throws {
+        try await registry.publish(EntityStore.transactionDefinition)
+
+        func calls(patching count: Int, from start: Int) async throws -> Int {
+            for index in start..<(start + count) {
+                try await store.write(makePurchase().values, entity: "purchase", uuid: "p-\(index)")
+            }
+            recorder.reset()
+            try await store.transaction { draft in
+                for index in start..<(start + count) {
+                    draft.update(["quantity": .int(Int64(index))], entity: "purchase", uuid: "p-\(index)")
+                }
+            }
+            return recorder.operations.count
+        }
+
+        _ = try await calls(patching: 1, from: 0)
+        let one = try await calls(patching: 1, from: 10)
+        let many = try await calls(patching: 20, from: 100)
+        #expect(many == one)
+        #expect(try await store.fetch(entity: "purchase", uuids: ["p-119"]).first?.values["quantity"] == .int(119))
+    }
+
     @Test("A capped read escalates its page size instead of one request per scanned record")
     func boundedReadEscalatesPages() async throws {
         for index in 0..<60 {

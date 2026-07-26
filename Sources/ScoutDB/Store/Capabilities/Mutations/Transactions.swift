@@ -94,6 +94,23 @@ extension EntityStore {
         return pending.count
     }
 
+    /// Drops the envelopes of transactions that committed before the cutoff.
+    ///
+    /// A committed envelope is spent bookkeeping — repair only ever replays
+    /// pending ones — but it stays in the zone forever, so a device syncing for
+    /// the first time pays for the whole write history rather than for the data.
+    /// Compact past the horizon where a crashed writer could still call
+    /// `repairTransactions`; pending envelopes are left alone at any age.
+    ///
+    @discardableResult public func compactTransactions(olderThan cutoff: Date) async throws -> Int {
+        try await purge(
+            entity: Self.transactionEntity,
+            filters: [
+                Filter(field: "status", op: .equals, value: .string("committed")),
+                Filter(field: "date", op: .lessThan, value: .date(cutoff)),
+            ])
+    }
+
     private func writeTransaction(status: String, steps: Data, uuid: String) async throws {
         try await write(["status": .string(status), "date": .date(Date()), "steps": .bytes(steps)], entity: Self.transactionEntity, uuid: uuid)
     }
@@ -103,13 +120,30 @@ extension EntityStore {
         while index < steps.count {
             switch steps[index].kind {
             case .update:
-                let step = steps[index]
-                try await update(entity: step.entity, uuid: step.uuid) { record in
-                    for (name, value) in step.values {
-                        record.values[name] = value
+                var order: [String] = []
+                var run: [TransactionStep] = []
+                while index < steps.count, steps[index].kind == .update {
+                    if !order.contains(steps[index].entity) {
+                        order.append(steps[index].entity)
+                    }
+                    run.append(steps[index])
+                    index += 1
+                }
+                for entity in order {
+                    var uuids: [String] = []
+                    var patches: [String: [String: RecordValue]] = [:]
+                    for step in run where step.entity == entity {
+                        if patches[step.uuid] == nil {
+                            uuids.append(step.uuid)
+                        }
+                        patches[step.uuid, default: [:]].merge(step.values) { _, latest in latest }
+                    }
+                    try await update(entity: entity, uuids: uuids) { record in
+                        for (name, value) in patches[record.uuid] ?? [:] {
+                            record.values[name] = value
+                        }
                     }
                 }
-                index += 1
             case .delete:
                 var order: [String] = []
                 var targets: [String: [String]] = [:]

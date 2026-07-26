@@ -137,6 +137,28 @@ struct OfflineCacheTests {
         #expect(try await cache.flush() == 0)
     }
 
+    @Test("A single update queues offline, a batched one refuses")
+    func queuedUpdate() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
+
+        backing.writeErrors = [CKError(.networkFailure)]
+        try await store.update(entity: "purchase", uuid: "p-1") { record in
+            record.values["quantity"] = .int(9)
+        }
+        #expect(cache.pendingWrites == 1)
+        #expect(try await cache.flush() == 1)
+        #expect(try await store.fetch(entity: "purchase", uuids: ["p-1"]).first?.values["quantity"] == .int(9))
+
+        backing.writeErrors = [CKError(.networkFailure)]
+        await #expect(throws: CKError.self) {
+            try await store.update(entity: "purchase", uuids: ["p-1", "p-2"]) { record in
+                record.values["quantity"] = .int(11)
+            }
+        }
+        #expect(cache.pendingWrites == 0)
+    }
+
     @Test("Offline reads see queued updates and deletes of snapshotted records")
     func readYourWrites() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")

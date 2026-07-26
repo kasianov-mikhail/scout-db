@@ -70,9 +70,9 @@ Declare `views` on the definition; every write updates counters so reads never s
 | Projection | `read(entity:filters:fields:)` |
 | Streaming | `stream(entity:filters:pageSize:)` |
 | Query plan | `explain(entity:filters:sort:)` |
-| Batch update | `updateAll(entity:filters:transform:)` |
+| Batch update | `updateAll(entity:filters:transform:)`, `update(entity:uuids:transform:)` |
 | Batch delete | `deleteAll(entity:filters:)` |
-| Transactions | `transaction { $0.write(...) }`, repaired by `repairTransactions(olderThan:)` |
+| Transactions | `transaction { $0.write(...) }`, repaired by `repairTransactions(olderThan:)`, trimmed by `compactTransactions(olderThan:)` |
 
 ## 🪄 Derived transforms
 
