@@ -64,9 +64,13 @@ extension EntityStore {
     /// view's cell resolution — a period the range opens or closes inside of
     /// comes back as a partial row holding only the cells the range covers. A
     /// histogram's cells hold values rather than times, so its range resolves
-    /// no finer than the day its grid is keyed by.
+    /// no finer than the day its grid is keyed by. A `group` narrows the read
+    /// to that group's rows server-side — a single group of a high-cardinality
+    /// view never pages through the other groups' rows.
     ///
-    public func aggregate(entity: String, view viewName: String, from: Date? = nil, to: Date? = nil) async throws -> [AggregateRow] {
+    public func aggregate(entity: String, view viewName: String, group: String? = nil, from: Date? = nil, to: Date? = nil) async throws
+        -> [AggregateRow]
+    {
         let definition = try await registry.definition(for: entity)
         guard let view = definition.view(named: viewName) else {
             throw SchemaError.unknownField(viewName)
@@ -75,7 +79,7 @@ extension EntityStore {
         let isStats = view.stats != nil
         let cells = 0..<(isStats ? Aggregate.squareOffset : Aggregate.cellCount)
         let records = try await gridRecords(
-            entity: entity, view: viewName, from: Self.gridStart(from, of: view), to: to, counts: cells,
+            entity: entity, view: viewName, group: group, from: Self.gridStart(from, of: view), to: to, counts: cells,
             values: kind == nil ? nil : 0..<Aggregate.cellCount)
         let covers = Self.cellFilter(view, from: from, to: to)
 
@@ -113,8 +117,11 @@ extension EntityStore {
     ///
     /// `from` and `to` bound the points by that cell date, so a period the range
     /// opens or closes inside of contributes only the cells the range covers.
+    /// A `group` narrows the read to that group's rows server-side.
     ///
-    public func series(entity: String, view viewName: String, from: Date? = nil, to: Date? = nil) async throws -> [AggregateSeriesPoint] {
+    public func series(entity: String, view viewName: String, group: String? = nil, from: Date? = nil, to: Date? = nil) async throws
+        -> [AggregateSeriesPoint]
+    {
         let definition = try await registry.definition(for: entity)
         guard let view = definition.view(named: viewName) else {
             throw SchemaError.unknownField(viewName)
@@ -127,7 +134,8 @@ extension EntityStore {
         let cells = 0..<(isStats ? Aggregate.squareOffset : Aggregate.cellCount)
 
         let records = try await gridRecords(
-            entity: entity, view: viewName, from: Self.gridStart(from, of: view), to: to, counts: cells, values: kind == nil ? nil : cells)
+            entity: entity, view: viewName, group: group, from: Self.gridStart(from, of: view), to: to, counts: cells,
+            values: kind == nil ? nil : cells)
 
         for record in records {
             guard let period = record["date"] as? Date, let group = record["group_key"] as? String else { continue }
@@ -186,12 +194,15 @@ extension EntityStore {
         }
     }
 
-    public func totals(entity: String, view viewName: String, from: Date? = nil, to: Date? = nil, having: (AggregateTotal) -> Bool = { _ in true }) async throws
+    public func totals(
+        entity: String, view viewName: String, group: String? = nil, from: Date? = nil, to: Date? = nil,
+        having: (AggregateTotal) -> Bool = { _ in true }
+    ) async throws
         -> [AggregateTotal]
     {
         let definition = try await registry.definition(for: entity)
         let kind = definition.view(named: viewName)?.metric?.kind
-        let rows = try await aggregate(entity: entity, view: viewName, from: from, to: to)
+        let rows = try await aggregate(entity: entity, view: viewName, group: group, from: from, to: to)
 
         return Dictionary(grouping: rows, by: \.group).map { group, rows in
             let count = rows.reduce(0) { $0 + $1.count }
@@ -206,16 +217,21 @@ extension EntityStore {
     ///
     /// A histogram's cells hold value buckets rather than times, so `from` and
     /// `to` resolve no finer than the day its grid is keyed by — a bound inside
-    /// a day takes that whole day in.
+    /// a day takes that whole day in. A `group` narrows the read to that
+    /// group's rows server-side.
     ///
-    public func percentile(_ p: Double, entity: String, view viewName: String, from: Date? = nil, to: Date? = nil) async throws -> Double? {
+    public func percentile(_ p: Double, entity: String, view viewName: String, group: String? = nil, from: Date? = nil, to: Date? = nil) async throws
+        -> Double?
+    {
         let definition = try await registry.definition(for: entity)
         guard let view = definition.view(named: viewName), let histogram = view.histogram else {
             throw SchemaError.invalidValue(viewName)
         }
 
         var counts = [Double](repeating: 0, count: histogram.bounds.count + 1)
-        for record in try await gridRecords(entity: entity, view: viewName, from: Self.gridStart(from, of: view), to: to, counts: counts.indices) {
+        for record in try await gridRecords(
+            entity: entity, view: viewName, group: group, from: Self.gridStart(from, of: view), to: to, counts: counts.indices)
+        {
             for index in counts.indices {
                 counts[index] += Double(record[Aggregate.countCell(index)] as? Int64 ?? 0)
             }
