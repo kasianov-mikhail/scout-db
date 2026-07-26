@@ -130,6 +130,53 @@ struct PaginationTests {
         #expect(second.cursor == nil)
     }
 
+    @Test("A projected keyset page carries the requested fields, the cursor field and nothing else")
+    func keysetProjection() async throws {
+        try await writePurchases(3)
+
+        let page = try await store.read(entity: "purchase", fields: ["quantity"], limit: 2)
+        #expect(page.records.map(\.uuid) == ["p-0", "p-1"])
+        #expect(page.records.allSatisfy { $0.values["quantity"] != nil })
+        #expect(page.records.allSatisfy { $0.values["date"] != nil })
+        #expect(page.records.allSatisfy { $0.values["product_id"] == nil })
+
+        let cursor = try #require(page.cursor)
+        let next = try await store.read(entity: "purchase", fields: ["quantity"], limit: 2, after: cursor)
+        #expect(next.records.map(\.uuid) == ["p-2"])
+        #expect(next.records.allSatisfy { $0.values["product_id"] == nil })
+    }
+
+    @Test("A projected field-ordered page keeps the ordering field and the filtered fields")
+    func fieldPageProjection() async throws {
+        try await writePurchases(3)
+
+        let filters = [EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-42"))]
+        let page = try await store.read(entity: "purchase", filters: filters, fields: ["total"], orderedBy: "quantity", limit: 2)
+        #expect(page.records.count == 2)
+        #expect(page.records.allSatisfy { $0.values["total"] != nil })
+        #expect(page.records.allSatisfy { $0.values["quantity"] != nil })
+        #expect(page.records.allSatisfy { $0.values["comment"] == nil })
+        #expect(try #require(page.cursor).value == page.records.last?.values["quantity"])
+    }
+
+    @Test("The builder's projection reaches its pages and its stream")
+    func builderProjection() async throws {
+        try await writePurchases(3)
+
+        let paged = try await store.query("purchase").fields("quantity").paginate(size: 3)
+        #expect(paged.records.allSatisfy { $0.values["quantity"] != nil && $0.values["product_id"] == nil })
+
+        let ordered = try await store.query("purchase").fields("total").sort("quantity").page(size: 3)
+        #expect(ordered.records.allSatisfy { $0.values["total"] != nil && $0.values["product_id"] == nil })
+
+        var streamed: [EntityRecord] = []
+        for try await record in store.query("purchase").fields("quantity").stream(pageSize: 2) {
+            streamed.append(record)
+        }
+        #expect(streamed.count == 3)
+        #expect(streamed.allSatisfy { $0.values["quantity"] != nil && $0.values["product_id"] == nil })
+    }
+
     @Test("Stream pages through small server pages in order")
     func streamAcrossServerPages() async throws {
         try await writePurchases(5)
