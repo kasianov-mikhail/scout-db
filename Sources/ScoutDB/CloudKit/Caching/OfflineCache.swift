@@ -277,6 +277,11 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     /// landed; a transport failure leaves the unreplayed writes queued for the
     /// next attempt.
     ///
+    /// Saves and deletions both replay in batches, and a re-attempted merge
+    /// rejoins the batch rather than going out on its own, so a long offline
+    /// stretch costs a request per batch and merge round — not one per record.
+    /// A batch the server calls too large is bisected until it fits.
+    ///
     @discardableResult public func flush() async throws -> Int {
         let snapshot = lock.withLock { pending }
         guard !snapshot.isEmpty else { return 0 }
@@ -305,20 +310,10 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         var landedCount = 0
         var transportFailure: (any Error)?
         do {
-            var contested: [(record: CKRecord, server: CKRecord?)] = []
+            var contested: [(record: CKRecord, server: CKRecord)] = []
             for chunk in effectiveSaves.chunked(into: Self.maxBatchSize) {
-                let batch: [(CKRecord.ID, Result<CKRecord, any Error>)]
-                do {
-                    batch = try await backing.saveIfUnchanged(chunk)
-                } catch  where Self.isOffline(error) {
-                    throw error
-                } catch {
-                    contested += chunk.map { ($0, nil) }
-                    continue
-                }
-                let byID = Dictionary(chunk.map { ($0.recordID, $0) }, uniquingKeysWith: { first, _ in first })
-                for (id, result) in batch {
-                    guard let record = byID[id] else { continue }
+                for (record, result) in try await submit(chunk) {
+                    let id = record.recordID
                     do {
                         _ = try result.get()
                         landedCount += 1
@@ -338,34 +333,26 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
                     resolved.insert(id)
                 }
             }
-            for (record, server) in contested {
-                do {
-                    if let conflict = try await push(record, losingTo: server) {
-                        conflicts.append(conflict)
-                    } else {
-                        landedCount += 1
-                        EntityCoder.discardStagedAssets(in: [record])
-                    }
-                } catch  where Self.isOffline(error) {
-                    throw error
-                } catch {
+            let pushed = await push(contested)
+            for (record, outcome) in pushed.outcomes {
+                switch outcome {
+                case .landed:
+                    landedCount += 1
+                    EntityCoder.discardStagedAssets(in: [record])
+                case .conflict(let server):
+                    conflicts.append(OfflineFlushError.Conflict(queued: record, server: server))
+                case .failure(let error):
                     failures.append(OfflineFlushError.Failure(recordID: record.recordID, error: error))
                     EntityCoder.discardStagedAssets(in: [record])
                 }
                 resolved.insert(record.recordID)
             }
-            if !effectiveDeletes.isEmpty {
-                do {
-                    try await backing.modifyRecords(saving: [], deleting: effectiveDeletes)
-                    landedCount += effectiveDeletes.count
-                } catch  where Self.isOffline(error) {
-                    throw error
-                } catch {
-                    for id in effectiveDeletes {
-                        failures.append(OfflineFlushError.Failure(recordID: id, error: error))
-                    }
-                }
-                for id in effectiveDeletes { resolved.insert(id) }
+            if let failure = pushed.transportFailure { throw failure }
+            for chunk in effectiveDeletes.chunked(into: Self.maxBatchSize) {
+                let rejected = try await submit(deleting: chunk)
+                landedCount += chunk.count - rejected.count
+                failures += rejected
+                resolved.formUnion(chunk)
             }
         } catch {
             transportFailure = error
@@ -406,41 +393,109 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    private func push(_ record: CKRecord, losingTo initial: CKRecord? = nil) async throws -> OfflineFlushError.Conflict? {
-        var attempt = record
-        var pending = initial
-        var retries = 3
-        while true {
-            let server: CKRecord
-            if let known = pending {
-                server = known
-                pending = nil
-            } else {
-                do {
-                    for (_, result) in try await backing.saveIfUnchanged([attempt]) {
-                        _ = try result.get()
+    private enum PushOutcome {
+        case landed
+        case conflict(CKRecord)
+        case failure(any Error)
+    }
+
+    private func push(_ contested: [(record: CKRecord, server: CKRecord)]) async -> (
+        outcomes: [(record: CKRecord, outcome: PushOutcome)], transportFailure: (any Error)?
+    ) {
+        var outcomes: [CKRecord.ID: PushOutcome] = [:]
+        var open = contested.map { (record: $0.record, server: $0.server, retries: 3) }
+        var transportFailure: (any Error)?
+        while !open.isEmpty, transportFailure == nil {
+            var attempts: [CKRecord] = []
+            var origins: [CKRecord.ID: (record: CKRecord, retries: Int)] = [:]
+            for entry in open {
+                let id = entry.record.recordID
+                let retries = entry.retries - 1
+                guard retries > 0 else {
+                    outcomes[id] = .conflict(entry.server)
+                    continue
+                }
+                let attempt: CKRecord
+                if let merged = graft(entry.record, onto: entry.server) {
+                    attempt = merged
+                } else {
+                    switch await resolve(entry.record, against: entry.server) {
+                    case .save(let resolved):
+                        attempt = resolved
+                    case .keepServer:
+                        outcomes[id] = .landed
+                        continue
+                    case .surface:
+                        outcomes[id] = .conflict(entry.server)
+                        continue
                     }
-                    return nil
+                }
+                attempts.append(attempt)
+                origins[id] = (entry.record, retries)
+            }
+            open = []
+            var replayed: [(record: CKRecord, result: Result<CKRecord, any Error>)] = []
+            for chunk in attempts.chunked(into: Self.maxBatchSize) {
+                do {
+                    replayed += try await submit(chunk)
                 } catch {
-                    guard let conflicting = Self.conflictingServerRecord(in: error) else { throw error }
-                    server = conflicting
+                    transportFailure = error
+                    break
                 }
             }
-            retries -= 1
-            guard retries > 0 else { return OfflineFlushError.Conflict(queued: record, server: server) }
-            if let merged = graft(record, onto: server) {
-                attempt = merged
-                continue
-            }
-            switch await resolve(record, against: server) {
-            case .save(let resolved):
-                attempt = resolved
-            case .keepServer:
-                return nil
-            case .surface:
-                return OfflineFlushError.Conflict(queued: record, server: server)
+            for (attempt, result) in replayed {
+                let id = attempt.recordID
+                guard let origin = origins[id] else { continue }
+                do {
+                    _ = try result.get()
+                    outcomes[id] = .landed
+                } catch  where Self.isOffline(error) {
+                    transportFailure = transportFailure ?? error
+                } catch {
+                    guard let server = Self.conflictingServerRecord(in: error) else {
+                        outcomes[id] = .failure(error)
+                        continue
+                    }
+                    open.append((origin.record, server, origin.retries))
+                }
             }
         }
+        return (contested.compactMap { entry in outcomes[entry.record.recordID].map { (entry.record, $0) } }, transportFailure)
+    }
+
+    private func submit(_ records: [CKRecord]) async throws -> [(record: CKRecord, result: Result<CKRecord, any Error>)] {
+        guard records.count > 0 else { return [] }
+        do {
+            let batch = try await backing.saveIfUnchanged(records)
+            let byID = Dictionary(records.map { ($0.recordID, $0) }, uniquingKeysWith: { first, _ in first })
+            return batch.compactMap { entry in byID[entry.0].map { ($0, entry.1) } }
+        } catch  where Self.isOffline(error) {
+            throw error
+        } catch  where Self.exceedsBatchLimit(error) && records.count > 1 {
+            let half = records.count / 2
+            return try await submit(Array(records[..<half])) + submit(Array(records[half...]))
+        } catch {
+            return records.map { ($0, .failure(error)) }
+        }
+    }
+
+    private func submit(deleting ids: [CKRecord.ID]) async throws -> [OfflineFlushError.Failure] {
+        guard ids.count > 0 else { return [] }
+        do {
+            try await backing.modifyRecords(saving: [], deleting: ids)
+            return []
+        } catch  where Self.isOffline(error) {
+            throw error
+        } catch  where Self.exceedsBatchLimit(error) && ids.count > 1 {
+            let half = ids.count / 2
+            return try await submit(deleting: Array(ids[..<half])) + submit(deleting: Array(ids[half...]))
+        } catch {
+            return ids.map { OfflineFlushError.Failure(recordID: $0, error: error) }
+        }
+    }
+
+    private static func exceedsBatchLimit(_ error: any Error) -> Bool {
+        (error as? CKError)?.code == .limitExceeded
     }
 
     private func resolve(_ queued: CKRecord, against server: CKRecord) async -> ConflictResolution {
