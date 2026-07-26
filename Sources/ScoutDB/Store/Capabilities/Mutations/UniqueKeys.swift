@@ -147,11 +147,13 @@ extension EntityStore {
         try? await database.modifyRecords(saving: [], deleting: mine)
     }
 
-    func releaseStaleClaims(for keys: [[String]], from previous: EntityRecord, to next: EntityRecord, using definition: EntityDefinition) async {
+    func releaseStaleClaims(for keys: [[String]], of rewritten: [(previous: EntityRecord, next: EntityRecord)], using definition: EntityDefinition) async {
         var owners: [CKRecord.ID: String] = [:]
-        for key in keys {
-            guard let old = Self.keyDigest(key, in: previous.values), old != Self.keyDigest(key, in: next.values) else { continue }
-            owners[UniqueClaim.recordID(entity: definition.entity, digest: old, zoneID: zoneID)] = previous.uuid
+        for (previous, next) in rewritten {
+            for key in keys {
+                guard let old = Self.keyDigest(key, in: previous.values), old != Self.keyDigest(key, in: next.values) else { continue }
+                owners[UniqueClaim.recordID(entity: definition.entity, digest: old, zoneID: zoneID)] = previous.uuid
+            }
         }
         guard owners.count > 0 else { return }
         guard let claims = try? await database.fetchRecords(ids: owners.keys.sorted { $0.recordName < $1.recordName }) else { return }

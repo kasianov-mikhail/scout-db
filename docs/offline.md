@@ -30,7 +30,9 @@ print(cache.pendingWrites)   // 1, until the next successful flush
 ```
 
 Continuation pages and conditional (compare-and-swap) saves are never cached or queued —
-only the first page of plain reads and plain writes get this treatment.
+only the first page of plain reads and plain writes get this treatment. A batched
+`update(entity:uuids:)` saves its records conditionally and so refuses offline, where a
+single `update(entity:uuid:)` still queues.
 
 ## 🔀 Flushing and conflicts
 
@@ -99,7 +101,12 @@ generates — anything it doesn't recognize makes a *partial* replica refuse to 
 `store.transaction { draft in ... }` writes a durable envelope record before applying its
 steps and marks it committed after — an interrupted process resumes and finishes the
 transaction on next launch (`store.repairTransactions(olderThan:)`) instead of leaving it
-half-applied. `store.lease(entity:uuid:owner:for:)` is an advisory, compare-and-swap-based
+half-applied. A run of `draft.update(...)` steps is applied as one batch per entity, so a
+transaction's patches cost the round trips of a single update rather than one update each.
+Committed envelopes stay in the zone until you erase them with
+`store.compactTransactions(olderThan:)` — run it past the horizon where a crashed writer
+could still repair, or every device pays for the whole write history on its first sync.
+`store.lease(entity:uuid:owner:for:)` is an advisory, compare-and-swap-based
 lock for coordinating exclusive access across processes; it throws `SchemaError.leaseHeld`
 if another owner already holds it.
 

@@ -43,66 +43,135 @@ public struct FieldCursor: Codable, Equatable, Sendable {
 
 extension EntityStore {
     public func update(entity: String, uuid: String, maxRetry: Int = 3, transform: (inout EntityRecord) throws -> Void) async throws {
+        try await update(entity: entity, uuids: [uuid], maxRetry: maxRetry, transform: transform)
+    }
+
+    /// Patches a batch of records of one entity, each through the same transform.
+    ///
+    /// The batch reads its records, saves them, and settles their claims,
+    /// aggregate views and revisions once, so a run of records costs a fixed
+    /// number of round trips instead of one update's worth each. The transform
+    /// sees one record at a time and can branch on its uuid; a uuid without a
+    /// live record throws `SchemaError.notFound`, and a repeated uuid is
+    /// patched once.
+    ///
+    /// Each save is conditional on the record being unchanged on the server; a
+    /// record that lost its race is re-transformed from the winning record and
+    /// retried, like a single `update`. Exhausting `maxRetry` throws the
+    /// conflict after the records that did land are accounted for. A batch
+    /// saves as a batch, which an `OfflineCache` never queues — a single
+    /// `update` still lands offline.
+    ///
+    public func update(entity: String, uuids: [String], maxRetry: Int = 3, transform: (inout EntityRecord) throws -> Void) async throws {
+        guard uuids.count > 0 else { return }
         let definition = try await registry.definition(for: entity)
         let coder = EntityCoder(keyProvider: keyProvider)
-        var attempt = 0
-        var existing = try await items(entity: entity, uuids: [uuid]).first
-        var prepared: EntityCoder.Rewrite?
-
-        while true {
-            let rewrite: EntityCoder.Rewrite
-            if let merged = prepared {
-                rewrite = merged
-                prepared = nil
-            } else {
-                guard let stored = existing, !Self.isTombstone(stored) else {
-                    throw SchemaError.notFound(uuid)
-                }
-                rewrite = try coder.rewrite(stored, using: definition, transform: transform)
-            }
-            let touched = Self.changedFields(from: rewrite.previous, to: rewrite.next)
-            if let keys = definition.uniqueKeys, !keys.isEmpty {
-                if keys.contains(where: { $0.contains { touched.keys.contains($0) } }) {
-                    try await validateUniqueKeys(of: [rewrite.next], using: definition)
-                }
-            }
-            let rekeyed = (definition.enforcedKeys ?? []).filter { $0.contains { touched.keys.contains($0) } }
-            if !rekeyed.isEmpty {
-                try await claimKeys(rekeyed, of: [rewrite.next], using: definition)
-            }
-            let reassigned = Self.exclusiveFields(of: definition).filter { touched.keys.contains($0.name) }
-            if !reassigned.isEmpty {
-                try await claimExclusivity(of: [rewrite.next], using: definition, fields: reassigned)
-            }
-            do {
-                try await database.write(record: rewrite.record)
-            } catch let conflict as RecordConflictError {
-                attempt += 1
-                guard attempt < maxRetry else { throw conflict }
-                let winner = try coder.decode(conflict.serverRecord, using: definition)
-                let mine = Self.changedFields(from: rewrite.previous, to: rewrite.next)
-                let theirs = Self.changedFields(from: rewrite.previous, to: winner)
-                if rewrite.previous.deleted == rewrite.next.deleted, Set(mine.keys).isDisjoint(with: theirs.keys) {
-                    prepared = try coder.rewrite(conflict.serverRecord, using: definition) { record in
-                        for (field, value) in mine {
-                            record.values[field] = value
-                        }
-                    }
-                } else {
-                    existing = conflict.serverRecord
-                }
-                continue
-            }
-            EntityCoder.discardStagedAssets(in: [rewrite.record])
-            let released = rekeyed + reassigned.map { [$0.name] }
-            if !released.isEmpty {
-                await releaseStaleClaims(for: released, from: rewrite.previous, to: rewrite.next, using: definition)
-            }
-            try await GridAggregator(database: database).rebalance(removing: [rewrite.previous], adding: [rewrite.next], using: definition)
-            try await recordRevisions([rewrite.previous], using: definition)
-            noteChange(entity: entity)
-            return
+        var targets: [String] = []
+        var seen: Set<String> = []
+        for uuid in uuids where seen.insert(uuid).inserted {
+            targets.append(uuid)
         }
+        let fetched = try await items(entity: entity, uuids: targets)
+        let stored = Dictionary(fetched.map { ($0.recordID.recordName, $0) }, uniquingKeysWith: { first, _ in first })
+
+        var pending = try targets.map { uuid -> EntityCoder.Rewrite in
+            guard let record = stored[uuid], !Self.isTombstone(record) else {
+                throw SchemaError.notFound(uuid)
+            }
+            return try coder.rewrite(record, using: definition, transform: transform)
+        }
+
+        var applied: [EntityCoder.Rewrite] = []
+        var released: [[String]] = []
+        var attempt = 0
+        var unresolved: CKRecord?
+        while pending.count > 0 {
+            released += try await claimRewrites(pending, using: definition)
+            let conflicts = try await save(pending.map(\.record))
+            let losers = Dictionary(conflicts.map { ($0.recordID, $0) }, uniquingKeysWith: { first, _ in first })
+            applied += pending.filter { losers[$0.record.recordID] == nil }
+            attempt += 1
+            guard attempt < maxRetry else {
+                unresolved = conflicts.first
+                break
+            }
+            pending = try pending.compactMap { rewrite in
+                guard let winner = losers[rewrite.record.recordID] else { return nil }
+                return try remerge(rewrite, onto: winner, with: coder, using: definition, transform: transform)
+            }
+        }
+
+        EntityCoder.discardStagedAssets(in: applied.map(\.record))
+        if !released.isEmpty {
+            await releaseStaleClaims(for: released, of: applied.map { ($0.previous, $0.next) }, using: definition)
+        }
+        try await GridAggregator(database: database).rebalance(removing: applied.map(\.previous), adding: applied.map(\.next), using: definition)
+        try await recordRevisions(applied.map(\.previous), using: definition)
+        if applied.count > 0 {
+            noteChange(entity: entity)
+        }
+        if let unresolved {
+            throw RecordConflictError(serverRecord: unresolved)
+        }
+    }
+
+    /// Saves the rewritten records conditionally and answers with the server
+    /// records that won a race.
+    ///
+    /// A lone record takes the plain save seam an `OfflineCache` queues, so a
+    /// single `update` still lands offline; a real batch takes the conditional
+    /// batch save, which is never queued.
+    ///
+    private func save(_ records: [CKRecord]) async throws -> [CKRecord] {
+        guard records.count > 1 else {
+            do {
+                try await database.write(record: records[0])
+            } catch let conflict as RecordConflictError {
+                return [conflict.serverRecord]
+            }
+            return []
+        }
+        return try await database.writeIfUnchanged(records: records)
+    }
+
+    private func claimRewrites(_ rewrites: [EntityCoder.Rewrite], using definition: EntityDefinition) async throws -> [[String]] {
+        var touched: Set<String> = []
+        for rewrite in rewrites {
+            touched.formUnion(Self.changedFields(from: rewrite.previous, to: rewrite.next).keys)
+        }
+        let next = rewrites.map(\.next)
+        if let keys = definition.uniqueKeys, keys.contains(where: { $0.contains { touched.contains($0) } }) {
+            try await validateUniqueKeys(of: next, using: definition)
+        }
+        let rekeyed = (definition.enforcedKeys ?? []).filter { $0.contains { touched.contains($0) } }
+        if !rekeyed.isEmpty {
+            try await claimKeys(rekeyed, of: next, using: definition)
+        }
+        let reassigned = Self.exclusiveFields(of: definition).filter { touched.contains($0.name) }
+        if !reassigned.isEmpty {
+            try await claimExclusivity(of: next, using: definition, fields: reassigned)
+        }
+        return rekeyed + reassigned.map { [$0.name] }
+    }
+
+    private func remerge(
+        _ rewrite: EntityCoder.Rewrite, onto winner: CKRecord, with coder: EntityCoder, using definition: EntityDefinition,
+        transform: (inout EntityRecord) throws -> Void
+    ) throws -> EntityCoder.Rewrite {
+        let served = try coder.decode(winner, using: definition)
+        let mine = Self.changedFields(from: rewrite.previous, to: rewrite.next)
+        let theirs = Self.changedFields(from: rewrite.previous, to: served)
+        if rewrite.previous.deleted == rewrite.next.deleted, Set(mine.keys).isDisjoint(with: theirs.keys) {
+            return try coder.rewrite(winner, using: definition) { record in
+                for (field, value) in mine {
+                    record.values[field] = value
+                }
+            }
+        }
+        guard !Self.isTombstone(winner) else {
+            throw SchemaError.notFound(rewrite.previous.uuid)
+        }
+        return try coder.rewrite(winner, using: definition, transform: transform)
     }
 
     private static func changedFields(from base: EntityRecord, to next: EntityRecord) -> [String: RecordValue?] {

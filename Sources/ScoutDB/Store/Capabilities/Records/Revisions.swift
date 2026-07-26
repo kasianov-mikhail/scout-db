@@ -44,6 +44,22 @@ extension EntityStore {
             }
     }
 
+    /// Drops the revisions written before the cutoff, of one entity or of every
+    /// audited one.
+    ///
+    /// The log only grows, and every entry rides each zone sync, so an audited
+    /// entity's history soon outweighs its data. Trim it to the window
+    /// `history(entity:uuid:)` still has to answer — the dropped revisions are
+    /// gone for good.
+    ///
+    @discardableResult public func compactRevisions(olderThan cutoff: Date, of entity: String? = nil) async throws -> Int {
+        var filters = [Filter(field: "date", op: .lessThan, value: .date(cutoff))]
+        if let entity {
+            filters.append(Filter(field: "entity", op: .equals, value: .string(entity)))
+        }
+        return try await purge(entity: Self.revisionEntity, filters: filters)
+    }
+
     func recordRevisions(_ previous: [EntityRecord], using definition: EntityDefinition) async throws {
         guard definition.audited == true, previous.count > 0 else { return }
         let encoder = JSONEncoder()
