@@ -23,15 +23,20 @@ extension EntityStore {
     /// One tick per landed local mutation of the entity, from this store's database.
     ///
     /// The observer registers before the stream is returned, so a mutation
-    /// after `changeTicks` cannot slip by.
+    /// after `changeTicks` cannot slip by. Every tick is kept until it is
+    /// consumed, so a slow consumer walks the whole burst rather than its tail.
     ///
     public func changeTicks(entity: String) -> AsyncStream<Void> {
+        changeTicks(entity: entity, buffering: .unbounded)
+    }
+
+    func changeTicks(entity: String, buffering: AsyncStream<Void>.Continuation.BufferingPolicy) -> AsyncStream<Void> {
         final class Token: @unchecked Sendable {
             let observer: any NSObjectProtocol
             init(_ observer: any NSObjectProtocol) { self.observer = observer }
         }
         let database = ObjectIdentifier(self.database as AnyObject)
-        return AsyncStream { continuation in
+        return AsyncStream(bufferingPolicy: buffering) { continuation in
             let token = Token(
                 NotificationCenter.default.addObserver(forName: .scoutDBEntityDidChange, object: nil, queue: nil) { notification in
                     guard notification.userInfo?["entity"] as? String == entity,
@@ -46,24 +51,16 @@ extension EntityStore {
     /// Re-runs the query on every local mutation of the entity, yielding fresh
     /// results; the first element is the current result.
     ///
-    /// Only mutations through this process's stores tick the stream — remote
-    /// edits arrive when a `SyncCoordinator` pass applies them.
+    /// Mutations coalesce: the ones landing while a pass runs share the single
+    /// trailing pass that follows it, so a write loop costs the pass in flight
+    /// and one that picks up everything the loop changed — not one full,
+    /// paged pass per write. Only mutations through this process's stores tick
+    /// the stream — remote edits arrive when a `SyncCoordinator` pass applies
+    /// them.
     ///
     public func observe(entity: String, filters: [Filter] = [], sort: [Sort] = []) -> AsyncThrowingStream<[EntityRecord], any Error> {
-        let ticks = changeTicks(entity: entity)
-        return AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    continuation.yield(try await read(entity: entity, filters: filters, sort: sort))
-                    for await _ in ticks {
-                        continuation.yield(try await read(entity: entity, filters: filters, sort: sort))
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
+        liveResults(ticks: changeTicks(entity: entity, buffering: .bufferingNewest(1))) {
+            try await read(entity: entity, filters: filters, sort: sort)
         }
     }
 }
@@ -71,21 +68,35 @@ extension EntityStore {
 extension QueryBuilder {
     /// Re-runs the built query on every local mutation of the entity — filters,
     /// groups, sorts, and limits included.
+    ///
+    /// Mutations landing while a pass runs coalesce into one trailing pass; see
+    /// ``EntityStore/observe(entity:filters:sort:)``.
+    ///
     public func observe() -> AsyncThrowingStream<[EntityRecord], any Error> {
-        let ticks = store.changeTicks(entity: entity)
-        return AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    continuation.yield(try await all())
-                    for await _ in ticks {
-                        continuation.yield(try await all())
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
+        liveResults(ticks: store.changeTicks(entity: entity, buffering: .bufferingNewest(1))) {
+            try await all()
         }
+    }
+}
+
+/// Yields the current result, then one fresh result per tick, running at most
+/// one pass at a time: ticks arriving during a pass collapse into the single
+/// pass that follows it.
+func liveResults(
+    ticks: AsyncStream<Void>, pass: @escaping @Sendable () async throws -> [EntityRecord]
+) -> AsyncThrowingStream<[EntityRecord], any Error> {
+    AsyncThrowingStream { continuation in
+        let task = Task {
+            do {
+                continuation.yield(try await pass())
+                for await _ in ticks {
+                    continuation.yield(try await pass())
+                }
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+        continuation.onTermination = { _ in task.cancel() }
     }
 }
