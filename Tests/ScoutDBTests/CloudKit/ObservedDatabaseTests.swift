@@ -95,6 +95,39 @@ struct ObservedDatabaseTests {
     }
 }
 
+extension ObservedDatabaseTests {
+    @Test("A capped read escalates its page size instead of one request per scanned record")
+    func boundedReadEscalatesPages() async throws {
+        for index in 0..<60 {
+            try await store.write(
+                ["product_id": .string("sku-\(index % 3)"), "date": .date(Date(timeIntervalSince1970: TimeInterval(index)))],
+                entity: "purchase", uuid: "p-\(index)")
+        }
+
+        func requests(_ body: () async throws -> Void) async throws -> Int {
+            recorder.reset()
+            try await body()
+            return recorder.operations.filter { $0.kind == .query || $0.kind == .continuation }.count
+        }
+
+        var missing: EntityRecord?
+        let exhausted = try await requests { missing = try await store.query("purchase").exclude("product_id", .beginsWith, "sku").first() }
+        #expect(missing?.uuid == nil)
+        #expect(exhausted <= 8)
+
+        var scanned: [EntityRecord] = []
+        let partial = try await requests { scanned = try await store.query("purchase").exclude("product_id", .equals, "sku-0").limit(5).all() }
+        #expect(scanned.count == 5)
+        #expect(scanned.allSatisfy { $0.values["product_id"] != .string("sku-0") })
+        #expect(partial <= 3)
+
+        var served: [EntityRecord] = []
+        let capped = try await requests { served = try await store.query("purchase").filter("product_id", .equals, "sku-1").limit(5).all() }
+        #expect(served.count == 5)
+        #expect(capped == 1)
+    }
+}
+
 final class Recorder: DatabaseObserver, @unchecked Sendable {
     private let lock = NSLock()
     private var collected: [DatabaseOperation] = []

@@ -236,11 +236,13 @@ public struct EntityStore: Sendable {
         matching query: CKQuery, desiredKeys: [String]?, limit: Int, using definition: EntityDefinition, where included: (EntityRecord) -> Bool
     ) async throws -> [EntityRecord] {
         var collected: [EntityRecord] = []
-        var (batch, token) = try await database.records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: limit)
+        var page = Swift.min(limit, CKQueryOperation.maximumResults)
+        var (batch, token) = try await database.records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: page)
         while true {
             collected += try decode(batch.map { try $0.1.get() }, using: definition).filter(included)
             guard collected.count < limit, let cursor = token else { break }
-            (batch, token) = try await database.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: limit)
+            page = Swift.min(page * 2, CKQueryOperation.maximumResults)
+            (batch, token) = try await database.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: page)
         }
         return collected
     }
