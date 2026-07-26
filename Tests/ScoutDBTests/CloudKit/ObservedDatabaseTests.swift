@@ -228,6 +228,22 @@ extension ObservedDatabaseTests {
         #expect(served.count == 5)
         #expect(capped == 1)
     }
+
+    @Test("A capped read asks its first page for the rows it needs, not for every match")
+    func boundedReadSizesItsFirstPage() async throws {
+        for index in 0..<60 {
+            try await store.write(
+                ["product_id": .string("sku-1"), "date": .date(Date(timeIntervalSince1970: TimeInterval(index)))],
+                entity: "purchase", uuid: "p-\(index)")
+        }
+
+        recorder.reset()
+        let served = try await store.query("purchase").filter("product_id", .equals, "sku-1").limit(5).all()
+        #expect(served.count == 5)
+
+        let first = try #require(recorder.operations.first { $0.kind == .query })
+        #expect(first.recordCount == 5)
+    }
 }
 
 final class Recorder: DatabaseObserver, @unchecked Sendable {
