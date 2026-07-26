@@ -159,6 +159,70 @@ struct OperationsTests {
         #expect(try await store.read(entity: "purchase").first?.values["quantity"] == .int(101))
     }
 
+    @Test("A merged retry re-claims only the keys the merge moved")
+    func mergedRetryKeepsItsClaims() async throws {
+        try await registry.publish(
+            EntityDefinition(
+                entity: "badge", version: 1,
+                fields: [
+                    FieldDefinition(name: "code", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "label", type: .string, storage: .slot(.string, "s_01")),
+                ],
+                enforcedKeys: [["code"]]))
+        let counting = CountingFetches(backing: database)
+        let racing = EntityStore(database: counting, registry: registry)
+        try await racing.write(["code": .string("gold"), "label": .string("first")], entity: "badge", uuid: "b-1")
+
+        counting.reset()
+        try await racing.update(entity: "badge", uuid: "b-1") { record in
+            record.values["code"] = .string("silver")
+        }
+        let uncontested = counting.fetches
+
+        counting.reset()
+        try await racing.update(entity: "badge", uuid: "b-1") { record in
+            record.values["code"] = .string("bronze")
+            let winner = database.records.first { $0.recordID.recordName == "b-1" }
+            winner?["s_01"] = "second"
+            winner?.overrideChangeTag(UUID().uuidString)
+        }
+
+        #expect(counting.fetches == uncontested)
+        let merged = try #require(try await racing.read(entity: "badge").first)
+        #expect(merged.values["code"] == .string("bronze"))
+        #expect(merged.values["label"] == .string("second"))
+        #expect(database.records.filter { $0.recordType == "UniqueClaim" }.map { $0["owner"] as? String } == ["b-1"])
+    }
+
+    @Test("The independent tails of an update run in one round")
+    func updateTailsRunConcurrently() async throws {
+        try await registry.publish(EntityStore.revisionDefinition)
+        try await registry.publish(
+            EntityDefinition(
+                entity: "badge", version: 1,
+                fields: [
+                    FieldDefinition(name: "code", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
+                ],
+                enforcedKeys: [["code"]],
+                views: [AggregateView(name: "total", bucket: .lifetime, sum: "amount")],
+                audited: true))
+        let counting = CountingFetches(backing: database)
+        let audited = EntityStore(database: counting, registry: registry)
+        try await audited.write(["code": .string("gold"), "amount": .double(1)], entity: "badge", uuid: "b-1")
+
+        counting.reset()
+        try await audited.update(entity: "badge", uuid: "b-1") { record in
+            record.values["code"] = .string("silver")
+            record.values["amount"] = .double(2)
+        }
+
+        #expect(counting.peakInFlight == 3)
+        #expect(try await audited.history(entity: "badge", uuid: "b-1").map { $0.values["code"] } == [.string("gold")])
+        #expect(database.records.first { $0.recordType == "Aggregate" }?["f_00"] as? Double == 2)
+        #expect(database.records.filter { $0.recordType == "UniqueClaim" }.count == 1)
+    }
+
     @Test("CAS update of a missing record fails")
     func updateMissing() async throws {
         await #expect(throws: SchemaError.notFound("ghost")) {

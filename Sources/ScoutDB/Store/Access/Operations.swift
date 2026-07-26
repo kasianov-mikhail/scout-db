@@ -42,12 +42,21 @@ public struct FieldCursor: Codable, Equatable, Sendable {
 }
 
 extension EntityStore {
+    /// Rewrites one record under compare-and-swap, retrying a lost race.
+    ///
+    /// A conflict whose winning fields are disjoint from the transform's is
+    /// merged onto the winner instead of re-running the transform, and the
+    /// retry only re-validates and re-claims the keys the merge actually moved
+    /// — the claims of the keys it left alone are already ours.
+    ///
     public func update(entity: String, uuid: String, maxRetry: Int = 3, transform: (inout EntityRecord) throws -> Void) async throws {
         let definition = try await registry.definition(for: entity)
         let coder = EntityCoder(keyProvider: keyProvider)
+        let owned = (definition.enforcedKeys ?? []) + Self.exclusiveFields(of: definition).map { [$0.name] }
         var attempt = 0
         var existing = try await items(entity: entity, uuids: [uuid]).first
         var prepared: EntityCoder.Rewrite?
+        var claimed: EntityRecord?
 
         while true {
             let rewrite: EntityCoder.Rewrite
@@ -60,7 +69,7 @@ extension EntityStore {
                 }
                 rewrite = try coder.rewrite(stored, using: definition, transform: transform)
             }
-            let touched = Self.changedFields(from: rewrite.previous, to: rewrite.next)
+            let touched = Self.changedFields(from: claimed ?? rewrite.previous, to: rewrite.next)
             if let keys = definition.uniqueKeys, !keys.isEmpty {
                 if keys.contains(where: { $0.contains { touched.keys.contains($0) } }) {
                     try await validateUniqueKeys(of: [rewrite.next], using: definition)
@@ -74,6 +83,7 @@ extension EntityStore {
             if !reassigned.isEmpty {
                 try await claimExclusivity(of: [rewrite.next], using: definition, fields: reassigned)
             }
+            claimed = rewrite.next
             do {
                 try await database.write(record: rewrite.record)
             } catch let conflict as RecordConflictError {
@@ -94,12 +104,16 @@ extension EntityStore {
                 continue
             }
             EntityCoder.discardStagedAssets(in: [rewrite.record])
-            let released = rekeyed + reassigned.map { [$0.name] }
-            if !released.isEmpty {
-                await releaseStaleClaims(for: released, from: rewrite.previous, to: rewrite.next, using: definition)
+            let previous = rewrite.previous
+            let next = rewrite.next
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                if !owned.isEmpty {
+                    group.addTask { await releaseStaleClaims(for: owned, from: previous, to: next, using: definition) }
+                }
+                group.addTask { try await GridAggregator(database: database).rebalance(removing: [previous], adding: [next], using: definition) }
+                group.addTask { try await recordRevisions([previous], using: definition) }
+                try await group.waitForAll()
             }
-            try await GridAggregator(database: database).rebalance(removing: [rewrite.previous], adding: [rewrite.next], using: definition)
-            try await recordRevisions([rewrite.previous], using: definition)
             noteChange(entity: entity)
             return
         }
