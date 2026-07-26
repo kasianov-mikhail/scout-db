@@ -34,6 +34,16 @@ struct OperationsTests {
         #expect(records.first?.values["quantity"] == .int(7))
     }
 
+    @Test("A fetch by uuid reads a record the query index has not caught up with")
+    func fetchByUUIDSkipsTheIndex() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        database.unindexed = [CKRecord.ID(recordName: "p-1", zoneID: .default)]
+
+        #expect(try await store.read(entity: "purchase").isEmpty)
+        #expect(try await store.fetch(uuid: "p-1")?.uuid == "p-1")
+        #expect(try await store.fetch(uuid: "p-9") == nil)
+    }
+
     @Test("CAS update retries after a conflict")
     func updateConflict() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
