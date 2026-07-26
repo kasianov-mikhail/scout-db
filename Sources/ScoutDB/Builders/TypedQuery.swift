@@ -146,6 +146,10 @@ extension TypedQueryBuilder where T: Sendable {
 
     /// Re-runs the query on every local mutation of the entity, yielding fresh
     /// decoded results; the first element is the current result.
+    ///
+    /// Mutations landing while a pass runs coalesce into one trailing pass; see
+    /// ``EntityStore/observe(entity:filters:sort:)``.
+    ///
     public func observe() -> AsyncThrowingStream<[T], any Error> {
         let base = builder.observe()
         return AsyncThrowingStream { continuation in
