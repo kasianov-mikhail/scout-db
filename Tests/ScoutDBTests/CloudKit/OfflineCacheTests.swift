@@ -47,10 +47,80 @@ struct OfflineCacheTests {
         }
 
         _ = try await store.read(entity: "purchase")
-        backing.errors = [CKError(.notAuthenticated)]
+        backing.errors = [CKError(.permissionFailure)]
         await #expect(throws: CKError.self) {
             _ = try await store.read(entity: "purchase")
         }
+    }
+
+    @Test("A timed-out request and an unusable iCloud account read as offline")
+    func offlineFailureShapes() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        _ = try await store.read(entity: "purchase")
+
+        for failure in [RequestTimeoutError(seconds: 30), CKError(.notAuthenticated), CKError(.accountTemporarilyUnavailable)] as [any Error] {
+            backing.errors = [failure]
+            #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-1"])
+        }
+
+        backing.errors = [CKError(.internalError, userInfo: [NSUnderlyingErrorKey: URLError(.timedOut)])]
+        #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-1"])
+    }
+
+    @Test("Offline reads by ID are served from the baselines, so a read-modify-write survives")
+    func offlineFetchByID() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        #expect(try await store.fetch(uuid: "p-1")?.uuid == "p-1")
+
+        backing.errors = Array(repeating: CKError(.networkUnavailable), count: 4)
+        backing.writeErrors = [CKError(.networkFailure)]
+        try await store.update(entity: "purchase", uuid: "p-1") { $0.values["quantity"] = .int(9) }
+        #expect(cache.pendingWrites == 1)
+
+        backing.errors = []
+        backing.writeErrors = []
+        #expect(try await cache.flush() == 1)
+        #expect(try await store.fetch(uuid: "p-1")?.values["quantity"] == .int(9))
+    }
+
+    @Test("An ID no baseline covers stays failed offline, rather than reading as absent")
+    func offlineFetchOfUncachedID() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        _ = try await store.fetch(entity: "purchase", uuids: ["p-1"])
+
+        backing.errors = [CKError(.networkUnavailable)]
+        await #expect(throws: CKError.self) {
+            _ = try await store.fetch(uuid: "p-2")
+        }
+        backing.errors = [CKError(.networkUnavailable)]
+        await #expect(throws: CKError.self) {
+            _ = try await store.fetch(entity: "purchase", uuids: ["p-1", "p-2"])
+        }
+        backing.errors = [CKError(.networkUnavailable)]
+        #expect(try await store.fetch(entity: "purchase", uuids: ["p-1"]).map(\.uuid) == ["p-1"])
+    }
+
+    @Test("An offline read by ID sees the queue and hands out a copy of the cached record")
+    func offlineFetchSeesTheQueue() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.write(makePurchase(uuid: "p-2").values, entity: "purchase", uuid: "p-2")
+        _ = try await store.fetch(entity: "purchase", uuids: ["p-1", "p-2"])
+
+        backing.writeErrors = [CKError(.networkFailure), CKError(.networkFailure)]
+        var updated = makePurchase().values
+        updated["quantity"] = .int(9)
+        try await store.write(updated, entity: "purchase", uuid: "p-1")
+        try await cache.modifyRecords(saving: [], deleting: [CKRecord.ID(recordName: "p-2")])
+
+        backing.errors = Array(repeating: CKError(.networkUnavailable), count: 2)
+        #expect(try await store.fetch(entity: "purchase", uuids: ["p-1", "p-2"]).map(\.uuid) == ["p-1"])
+        let queued = try #require(try await cache.fetchRecord(id: CKRecord.ID(recordName: "p-1")))
+        #expect(queued["i_01"] == 9)
+
+        queued["i_01"] = 42
+        backing.errors = [CKError(.networkUnavailable)]
+        let again = try #require(try await cache.fetchRecord(id: CKRecord.ID(recordName: "p-1")))
+        #expect(again["i_01"] == 9)
     }
 
     @Test("Offline writes queue and flush replays them")
