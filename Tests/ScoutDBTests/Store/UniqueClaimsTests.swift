@@ -186,4 +186,40 @@ struct UniqueClaimsTests {
         }
         #expect(try await migrator.backfillClaims(entity: "badge") == 2)
     }
+
+    @Test("Reaping an expired record releases the claim it held")
+    func reapReleasesClaims() async throws {
+        let database = InMemoryDatabase()
+        let registry = SchemaRegistry(database: database)
+        let store = EntityStore(database: database, registry: registry)
+        try await registry.publish(
+            EntityDefinition(
+                entity: "session", version: 1,
+                fields: [
+                    FieldDefinition(name: "code", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
+                ], envelopeDate: "date", enforcedKeys: [["code"]], ttl: 3_600))
+
+        try await store.write(["code": .string("gold"), "date": .date(Date(timeIntervalSince1970: 1_000))], entity: "session", uuid: "s-1")
+        #expect(database.records.filter { $0.recordType == "UniqueClaim" }.count == 1)
+
+        #expect(try await store.reap(entity: "session", asOf: Date(timeIntervalSince1970: 50_000)) == 1)
+        #expect(database.records.filter { $0.recordType == "UniqueClaim" }.isEmpty)
+    }
+
+    @Test("Releasing more claims than one batch holds splits the delete")
+    func releaseChunksClaims() async throws {
+        let backing = InMemoryDatabase()
+        let probe = BatchProbe(backing: backing)
+        let registry = SchemaRegistry(database: probe)
+        let store = EntityStore(database: probe, registry: registry)
+        try await registry.publish(Self.makeBadgeDefinition())
+
+        try await store.write((0..<401).map { EntityWrite(values: ["code": .string("c-\($0)")], uuid: "b-\($0)") }, entity: "badge")
+        probe.reset()
+
+        #expect(try await store.deleteAll(entity: "badge") == 401)
+        #expect(probe.deleteBatches.allSatisfy { $0 <= 400 })
+        #expect(probe.deleteBatches.reduce(0, +) == 401)
+    }
 }

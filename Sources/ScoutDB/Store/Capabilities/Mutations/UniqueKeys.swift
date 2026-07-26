@@ -201,7 +201,7 @@ extension EntityStore {
         guard let claims = try? await claimRecords(ids: owners.keys.sorted { $0.recordName < $1.recordName }) else { return }
         let mine = claims.filter { $0["owner"] as? String == owners[$0.recordID] }.map(\.recordID)
         guard mine.count > 0 else { return }
-        try? await database.modifyRecords(saving: [], deleting: mine)
+        try? await database.delete(records: mine)
     }
 
     func releaseStaleClaims(for keys: [[String]], of rewritten: [(previous: EntityRecord, next: EntityRecord)], using definition: EntityDefinition) async {
@@ -216,7 +216,7 @@ extension EntityStore {
         guard let claims = try? await claimRecords(ids: owners.keys.sorted { $0.recordName < $1.recordName }) else { return }
         let mine = claims.filter { $0["owner"] as? String == owners[$0.recordID] }.map(\.recordID)
         guard mine.count > 0 else { return }
-        try? await database.modifyRecords(saving: [], deleting: mine)
+        try? await database.delete(records: mine)
     }
 
     func validateUniqueKeys(of records: [EntityRecord], using definition: EntityDefinition) async throws {

@@ -753,7 +753,7 @@ struct OfflineCacheTests {
     }
 }
 
-private final class BatchProbe: CloudDatabase, @unchecked Sendable {
+final class BatchProbe: CloudDatabase, @unchecked Sendable {
     let backing: InMemoryDatabase
     let saveLimit: Int?
     private let lock = NSLock()
