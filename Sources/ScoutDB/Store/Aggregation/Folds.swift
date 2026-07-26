@@ -118,8 +118,8 @@ extension EntityStore {
         guard definition.field(named: group, at: definition.version) != nil else {
             throw SchemaError.unknownField(group)
         }
-        if creator == nil, branches.count == 1, try await alwaysPresent(group, entity: entity),
-            let folded = try await viewFold(of: nil, by: group, entity: entity, filters: branches[0])
+        if creator == nil, try await alwaysPresent(group, entity: entity),
+            let folded = try await viewFold(of: nil, by: group, entity: entity, any: branches)
         {
             return folded.mapValues(\.count)
         }
@@ -134,7 +134,6 @@ extension EntityStore {
     private func gridFold(_ fold: Fold, of field: String, by group: String? = nil, entity: String, any branches: [[Filter]]) async throws
         -> [String: GridFold]?
     {
-        guard branches.count == 1 else { return nil }
         switch fold {
         case .sum:
             break
@@ -144,6 +143,6 @@ extension EntityStore {
             return nil
         }
         if let group, try await alwaysPresent(group, entity: entity) == false { return nil }
-        return try await viewFold(of: field, by: group, entity: entity, filters: branches[0])
+        return try await viewFold(of: field, by: group, entity: entity, any: branches)
     }
 }

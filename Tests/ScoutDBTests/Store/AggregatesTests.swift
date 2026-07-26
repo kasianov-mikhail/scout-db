@@ -525,6 +525,50 @@ struct AggregatesTests {
         #expect(try await store.query("sale").filter("product", .equals, "app").filter("amount" > 1).count() == 2)
     }
 
+    @Test("count() honors IN lists and OR groups through the view's grid")
+    func countThroughKeySets() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "ticket",
+                fields: [
+                    FieldDefinition(name: "kind", type: .string, storage: .slot(.string, "s_00"), required: true),
+                    FieldDefinition(name: "price", type: .double, storage: .slot(.double, "d_00")),
+                ], views: [AggregateView(name: "by_kind", groupBy: "kind", bucket: .lifetime, sum: "price")]))
+        try await store.write(["kind": .string("a"), "price": .double(10)], entity: "ticket")
+        try await store.write(["kind": .string("a"), "price": .double(5)], entity: "ticket")
+        try await store.write(["kind": .string("b"), "price": .double(2)], entity: "ticket")
+        try await store.write(["kind": .string("c"), "price": .double(4)], entity: "ticket")
+
+        let grid = try #require(database.records.first { $0.recordType == "Aggregate" && $0["group_key"] as? String == "b" })
+        grid["c_00"] = Int64(41)
+        grid["f_00"] = Double(100)
+
+        #expect(try await store.query("ticket").filter("kind", .in, .strings(["b", "c"])).count() == 42)
+        #expect(
+            try await store.query("ticket")
+                .group {
+                    $0.filter("kind", .equals, "a")
+                    $0.filter("kind", .equals, "b")
+                }.count() == 43)
+        #expect(
+            try await store.query("ticket")
+                .group {
+                    $0.filter("kind", .equals, "b")
+                    $0.filter("kind", .equals, "b")
+                }.count() == 41)
+        #expect(
+            try await store.counts(by: "kind", entity: "ticket", filters: [EntityStore.Filter(field: "kind", op: .in, value: .strings(["b", "c"]))])
+                == ["b": 41, "c": 1])
+        #expect(try await store.query("ticket").filter("kind", .in, .strings(["a", "b"])).sum("price") == 115)
+
+        #expect(
+            try await store.query("ticket")
+                .group {
+                    $0.filter("kind", .equals, "a")
+                    $0.filter("price", .equals, .double(2))
+                }.count() == 3)
+    }
+
     @Test("count() over an aligned date range reads the view's cells instead of scanning")
     func countThroughRange() async throws {
         try await registry.publish(
