@@ -935,6 +935,44 @@ struct OperationsTests {
         #expect(Set(grouped.map(\.uuid)) == ["p-1", "p-3"])
     }
 
+    @Test("Every query terminal honors the creator scope")
+    func createdByScopedTerminals() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
+        var big = makePurchase().values
+        big["quantity"] = .int(9)
+        try await store.write(big, entity: "purchase", uuid: "p-3")
+        stampCreator(uuid: "p-1", creator: "user-a")
+        stampCreator(uuid: "p-2", creator: "user-b")
+        stampCreator(uuid: "p-3", creator: "user-a")
+        let mine = store.query("purchase").createdBy("user-a")
+
+        #expect(try await mine.sum("quantity") == 12)
+        #expect(try await mine.minimum("quantity") == 3)
+        #expect(try await mine.maximum("quantity") == 9)
+        #expect(try await mine.average("quantity") == 6)
+        #expect(try await mine.sum("quantity", by: "product_id") == ["sku-42": 12])
+        #expect(try await mine.count(by: "product_id") == ["sku-42": 2])
+
+        #expect(Set(try await mine.paginate(size: 10).records.map(\.uuid)) == ["p-1", "p-3"])
+        #expect(try await mine.sort("quantity").page(size: 10).records.map(\.uuid) == ["p-1", "p-3"])
+        var streamed: Set<String> = []
+        for try await record in mine.stream(pageSize: 1) {
+            streamed.insert(record.uuid)
+        }
+        #expect(streamed == ["p-1", "p-3"])
+        #expect(try await mine.explain().first?.server.contains("creatorUserRecordID equals ruser-a") == true)
+
+        #expect(
+            try await mine.update { record in
+                record.values["comment"] = .string("mine")
+            } == 2)
+        #expect(try await store.read(entity: "purchase", createdBy: "user-b").first?.values["comment"] == .string("gift"))
+
+        #expect(try await mine.delete() == 2)
+        #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-2"])
+    }
+
     @Test("A pattern constraint gates writes by a whole-string regex")
     func patternValidation() async throws {
         try await registry.publish(

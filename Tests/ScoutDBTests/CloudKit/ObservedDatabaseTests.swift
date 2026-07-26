@@ -66,6 +66,84 @@ struct ObservedDatabaseTests {
         #expect(many == one)
     }
 
+    @Test("Claiming every key of a write costs one fetch and one conditional save")
+    func claimsBatchAcrossKeys() async throws {
+        try await registry.publish(
+            EntityDefinition(
+                entity: "ticket", version: 1,
+                fields: [
+                    FieldDefinition(name: "row", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "number", type: .int, storage: .slot(.int, "i_00")),
+                    FieldDefinition(name: "serial", type: .string, storage: .slot(.string, "s_01")),
+                    FieldDefinition(name: "badge", type: .string, storage: .slot(.string, "s_02"), references: "person", exclusive: true),
+                    FieldDefinition(name: "locker", type: .string, storage: .slot(.string, "s_03"), references: "locker", exclusive: true),
+                ], enforcedKeys: [["row", "number"], ["serial"]]))
+
+        func calls(_ kind: DatabaseOperation.Kind, writing count: Int, from start: Int) async throws -> Int {
+            recorder.reset()
+            try await store.write(
+                (start..<(start + count)).map { index in
+                    EntityWrite(
+                        values: [
+                            "row": .string("r"), "number": .int(Int64(index)), "serial": .string("s-\(index)"),
+                            "badge": .string("b-\(index)"), "locker": .string("l-\(index)"),
+                        ], uuid: "t-\(index)")
+                }, entity: "ticket")
+            return recorder.operations.filter { $0.kind == kind }.count
+        }
+
+        #expect(try await calls(.fetch, writing: 1, from: 0) == 1)
+        #expect(try await calls(.conditionalSave, writing: 1, from: 0) == 0)
+        #expect(try await calls(.fetch, writing: 20, from: 100) == 1)
+        #expect(try await calls(.conditionalSave, writing: 20, from: 200) == 1)
+    }
+
+    @Test("A batch of orphaned claims is adopted in a fixed number of round trips")
+    func orphanedClaimsAdoptTogether() async throws {
+        try await registry.publish(
+            EntityDefinition(
+                entity: "badge", version: 1,
+                fields: [FieldDefinition(name: "code", type: .string, storage: .slot(.string, "s_00"))],
+                enforcedKeys: [["code"]]))
+
+        func adopting(_ count: Int, from start: Int) async throws -> Int {
+            let codes = (start..<(start + count)).map { "c-\($0)" }
+            try await store.write(codes.map { EntityWrite(values: ["code": .string($0)], uuid: "old-\($0)") }, entity: "badge")
+            backing.records.removeAll { ($0["uuid"] as? String)?.hasPrefix("old-") == true }
+            recorder.reset()
+            try await store.write(codes.map { EntityWrite(values: ["code": .string($0)], uuid: "new-\($0)") }, entity: "badge")
+            return recorder.operations.filter { $0.kind == .fetch || $0.kind == .conditionalSave }.count
+        }
+
+        let one = try await adopting(1, from: 0)
+        #expect(try await adopting(20, from: 100) == one)
+        #expect(backing.records.filter { $0.recordType == "UniqueClaim" }.allSatisfy { ($0["owner"] as? String)?.hasPrefix("new-") == true })
+    }
+
+    @Test("A write under fresh uuids skips the read that looks for their old view rows")
+    func freshWritesSkipTheLiveRead() async throws {
+        try await registry.publish(
+            EntityDefinition(
+                entity: "payment", version: 1,
+                fields: [
+                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
+                    FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
+                ], envelopeDate: "date", views: [AggregateView(name: "daily", groupBy: "product", bucket: .day)]))
+
+        func fetches(_ batch: [EntityWrite]) async throws -> Int {
+            recorder.reset()
+            try await store.write(batch, entity: "payment")
+            return recorder.operations.filter { $0.kind == .fetch }.count
+        }
+
+        let values: [String: RecordValue] = ["product": .string("app"), "amount": .double(1), "date": .date(Date())]
+        _ = try await fetches([EntityWrite(values: values)])
+        let fresh = try await fetches([EntityWrite(values: values), EntityWrite(values: values)])
+        let named = try await fetches([EntityWrite(values: values, uuid: "p-1"), EntityWrite(values: values, uuid: "p-2")])
+        #expect(named == fresh + 1)
+    }
+
     @Test("A failing call reports its error and still throws")
     func observesFailures() async throws {
         recorder.reset()

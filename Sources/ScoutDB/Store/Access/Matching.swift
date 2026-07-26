@@ -9,9 +9,9 @@ import CoreLocation
 import Foundation
 
 extension EntityStore {
-    public func explain(entity: String, filters: [Filter] = [], sort: [Sort] = []) async throws -> QueryPlan {
+    public func explain(entity: String, filters: [Filter] = [], sort: [Sort] = [], createdBy creator: String? = nil) async throws -> QueryPlan {
         let definition = try await registry.definition(for: entity)
-        return try plan(filters, entity: entity, sort: sort, using: definition)
+        return try plan(filters, entity: entity, sort: sort, createdBy: creator, using: definition)
     }
 
     /// Explains a disjunctive query the way it actually runs: one `QueryPlan`
@@ -21,15 +21,16 @@ extension EntityStore {
     /// branch has its own server/client split. `QueryBuilder.explain()` routes
     /// through here so a `.group { … }` is reflected rather than dropped.
     ///
-    public func explain(entity: String, any branches: [[Filter]], sort: [Sort] = []) async throws -> [QueryPlan] {
+    public func explain(entity: String, any branches: [[Filter]], sort: [Sort] = [], createdBy creator: String? = nil) async throws -> [QueryPlan] {
         let definition = try await registry.definition(for: entity)
-        return try branches.map { try plan($0, entity: entity, sort: sort, using: definition) }
+        return try branches.map { try plan($0, entity: entity, sort: sort, createdBy: creator, using: definition) }
     }
 
-    private func plan(_ filters: [Filter], entity: String, sort: [Sort], using definition: EntityDefinition) throws -> QueryPlan {
+    private func plan(_ filters: [Filter], entity: String, sort: [Sort], createdBy creator: String?, using definition: EntityDefinition) throws -> QueryPlan {
         let (server, client) = try split(filters, entity: entity, using: definition)
+        let scoped = server + (creator.map { [ServerFilter(field: "creatorUserRecordID", op: .equals, value: .reference($0))] } ?? [])
         return QueryPlan(
-            server: server.map { "\($0.field) \($0.op.rawValue) \($0.value.canonical)" },
+            server: scoped.map { "\($0.field) \($0.op.rawValue) \($0.value.canonical)" },
             client: client.map { "\($0.field) \($0.op) \($0.value.canonical)" },
             sort: try serverSort(sort, using: definition).map { "\($0.field) \($0.ascending ? "asc" : "desc")" }
         )
@@ -57,6 +58,20 @@ extension EntityStore {
             case .near: .near
             case .search: .search
             case .endsWith, .like, .matches, .isNull, .isNotNull: nil
+            }
+        }
+
+        var complement: Match? {
+            switch self {
+            case .equals: .notEquals
+            case .notEquals: .equals
+            case .in: .notIn
+            case .notIn: .in
+            case .greaterThan: .lessThanOrEquals
+            case .greaterThanOrEquals: .lessThan
+            case .lessThan: .greaterThanOrEquals
+            case .lessThanOrEquals: .greaterThan
+            default: nil
             }
         }
     }
@@ -119,7 +134,13 @@ extension EntityStore {
                 guard filter.op != .near, filter.op != .search else {
                     throw SchemaError.invalidValue(filter.field)
                 }
-                client.append(filter)
+                if let op = filter.op.complement?.serverOperator, field.alwaysPresent, case .slot(let pool, let slot) = field.storage,
+                    pool.isQueryable
+                {
+                    server.append(ServerFilter(field: slot, op: op, value: filter.value))
+                } else {
+                    client.append(filter)
+                }
                 continue
             }
             switch filter.op {

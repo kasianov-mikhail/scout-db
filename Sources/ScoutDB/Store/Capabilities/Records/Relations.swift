@@ -141,7 +141,7 @@ extension EntityStore {
                 let tombstones = try victims.map { try tombstone(entity: child.entity, uuid: $0.uuid, definition: child, values: $0.values) }
                 try await database.write(records: tombstones)
                 await releaseUniqueClaims(of: victims, using: child)
-                try await GridAggregator(database: database).remove(victims, using: child)
+                try await aggregator.remove(victims, using: child)
                 noteChange(entity: child.entity)
                 try await cascadeDelete(entity: child.entity, uuids: victims.map(\.uuid))
             }

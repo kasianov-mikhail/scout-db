@@ -47,10 +47,80 @@ struct OfflineCacheTests {
         }
 
         _ = try await store.read(entity: "purchase")
-        backing.errors = [CKError(.notAuthenticated)]
+        backing.errors = [CKError(.permissionFailure)]
         await #expect(throws: CKError.self) {
             _ = try await store.read(entity: "purchase")
         }
+    }
+
+    @Test("A timed-out request and an unusable iCloud account read as offline")
+    func offlineFailureShapes() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        _ = try await store.read(entity: "purchase")
+
+        for failure in [RequestTimeoutError(seconds: 30), CKError(.notAuthenticated), CKError(.accountTemporarilyUnavailable)] as [any Error] {
+            backing.errors = [failure]
+            #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-1"])
+        }
+
+        backing.errors = [CKError(.internalError, userInfo: [NSUnderlyingErrorKey: URLError(.timedOut)])]
+        #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-1"])
+    }
+
+    @Test("Offline reads by ID are served from the baselines, so a read-modify-write survives")
+    func offlineFetchByID() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        #expect(try await store.fetch(uuid: "p-1")?.uuid == "p-1")
+
+        backing.errors = Array(repeating: CKError(.networkUnavailable), count: 4)
+        backing.writeErrors = [CKError(.networkFailure)]
+        try await store.update(entity: "purchase", uuid: "p-1") { $0.values["quantity"] = .int(9) }
+        #expect(cache.pendingWrites == 1)
+
+        backing.errors = []
+        backing.writeErrors = []
+        #expect(try await cache.flush() == 1)
+        #expect(try await store.fetch(uuid: "p-1")?.values["quantity"] == .int(9))
+    }
+
+    @Test("An ID no baseline covers stays failed offline, rather than reading as absent")
+    func offlineFetchOfUncachedID() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        _ = try await store.fetch(entity: "purchase", uuids: ["p-1"])
+
+        backing.errors = [CKError(.networkUnavailable)]
+        await #expect(throws: CKError.self) {
+            _ = try await store.fetch(uuid: "p-2")
+        }
+        backing.errors = [CKError(.networkUnavailable)]
+        await #expect(throws: CKError.self) {
+            _ = try await store.fetch(entity: "purchase", uuids: ["p-1", "p-2"])
+        }
+        backing.errors = [CKError(.networkUnavailable)]
+        #expect(try await store.fetch(entity: "purchase", uuids: ["p-1"]).map(\.uuid) == ["p-1"])
+    }
+
+    @Test("An offline read by ID sees the queue and hands out a copy of the cached record")
+    func offlineFetchSeesTheQueue() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.write(makePurchase(uuid: "p-2").values, entity: "purchase", uuid: "p-2")
+        _ = try await store.fetch(entity: "purchase", uuids: ["p-1", "p-2"])
+
+        backing.writeErrors = [CKError(.networkFailure), CKError(.networkFailure)]
+        var updated = makePurchase().values
+        updated["quantity"] = .int(9)
+        try await store.write(updated, entity: "purchase", uuid: "p-1")
+        try await cache.modifyRecords(saving: [], deleting: [CKRecord.ID(recordName: "p-2")])
+
+        backing.errors = Array(repeating: CKError(.networkUnavailable), count: 2)
+        #expect(try await store.fetch(entity: "purchase", uuids: ["p-1", "p-2"]).map(\.uuid) == ["p-1"])
+        let queued = try #require(try await cache.fetchRecord(id: CKRecord.ID(recordName: "p-1")))
+        #expect(queued["i_01"] == 9)
+
+        queued["i_01"] = 42
+        backing.errors = [CKError(.networkUnavailable)]
+        let again = try #require(try await cache.fetchRecord(id: CKRecord.ID(recordName: "p-1")))
+        #expect(again["i_01"] == 9)
     }
 
     @Test("Offline writes queue and flush replays them")
@@ -576,6 +646,71 @@ struct OfflineCacheTests {
         #expect(try await store.read(entity: "purchase").count == 10)
     }
 
+    @Test("A batch the server calls too large is bisected, not retried a record at a time")
+    func flushBisectsAnOversizedBatch() async throws {
+        let server = InMemoryDatabase()
+        let probe = BatchProbe(backing: server, saveLimit: 25)
+        let cache = OfflineCache(backing: probe)
+        let registry = SchemaRegistry(database: cache)
+        let store = EntityStore(database: cache, registry: registry)
+        try await registry.publish(makePurchaseDefinition())
+
+        server.writeErrors = [CKError(.networkFailure)]
+        try await store.write((0..<50).map { EntityWrite(values: makePurchase().values, uuid: "p-\($0)") }, entity: "purchase")
+        #expect(cache.pendingWrites == 50)
+
+        #expect(try await cache.flush() == 50)
+        #expect(probe.saveBatches == [50, 25, 25])
+        #expect(cache.pendingWrites == 0)
+        #expect(try await store.read(entity: "purchase").count == 50)
+    }
+
+    @Test("Records that lose the first round rejoin one merge batch, not a request each")
+    func flushRebatchesContestedSaves() async throws {
+        let server = InMemoryDatabase()
+        let probe = BatchProbe(backing: server)
+        let cache = OfflineCache(backing: probe)
+        let registry = SchemaRegistry(database: cache)
+        let store = EntityStore(database: cache, registry: registry)
+        try await registry.publish(makePurchaseDefinition())
+
+        try await store.write((0..<5).map { EntityWrite(values: makePurchase().values, uuid: "p-\($0)") }, entity: "purchase")
+        _ = try await store.read(entity: "purchase")
+
+        server.writeErrors = [CKError(.networkFailure)]
+        var updated = makePurchase().values
+        updated["quantity"] = .int(9)
+        try await store.write((0..<5).map { EntityWrite(values: updated, uuid: "p-\($0)") }, entity: "purchase")
+
+        let other = EntityStore(database: server, registry: SchemaRegistry(database: server))
+        for index in 0..<5 {
+            try await other.update(entity: "purchase", uuid: "p-\(index)") { $0.values["product_id"] = .string("sku-77") }
+        }
+
+        #expect(try await cache.flush() == 5)
+        #expect(probe.saveBatches == [5, 5])
+        #expect(cache.pendingWrites == 0)
+        let records = try await store.read(entity: "purchase")
+        #expect(records.allSatisfy { $0.values["quantity"] == .int(9) && $0.values["product_id"] == .string("sku-77") })
+    }
+
+    @Test("More queued deletions than one request holds replay in batches")
+    func flushChunksDeletions() async throws {
+        let server = InMemoryDatabase()
+        let probe = BatchProbe(backing: server)
+        let cache = OfflineCache(backing: probe)
+        let ids = (0..<450).map { CKRecord.ID(recordName: "gone-\($0)") }
+
+        server.writeErrors = [CKError(.networkFailure)]
+        try await cache.modifyRecords(saving: [], deleting: ids)
+        #expect(cache.pendingWrites == 450)
+
+        probe.reset()
+        #expect(try await cache.flush() == 450)
+        #expect(probe.deleteBatches == [400, 50])
+        #expect(cache.pendingWrites == 0)
+    }
+
     @Test("A permanently rejected write surfaces without wedging the queue behind it")
     func poisonWriteDoesNotStall() async throws {
         backing.writeErrors = [CKError(.networkFailure), CKError(.networkFailure)]
@@ -593,5 +728,93 @@ struct OfflineCacheTests {
         }
         #expect(cache.pendingWrites == 0)
         #expect(try await store.read(entity: "purchase").map(\.uuid) == ["good"])
+    }
+}
+
+private final class BatchProbe: CloudDatabase, @unchecked Sendable {
+    let backing: InMemoryDatabase
+    let saveLimit: Int?
+    private let lock = NSLock()
+    private var saves: [Int] = []
+    private var deletes: [Int] = []
+
+    init(backing: InMemoryDatabase, saveLimit: Int? = nil) {
+        self.backing = backing
+        self.saveLimit = saveLimit
+    }
+
+    var saveBatches: [Int] { lock.withLock { saves } }
+    var deleteBatches: [Int] { lock.withLock { deletes } }
+
+    func reset() {
+        lock.withLock {
+            saves = []
+            deletes = []
+        }
+    }
+
+    func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
+        lock.withLock { saves.append(records.count) }
+        if let saveLimit, records.count > saveLimit {
+            throw CKError(.limitExceeded)
+        }
+        return try await backing.saveIfUnchanged(records)
+    }
+
+    func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {
+        if recordIDs.count > 0 {
+            lock.withLock { deletes.append(recordIDs.count) }
+        }
+        try await backing.modifyRecords(saving: records, deleting: recordIDs)
+    }
+
+    func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
+    ) {
+        try await backing.records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+    }
+
+    func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
+    ) {
+        try await backing.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+    }
+
+    func save(_ record: CKRecord) async throws -> CKRecord {
+        try await backing.save(record)
+    }
+
+    func save(subscription: CKSubscription) async throws {
+        try await backing.save(subscription: subscription)
+    }
+
+    func deleteSubscription(id: CKSubscription.ID) async throws {
+        try await backing.deleteSubscription(id: id)
+    }
+
+    func subscriptions() async throws -> [CKSubscription] {
+        try await backing.subscriptions()
+    }
+
+    func save(zone: CKRecordZone) async throws {
+        try await backing.save(zone: zone)
+    }
+
+    func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
+        try await backing.fetchRecord(id: id)
+    }
+
+    func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
+        try await backing.fetchRecords(ids: ids)
+    }
+
+    func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int?) async throws -> (
+        changed: [CKRecord], deleted: [CKRecord.ID], token: Data?
+    ) {
+        try await backing.zoneChanges(zoneID: zoneID, since: token, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+    }
+
+    func databaseChanges(since token: Data?) async throws -> (changed: [CKRecordZone.ID], deleted: [CKRecordZone.ID], token: Data?) {
+        try await backing.databaseChanges(since: token)
     }
 }
