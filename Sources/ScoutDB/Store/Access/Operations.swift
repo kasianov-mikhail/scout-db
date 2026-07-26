@@ -430,6 +430,7 @@ extension EntityStore {
         let tombstones = try expired.sorted { $0.uuid < $1.uuid }
             .map { try tombstone(entity: entity, uuid: $0.uuid, definition: definition, values: $0.values) }
         try await database.write(records: tombstones)
+        await releaseUniqueClaims(of: expired, using: definition)
         try await aggregator.remove(expired, using: definition)
         if expired.count > 0 {
             noteChange(entity: entity)
