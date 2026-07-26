@@ -98,7 +98,7 @@ extension EntityStore {
             if !released.isEmpty {
                 await releaseStaleClaims(for: released, from: rewrite.previous, to: rewrite.next, using: definition)
             }
-            try await GridAggregator(database: database).rebalance(removing: [rewrite.previous], adding: [rewrite.next], using: definition)
+            try await aggregator.rebalance(removing: [rewrite.previous], adding: [rewrite.next], using: definition)
             try await recordRevisions([rewrite.previous], using: definition)
             noteChange(entity: entity)
             return
@@ -331,7 +331,7 @@ extension EntityStore {
             }
             pending = try conflicts.map { try coder.rewrite($0, using: definition, transform: transform) }
         }
-        try await GridAggregator(database: database).rebalance(removing: applied.map(\.previous), adding: applied.map(\.next), using: definition)
+        try await aggregator.rebalance(removing: applied.map(\.previous), adding: applied.map(\.next), using: definition)
         try await recordRevisions(applied.map(\.previous), using: definition)
         if applied.count > 0 {
             noteChange(entity: entity)
@@ -381,7 +381,7 @@ extension EntityStore {
         let tombstones = try victims.map { try tombstone(entity: entity, uuid: $0.uuid, definition: definition, values: $0.values) }
         try await database.write(records: tombstones)
         await releaseUniqueClaims(of: victims, using: definition)
-        try await GridAggregator(database: database).remove(victims, using: definition)
+        try await aggregator.remove(victims, using: definition)
         try await recordRevisions(victims, using: definition)
         if victims.count > 0 {
             noteChange(entity: entity)
@@ -403,7 +403,7 @@ extension EntityStore {
         let tombstones = try expired.sorted { $0.uuid < $1.uuid }
             .map { try tombstone(entity: entity, uuid: $0.uuid, definition: definition, values: $0.values) }
         try await database.write(records: tombstones)
-        try await GridAggregator(database: database).remove(expired, using: definition)
+        try await aggregator.remove(expired, using: definition)
         if expired.count > 0 {
             noteChange(entity: entity)
         }
