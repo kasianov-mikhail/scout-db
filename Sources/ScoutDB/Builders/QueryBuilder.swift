@@ -215,7 +215,7 @@ public struct QueryBuilder: Sendable {
         guard sorts.isEmpty else {
             throw SchemaError.invalidDefinition("Pagination is ordered by the envelope date and cannot honor sort clauses")
         }
-        return try await store.read(entity: entity, any: branches(), limit: size, after: cursor)
+        return try await store.read(entity: entity, any: branches(), fields: projection, limit: size, after: cursor)
     }
 
     /// Returns one keyset page ordered by the builder's sort clause.
@@ -227,12 +227,13 @@ public struct QueryBuilder: Sendable {
         guard sorts.count == 1, let sort = sorts.first else {
             throw SchemaError.invalidDefinition("A field-ordered page requires exactly one sort clause")
         }
-        return try await store.read(entity: entity, any: branches(), orderedBy: sort.field, descending: !sort.ascending, limit: size, after: cursor)
+        return try await store.read(
+            entity: entity, any: branches(), fields: projection, orderedBy: sort.field, descending: !sort.ascending, limit: size, after: cursor)
     }
 
     /// Streams every matching record page by page.
     public func stream(pageSize: Int = 100) -> AsyncThrowingStream<EntityRecord, any Error> {
-        store.stream(entity: entity, any: branches(), pageSize: pageSize)
+        store.stream(entity: entity, any: branches(), fields: projection, pageSize: pageSize)
     }
 
     /// Rewrites every matching record through the transform.

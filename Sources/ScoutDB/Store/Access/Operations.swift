@@ -113,8 +113,9 @@ extension EntityStore {
         return changes
     }
 
-    public func read(entity: String, filters: [Filter] = [], limit: Int, after cursor: EntityCursor? = nil) async throws -> EntityPage {
-        try await read(entity: entity, any: [filters], limit: limit, after: cursor)
+    public func read(entity: String, filters: [Filter] = [], fields: [String]? = nil, limit: Int, after cursor: EntityCursor? = nil) async throws -> EntityPage
+    {
+        try await read(entity: entity, any: [filters], fields: fields, limit: limit, after: cursor)
     }
 
     /// Reads one keyset page of the records matching any of the OR branches.
@@ -124,14 +125,22 @@ extension EntityStore {
     /// over the disjunction would produce, since a row the union keeps is in its
     /// own branch's top `limit` too.
     ///
-    public func read(entity: String, any branches: [[Filter]], limit: Int, after cursor: EntityCursor? = nil) async throws -> EntityPage {
+    /// `fields` trims every record to those values, as on an unpaged read; the
+    /// envelope date the cursor is built from is always carried.
+    ///
+    public func read(entity: String, any branches: [[Filter]], fields: [String]? = nil, limit: Int, after cursor: EntityCursor? = nil) async throws
+        -> EntityPage
+    {
         let definition = try await registry.definition(for: entity)
         guard let dateField = definition.envelopeDate else {
             throw SchemaError.invalidDefinition("Pagination requires an envelope date")
         }
         let pages = try await withThrowingTaskGroup(of: [EntityRecord].self) { group in
             for branch in branches {
-                group.addTask { try await self.page(entity: entity, filters: branch, dateField: dateField, cursor: cursor, limit: limit, using: definition) }
+                group.addTask {
+                    try await self.page(
+                        entity: entity, filters: branch, fields: fields, dateField: dateField, cursor: cursor, limit: limit, using: definition)
+                }
             }
             return try await group.reduce(into: [[EntityRecord]]()) { $0.append($1) }
         }
@@ -144,16 +153,17 @@ extension EntityStore {
         return EntityPage(records: Array(records), cursor: next)
     }
 
-    private func page(entity: String, filters: [Filter], dateField: String, cursor: EntityCursor?, limit: Int, using definition: EntityDefinition) async throws
-        -> [EntityRecord]
-    {
+    private func page(
+        entity: String, filters: [Filter], fields: [String]?, dateField: String, cursor: EntityCursor?, limit: Int, using definition: EntityDefinition
+    ) async throws -> [EntityRecord] {
         var pageFilters = filters
         if let cursor {
             pageFilters.append(Filter(field: dateField, op: .greaterThanOrEquals, value: .date(cursor.date)))
         }
         let (query, included) = try liveQuery(pageFilters, entity: entity, sort: try serverSort([Sort(field: dateField)], using: definition), using: definition)
+        let keys = try fields.map { try desiredKeys($0 + pageFilters.map(\.field) + [dateField], using: definition) }
 
-        let collected = try await boundedRecords(matching: query, desiredKeys: nil, limit: limit, using: definition) { record in
+        let collected = try await boundedRecords(matching: query, desiredKeys: keys, limit: limit, using: definition) { record in
             guard included(record) else { return false }
             guard let cursor else { return true }
             return Self.pageKey(record, dateField) > (cursor.date, cursor.uuid)
@@ -167,15 +177,21 @@ extension EntityStore {
     /// Records missing the field are skipped — a keyset cursor cannot address them.
     ///
     public func read(
-        entity: String, filters: [Filter] = [], orderedBy field: String, descending: Bool = false, limit: Int, after cursor: FieldCursor? = nil
+        entity: String, filters: [Filter] = [], fields: [String]? = nil, orderedBy field: String, descending: Bool = false, limit: Int,
+        after cursor: FieldCursor? = nil
     ) async throws -> FieldPage {
-        try await read(entity: entity, any: [filters], orderedBy: field, descending: descending, limit: limit, after: cursor)
+        try await read(entity: entity, any: [filters], fields: fields, orderedBy: field, descending: descending, limit: limit, after: cursor)
     }
 
     /// Reads one field-ordered keyset page of the records matching any of the
     /// OR branches; the same page-merge argument as the envelope-date variant.
+    ///
+    /// `fields` trims every record to those values; the ordering field the
+    /// cursor is built from is always carried.
+    ///
     public func read(
-        entity: String, any branches: [[Filter]], orderedBy field: String, descending: Bool = false, limit: Int, after cursor: FieldCursor? = nil
+        entity: String, any branches: [[Filter]], fields: [String]? = nil, orderedBy field: String, descending: Bool = false, limit: Int,
+        after cursor: FieldCursor? = nil
     ) async throws -> FieldPage {
         let definition = try await registry.definition(for: entity)
         guard let target = definition.field(named: field, at: definition.version), [.string, .int, .double, .timestamp].contains(target.type),
@@ -187,7 +203,8 @@ extension EntityStore {
             for branch in branches {
                 group.addTask {
                     try await self.fieldPage(
-                        entity: entity, filters: branch, field: field, descending: descending, cursor: cursor, limit: limit, using: definition)
+                        entity: entity, filters: branch, fields: fields, field: field, descending: descending, cursor: cursor, limit: limit,
+                        using: definition)
                 }
             }
             return try await group.reduce(into: [[EntityRecord]]()) { $0.append($1) }
@@ -206,7 +223,8 @@ extension EntityStore {
     }
 
     private func fieldPage(
-        entity: String, filters: [Filter], field: String, descending: Bool, cursor: FieldCursor?, limit: Int, using definition: EntityDefinition
+        entity: String, filters: [Filter], fields: [String]?, field: String, descending: Bool, cursor: FieldCursor?, limit: Int,
+        using definition: EntityDefinition
     ) async throws -> [EntityRecord] {
         var pageFilters = filters
         if let cursor {
@@ -214,8 +232,9 @@ extension EntityStore {
         }
         let sort = try serverSort([Sort(field: field, ascending: !descending)], using: definition)
         let (query, included) = try liveQuery(pageFilters, entity: entity, sort: sort, using: definition)
+        let keys = try fields.map { try desiredKeys($0 + pageFilters.map(\.field) + [field], using: definition) }
 
-        let collected = try await boundedRecords(matching: query, desiredKeys: nil, limit: limit, using: definition) { record in
+        let collected = try await boundedRecords(matching: query, desiredKeys: keys, limit: limit, using: definition) { record in
             guard included(record), record.values[field] != nil else { return false }
             guard let cursor else { return true }
             return Self.beyond(record, field, cursor, descending: descending)
@@ -242,18 +261,22 @@ extension EntityStore {
         return (date, record.uuid)
     }
 
-    public func stream(entity: String, filters: [Filter] = [], pageSize: Int = 100) -> AsyncThrowingStream<EntityRecord, any Error> {
-        stream(entity: entity, any: [filters], pageSize: pageSize)
+    public func stream(entity: String, filters: [Filter] = [], fields: [String]? = nil, pageSize: Int = 100) -> AsyncThrowingStream<
+        EntityRecord, any Error
+    > {
+        stream(entity: entity, any: [filters], fields: fields, pageSize: pageSize)
     }
 
     /// Streams every record matching any of the OR branches, page by page.
-    public func stream(entity: String, any branches: [[Filter]], pageSize: Int = 100) -> AsyncThrowingStream<EntityRecord, any Error> {
+    public func stream(entity: String, any branches: [[Filter]], fields: [String]? = nil, pageSize: Int = 100) -> AsyncThrowingStream<
+        EntityRecord, any Error
+    > {
         AsyncThrowingStream { continuation in
             let task = Task {
                 var cursor: EntityCursor?
                 do {
                     repeat {
-                        let page = try await read(entity: entity, any: branches, limit: pageSize, after: cursor)
+                        let page = try await read(entity: entity, any: branches, fields: fields, limit: pageSize, after: cursor)
                         for record in page.records {
                             continuation.yield(record)
                         }
