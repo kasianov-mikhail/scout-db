@@ -278,6 +278,21 @@ public struct EntityStore: Sendable {
         return maximum > 0 ? Swift.min(rows, maximum) : rows
     }
 
+    /// Whether one branch of a disjunction can serve its own top `limit` in the
+    /// query's order, so the union of the branches' pages holds the page the
+    /// whole disjunction would have produced.
+    ///
+    /// True when the clauses sort server-side, and when they rank client-side
+    /// over the branch's whole result — both leave a branch's page ordered.
+    /// A sort a single-branch read cannot honour at all is left to the union.
+    ///
+    private func rankable(_ sort: [Sort], entity: String) async throws -> Bool {
+        guard sort.count > 0 else { return true }
+        let definition = try await registry.definition(for: entity)
+        if (try? clientRanked(sort, using: definition)) == true { return true }
+        return (try? serverSort(sort, using: definition)) != nil
+    }
+
     private func clientRanked(_ sort: [Sort], using definition: EntityDefinition) throws -> Bool {
         try sort.contains { clause in
             guard let field = definition.field(named: clause.field, at: definition.version) else {
@@ -320,9 +335,17 @@ public struct EntityStore: Sendable {
             }
             return union
         }
+        let bounded = try await rankable(sort, entity: entity)
         let results = try await withThrowingTaskGroup(of: (Int, [EntityRecord]).self) { group in
             for (index, branch) in branches.enumerated() {
-                group.addTask { (index, try await self.read(entity: entity, filters: branch, fields: branchFields, createdBy: creator)) }
+                group.addTask {
+                    (
+                        index,
+                        try await self.read(
+                            entity: entity, filters: branch, sort: bounded ? sort : [], fields: branchFields, limit: bounded ? limit : nil,
+                            createdBy: creator)
+                    )
+                }
             }
             var collected: [Int: [EntityRecord]] = [:]
             for try await (index, records) in group {

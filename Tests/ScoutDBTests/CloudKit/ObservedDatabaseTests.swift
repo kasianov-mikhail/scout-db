@@ -229,6 +229,32 @@ extension ObservedDatabaseTests {
         #expect(capped == 1)
     }
 
+    @Test("A sorted OR read bounds every branch instead of draining it")
+    func sortedBranchesAreBounded() async throws {
+        for index in 0..<40 {
+            try await store.write(
+                [
+                    "product_id": .string(index.isMultiple(of: 2) ? "sku-a" : "sku-b"), "quantity": .int(Int64(index)),
+                    "date": .date(Date(timeIntervalSince1970: TimeInterval(index))),
+                ], entity: "purchase", uuid: "p-\(index)")
+        }
+
+        recorder.reset()
+        let top = try await store.query("purchase")
+            .group {
+                $0.filter("product_id", .equals, "sku-a")
+                $0.filter("quantity", .greaterThanOrEquals, .int(30))
+            }
+            .sort("quantity", .descending)
+            .limit(5)
+            .all()
+
+        #expect(top.map { $0.values["quantity"] } == [39, 38, 37, 36, 35].map { RecordValue.int(Int64($0)) })
+        let pages = recorder.operations.filter { $0.kind == .query || $0.kind == .continuation }
+        #expect(pages.count == 2)
+        #expect(pages.allSatisfy { $0.recordCount <= 5 })
+    }
+
     @Test("A capped read asks its first page for the rows it needs, not for every match")
     func boundedReadSizesItsFirstPage() async throws {
         for index in 0..<60 {
