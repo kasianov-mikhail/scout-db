@@ -12,12 +12,22 @@ public struct Migrator: Sendable {
     let database: any CloudDatabase
     let registry: SchemaRegistry
     var keyProvider: (any EncryptionKeyProvider)?
+    var zoneID: CKRecordZone.ID?
 
     /// Creates a migrator backed by any `CloudDatabase` implementation.
-    public init(database: any CloudDatabase, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil) {
+    ///
+    /// Pass the `zoneID` of the store being migrated: a pass then reads that
+    /// zone's records and writes its claims there, the way the store does.
+    /// Without one a pass reads every zone and claims in the default zone,
+    /// which is right only for a store that has no custom zone either.
+    ///
+    public init(
+        database: any CloudDatabase, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil, zoneID: CKRecordZone.ID? = nil
+    ) {
         self.database = database
         self.registry = registry
         self.keyProvider = keyProvider
+        self.zoneID = zoneID
     }
 
     @discardableResult public func backfill(entity: String, transform: (inout EntityRecord) throws -> Void = { _ in }) async throws -> Int {
@@ -51,7 +61,7 @@ public struct Migrator: Sendable {
                 ServerFilter(field: "schema_version", op: .lessThan, value: .int(Int64(definition.version))),
                 ServerFilter(field: "deleted", op: .equals, value: .int(0)),
             ])
-        let outdated = try await database.allRecords(matching: query)
+        let outdated = try await database.allRecords(matching: query, inZone: zoneID)
 
         let coder = EntityCoder(keyProvider: keyProvider)
         let migrated = try outdated.map { record in
@@ -87,7 +97,7 @@ public struct Migrator: Sendable {
     @discardableResult public func backfillClaims(entity: String, batchSize: Int = 400) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         guard definition.enforcedKeys?.isEmpty == false || !EntityStore.exclusiveFields(of: definition).isEmpty else { return 0 }
-        let store = EntityStore(database: database, registry: registry, keyProvider: keyProvider)
+        let store = EntityStore(database: database, registry: registry, keyProvider: keyProvider, zoneID: zoneID)
         let records = try await store.read(entity: entity)
         for chunk in records.chunked(into: batchSize) {
             try await store.claimUniqueKeys(of: chunk, using: definition)
@@ -120,7 +130,7 @@ public struct Migrator: Sendable {
                 filters: [
                     ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                     ServerFilter(field: "deleted", op: .equals, value: .int(0)),
-                ]))
+                ]), inZone: zoneID)
         let coder = EntityCoder(keyProvider: keyProvider)
         let aggregator = GridAggregator(database: database)
         var counted = 0
@@ -156,7 +166,7 @@ public struct Migrator: Sendable {
                 ServerFilter(field: "deleted", op: .equals, value: .int(0)),
             ])
         let coder = EntityCoder(keyProvider: keyProvider)
-        let rewritten = try await database.allRecords(matching: query).map { record -> CKRecord in
+        let rewritten = try await database.allRecords(matching: query, inZone: zoneID).map { record -> CKRecord in
             let decoded: EntityRecord
             do {
                 decoded = try coder.decode(record, using: definition)

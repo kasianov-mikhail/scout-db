@@ -222,4 +222,23 @@ struct UniqueClaimsTests {
         #expect(probe.deleteBatches.allSatisfy { $0 <= 400 })
         #expect(probe.deleteBatches.reduce(0, +) == 401)
     }
+
+    @Test("A zoned backfill claims in the zone the store enforces claims from")
+    func backfillClaimsInTheStoreZone() async throws {
+        let zone = CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName)
+        let database = InMemoryDatabase()
+        let registry = SchemaRegistry(database: database)
+        let store = EntityStore(database: database, registry: registry, zoneID: zone)
+        try await registry.publish(Self.makeBadgeDefinition(version: 1, enforced: false))
+        try await store.write(["code": .string("gold")], entity: "badge", uuid: "b-1")
+
+        try await registry.publish(Self.makeBadgeDefinition(version: 2, enforced: true))
+        let migrator = Migrator(database: database, registry: registry, zoneID: zone)
+        #expect(try await migrator.backfillClaims(entity: "badge") == 1)
+        #expect(database.records.filter { $0.recordType == "UniqueClaim" }.allSatisfy { $0.recordID.zoneID == zone })
+
+        await #expect(throws: SchemaError.duplicateKey(fields: ["code"])) {
+            try await store.write(["code": .string("gold")], entity: "badge", uuid: "b-2")
+        }
+    }
 }
