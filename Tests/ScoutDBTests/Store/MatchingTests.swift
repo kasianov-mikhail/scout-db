@@ -121,14 +121,11 @@ struct MatchingTests {
 
     @Test("Search is scoped to the named field, not the whole record")
     func fieldScopedSearch() async throws {
-        // "fox" lives in n-1's body and in n-3's summary — searching one field
-        // must not surface the other.
         try await store.write(
             ["title": .string("Notes"), "body": .string("nothing here"), "summary": .string("fox sighting")], entity: "note", uuid: "n-3")
         #expect(try await read("body", .search, "fox") == ["n-1"])
         #expect(try await read("summary", .search, "fox") == ["n-3"])
 
-        // Every token of a multi-word needle must appear in the same field.
         #expect(try await read("body", .search, "quick fox") == ["n-1"])
         #expect(try await read("body", .search, "quick sighting") == [])
     }

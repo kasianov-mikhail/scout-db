@@ -24,7 +24,6 @@ public struct TransactionStep: Codable, Equatable, Sendable {
         self.values = values
     }
 
-    // Steps persisted before deletes existed carry no kind; they are writes.
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         kind = try container.decodeIfPresent(Kind.self, forKey: .kind) ?? .write
@@ -80,9 +79,6 @@ extension EntityStore {
         return uuid
     }
 
-    // Replays are at-least-once: record writes are idempotent through their fixed uuids,
-    // but aggregate views count every write, so a repaired transaction may double-count
-    // grid cells. Keep transactional entities and view-aggregated entities separate.
     @discardableResult public func repairTransactions(olderThan cutoff: Date? = nil) async throws -> Int {
         var filters = [Filter(field: "status", op: .equals, value: .string("pending"))]
         if let cutoff {
@@ -98,21 +94,10 @@ extension EntityStore {
         return pending.count
     }
 
-    // The transaction envelope record, written once as "pending" and again as "committed".
     private func writeTransaction(status: String, steps: Data, uuid: String) async throws {
         try await write(["status": .string(status), "date": .date(Date()), "steps": .bytes(steps)], entity: Self.transactionEntity, uuid: uuid)
     }
 
-    // A run of consecutive write steps flushes as one batched write per entity,
-    // even when the entities interleave; per-entity step order is preserved and
-    // a repeated uuid starts that entity's next batch, so later steps still
-    // overwrite earlier ones the way sequential writes did. A store enforcing
-    // references keeps the strict step order instead — a child written between
-    // two parents must not be batched ahead of the parent it names. A run of
-    // consecutive deletes tombstones as one batch per entity. Updates patch one
-    // at a time through the CAS rewrite. All three replay idempotently; an
-    // update of a missing record throws, leaving the transaction pending for a
-    // later repair.
     private func apply(_ steps: [TransactionStep]) async throws {
         var index = 0
         while index < steps.count {

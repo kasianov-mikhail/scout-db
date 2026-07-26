@@ -24,19 +24,12 @@ public enum Pool: String, Codable, CaseIterable, Sendable {
     case locationList = "lg"
     case assetList = "la"
 
-    // Mirrors the slot counts declared in the frozen Schema file. CloudKit caps a
-    // record type at 256 fields total — the 6 system fields count too. Budget:
-    // 6 system + 5 envelope + 240 slots (15 x 16) + 1 payload = 252, leaving 4 free.
     public var capacity: Int { 16 }
 
-    // The `pool_NN` slot naming is a wire-format invariant: these two are the only
-    // spelling of it — the allocator formats through `slotName`, the schema codecs
-    // parse through `slotIndex`/`pool(forSlot:)`.
     func slotName(_ index: Int) -> String {
         "\(rawValue)_\(String(format: "%02d", index))"
     }
 
-    /// The slot's index within this pool, or nil when the name is not of this pool.
     func slotIndex(_ slot: String) -> Int? {
         guard slot.hasPrefix("\(rawValue)_"), let index = Int(slot.dropFirst(rawValue.count + 1)), index >= 0 else { return nil }
         return index

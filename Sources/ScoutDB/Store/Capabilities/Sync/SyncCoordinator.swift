@@ -27,8 +27,6 @@ public final class SyncCoordinator: @unchecked Sendable {
     private var inFlight: Task<ZoneDelta, any Error>?
     private var trailing: Task<ZoneDelta, any Error>?
     private var runner: Task<Void, Never>?
-    // Bumped by reset(); a pass that started before a reset drops its now-stale
-    // token instead of re-persisting it over the cleared one.
     private var generation = 0
 
     /// With `projecting`, every pass pulls only the projected fields — see
@@ -62,8 +60,6 @@ public final class SyncCoordinator: @unchecked Sendable {
     }
 
     deinit {
-        // The runner holds the coordinator weakly, so it would idle forever
-        // after the last strong reference goes away — cancel it instead.
         runner?.cancel()
     }
 
@@ -90,8 +86,6 @@ public final class SyncCoordinator: @unchecked Sendable {
         try await join().value
     }
 
-    // The task this request rides on: the pass just started, or the single
-    // trailing pass every arrival during a running pass shares.
     private func join() -> Task<ZoneDelta, any Error> {
         lock.withLock {
             if let current = inFlight {
@@ -106,8 +100,6 @@ public final class SyncCoordinator: @unchecked Sendable {
         }
     }
 
-    // One queued pass; when it settles, the trailing pass (if a burst created
-    // one) is promoted to in-flight so later arrivals chain behind it.
     private func makePass(after previous: Task<ZoneDelta, any Error>?) -> Task<ZoneDelta, any Error> {
         Task {
             if let previous {
@@ -128,10 +120,6 @@ public final class SyncCoordinator: @unchecked Sendable {
             do {
                 _ = try await cache.flush()
             } catch {
-                // The pull must proceed — an offline queue waits for the next
-                // pass — but the caller of sync() never sees this failure, so
-                // report it: an OfflineFlushError here is the only sign the
-                // app gets that queued edits conflicted.
                 onError?(error)
             }
         }
@@ -149,9 +137,6 @@ public final class SyncCoordinator: @unchecked Sendable {
         return delta
     }
 
-    // Pulls the pass in batches, applying each one — token, persistence, live
-    // queries, progress — before the next, so an interrupted walk resumes from
-    // its last applied batch. Returns the batches combined.
     private func batchedPass(since: Data?, batchSize: Int, generation: Int) async throws -> ZoneDelta {
         var records: [EntityRecord] = []
         var deleted: [String] = []
@@ -167,10 +152,6 @@ public final class SyncCoordinator: @unchecked Sendable {
     }
 
     private func apply(_ delta: ZoneDelta, generation: Int) {
-        // Read and update the token under the lock, but persist it outside: a slow
-        // atomic disk write must not block join()/isRunning/start(). A reset that
-        // landed since this pass began (a newer generation) drops the stale token
-        // rather than re-persisting it over the cleared one.
         let persist: Data? = lock.withLock {
             guard generation == self.generation else { return nil }
             token = delta.token ?? token
@@ -179,7 +160,6 @@ public final class SyncCoordinator: @unchecked Sendable {
         if let tokenURL, let persist {
             try? persist.write(to: tokenURL, options: .atomic)
         }
-        // Applied remote changes tick this process's live queries too.
         for entity in Set(delta.records.map(\.entity)) {
             store.noteChange(entity: entity)
         }
@@ -234,9 +214,6 @@ public final class SyncCoordinator: @unchecked Sendable {
     public func reset() {
         lock.withLock {
             token = nil
-            // Any pass already in flight read the old token before this reset;
-            // bumping the generation makes its later apply() drop the stale token
-            // instead of re-persisting it over the cleared one.
             generation += 1
             if let tokenURL {
                 try? FileManager.default.removeItem(at: tokenURL)

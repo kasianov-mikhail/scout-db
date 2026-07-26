@@ -119,13 +119,10 @@ struct FluentTests {
 
     @Test("Explain reports one plan per OR branch instead of dropping the groups")
     func explainGroups() async throws {
-        // No group: a single plan describing the base filters.
         let flat = try await store.query("purchase").filter("quantity" > 0).explain()
         #expect(flat.count == 1)
         #expect(!flat[0].server.isEmpty)
 
-        // Equality picks over one field are a membership test: one plan with an
-        // `in` filter, not one query per pick.
         let grouped = try await store.query("purchase")
             .filter("quantity" > 0)
             .group {
@@ -136,8 +133,6 @@ struct FluentTests {
         #expect(grouped.count == 1)
         #expect(grouped[0].server.contains { $0.contains("sku-0") && $0.contains("sku-2") })
 
-        // Picks over different fields cannot fold and still fan out, each branch
-        // carrying the shared base filter plus its own pick.
         let fanned = try await store.query("purchase")
             .filter("quantity" > 0)
             .group {
@@ -169,14 +164,11 @@ struct FluentTests {
             .all()
         #expect(records.map(\.uuid) == ["p-0", "p-2"])
 
-        // The complement composes with positive filters and other client ops.
         #expect(try await store.query("purchase").filter("quantity" > 1).exclude("quantity", .equals, 3).count() == 1)
         #expect(try await store.query("purchase").exclude("product_id", .contains, "ku-").count() == 0)
 
-        // No record carries a comment, so excluding by it keeps them all.
         #expect(try await store.query("purchase").exclude("comment", .equals, "gift").count() == 3)
 
-        // Distance cannot be negated.
         await #expect(throws: SchemaError.invalidValue("product_id")) {
             _ = try await store.query("purchase")
                 .exclude(.init(field: "product_id", op: .near, value: .location(latitude: 0, longitude: 0), radius: 10))
@@ -189,13 +181,11 @@ struct FluentTests {
         await #expect(throws: SchemaError.invalidValue("product_id")) {
             _ = try await store.query("purchase").filter("product_id", .matches, "(").all()
         }
-        // A valid pattern keeps working.
         #expect(try await store.query("purchase").filter("product_id", .matches, "sku-[0-9]").count() == 3)
     }
 
     @Test("A compound alternative requires all of its filters at once")
     func compoundAlternative() async throws {
-        // quantities: p-0 → 3, p-1 → 1, p-2 → 2
         let records = try await store.query("purchase")
             .group {
                 $0.filter("product_id", .equals, "sku-1")
@@ -205,7 +195,6 @@ struct FluentTests {
             .all()
         #expect(records.map(\.uuid) == ["p-1", "p-2"])
 
-        // The compound alternative distributes into the other operations too.
         let count = try await store.query("purchase")
             .group {
                 $0.all("quantity" > 1, "amount" < 25)
@@ -307,7 +296,6 @@ struct FluentTests {
 
     @Test("The builder pages by its sort clause, honoring OR groups")
     func fieldPage() async throws {
-        // quantities: p-0 → 3, p-1 → 1, p-2 → 2
         let first = try await store.query("purchase").sort("quantity").page(size: 2)
         #expect(first.records.map(\.uuid) == ["p-1", "p-2"])
         let second = try await store.query("purchase").sort("quantity").page(size: 2, after: try #require(first.cursor))
@@ -378,8 +366,6 @@ struct FluentTests {
         #expect(stored.map(\.productId) == ["sku-9"])
         #expect(stored.first?.amount == 12.5)
 
-        // A field outside the type's map — the payload comment — survives a
-        // typed update; nil properties leave their fields untouched.
         try await store.update(entity: "purchase", uuid: "t-1") { $0.values["comment"] = .string("gift") }
         try await store.update(TypedPurchase.self, uuid: "t-1") { purchase in
             purchase.quantity = 6
@@ -390,7 +376,6 @@ struct FluentTests {
         #expect(updated.values["product_id"] == .string("sku-9"))
         #expect(updated.values["amount"] == .double(12.5))
 
-        // The batch path lands every value under a fresh uuid.
         var second = item
         second.productId = "sku-10"
         let uuids = try await store.write([item, second])
@@ -414,7 +399,6 @@ struct FluentTests {
         #expect(rest?.productId == "sku-2")
         #expect(try await store.query(TypedPurchase.self).filter(\.amount <= 20).count() == 2)
 
-        // A key path outside the field map fails loudly instead of matching nothing.
         await #expect(throws: SchemaError.self) {
             _ = try await store.query(TypedPurchase.self).filter(\.untracked == "x").all()
         }
@@ -422,28 +406,24 @@ struct FluentTests {
 
     @Test("Typed queries paginate, stream, observe, and scope by creator")
     func typedParity() async throws {
-        // Envelope-date pages decode into structs and chain by cursor.
         let first = try await store.query(TypedPurchase.self).paginate(size: 2)
         #expect(first.items.map(\.productId) == ["sku-0", "sku-1"])
         let rest = try await store.query(TypedPurchase.self).paginate(size: 2, after: first.cursor)
         #expect(rest.items.map(\.productId) == ["sku-2"])
         #expect(rest.cursor == nil)
 
-        // Field-ordered pages honor the single sort clause.
         let cheap = try await store.query(TypedPurchase.self).sort(\.amount).page(size: 2)
         #expect(cheap.items.map(\.amount) == [10, 20])
         let expensive = try await store.query(TypedPurchase.self).sort(\.amount).page(size: 2, after: cheap.cursor)
         #expect(expensive.items.map(\.amount) == [30])
         #expect(expensive.cursor == nil)
 
-        // Streaming decodes every match, page by page.
         var streamed: [TypedPurchase] = []
         for try await purchase in try store.query(TypedPurchase.self).filter(\.quantity > 1).stream(pageSize: 1) {
             streamed.append(purchase)
         }
         #expect(Set(streamed.compactMap(\.productId)) == ["sku-0", "sku-2"])
 
-        // observe: the first element is the current result, a write ticks a fresh one.
         var updates = try store.query(TypedPurchase.self).filter(\.quantity > 2).observe().makeAsyncIterator()
         #expect(try await updates.next()?.count == 1)
         try await store.write(
@@ -451,7 +431,6 @@ struct FluentTests {
             entity: "purchase", uuid: "p-9")
         #expect(try await updates.next()?.count == 2)
 
-        // createdBy narrows to one user's records, decoded like any other read.
         database.records.first { $0.recordID.recordName == "p-0" }?.overrideCreator("user-a")
         let mine = try await store.query(TypedPurchase.self).createdBy("user-a").all()
         #expect(mine.map(\.productId) == ["sku-0"])
@@ -469,8 +448,6 @@ struct FluentTests {
         try await zoned.write(["product_id": .string("sku-8"), "quantity": .int(2)], entity: "purchase", uuid: "tp-2")
         try await zoned.delete(entity: "purchase", uuid: "tp-2")
 
-        // items decodes only the entity's live records; the note and the
-        // tombstone stay out, and the tombstone surfaces as a typed deletion.
         let delta = try await zoned.zoneChanges()
         let purchases = delta.items(TypedPurchase.self)
         #expect(purchases.map(\.productId) == ["sku-9"])
@@ -490,7 +467,6 @@ struct FluentTests {
 
         try await store.write(["email": .string("a@x.io"), "username": .string("ann"), "plan": .string("free")], entity: "account", uuid: "u-1")
 
-        // Each key constrains independently.
         await #expect(throws: SchemaError.duplicateKey(fields: ["email"])) {
             try await store.write(["email": .string("a@x.io"), "username": .string("bob")], entity: "account", uuid: "u-2")
         }
@@ -498,15 +474,11 @@ struct FluentTests {
             try await store.write(["email": .string("b@x.io"), "username": .string("ann")], entity: "account", uuid: "u-2")
         }
 
-        // Distinct values pass, and a record missing a key field is exempt.
         try await store.write(["email": .string("b@x.io")], entity: "account", uuid: "u-2")
         try await store.write(["email": .string("c@x.io")], entity: "account", uuid: "u-3")
 
-        // Rewriting a record with its own values does not trip its keys.
         try await store.write(["email": .string("a@x.io"), "username": .string("ann"), "plan": .string("pro")], entity: "account", uuid: "u-1")
 
-        // An update stealing a taken value is rejected; a tombstoned record
-        // frees its keys.
         await #expect(throws: SchemaError.duplicateKey(fields: ["email"])) {
             try await store.update(entity: "account", uuid: "u-2") { $0.values["email"] = .string("a@x.io") }
         }
@@ -515,7 +487,6 @@ struct FluentTests {
             record.values["email"] = .string("a@x.io")
         }
 
-        // In-batch duplicates are rejected before anything lands.
         await #expect(throws: SchemaError.duplicateKey(fields: ["email"])) {
             try await store.write(
                 [EntityWrite(values: ["email": .string("d@x.io")], uuid: "u-4"), EntityWrite(values: ["email": .string("d@x.io")], uuid: "u-5")],
@@ -538,7 +509,6 @@ struct FluentTests {
             try await store.write(["group_id": .string("g1"), "member": .string("m1")], entity: "membership", uuid: "m-4")
         }
 
-        // An unknown key field fails schema validation up front.
         await #expect(throws: SchemaError.self) {
             try await store.schema("broken").field("name", .string).uniqueKey(on: "missing").create()
         }
@@ -586,8 +556,6 @@ struct FluentTests {
     }
 }
 
-// The shape scoutdb-codegen emits, written by hand for the typed-query tests;
-// `untracked` deliberately stays out of the field map.
 private struct TypedPurchase: EntityRepresentable {
     static let entityName = "purchase"
 

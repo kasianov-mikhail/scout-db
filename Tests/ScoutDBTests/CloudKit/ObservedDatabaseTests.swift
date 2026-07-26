@@ -61,8 +61,6 @@ struct ObservedDatabaseTests {
             return recorder.operations.filter { $0.kind == .query || $0.kind == .continuation }.count
         }
 
-        // The reads behind a write are the constraint checks; batching means their
-        // number is a property of the schema, not of how many records arrive.
         let one = try await reads(writing: 1, from: 0)
         let many = try await reads(writing: 20, from: 100)
         #expect(many == one)
@@ -90,7 +88,6 @@ struct ObservedDatabaseTests {
         try await registry.publish(makePurchaseDefinition())
         recorder.reset()
 
-        // The queued offline write is reported as the success the caller saw.
         backing.writeErrors = [CKError(.networkFailure)]
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
         let modify = try #require(recorder.operations.first { $0.kind == .modify })
@@ -98,7 +95,6 @@ struct ObservedDatabaseTests {
     }
 }
 
-// Collects reported operations from any thread.
 final class Recorder: DatabaseObserver, @unchecked Sendable {
     private let lock = NSLock()
     private var collected: [DatabaseOperation] = []

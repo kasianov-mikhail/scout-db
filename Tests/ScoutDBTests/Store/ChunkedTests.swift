@@ -20,8 +20,6 @@ struct ChunkedTests {
 
     @Test("A non-positive size does not trap and yields one unbounded chunk")
     func nonPositiveSize() {
-        // stride(by:) would trap on a zero or negative step; instead the whole
-        // array comes back as a single chunk, and an empty array as no chunks.
         #expect([1, 2, 3].chunked(into: 0) == [[1, 2, 3]])
         #expect([1, 2, 3].chunked(into: -1) == [[1, 2, 3]])
         #expect([Int]().chunked(into: 0) == [])

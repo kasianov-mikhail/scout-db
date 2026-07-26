@@ -8,9 +8,6 @@
 import Foundation
 import ScoutDB
 
-// The command-line face of `DefinitionCodeGenerator`, driven by the
-// ScoutDBCodegen build-tool plugin: one entity-definition JSON in, one
-// generated Swift file out.
 let arguments = CommandLine.arguments
 guard arguments.count == 4, arguments[2] == "--output" else {
     FileHandle.standardError.write(Data("usage: scoutdb-codegen <definition.entity.json> --output <file.swift>\n".utf8))

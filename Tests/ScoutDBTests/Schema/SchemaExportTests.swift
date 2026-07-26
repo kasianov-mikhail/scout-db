@@ -24,8 +24,6 @@ struct SchemaExportTests {
         let registry = SchemaRegistry(database: database)
         try await registry.publish(makePurchaseDefinition())
 
-        // A fresh registry has an empty cache: the export must preload the
-        // active set from the database, not echo local state.
         let files = try await SchemaRegistry(database: database).exportDefinitions(to: directory)
         #expect(files.map(\.lastPathComponent) == ["purchase.entity.json"])
 
@@ -33,7 +31,6 @@ struct SchemaExportTests {
         let decoded = try JSONDecoder().decode(EntityDefinition.self, from: data)
         #expect(decoded == makePurchaseDefinition())
 
-        // The exported file is exactly what the codegen CLI and plugin consume.
         let source = try DefinitionCodeGenerator().source(forJSON: data)
         #expect(source.contains("struct Purchase"))
     }
@@ -48,9 +45,6 @@ struct SchemaExportTests {
             ])
         let source = DefinitionCodeGenerator().source(for: definition)
 
-        // A reference has no scalar Swift counterpart: mapping it to String
-        // produced code that read back nil and failed to write. It must stay a
-        // raw RecordValue that round-trips, like location and asset.
         #expect(source.contains("var author: RecordValue?"))
         #expect(!source.contains("var author: String?"))
         #expect(source.contains("author = record.values[\"author\"]"))

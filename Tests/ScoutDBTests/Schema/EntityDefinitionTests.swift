@@ -72,8 +72,6 @@ struct EntityDefinitionTests {
 
     @Test("Validation rejects an envelope date inactive at the current version")
     func envelopeDateClosedAtVersion() {
-        // The date field was closed before v2, so it is inactive there; a
-        // whole-fields search would still find the closed timestamp and pass.
         let definition = makeDefinition(
             entity: "e", version: 2,
             fields: [

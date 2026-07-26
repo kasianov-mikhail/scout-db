@@ -81,8 +81,6 @@ extension EntityStore {
         try await database.modifyRecords(saving: [], deleting: [share.recordID])
     }
 
-    // The server copy of a shareable record: sharing needs a custom zone, an
-    // existing record, and the entity the caller thinks it is.
     private func sharedRoot(entity: String, uuid: String) async throws -> CKRecord {
         guard let zoneID else {
             throw SchemaError.invalidDefinition("Sharing requires a store configured with a custom zone")

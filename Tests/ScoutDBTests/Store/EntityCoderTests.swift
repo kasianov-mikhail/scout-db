@@ -175,7 +175,6 @@ struct EntityCoderTests {
             entity: "log",
             fields: [
                 FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
-                // Declared before its source `name_folded`, so a single declaration-order pass would miss it.
                 FieldDefinition(
                     name: "name_ngrams", type: .stringList, storage: .slot(.stringList, "ls_00"),
                     derived: Derivation(source: "name_folded", transform: .ngrams)),

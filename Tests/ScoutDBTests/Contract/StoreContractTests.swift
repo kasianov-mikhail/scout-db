@@ -10,14 +10,6 @@ import Foundation
 import ScoutDB
 import Testing
 
-/// The store-level behaviors every `CloudDatabase` implementation must honor.
-///
-/// These tests run against the in-memory double in every suite run and against
-/// a live CloudKit private database when `SCOUTDB_CONTRACT_CONTAINER` is set —
-/// the same assertions, two backends. They use only public API, poll through
-/// `eventually` instead of asserting immediate query consistency, and keep
-/// every run hermetic: a private zone plus run-salted entity names.
-///
 @Suite("Contract: store")
 struct StoreContractTests {
     @Test("A write round-trips every field type through a read")
@@ -261,7 +253,6 @@ struct StoreContractTests {
                 return delta.records.map(\.uuid) == ["m-1"]
             }
 
-            // The second write lands strictly after the cursor's timestamp.
             try await Task.sleep(for: .seconds(1))
             try await f.store.write(orderValues(), entity: entity, uuid: "m-2")
             try await eventually {

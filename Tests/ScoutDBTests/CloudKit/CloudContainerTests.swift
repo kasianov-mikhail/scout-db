@@ -55,7 +55,6 @@ struct CloudContainerTests {
         let store = EntityStore(database: database, registry: registry, zoneID: zone)
         try await store.ensureZone()
 
-        // Without a share the invitation fails loudly.
         await #expect(throws: SchemaError.notFound(CKRecordNameZoneWideShare)) {
             try await store.inviteToShare(emails: ["ada@example.com"], via: container)
         }
@@ -63,8 +62,6 @@ struct CloudContainerTests {
         try await store.shareZone(title: "Scout")
         let share = try await store.inviteToShare(emails: ["ada@example.com"], phoneNumbers: ["+1555"], via: container)
 
-        // The double cannot fabricate participants, so it records the lookups;
-        // the share round-trips through the save either way.
         #expect(container.lookedUpParticipants.count == 2)
         #expect(share.recordID.recordName == CKRecordNameZoneWideShare)
         #expect(try await store.zoneShare() != nil)
@@ -75,15 +72,11 @@ struct CloudContainerTests {
         let container = InMemoryContainer()
         let url = URL(string: "https://www.icloud.com/share/abc")!
 
-        // The double cannot fabricate CKShare.Metadata; it records the request
-        // and answers unknownItem.
         await #expect(throws: CKError.self) {
             _ = try await container.shareMetadata(for: url)
         }
         #expect(container.requestedShareURLs == [url])
 
-        // acceptShare(at:) rides the same fetch, so its failure surfaces
-        // before anything is accepted.
         container.metadataErrors = [CKError(.networkFailure)]
         await #expect(throws: CKError.self) {
             _ = try await container.acceptShare(at: url)

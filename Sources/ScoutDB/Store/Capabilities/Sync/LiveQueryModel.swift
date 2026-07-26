@@ -29,8 +29,6 @@ import Observation
     /// The failure that stopped the tracking, nil while it runs.
     public private(set) var error: (any Error)?
 
-    // Set once in init, read in deinit — the nonisolated escape hatch is safe
-    // because no other context ever touches it.
     @ObservationIgnored nonisolated(unsafe) private var task: Task<Void, Never>?
 
     init(stream: AsyncThrowingStream<[Element], any Error>) {

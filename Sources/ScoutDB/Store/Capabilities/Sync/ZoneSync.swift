@@ -95,9 +95,6 @@ extension EntityStore {
                         let (delta, raw) = try await batch(since: cursor, desiredKeys: keys, resultsLimit: batchSize)
                         guard raw > 0 else { break }
                         continuation.yield(delta)
-                        // The feed must advance every pass; a nil or unchanged
-                        // token would replay the same batch forever, so stop
-                        // rather than spin.
                         guard let next = delta.token, next != cursor else { break }
                         cursor = next
                     }
@@ -133,9 +130,6 @@ extension EntityStore {
         try await batch(since: token, desiredKeys: desiredKeys, resultsLimit: nil).delta
     }
 
-    // One feed pass. The raw count says whether the feed had anything left —
-    // decoding can drop records (retired entities), so the batched walk cannot
-    // infer that from the delta alone.
     private func batch(since token: Data?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int?) async throws -> (delta: ZoneDelta, raw: Int) {
         guard let zoneID else {
             throw SchemaError.invalidDefinition("Zone sync requires a store configured with a custom zone")

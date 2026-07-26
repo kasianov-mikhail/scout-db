@@ -59,8 +59,6 @@ struct RequestTimeoutTests {
     }
 }
 
-// Parks callers on a plain continuation that ignores task cancellation, standing in
-// for a request stuck past the point where cancelling it helps.
 private actor Gate {
     private var isOpen = false
     private var waiters: [CheckedContinuation<Void, Never>] = []

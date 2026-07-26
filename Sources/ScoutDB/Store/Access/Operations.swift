@@ -55,10 +55,6 @@ extension EntityStore {
                 rewrite = merged
                 prepared = nil
             } else {
-                // A tombstone is logically absent — reads and fetches filter it,
-                // and update (the path counters and list mutations ride) must too,
-                // rather than silently mutating a deleted record. Lift a tombstone
-                // through `restore`, not `update`.
                 guard let stored = existing, !Self.isTombstone(stored) else {
                     throw SchemaError.notFound(uuid)
                 }
@@ -83,9 +79,6 @@ extension EntityStore {
             } catch let conflict as RecordConflictError {
                 attempt += 1
                 guard attempt < maxRetry else { throw conflict }
-                // The conflict already carries the winning record. When the two
-                // sides edited disjoint fields, graft this side's changes onto the
-                // winner instead of re-running the transform — nothing to re-decide.
                 let winner = try coder.decode(conflict.serverRecord, using: definition)
                 let mine = Self.changedFields(from: rewrite.previous, to: rewrite.next)
                 let theirs = Self.changedFields(from: rewrite.previous, to: winner)
@@ -100,15 +93,11 @@ extension EntityStore {
                 }
                 continue
             }
-            // The staged asset copies existed only for the upload; the landed
-            // rewrite retires them.
             EntityCoder.discardStagedAssets(in: [rewrite.record])
             let released = rekeyed + reassigned.map { [$0.name] }
             if !released.isEmpty {
                 await releaseStaleClaims(for: released, from: rewrite.previous, to: rewrite.next, using: definition)
             }
-            // Rebalance the views outside the CAS loop: drop the stored record's old
-            // contribution, add the new one. A grid conflict here must not retry the update.
             try await GridAggregator(database: database).rebalance(removing: [rewrite.previous], adding: [rewrite.next], using: definition)
             try await recordRevisions([rewrite.previous], using: definition)
             noteChange(entity: entity)
@@ -116,8 +105,6 @@ extension EntityStore {
         }
     }
 
-    // The fields whose values differ between two states of one record; a field
-    // the later state removed carries nil.
     private static func changedFields(from base: EntityRecord, to next: EntityRecord) -> [String: RecordValue?] {
         var changes: [String: RecordValue?] = [:]
         for field in Set(base.values.keys).union(next.values.keys) where base.values[field] != next.values[field] {
@@ -157,10 +144,6 @@ extension EntityStore {
         return EntityPage(records: Array(records), cursor: next)
     }
 
-    // Reads one keyset page. The envelope date is sorted and bounded server-side, and the
-    // query cursor is followed only until `limit` post-filter rows are in hand — so a page
-    // read costs about one page of records, not the whole result set the way a full scan
-    // through `read(entity:filters:)` would. Ties on the date are broken by uuid here.
     private func page(entity: String, filters: [Filter], dateField: String, cursor: EntityCursor?, limit: Int, using definition: EntityDefinition) async throws
         -> [EntityRecord]
     {
@@ -222,8 +205,6 @@ extension EntityStore {
         return FieldPage(records: records, cursor: next)
     }
 
-    // One branch's bounded page: the field is range-bounded and sorted server-side,
-    // and the cursor is followed only until `limit` post-filter rows are in hand.
     private func fieldPage(
         entity: String, filters: [Filter], field: String, descending: Bool, cursor: FieldCursor?, limit: Int, using definition: EntityDefinition
     ) async throws -> [EntityRecord] {
@@ -242,8 +223,6 @@ extension EntityStore {
         return Array(collected.sorted { Self.ordered($0, $1, by: field, descending: descending) }.prefix(limit))
     }
 
-    // Whether the record lies strictly beyond the cursor in the page order; ties
-    // on the field fall back to ascending uuids in both directions.
     private static func beyond(_ record: EntityRecord, _ field: String, _ cursor: FieldCursor, descending: Bool) -> Bool {
         switch rank(record.values[field], cursor.value) {
         case .orderedSame: record.uuid > cursor.uuid
@@ -308,9 +287,6 @@ extension EntityStore {
     {
         let definition = try await registry.definition(for: entity)
         let coder = EntityCoder(keyProvider: keyProvider)
-        // The branches are independent reads, so they run concurrently and are
-        // reassembled in branch order — the transform then applies once per
-        // record, on the caller's task, and never needs to be Sendable.
         var seen: Set<String> = []
         var pending: [EntityCoder.Rewrite] = []
         for item in try await matchedBranches(entity: entity, branches: branches, using: definition) {
@@ -330,12 +306,8 @@ extension EntityStore {
                 unresolved = conflicts.first
                 break
             }
-            // The conflicts already carry the winning records — retry against them
-            // instead of re-querying.
             pending = try conflicts.map { try coder.rewrite($0, using: definition, transform: transform) }
         }
-        // Rebalance the views for the records that landed: drop the old
-        // contributions, add the new ones.
         try await GridAggregator(database: database).rebalance(removing: applied.map(\.previous), adding: applied.map(\.next), using: definition)
         try await recordRevisions(applied.map(\.previous), using: definition)
         if applied.count > 0 {
@@ -347,13 +319,7 @@ extension EntityStore {
         return applied.count
     }
 
-    // Every branch's live records, concatenated in branch order. The branches are
-    // independent server queries, so they run concurrently; the shared request
-    // limiter still bounds the actual CloudKit fan-out.
     private func matchedBranches(entity: String, branches: [[Filter]], using definition: EntityDefinition) async throws -> [CKRecord] {
-        // CKRecord gains its Sendable annotation above this deployment target; each
-        // branch's records are freshly fetched and handed over whole, never shared
-        // between tasks.
         struct Branch: @unchecked Sendable {
             let index: Int
             let records: [CKRecord]
@@ -370,8 +336,6 @@ extension EntityStore {
         }
     }
 
-    // The live stored records behind a filtered read, kept as CKRecords rather than
-    // decoded — a rewrite must encode back into the source record, which `read` discards.
     func matchedItems(entity: String, filters: [Filter], using definition: EntityDefinition) async throws -> [CKRecord] {
         let (query, included) = try liveQuery(filters, entity: entity, using: definition)
         let coder = EntityCoder(keyProvider: keyProvider)
@@ -439,19 +403,11 @@ extension EntityStore {
         return decoded.first { !$0.deleted }
     }
 
-    // Chunk lookups are independent, so they run concurrently; the shared request
-    // limiter still bounds the actual CloudKit fan-out.
-    // Whether a fetched record is a tombstone. `items(entity:uuids:)` returns
-    // deleted records too (so `restore` can lift them), so mutations that should
-    // treat a deleted record as absent must filter with this.
     static func isTombstone(_ record: CKRecord) -> Bool {
         (record["deleted"] as? Int64 ?? 0) > 0
     }
 
     func items(entity: String, uuids: [String]) async throws -> [CKRecord] {
-        // CKRecord gains its Sendable annotation above this deployment target; each
-        // chunk's records are freshly fetched and handed over whole, never shared
-        // between tasks.
         struct Chunk: @unchecked Sendable {
             let index: Int
             let records: [CKRecord]
@@ -461,7 +417,6 @@ extension EntityStore {
         return try await withThrowingTaskGroup(of: Chunk.self) { group in
             for (index, chunk) in uuids.chunked(into: 100).enumerated() {
                 group.addTask {
-                    // A record's name is its uuid, so the batch is addressable by ID.
                     let ids = chunk.map { CKRecord.ID(recordName: $0, zoneID: zoneID ?? .default) }
                     return Chunk(index: index, records: try await database.fetchRecords(ids: ids))
                 }
@@ -470,9 +425,6 @@ extension EntityStore {
             for try await chunk in group {
                 chunks[chunk.index] = chunk.records
             }
-            // The query this replaced was scoped to the entity; a fetch is scoped
-            // only by name, and a natural uuid is a digest of the record's own key
-            // fields, which two entities could in principle both produce.
             return chunks.sorted { $0.key < $1.key }.flatMap(\.value).filter { $0["entity"] as? String == entity }
         }
     }

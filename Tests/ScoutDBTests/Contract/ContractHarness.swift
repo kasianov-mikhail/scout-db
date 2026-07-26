@@ -11,14 +11,6 @@ import ScoutDB
 import ScoutDBTesting
 import Testing
 
-/// The backend a contract run exercises.
-///
-/// By default every contract test runs against `InMemoryDatabase` — fast,
-/// hermetic, and part of the regular suite. Setting `SCOUTDB_CONTRACT_CONTAINER`
-/// to a CloudKit container identifier switches the same tests to that
-/// container's private database, which requires a signed test host with the
-/// iCloud entitlement and a logged-in account — see Tests/ScoutDBTestHost/README.md.
-///
 enum ContractBackend {
     static var containerID: String? {
         ProcessInfo.processInfo.environment["SCOUTDB_CONTRACT_CONTAINER"]
@@ -36,29 +28,18 @@ enum ContractBackend {
 
 struct ContractTimeoutError: Error {}
 
-/// Polls the assertion until it holds, absorbing live CloudKit's indexing lag.
-///
-/// A freshly saved record reaches the query indexes seconds later, so a live
-/// run retries until `timeout`; the in-memory double is immediately consistent
-/// and settles on the first pass.
-///
 func eventually(timeout: Duration = .seconds(90), _ body: () async throws -> Bool) async throws {
     let deadline = ContinuousClock.now + (ContractBackend.isLive ? timeout : .seconds(1))
     while true {
         do {
             if try await body() { return }
         } catch let error as CKError where ContractBackend.isLive && error.code == .unknownItem {
-            // The development environment creates record types just-in-time on
-            // first write; a query racing that creation fails transiently.
         }
         guard ContinuousClock.now < deadline else { throw ContractTimeoutError() }
         try await Task.sleep(for: ContractBackend.isLive ? .seconds(2) : .milliseconds(10))
     }
 }
 
-/// One hermetic contract run: its own zone, run-salted entity names, and a
-/// best-effort teardown that removes the zone and retires the schemas so a
-/// live container does not accumulate state between runs.
 final class ContractFixture {
     let database: any CloudDatabase
     let registry: SchemaRegistry
@@ -76,7 +57,6 @@ final class ContractFixture {
         try await store.ensureZone()
     }
 
-    /// A run-unique entity name, so parallel and repeated runs never share schema rows.
     func entity(_ name: String) -> String {
         "c\(run)_\(name)"
     }
@@ -90,7 +70,6 @@ final class ContractFixture {
         return entity
     }
 
-    /// The order-like fixture most contract tests share.
     func publishOrder(views: [AggregateView]? = nil) async throws -> String {
         try await publish(
             "order",
@@ -107,15 +86,12 @@ final class ContractFixture {
         for entity in published {
             try? await registry.retire(entity: entity)
         }
-        // Dropping the zone drops every entity record the run wrote. The
-        // in-memory double dies with the test, so only a live zone needs it.
         if let database = database as? CKDatabase {
             _ = try? await database.modifyRecordZones(saving: [], deleting: [zoneID])
         }
     }
 }
 
-/// Runs one contract test against a fresh fixture and always tears it down.
 func withContract(_ body: (ContractFixture) async throws -> Void) async throws {
     let fixture = try await ContractFixture()
     do {

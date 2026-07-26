@@ -75,8 +75,6 @@ extension EntityStore {
         return false
     }
 
-    // Distance ranking for a nearest-first sort; a record without the location
-    // ranks last, mirroring the server pushing unlocatable rows to the end.
     private static func rankDistance(_ lhs: RecordValue?, _ rhs: RecordValue?, from origin: CLLocation) -> ComparisonResult {
         func distance(_ value: RecordValue?) -> Double {
             guard case .location(let latitude, let longitude)? = value else { return .greatestFiniteMagnitude }
@@ -107,10 +105,6 @@ extension EntityStore {
         lhs == rhs ? .orderedSame : (lhs < rhs ? .orderedAscending : .orderedDescending)
     }
 
-    // Splits logical filters into predicates CloudKit can run and matchers the
-    // store applies after decoding. `contains` is server-side list membership but a
-    // client-side substring check on strings; `endsWith` runs server-side when the
-    // definition declares a `reversed` shadow of the field, and falls back otherwise.
     func split(_ filters: [Filter], entity: String, using definition: EntityDefinition) throws -> (server: [ServerFilter], client: [Filter]) {
         var server = [ServerFilter(field: "entity", op: .equals, value: .string(entity))]
         var client: [Filter] = []
@@ -121,9 +115,6 @@ extension EntityStore {
             guard let field = byName[filter.field] else {
                 throw SchemaError.unknownField(filter.field)
             }
-            // A negation runs as the complement of the client matcher; the ngram
-            // and shadow-slot narrowings below only ever shrink the positive set,
-            // so they must not apply to a negated filter.
             if filter.negated {
                 guard filter.op != .near, filter.op != .search else {
                     throw SchemaError.invalidValue(filter.field)
@@ -155,8 +146,6 @@ extension EntityStore {
                 guard field.type == .text, case .slot(_, let slot) = field.storage else {
                     throw SchemaError.invalidValue(filter.field)
                 }
-                // The server's token search spans every field of the record
-                // (`self CONTAINS`), so the named field re-narrows client-side.
                 server.append(ServerFilter(field: slot, op: .search, value: filter.value))
                 client.append(filter)
             default:
@@ -164,9 +153,6 @@ extension EntityStore {
                     throw SchemaError.unknownField(filter.field)
                 }
                 guard case .slot(_, let slot) = field.storage else {
-                    // A payload field has no queryable slot, so every comparison the
-                    // store can express post-decode falls back to a client matcher.
-                    // Distance needs the server and keeps requiring a slot.
                     guard filter.op != .near else { throw SchemaError.invalidValue(filter.field) }
                     client.append(filter)
                     continue
@@ -189,9 +175,6 @@ extension EntityStore {
         }
     }
 
-    // Compiles a client-side filter into a record predicate. Building the predicate
-    // once per read hoists regex construction for `like` and `matches` out of the
-    // per-record loop. A record missing the field never matches, mirroring the server.
     static func matcher(for filter: Filter) throws -> (EntityRecord) -> Bool {
         let field = filter.field
         switch filter.op {
@@ -228,8 +211,6 @@ extension EntityStore {
             return stringMatcher(field) { $0.hasSuffix(suffix) }
         case .like:
             guard case .string(let pattern) = filter.value else { return { _ in false } }
-            // A malformed pattern is a caller mistake — matching nothing would
-            // silently turn the typo into an empty result set.
             guard let regex = try? Regex(wildcardPattern(pattern)) else { throw SchemaError.invalidValue(filter.field) }
             return stringMatcher(field) { $0.wholeMatch(of: regex) != nil }
         case .matches:
@@ -237,8 +218,6 @@ extension EntityStore {
             guard let regex = try? Regex(pattern) else { throw SchemaError.invalidValue(filter.field) }
             return stringMatcher(field) { $0.wholeMatch(of: regex) != nil }
         case .search:
-            // Token equality scoped to the named field, mirroring the server's
-            // tokenization; every needle token must appear among the field's.
             guard case .string(let needle) = filter.value else { return { _ in false } }
             let needles = needle.lowercased().split { !$0.isLetter && !$0.isNumber }
             return stringMatcher(field) { text in
@@ -250,8 +229,6 @@ extension EntityStore {
         }
     }
 
-    // Ranking two values of different kinds is not meaningful, so a comparison
-    // matches only comparable pairs: strings, dates, or numeric scalars.
     private static func comparisonMatcher(for filter: Filter) -> (EntityRecord) -> Bool {
         let field = filter.field
         return { record in
@@ -272,8 +249,6 @@ extension EntityStore {
         }
     }
 
-    // The candidates of an `in`/`notIn` filter: the elements of a list value, or
-    // the value itself as the single option.
     private static func options(of value: RecordValue) -> [RecordValue] {
         switch value {
         case .strings(let values): values.map(RecordValue.string)
@@ -291,7 +266,6 @@ extension EntityStore {
         }
     }
 
-    // Translates `*`/`?` wildcards into an anchored regex pattern.
     static func wildcardPattern(_ pattern: String) -> String {
         pattern.map { character -> String in
             switch character {
@@ -306,9 +280,6 @@ extension EntityStore {
         fields.first { $0.derived == Derivation(source: field.name, transform: .reversed) }
     }
 
-    // The pg_trgm technique: an `ngrams` shadow slot lets the server narrow substring and
-    // wildcard scans to records containing every trigram of the needle. The trigram match
-    // is necessary but not sufficient, so the exact client-side matcher still runs after.
     private func ngramPrefilter(for needles: [String], of field: FieldDefinition, in fields: [FieldDefinition]) -> [ServerFilter] {
         let shadow = fields.first { $0.derived == Derivation(source: field.name, transform: .ngrams) }
         guard case .slot(_, let slot)? = shadow?.storage else { return [] }

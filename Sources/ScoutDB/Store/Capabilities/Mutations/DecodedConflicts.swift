@@ -47,8 +47,6 @@ extension EntityStore {
     }
 }
 
-// Bridges the raw CKRecord conflict into decoded EntityRecords and the
-// policy's answer back into an encodable save.
 private struct DecodedConflictResolver: ConflictResolver {
     let store: EntityStore
     let policy: @Sendable (EntityRecord, EntityRecord, EntityRecord?) -> EntityConflictResolution
@@ -69,9 +67,6 @@ private struct DecodedConflictResolver: ConflictResolver {
         case .surface:
             return .surface
         case .save(let resolved):
-            // Encode into a copy of the server record — the rewrite path is
-            // what carries encrypted ciphertext across a keyless merge, and
-            // the copy keeps the conflict's own record pristine.
             let base = server.copy() as! CKRecord
             if let tag = server.recordVersionTag {
                 base.overrideChangeTag(tag)

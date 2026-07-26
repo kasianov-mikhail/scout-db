@@ -72,7 +72,6 @@ struct OfflineCacheTests {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
         _ = try await store.read(entity: "purchase")
 
-        // Queue offline writes: a rewrite of p-1 and a brand-new p-2.
         backing.writeErrors = [CKError(.networkFailure), CKError(.networkFailure)]
         var updated = makePurchase().values
         updated["quantity"] = .int(9)
@@ -80,20 +79,16 @@ struct OfflineCacheTests {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
         #expect(cache.pendingWrites == 2)
 
-        // The offline read serves the queued rewrite; the new record cannot join
-        // the snapshot — its predicate cannot run offline.
         backing.errors = [CKError(.networkUnavailable)]
         let offline = try await store.read(entity: "purchase")
         #expect(offline.map(\.uuid) == ["p-1"])
         #expect(offline.first?.values["quantity"] == .int(9))
 
-        // A queued tombstone drops the record from offline reads too.
         backing.writeErrors = [CKError(.networkFailure)]
         try await store.delete(entity: "purchase", uuid: "p-1")
         backing.errors = [CKError(.networkUnavailable)]
         #expect(try await store.read(entity: "purchase").isEmpty)
 
-        // Back online, the flush reconciles everything.
         try await cache.flush()
         #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-2"])
     }
@@ -115,7 +110,6 @@ struct OfflineCacheTests {
         }
         #expect(deleted == deleteID)
 
-        // The reported record is a copy — editing it does not edit the queue.
         first["probe"] = "x"
         guard case .save(let again) = cache.queuedWrites[0] else {
             Issue.record("unexpected queue shape")
@@ -123,7 +117,6 @@ struct OfflineCacheTests {
         }
         #expect(again["probe"] == nil)
 
-        // Discarding drops the entry; the flush replays only what remains.
         #expect(cache.discardQueuedWrites(for: first.recordID) == 1)
         #expect(cache.discardQueuedWrites(for: deleteID) == 1)
         #expect(cache.discardQueuedWrites(for: deleteID) == 0)
@@ -134,7 +127,6 @@ struct OfflineCacheTests {
 
     @Test("A conflict resolver decides overlapping edits the graft cannot merge")
     func conflictResolverMerges() async throws {
-        // The larger quantity wins a two-sided edit of the same field.
         struct LargerQuantityWins: ConflictResolver {
             func resolve(queued: CKRecord, server: CKRecord, ancestor: CKRecord?) -> ConflictResolution {
                 let merged = server.copy() as! CKRecord
@@ -153,8 +145,6 @@ struct OfflineCacheTests {
         updated["quantity"] = .int(9)
         try await store.write(updated, entity: "purchase", uuid: "p-1")
 
-        // Another client moved the same field: the graft cannot merge, the
-        // resolver picks the larger value and the flush lands it.
         let server = try #require(backing.records.first { $0.recordID.recordName == "p-1" })
         server["i_01"] = 5
         backing.writeErrors = [RecordConflictError(serverRecord: server.copy() as! CKRecord)]
@@ -171,8 +161,6 @@ struct OfflineCacheTests {
         let store = EntityStore(database: cache, registry: SchemaRegistry(database: cache))
         cache.setConflictResolver(
             store.conflictResolver { queued, server, ancestor in
-                // The merge base is decoded too, and the policy speaks schema
-                // field names — no storage slots in sight.
                 #expect(ancestor != nil)
                 let mine: Int64 = queued["quantity"] ?? 0
                 let theirs: Int64 = server["quantity"] ?? 0
@@ -189,8 +177,6 @@ struct OfflineCacheTests {
         updated["quantity"] = .int(9)
         try await store.write(updated, entity: "purchase", uuid: "p-1")
 
-        // Another client moved the same field: the graft cannot merge, the
-        // decoded policy takes the larger quantity and the flush lands it.
         let server = try #require(backing.records.first { $0.recordID.recordName == "p-1" })
         server["i_01"] = 5
         backing.writeErrors = [RecordConflictError(serverRecord: server.copy() as! CKRecord)]
@@ -223,7 +209,6 @@ struct OfflineCacheTests {
         server["i_01"] = 5
         backing.writeErrors = [RecordConflictError(serverRecord: server.copy() as! CKRecord)]
 
-        // The flush retires the queued write without touching the server copy.
         #expect(try await cache.flush() == 1)
         #expect(cache.pendingWrites == 0)
         let record = try #require(try await store.read(entity: "purchase").first)
@@ -235,7 +220,6 @@ struct OfflineCacheTests {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("scout-offline-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: url) }
 
-        // First launch: snapshot a read, queue an offline write.
         let server = InMemoryDatabase()
         let first = OfflineCache(backing: server, storeURL: url)
         let firstRegistry = SchemaRegistry(database: first)
@@ -243,14 +227,12 @@ struct OfflineCacheTests {
         try await firstRegistry.publish(makePurchaseDefinition())
         try await firstStore.write(makePurchase().values, entity: "purchase", uuid: "p-1")
         _ = try await firstStore.read(entity: "purchase")
-        // Snapshot the schema descriptor too — the relaunched registry reads it offline.
         _ = try await SchemaRegistry(database: first).definition(for: "purchase")
         server.writeErrors = [CKError(.networkFailure)]
         try await firstStore.write(makePurchase().values, entity: "purchase", uuid: "p-2")
         #expect(first.pendingWrites == 1)
         first.persistNow()
 
-        // Second launch restores both: the offline read and the pending queue.
         let second = OfflineCache(backing: server, storeURL: url)
         #expect(second.pendingWrites == 1)
         let secondStore = EntityStore(database: second, registry: SchemaRegistry(database: second))
@@ -261,7 +243,6 @@ struct OfflineCacheTests {
         #expect(second.pendingWrites == 0)
         #expect(try await secondStore.read(entity: "purchase").map(\.uuid).sorted() == ["p-1", "p-2"])
 
-        // The flushed state persists too: a third launch starts clean.
         #expect(OfflineCache(backing: server, storeURL: url).pendingWrites == 0)
     }
 
@@ -279,9 +260,6 @@ struct OfflineCacheTests {
         server.writeErrors = [CKError(.networkFailure)]
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
 
-        // The caller was told this write succeeded, so it has to be on disk
-        // already — nothing forces the archive here, and a crash now would
-        // otherwise lose a write the app believes it made.
         #expect(OfflineCache(backing: server, storeURL: url).pendingWrites == 1)
     }
 
@@ -307,8 +285,6 @@ struct OfflineCacheTests {
 
     @Test("Both fetch paths defer their archive write, since a baseline is only freshness")
     func fetchesDeferTheArchive() async throws {
-        // Every mutation path rides one of these two fetches — `items` batches,
-        // `fetchRecord` does not — so they must agree about what is durable.
         func archivesInline(_ refresh: (OfflineCache, CKRecord.ID) async throws -> Void) async throws -> Bool {
             let url = FileManager.default.temporaryDirectory.appendingPathComponent("scout-offline-\(UUID().uuidString)")
             defer { try? FileManager.default.removeItem(at: url) }
@@ -321,7 +297,6 @@ struct OfflineCacheTests {
             let cache = OfflineCache(backing: server, storeURL: url)
             try await refresh(cache, seeded.recordID)
             let inline = FileManager.default.fileExists(atPath: url.path)
-            // Whichever way it went, forcing it must produce the archive.
             cache.persistNow()
             #expect(FileManager.default.fileExists(atPath: url.path))
             return inline
@@ -342,9 +317,6 @@ struct OfflineCacheTests {
         try await store.write(updated, entity: "purchase", uuid: "p-1")
         #expect(cache.pendingWrites == 1)
 
-        // Another client renamed the product while this one was offline: the
-        // two edits touch disjoint fields, so the flush merges instead of
-        // overwriting the rename.
         let server = try #require(backing.records.first { $0.recordID.recordName == "p-1" })
         server["s_00"] = "sku-77"
         backing.writeErrors = [RecordConflictError(serverRecord: server.copy() as! CKRecord)]
@@ -366,7 +338,6 @@ struct OfflineCacheTests {
         updated["quantity"] = .int(9)
         try await store.write(updated, entity: "purchase", uuid: "p-1")
 
-        // Another client moved the same field to a different value.
         let server = try #require(backing.records.first { $0.recordID.recordName == "p-1" })
         server["i_01"] = 5
         backing.writeErrors = [RecordConflictError(serverRecord: server.copy() as! CKRecord)]
@@ -379,7 +350,6 @@ struct OfflineCacheTests {
             #expect(error.conflicts.first?.queued["i_01"] == 9)
             #expect(error.conflicts.first?.server["i_01"] == 5)
         }
-        // The conflicted write left the queue and the server's edit survived.
         #expect(cache.pendingWrites == 0)
         let record = try #require(try await store.read(entity: "purchase").first)
         #expect(record.values["quantity"] == .int(5))
@@ -387,9 +357,6 @@ struct OfflineCacheTests {
 
     @Test("A conflict with no remembered baseline surfaces instead of merging")
     func flushWithoutBaselineConflicts() async throws {
-        // No read happens before the offline edit, so the cache has no merge
-        // base to prove the edits disjoint — even a disjoint-looking conflict
-        // must surface.
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
 
         backing.writeErrors = [CKError(.networkFailure)]
@@ -415,8 +382,6 @@ struct OfflineCacheTests {
                 fields: [FieldDefinition(name: "dump", type: .asset, storage: .slot(.asset, "a_00"))]))
         let payload = Data("offline-\(UUID().uuidString)".utf8)
 
-        // The write queues offline and reports success, so the store retires
-        // its staged file; the queue must hold its own copy of the bytes.
         backing.writeErrors = [CKError(.networkFailure)]
         try await store.write(["dump": .bytes(payload)], entity: "report", uuid: "r-1")
         #expect(cache.pendingWrites == 1)
@@ -437,8 +402,6 @@ struct OfflineCacheTests {
         try await store.write(updated, entity: "purchase", uuid: "p-1")
         #expect(cache.pendingWrites == 1)
 
-        // Another client really lands a disjoint edit — no injected conflict;
-        // the double's own change-tag comparison must surface it to the flush.
         let other = EntityStore(database: backing, registry: SchemaRegistry(database: backing))
         try await other.update(entity: "purchase", uuid: "p-1") { $0.values["product_id"] = .string("sku-77") }
 
@@ -455,8 +418,6 @@ struct OfflineCacheTests {
         let store = EntityStore(database: cache, registry: registry)
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
 
-        // Three distinct queries; re-touching the first makes the second the
-        // LRU victim when the third arrives.
         let q1: [EntityStore.Filter] = []
         let q2: [EntityStore.Filter] = [.init(field: "quantity", op: .greaterThan, value: .int(0))]
         let q3: [EntityStore.Filter] = [.init(field: "quantity", op: .lessThan, value: .int(9))]
@@ -477,18 +438,12 @@ struct OfflineCacheTests {
 
     @Test("Eviction sheds the whole overflow at once, least recently used first")
     func evictionOrder() {
-        // Four entries against a quota of two: the overflow leaves in one pass,
-        // which is the restore path's shape — an oversized archive never sheds
-        // its entries one at a time.
         var store = ["a": 1, "b": 2, "c": 3, "d": 4]
         var usage: [String: Int64] = ["a": 4, "b": 1, "c": 3, "d": 2]
         OfflineCache.evict(&store, usage: &usage, limit: 2)
         #expect(store.keys.sorted() == ["a", "c"])
-        // The recency bookkeeping follows the entries out; a stale usage entry
-        // would keep ranking a key that no longer exists.
         #expect(usage.keys.sorted() == ["a", "c"])
 
-        // Already within quota: nothing moves.
         OfflineCache.evict(&store, usage: &usage, limit: 2)
         #expect(store.keys.sorted() == ["a", "c"])
     }
@@ -519,7 +474,6 @@ struct OfflineCacheTests {
         let store = EntityStore(database: cache, registry: registry)
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
         try await store.write(makePurchase(uuid: "p-2").values, entity: "purchase", uuid: "p-2")
-        // Both baselines arrive in one read; only the newer (p-2) survives.
         _ = try await store.read(entity: "purchase")
 
         backing.writeErrors = [CKError(.networkFailure), CKError(.networkFailure)]
@@ -530,8 +484,6 @@ struct OfflineCacheTests {
         updatedTwo["quantity"] = .int(9)
         try await store.write(updatedTwo, entity: "purchase", uuid: "p-2")
 
-        // Both servers move on a disjoint field: with a baseline the flush
-        // grafts, without one it must surface the conflict.
         for uuid in ["p-1", "p-2"] {
             let server = try #require(backing.records.first { $0.recordID.recordName == uuid })
             server["s_00"] = "sku-77"
@@ -559,8 +511,6 @@ struct OfflineCacheTests {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
         #expect(cache.pendingWrites == 1)
 
-        // The replay talks to the backing database directly, so an offline
-        // failure surfaces and the queue survives for the next attempt.
         backing.writeErrors = [CKError(.networkFailure)]
         await #expect(throws: CKError.self) {
             try await cache.flush()
@@ -573,7 +523,6 @@ struct OfflineCacheTests {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
         _ = try await store.read(entity: "purchase")
 
-        // Two offline edits of the same record touching the same field.
         backing.writeErrors = [CKError(.networkFailure), CKError(.networkFailure)]
         var first = makePurchase().values
         first["quantity"] = .int(5)
@@ -583,8 +532,6 @@ struct OfflineCacheTests {
         try await store.write(second, entity: "purchase", uuid: "p-1")
         #expect(cache.pendingWrites == 2)
 
-        // Only the latest edit replays, so it never conflicts against its own
-        // earlier queued copy: the server ends at 9, not stuck at 5.
         #expect(try await cache.flush() == 1)
         #expect(cache.pendingWrites == 0)
         let record = try #require(try await store.read(entity: "purchase").first)
@@ -596,7 +543,6 @@ struct OfflineCacheTests {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
         _ = try await store.read(entity: "purchase")
 
-        // Delete p-1, then recreate it — the recreate is the later op and wins.
         backing.writeErrors = [CKError(.networkFailure), CKError(.networkFailure)]
         try await store.delete(entity: "purchase", uuid: "p-1")
         var revived = makePurchase().values
@@ -619,14 +565,12 @@ struct OfflineCacheTests {
         let store = EntityStore(database: cache, registry: registry)
         try await registry.publish(makePurchaseDefinition())
 
-        // One offline batch write queues every record behind a single failure.
         server.writeErrors = [CKError(.networkFailure)]
         try await store.write((0..<10).map { EntityWrite(values: makePurchase().values, uuid: "p-\($0)") }, entity: "purchase")
         #expect(cache.pendingWrites == 10)
 
         recorder.reset()
         #expect(try await cache.flush() == 10)
-        // Uncontended, the whole queue settles in one conditional save.
         #expect(recorder.operations.filter { $0.kind == .conditionalSave }.count == 1)
         #expect(cache.pendingWrites == 0)
         #expect(try await store.read(entity: "purchase").count == 10)
@@ -639,10 +583,6 @@ struct OfflineCacheTests {
         try await store.write(makePurchase(uuid: "good").values, entity: "purchase", uuid: "good")
         #expect(cache.pendingWrites == 2)
 
-        // The first replayed save is rejected for a non-transport reason; the
-        // second is valid. The bad one is surfaced as a failure, both leave the
-        // queue, and the good write still lands — it is not stuck behind the
-        // poison forever.
         backing.writeErrors = [CKError(.permissionFailure)]
         do {
             try await cache.flush()

@@ -47,10 +47,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         return page
     }
 
-    // Re-evaluates the query and serves one page from `offset`, mirroring the
-    // server: at most `resultsLimit` records per response (`maximumResults`, i.e.
-    // 0, means "as many as fit under `pageLimit`") and a cursor whenever matches
-    // remain beyond the page. A zone scopes the scan; nil searches all zones.
     private func page(query: CKQuery, zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, offset: Int, resultsLimit: Int) -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
@@ -61,8 +57,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         if let error = writeErrors.popLast() ?? errors.popLast() {
             throw error
         }
-        // The single-record save is conditional, like the CKDatabase conformance
-        // that backs it with .ifServerRecordUnchanged.
         if let server = conflictingServer(for: record) {
             throw RecordConflictError(serverRecord: server)
         }
@@ -85,11 +79,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     }
 
     public func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
-        // This save is non-atomic, so the server answers per record and one call
-        // can settle several outcomes at once. Take every queued conflict that
-        // names a record of this batch — but only the first per record, so a
-        // stack of conflicts aimed at one record still feeds its retries one at
-        // a time.
         var queued: [CKRecord.ID: any Error] = [:]
         let batch = Set(records.map(\.recordID))
         while let next = (writeErrors.last ?? errors.last) as? RecordConflictError, batch.contains(next.serverRecord.recordID),
@@ -104,16 +93,10 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         }
         if queued.isEmpty, let error = writeErrors.popLast() ?? errors.popLast() {
             if let conflict = error as? RecordConflictError {
-                // A conflict aimed at a record outside this batch still applies
-                // to the call that drew it.
                 queued[conflict.serverRecord.recordID] = conflict
             } else if Self.isTransport(error) {
-                // A transport failure takes the whole call down with it.
                 throw error
             } else {
-                // The server rejecting one record — permission, quota, an invalid
-                // argument — is reported against that record, not the batch. A
-                // plain error carries no record id, so it lands on the first.
                 queued[records[0].recordID] = error
             }
         }
@@ -129,18 +112,12 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    // Whether the transport, rather than the request, is at fault — the failures
-    // that take a whole CloudKit call down instead of one of its records.
     private static func isTransport(_ error: any Error) -> Bool {
         if error is URLError { return true }
         guard let error = error as? CKError else { return false }
         return [.networkUnavailable, .networkFailure, .serviceUnavailable].contains(error.code)
     }
 
-    // The stored copy that beats a conditional save: present when the incoming
-    // record's change tag differs from the server's — the comparison the real
-    // ifServerRecordUnchanged policy makes. A record fetched from this database
-    // carries the current tag and passes; a fresh or stale one conflicts.
     private func conflictingServer(for record: CKRecord) -> CKRecord? {
         guard let stored = records.first(where: { $0.recordType == record.recordType && $0.recordID == record.recordID }),
             stored.recordVersionTag != record.recordVersionTag
@@ -192,13 +169,10 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
             throw error
         }
         let floor = token.flatMap { Int64(String(decoding: $0, as: UTF8.self)) } ?? 0
-        // Latest state per record wins, mirroring the server's coalesced feed.
         var latest: [CKRecord.ID: (sequence: Int64, deleted: Bool)] = [:]
         for entry in changeLog where entry.sequence > floor && entry.id.zoneID == zoneID {
             latest[entry.id] = (entry.sequence, entry.deleted)
         }
-        // A limited pass serves the oldest changes with a token fencing them
-        // off, the way the server pages its feed.
         var entries = latest.map { (id: $0.key, sequence: $0.value.sequence, deleted: $0.value.deleted) }.sorted { $0.sequence < $1.sequence }
         var next = sequence
         if let resultsLimit, entries.count > resultsLimit {
@@ -226,18 +200,11 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
             throw error
         }
         let floor = token.flatMap { Int64(String(decoding: $0, as: UTF8.self)) } ?? 0
-        // One entry per zone, mirroring the server's coalesced feed; the double
-        // never hard-deletes zones, so the deleted list stays empty.
         var seen: Set<CKRecordZone.ID> = []
         let changed = zoneLog.filter { $0.sequence > floor }.map(\.zone).filter { seen.insert($0).inserted }
         return (changed.sorted { $0.zoneName < $1.zoneName }, [], Data("\(sequence)".utf8))
     }
 
-    // The real server uploads asset bytes during the save, so ScoutDB retires
-    // its staged files once a write lands. Mirror the upload: store a copy
-    // whose staged assets point at private duplicates — without it, every
-    // post-save read would dangle. The caller's record stays untouched, the
-    // way a CKDatabase save leaves the client record's asset URLs alone.
     private let assetDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("InMemoryAssets-\(UUID().uuidString)", isDirectory: true)
 
     private func retainingAssets(of record: CKRecord) -> CKRecord {
@@ -262,10 +229,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         let record = retainingAssets(of: record)
         records.removeAll { $0.recordType == record.recordType && $0.recordID == record.recordID }
         records.append(record)
-        // Stamp the save time and a fresh change tag the way the server does, so
-        // `modificationDate` predicates, change feeds, and conditional saves
-        // behave in tests; explicit overrides win because they are applied
-        // after the write.
         record.overrideModificationDate(Date())
         record.overrideChangeTag(UUID().uuidString)
         sequence += 1

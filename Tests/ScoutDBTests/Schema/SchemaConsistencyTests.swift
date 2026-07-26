@@ -10,13 +10,6 @@ import Testing
 
 @testable import ScoutDB
 
-/// Pins the frozen `Schema` file to the code that interprets it.
-///
-/// Once the
-/// schema ships to Production it is append-only forever, so any drift between
-/// the declared slots and `Pool.capacity`, the envelope the coder stamps, or
-/// the grid cells the aggregator addresses is a released bug.
-///
 @Suite("Schema consistency")
 struct SchemaConsistencyTests {
     static let schema = try! String(contentsOf: schemaURL(), encoding: .utf8)
@@ -67,9 +60,6 @@ struct SchemaConsistencyTests {
         let fields = Self.fields(of: "Aggregate")
         #expect(fields.filter { $0.name.hasPrefix("c_") }.count == 64)
 
-        // Value cells hold bucket totals at 0...30 (time buckets never exceed index 30)
-        // and sums of squares `squareOffset` above, at 32...62 — f_31 and f_63 are
-        // unaddressable, so the schema omits them.
         let buckets = 0...30
         let expected = Set(buckets.map(Aggregate.valueCell) + buckets.map(Aggregate.squareCell))
         #expect(Set(fields.map(\.name).filter { $0.hasPrefix("f_") }) == expected)

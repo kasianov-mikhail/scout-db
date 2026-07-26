@@ -7,10 +7,6 @@
 
 import SwiftUI
 
-/// The empty shell the live contract tests run inside.
-///
-/// It exists only to carry the iCloud entitlement and code signature the
-/// CloudKit-backed test run needs; nothing in it is exercised directly.
 @main
 struct ScoutDBTestHostApp: App {
     var body: some Scene {

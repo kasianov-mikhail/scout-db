@@ -46,8 +46,6 @@ struct AggregatesTests {
     func legacyGridSlotAdoption() async throws {
         try await publishPayment(views: [AggregateView(name: "daily", groupBy: "product", bucket: .day)])
 
-        // Only a group holding a separator hashes differently than it did before
-        // contentDigest escaped one, so that slot alone carries a pre-escaping name.
         let group = "a|b"
         let period = EntityCoder.periodStart(of: .month, for: noon)
         let legacyKey = "payment|daily|\(group)|\(period.millisecondsSince1970)"
@@ -64,8 +62,6 @@ struct AggregatesTests {
 
         try await writePayments([1], product: group)
 
-        // The write folded into the slot that already held the totals rather than
-        // stranding them behind a fresh, empty one.
         #expect(database.records.filter { $0.recordType == "Aggregate" }.count == 1)
         #expect(try await store.totals(entity: "payment", view: "daily").map(\.count) == [6])
     }
@@ -80,8 +76,6 @@ struct AggregatesTests {
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ], envelopeDate: "date", unique: ["user"], views: [AggregateView(name: "daily", bucket: .day)]))
 
-        // Same unique key twice: the second write upserts the same record, so the grid
-        // must count one occurrence, not two.
         try await store.write(["user": .string("u1"), "date": .date(noon)], entity: "visit")
         try await store.write(["user": .string("u1"), "date": .date(noon)], entity: "visit")
 
@@ -100,9 +94,6 @@ struct AggregatesTests {
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ], envelopeDate: "date", unique: ["user"], views: [AggregateView(name: "revenue", sum: "amount")]))
 
-        // Same unique key twice with a changed amount: the second write upserts the
-        // one record, so the sum must follow the latest value — not stay at the
-        // first, not accumulate both.
         try await store.write(["user": .string("u1"), "amount": .double(10), "date": .date(noon)], entity: "meter")
         try await store.write(["user": .string("u1"), "amount": .double(25), "date": .date(noon)], entity: "meter")
 
@@ -174,7 +165,6 @@ struct AggregatesTests {
 
         let rows = try await store.aggregate(entity: "payment", view: "low")
         #expect(rows.first?.count == 1)
-        // The extremum cannot be un-applied without a rescan, so it stays at the deleted min.
         #expect(rows.first?.value == 2)
     }
 
@@ -196,13 +186,9 @@ struct AggregatesTests {
 
     @Test("The shared calendar is Sunday-anchored so weekday cells date correctly")
     func weekdaySeriesDatesLineUp() async throws {
-        // The weekday index is Sunday-based; reconstructing the cell date as
-        // weekStart + index days only lines up when the week starts on Sunday.
         #expect(EntityCoder.calendar.firstWeekday == 1)
 
         try await publishPayment(views: [AggregateView(name: "byday", groupBy: "product", bucket: .weekday, sum: "amount")])
-        // Jan 1 1970 (timeIntervalSince1970 == 36_000 is that day, 10:00 UTC) was
-        // a Thursday, so the reconstructed series point must fall on a Thursday.
         let thursday = Date(timeIntervalSince1970: 36_000)
         try await store.write(["product": .string("app"), "amount": .double(2), "date": .date(thursday)], entity: "payment")
 
@@ -373,7 +359,6 @@ struct AggregatesTests {
 
     @Test("A lifetime view keeps one running total per category, without an envelope date")
     func lifetimeView() async throws {
-        // No envelope date: only a lifetime view can aggregate this entity.
         try await registry.publish(
             makeDefinition(
                 entity: "sale",
@@ -390,16 +375,13 @@ struct AggregatesTests {
         #expect(totals.first { $0.group == "app" }?.count == 2)
         #expect(totals.first { $0.group == "app" }?.value == 15)
         #expect(totals.first { $0.group == "book" }?.value == 2)
-        // One grid record per category — no time grid.
         #expect(database.records.filter { $0.recordType == "Aggregate" }.count == 2)
 
-        // Deletes reverse their contribution like any other view.
         try await store.delete(entity: "sale", uuid: first)
         totals = try await store.totals(entity: "sale", view: "by_product")
         #expect(totals.first { $0.group == "app" }?.count == 1)
         #expect(totals.first { $0.group == "app" }?.value == 5)
 
-        // A time-bucketed view still demands the envelope date.
         let dated = makeDefinition(
             entity: "sale2",
             fields: [FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00"))],

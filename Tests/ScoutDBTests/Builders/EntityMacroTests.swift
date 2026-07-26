@@ -12,8 +12,6 @@ import Testing
 
 @testable import ScoutDB
 
-// The macro-derived counterpart of the hand-written TypedPurchase: property
-// names snake_case by default, @Field overrides, @Transient stays out.
 @Entity("purchase")
 private struct MacroPurchase {
     var productId: String?
@@ -26,14 +24,11 @@ private struct MacroPurchase {
     }
 }
 
-// Without an argument the entity name falls out of the type name.
 @Entity
 private struct CartEvent {
     var kind: String?
 }
 
-// A stored property with an observer stays a schema field — didSet/willSet
-// must not make the macro treat it as computed and drop it.
 @Entity("observed")
 private struct ObservedEntity {
     var kind: String?
@@ -75,13 +70,11 @@ struct EntityMacroTests {
             ["product_id": .string("sku-2"), "quantity": .int(7), "amount": .double(70), "date": .date(Date(timeIntervalSince1970: 2_000))],
             entity: "purchase", uuid: "p-2")
 
-        // Typed queries run through the macro's key-path map.
         let big = try await store.query(MacroPurchase.self).filter(\.quantity > 5).all()
         #expect(big.map(\.productId) == ["sku-2"])
         #expect(big.first?.price == 70)
         #expect(big.first?.badge == nil)
 
-        // recordValues encodes back through the same field map.
         let values = try #require(big.first?.recordValues)
         #expect(values["product_id"] == .string("sku-2"))
         #expect(values["amount"] == .double(70))

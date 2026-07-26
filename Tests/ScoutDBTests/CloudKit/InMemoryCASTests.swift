@@ -12,7 +12,6 @@ import Testing
 
 @testable import ScoutDB
 
-/// The double's change-tag conditional-save semantics, mirroring the server's.
 @Suite("InMemory CAS")
 struct InMemoryCASTests {
     let database = InMemoryDatabase()
@@ -72,12 +71,10 @@ struct InMemoryCASTests {
     func freshRecordPolicies() async throws {
         _ = try await database.save(makeRecord())
 
-        // A second fresh record with the same id has no tag to compare.
         await #expect(throws: RecordConflictError.self) {
             _ = try await database.save(makeRecord())
         }
 
-        // The batch path mirrors .allKeys — last write wins, tag advances.
         let overwrite = makeRecord()
         overwrite["s_00"] = "rewritten"
         try await database.modifyRecords(saving: [overwrite], deleting: [])
@@ -93,9 +90,6 @@ struct InMemoryCASTests {
         _ = try await database.save(makeRecord())
         let fetched = try #require(try await database.fetchRecord(id: id))
 
-        // Each landed save stamps a new tag on the instance it stored, so the
-        // caller can keep editing and saving the same record, like with the
-        // record a real save returns.
         fetched["s_00"] = "second"
         _ = try await database.save(fetched)
         fetched["s_00"] = "third"
