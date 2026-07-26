@@ -17,12 +17,42 @@ enum UniqueClaim {
 }
 
 extension EntityStore {
+    private struct ClaimGroup {
+        let key: [String]
+        let owners: [String: String]
+        let conflict: @Sendable (String) -> SchemaError
+    }
+
+    private struct PendingClaim {
+        let group: Int
+        let digest: String
+        let owner: String
+    }
+
+    private struct ContestedClaim {
+        let pending: PendingClaim
+        var server: CKRecord
+    }
+
     func claimUniqueKeys(of records: [EntityRecord], using definition: EntityDefinition) async throws {
-        try await claimKeys(definition.enforcedKeys ?? [], of: records, using: definition)
-        try await claimExclusivity(of: records, using: definition)
+        let groups = try keyGroups(definition.enforcedKeys ?? [], of: records) + exclusivityGroups(of: records, using: definition, fields: nil)
+        try await claim(groups, using: definition)
     }
 
     func claimKeys(_ keys: [[String]], of records: [EntityRecord], using definition: EntityDefinition) async throws {
+        try await claim(try keyGroups(keys, of: records), using: definition)
+    }
+
+    func claimExclusivity(of records: [EntityRecord], using definition: EntityDefinition, fields: [FieldDefinition]? = nil) async throws {
+        try await claim(try exclusivityGroups(of: records, using: definition, fields: fields), using: definition)
+    }
+
+    static func exclusiveFields(of definition: EntityDefinition) -> [FieldDefinition] {
+        definition.fields(at: definition.version).filter { $0.exclusive == true }
+    }
+
+    private func keyGroups(_ keys: [[String]], of records: [EntityRecord]) throws -> [ClaimGroup] {
+        var groups: [ClaimGroup] = []
         for key in keys {
             var owners: [String: String] = [:]
             for record in records {
@@ -33,11 +63,13 @@ extension EntityStore {
                 owners[digest] = record.uuid
             }
             guard owners.count > 0 else { continue }
-            try await claim(owners, key: key, using: definition) { _ in .duplicateKey(fields: key) }
+            groups.append(ClaimGroup(key: key, owners: owners) { _ in .duplicateKey(fields: key) })
         }
+        return groups
     }
 
-    func claimExclusivity(of records: [EntityRecord], using definition: EntityDefinition, fields: [FieldDefinition]? = nil) async throws {
+    private func exclusivityGroups(of records: [EntityRecord], using definition: EntityDefinition, fields: [FieldDefinition]?) throws -> [ClaimGroup] {
+        var groups: [ClaimGroup] = []
         for field in fields ?? Self.exclusiveFields(of: definition) {
             let key = [field.name]
             var owners: [String: String] = [:]
@@ -52,82 +84,107 @@ extension EntityStore {
             }
             guard owners.count > 0 else { continue }
             let display = values
-            try await claim(owners, key: key, using: definition) { digest in
-                .duplicateReference(field: field.name, key: display[digest] ?? "")
+            groups.append(
+                ClaimGroup(key: key, owners: owners) { digest in
+                    .duplicateReference(field: field.name, key: display[digest] ?? "")
+                })
+        }
+        return groups
+    }
+
+    private func claim(_ groups: [ClaimGroup], using definition: EntityDefinition) async throws {
+        var pending: [CKRecord.ID: PendingClaim] = [:]
+        for (index, group) in groups.enumerated() {
+            for (digest, owner) in group.owners {
+                let id = UniqueClaim.recordID(entity: definition.entity, digest: digest, zoneID: zoneID)
+                guard pending[id] == nil else { continue }
+                pending[id] = PendingClaim(group: index, digest: digest, owner: owner)
             }
         }
-    }
-
-    static func exclusiveFields(of definition: EntityDefinition) -> [FieldDefinition] {
-        definition.fields(at: definition.version).filter { $0.exclusive == true }
-    }
-
-    private func claim(
-        _ owners: [String: String], key: [String], using definition: EntityDefinition, conflict: @escaping @Sendable (String) -> SchemaError
-    ) async throws {
-        var digests: [CKRecord.ID: String] = [:]
-        for digest in owners.keys {
-            digests[UniqueClaim.recordID(entity: definition.entity, digest: digest, zoneID: zoneID)] = digest
-        }
-        let existing = try await database.fetchRecords(ids: digests.keys.sorted { $0.recordName < $1.recordName })
-        var contested: [(digest: String, server: CKRecord)] = []
-        var fresh: [CKRecord] = []
+        guard pending.count > 0 else { return }
+        let ids = pending.keys.sorted { $0.recordName < $1.recordName }
+        var contested: [ContestedClaim] = []
         var seen: Set<CKRecord.ID> = []
-        for server in existing {
-            guard let digest = digests[server.recordID] else { continue }
+        for server in try await claimRecords(ids: ids) {
+            guard let claim = pending[server.recordID] else { continue }
             seen.insert(server.recordID)
-            if server["owner"] as? String != owners[digest] {
-                contested.append((digest, server))
-            }
+            guard server["owner"] as? String != claim.owner else { continue }
+            contested.append(ContestedClaim(pending: claim, server: server))
         }
-        for (id, digest) in digests where !seen.contains(id) {
+        var fresh: [CKRecord] = []
+        for id in ids where !seen.contains(id) {
+            guard let claim = pending[id] else { continue }
             let record = CKRecord(recordType: UniqueClaim.recordType, recordID: id)
             record["entity"] = definition.entity
-            record["key"] = key.joined(separator: "|")
-            record["owner"] = owners[digest]
+            record["key"] = groups[claim.group].key.joined(separator: "|")
+            record["owner"] = claim.owner
             fresh.append(record)
         }
-        if fresh.count > 0 {
-            for (id, result) in try await database.saveIfUnchanged(fresh) {
-                guard case .failure(let error) = result else { continue }
-                guard let raced = RecordConflictError(error), let digest = digests[id] else { throw error }
-                contested.append((digest, raced.serverRecord))
-            }
+        for server in try await database.writeIfUnchanged(records: fresh) {
+            guard let claim = pending[server.recordID] else { continue }
+            contested.append(ContestedClaim(pending: claim, server: server))
         }
-        for (digest, server) in contested {
-            try await adjudicate(server, digest: digest, key: key, owner: owners[digest]!, using: definition, conflict: conflict)
-        }
+        try await adjudicate(contested, in: groups, using: definition)
     }
 
-    private func adjudicate(
-        _ claim: CKRecord, digest: String, key: [String], owner uuid: String, using definition: EntityDefinition,
-        conflict: @escaping @Sendable (String) -> SchemaError
-    ) async throws {
-        var server = claim
+    private func adjudicate(_ contested: [ContestedClaim], in groups: [ClaimGroup], using definition: EntityDefinition) async throws {
+        var round = contested.sorted { ($0.pending.group, $0.pending.digest) < ($1.pending.group, $1.pending.digest) }
         for _ in 0..<3 {
-            let holder = server["owner"] as? String
-            if holder == uuid { return }
-            if let holder, try await holds(holder, digest: digest, key: key, using: definition) {
-                throw conflict(digest)
+            guard round.count > 0 else { return }
+            let held = try await liveHolders(of: round, using: definition)
+            var taking: [CKRecord] = []
+            var attempted: [CKRecord.ID: ContestedClaim] = [:]
+            for contest in round {
+                let holder = contest.server["owner"] as? String
+                if holder == contest.pending.owner { continue }
+                let group = groups[contest.pending.group]
+                if let holder, let record = held[holder], Self.keyDigest(group.key, in: record.values) == contest.pending.digest {
+                    throw group.conflict(contest.pending.digest)
+                }
+                contest.server["owner"] = contest.pending.owner
+                taking.append(contest.server)
+                attempted[contest.server.recordID] = contest
             }
-            server["owner"] = uuid
-            var raced: CKRecord?
-            for (_, result) in try await database.saveIfUnchanged([server]) {
-                guard case .failure(let error) = result else { continue }
-                guard let lost = RecordConflictError(error) else { throw error }
-                raced = lost.serverRecord
+            var raced: [ContestedClaim] = []
+            for server in try await database.writeIfUnchanged(records: taking) {
+                guard var contest = attempted[server.recordID] else { continue }
+                contest.server = server
+                raced.append(contest)
             }
-            guard let raced else { return }
-            server = raced
+            round = raced
         }
-        throw conflict(digest)
+        guard let unresolved = round.first else { return }
+        throw groups[unresolved.pending.group].conflict(unresolved.pending.digest)
     }
 
-    private func holds(_ uuid: String, digest: String, key: [String], using definition: EntityDefinition) async throws -> Bool {
-        guard let record = try await items(entity: definition.entity, uuids: [uuid]).first,
-            let decoded = try decode([record], using: definition).first, !decoded.deleted
-        else { return false }
-        return Self.keyDigest(key, in: decoded.values) == digest
+    private func liveHolders(of contested: [ContestedClaim], using definition: EntityDefinition) async throws -> [String: EntityRecord] {
+        var uuids: [String] = []
+        var seen: Set<String> = []
+        for contest in contested {
+            guard let holder = contest.server["owner"] as? String, holder != contest.pending.owner, seen.insert(holder).inserted else { continue }
+            uuids.append(holder)
+        }
+        guard uuids.count > 0 else { return [:] }
+        let records = try decode(try await items(entity: definition.entity, uuids: uuids), using: definition)
+        return Dictionary(records.filter { !$0.deleted }.map { ($0.uuid, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    private func claimRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
+        struct Chunk: @unchecked Sendable {
+            let records: [CKRecord]
+        }
+        guard ids.count > 100 else { return try await database.fetchRecords(ids: ids) }
+        let database = database
+        return try await withThrowingTaskGroup(of: Chunk.self) { group in
+            for chunk in ids.chunked(into: 100) {
+                group.addTask { Chunk(records: try await database.fetchRecords(ids: chunk)) }
+            }
+            var records: [CKRecord] = []
+            for try await chunk in group {
+                records += chunk.records
+            }
+            return records
+        }
     }
 
     func releaseUniqueClaims(of records: [EntityRecord], using definition: EntityDefinition) async {
@@ -141,7 +198,7 @@ extension EntityStore {
             }
         }
         guard owners.count > 0 else { return }
-        guard let claims = try? await database.fetchRecords(ids: owners.keys.sorted { $0.recordName < $1.recordName }) else { return }
+        guard let claims = try? await claimRecords(ids: owners.keys.sorted { $0.recordName < $1.recordName }) else { return }
         let mine = claims.filter { $0["owner"] as? String == owners[$0.recordID] }.map(\.recordID)
         guard mine.count > 0 else { return }
         try? await database.modifyRecords(saving: [], deleting: mine)
@@ -154,7 +211,7 @@ extension EntityStore {
             owners[UniqueClaim.recordID(entity: definition.entity, digest: old, zoneID: zoneID)] = previous.uuid
         }
         guard owners.count > 0 else { return }
-        guard let claims = try? await database.fetchRecords(ids: owners.keys.sorted { $0.recordName < $1.recordName }) else { return }
+        guard let claims = try? await claimRecords(ids: owners.keys.sorted { $0.recordName < $1.recordName }) else { return }
         let mine = claims.filter { $0["owner"] as? String == owners[$0.recordID] }.map(\.recordID)
         guard mine.count > 0 else { return }
         try? await database.modifyRecords(saving: [], deleting: mine)
