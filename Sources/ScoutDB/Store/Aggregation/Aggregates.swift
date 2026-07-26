@@ -221,29 +221,54 @@ extension EntityStore {
             return total
         }
 
-        if query.from != nil || query.to != nil {
-            guard let (view, bucket) = Self.rangePlan(for: query, in: definition) else { return nil }
-            let period: Calendar.Component = bucket == .hour ? .day : (bucket == .weekday ? .weekOfYear : .month)
-            let records = try await gridRecords(
-                entity: entity, view: view.name, from: query.from.map { EntityCoder.periodStart(of: period, for: $0) }, to: query.to)
-            var total = 0
-            for record in records where query.groupKey == nil || record["group_key"] as? String == query.groupKey {
-                guard let start = record["date"] as? Date else { continue }
-                for index in 0..<Aggregate.cellCount {
-                    let count = Int(record[Aggregate.countCell(index)] as? Int64 ?? 0)
-                    guard count != 0 else { continue }
-                    let date = Self.cellDate(bucket, period: start, index: index)
-                    if let from = query.from, date < from { continue }
-                    if let to = query.to, date >= to { continue }
-                    total += count
-                }
-            }
-            return total
-        }
+        guard let folded = try await gridFold(query, of: nil, by: nil, entity: entity, in: definition) else { return nil }
+        return folded.values.reduce(0) { $0 + $1.count }
+    }
 
-        guard let (view, group) = Self.lifetimePlan(for: query, in: definition) else { return nil }
-        let rows = try await totals(entity: entity, view: view.name)
-        return rows.filter { group == nil || $0.group == group }.reduce(0) { $0 + $1.count }
+    package struct GridFold: Equatable, Sendable {
+        package var count = 0
+        package var total = 0.0
+    }
+
+    package func viewFold(of field: String?, by group: String?, entity: String, filters: [Filter]) async throws -> [String: GridFold]? {
+        let definition = try await registry.definition(for: entity)
+        guard definition.views?.isEmpty == false, let query = CountQuery(filters, envelopeDate: definition.envelopeDate), query.numericField == nil
+        else { return nil }
+        return try await gridFold(query, of: field, by: group, entity: entity, in: definition)
+    }
+
+    package func alwaysPresent(_ field: String, entity: String) async throws -> Bool {
+        let definition = try await registry.definition(for: entity)
+        guard let target = definition.field(named: field, at: definition.version) else { return false }
+        return target.required == true || target.defaultValue != nil
+    }
+
+    private func gridFold(_ query: CountQuery, of field: String?, by group: String?, entity: String, in definition: EntityDefinition) async throws
+        -> [String: GridFold]?
+    {
+        guard group == nil || query.groupField == nil || query.groupField == group else { return nil }
+        guard let (view, bucket) = Self.foldPlan(for: query, in: definition, summing: field, grouping: group) else { return nil }
+        let period: Calendar.Component = bucket == .hour ? .day : (bucket == .weekday ? .weekOfYear : .month)
+        let records = try await gridRecords(
+            entity: entity, view: view.name, from: query.from.map { EntityCoder.periodStart(of: period, for: $0) }, to: query.to)
+
+        var folded: [String: GridFold] = [:]
+        for record in records where query.groupKey == nil || record["group_key"] as? String == query.groupKey {
+            guard let start = record["date"] as? Date, let key = record["group_key"] as? String else { continue }
+            var bucketed = folded[group == nil ? "" : key] ?? GridFold()
+            for index in 0..<Aggregate.squareOffset {
+                let count = Int(record[Aggregate.countCell(index)] as? Int64 ?? 0)
+                guard count != 0 else { continue }
+                let date = Self.cellDate(bucket, period: start, index: index)
+                if let from = query.from, date < from { continue }
+                if let to = query.to, date >= to { continue }
+                bucketed.count += count
+                bucketed.total += record[Aggregate.valueCell(index)] as? Double ?? 0
+            }
+            guard bucketed.count > 0 else { continue }
+            folded[group == nil ? "" : key] = bucketed
+        }
+        return folded
     }
 
     private struct CountQuery {
@@ -288,16 +313,18 @@ extension EntityStore {
         }
     }
 
-    private static func lifetimePlan(for query: CountQuery, in definition: EntityDefinition) -> (view: AggregateView, group: String?)? {
-        for view in definition.views ?? [] where view.bucket == .lifetime && view.histogram == nil && query.matchesGrouping(of: view) {
-            return (view, query.groupKey)
-        }
-        return nil
-    }
-
-    private static func rangePlan(for query: CountQuery, in definition: EntityDefinition) -> (view: AggregateView, bucket: AggregateView.Bucket)? {
+    private static func foldPlan(for query: CountQuery, in definition: EntityDefinition, summing field: String?, grouping group: String?) -> (
+        view: AggregateView, bucket: AggregateView.Bucket
+    )? {
+        let ranged = query.from != nil || query.to != nil
         for view in definition.views ?? [] where view.histogram == nil && query.matchesGrouping(of: view) {
+            guard group == nil || view.groupBy == group else { continue }
+            guard field == nil || view.sum == field || view.stats == field else { continue }
             let bucket = view.bucket ?? .hour
+            guard ranged else {
+                guard bucket == .lifetime else { continue }
+                return (view, bucket)
+            }
             guard bucket != .lifetime else { continue }
             let unit: Calendar.Component = bucket == .hour ? .hour : .day
             let aligned = [query.from, query.to].compactMap { $0 }.allSatisfy { EntityCoder.periodStart(of: unit, for: $0) == $0 }

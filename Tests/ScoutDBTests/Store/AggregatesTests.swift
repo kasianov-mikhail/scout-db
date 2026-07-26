@@ -479,4 +479,85 @@ struct AggregatesTests {
                 .count() == 2)
         #expect(try await store.query("metric").filter("value", .lessThan, .double(3)).count() == 1)
     }
+
+    private func publishLedger(required: Bool = true) async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "ledger",
+                fields: [
+                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00"), required: required),
+                    FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"), required: required),
+                ], views: [AggregateView(name: "by_product", groupBy: "product", bucket: .lifetime, sum: "amount")]))
+        for (product, amount) in [("app", 10.0), ("app", 6.0), ("book", 4.0)] {
+            try await store.write(["product": .string(product), "amount": .double(amount)], entity: "ledger")
+        }
+    }
+
+    private func tamperedBookSlot() throws -> CKRecord {
+        let grid = try #require(database.records.first { $0.recordType == "Aggregate" && $0["group_key"] as? String == "book" })
+        grid["c_00"] = Int64(3)
+        grid["f_00"] = 40.0
+        return grid
+    }
+
+    @Test("sum() and average() read a covering view's grid, while min and max still scan")
+    func foldThroughLifetimeView() async throws {
+        try await publishLedger()
+        #expect(try await store.query("ledger").sum("amount") == 20)
+        #expect(try await store.query("ledger").average("amount") == 20.0 / 3)
+
+        _ = try tamperedBookSlot()
+        #expect(try await store.query("ledger").sum("amount") == 56)
+        #expect(try await store.query("ledger").average("amount") == 56.0 / 5)
+        #expect(try await store.query("ledger").filter("product", .equals, "book").sum("amount") == 40)
+        #expect(try await store.query("ledger").filter("product", .equals, "book").average("amount") == 40.0 / 3)
+        #expect(try await store.query("ledger").filter("product", .equals, "app").sum("amount") == 16)
+
+        #expect(try await store.query("ledger").minimum("amount") == 4)
+        #expect(try await store.query("ledger").maximum("amount") == 10)
+    }
+
+    @Test("Grouped folds and count(by:) read the grouping view's grid")
+    func groupedFoldThroughLifetimeView() async throws {
+        try await publishLedger()
+        _ = try tamperedBookSlot()
+
+        #expect(try await store.query("ledger").sum("amount", by: "product") == ["app": 16, "book": 40])
+        #expect(try await store.query("ledger").count(by: "product") == ["app": 2, "book": 3])
+        #expect(try await store.query("ledger").average("amount", by: "product") == ["app": 8, "book": 40.0 / 3])
+        #expect(try await store.query("ledger").minimum("amount", by: "product") == ["app": 6, "book": 4])
+    }
+
+    @Test("A fold that divides by the grid's row count scans when the field may be absent")
+    func foldFallsBackForOptionalField() async throws {
+        try await publishLedger(required: false)
+        _ = try tamperedBookSlot()
+
+        #expect(try await store.query("ledger").sum("amount") == 56)
+        #expect(try await store.query("ledger").average("amount") == 20.0 / 3)
+        #expect(try await store.query("ledger").count(by: "product") == ["app": 2, "book": 1])
+        #expect(try await store.query("ledger").sum("amount", by: "product") == ["app": 16, "book": 4])
+    }
+
+    @Test("A fold with no covering view scans")
+    func foldWithoutCoveringView() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "fee",
+                fields: [
+                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00"), required: true),
+                    FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"), required: true),
+                    FieldDefinition(name: "tax", type: .double, storage: .slot(.double, "d_01"), required: true),
+                ], views: [AggregateView(name: "by_product", groupBy: "product", bucket: .lifetime, sum: "amount")]))
+        try await store.write(["product": .string("app"), "amount": .double(10), "tax": .double(1)], entity: "fee")
+        try await store.write(["product": .string("book"), "amount": .double(4), "tax": .double(2)], entity: "fee")
+
+        let grid = try #require(database.records.first { $0.recordType == "Aggregate" && $0["group_key"] as? String == "book" })
+        grid["c_00"] = Int64(3)
+        grid["f_00"] = 40.0
+
+        #expect(try await store.query("fee").sum("tax") == 3)
+        #expect(try await store.query("fee").count(by: "amount") == ["d10.0": 1, "d4.0": 1])
+        #expect(try await store.query("fee").exclude("product", .equals, "app").sum("amount") == 4)
+    }
 }
