@@ -302,7 +302,7 @@ public struct EntityStore: Sendable {
             var seen: Set<String> = []
             var union: [EntityRecord] = []
             for branch in branches {
-                let page = try await read(entity: entity, filters: branch, fields: branchFields, limit: limit, createdBy: creator)
+                let page: [EntityRecord] = try await read(entity: entity, filters: branch, fields: branchFields, limit: limit, createdBy: creator)
                 for record in page where seen.insert(record.uuid).inserted {
                     union.append(record)
                     if union.count == limit { return union }

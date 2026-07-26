@@ -22,6 +22,20 @@ let failures = try await store.query("log")
 | `delete()` | deletes every match |
 | `explain()` | the query plan, for debugging |
 
+## 👤 Creator scope
+
+`createdBy(_:)` keeps only the records a given user wrote, matched server-side on
+`creatorUserRecordID` — the public-database pattern. It is part of the query, so every
+executor honors it: the folds and `count(by:)` as much as `all()`, and a scoped `update(_:)`
+or `delete()` never touches another user's records.
+
+```swift
+try await store.query("purchase").createdBy(me).sum("total")
+```
+
+A scoped fold or count always reads records: an aggregate view's grid folds every writer's
+contributions together and cannot be split back by creator.
+
 ## 🧪 Operator sugar
 
 ```swift
