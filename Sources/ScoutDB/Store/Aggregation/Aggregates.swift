@@ -58,12 +58,21 @@ public struct AggregateTotal: AggregateStatistics, Equatable, Sendable {
 }
 
 extension EntityStore {
+    /// Rolls a view's grid up to one row per period and group.
+    ///
+    /// A row is dated at its period's start, and `from`/`to` narrow it at the
+    /// view's cell resolution — a period the range opens or closes inside of
+    /// comes back as a partial row holding only the cells the range covers. A
+    /// histogram's cells hold values rather than times, so its range resolves
+    /// no finer than the day its grid is keyed by.
+    ///
     public func aggregate(entity: String, view viewName: String, from: Date? = nil, to: Date? = nil) async throws -> [AggregateRow] {
         let definition = try await registry.definition(for: entity)
         guard let view = definition.view(named: viewName) else {
             throw SchemaError.unknownField(viewName)
         }
-        let records = try await gridRecords(entity: entity, view: viewName, from: from, to: to)
+        let records = try await gridRecords(entity: entity, view: viewName, from: Self.gridStart(from, of: view), to: to)
+        let covers = Self.cellFilter(view, from: from, to: to)
         let kind = view.metric?.kind
         let isStats = view.stats != nil
 
@@ -72,15 +81,16 @@ extension EntityStore {
             var count = 0
             var value: Double?
             var squares: Double?
-            for index in 0..<Aggregate.cellCount {
+            for index in 0..<(isStats ? Aggregate.squareOffset : Aggregate.cellCount) where covers(period, index) {
                 count += Int(record[Aggregate.countCell(index)] as? Int64 ?? 0)
-                guard let kind, let cell = record[Aggregate.valueCell(index)] as? Double else { continue }
-                if isStats, index >= Aggregate.squareOffset {
-                    squares = (squares ?? 0) + cell
-                } else {
+                if let kind, let cell = record[Aggregate.valueCell(index)] as? Double {
                     value = value.map { kind.combine($0, cell) } ?? cell
                 }
+                if isStats, let square = record[Aggregate.squareCell(index)] as? Double {
+                    squares = (squares ?? 0) + square
+                }
             }
+            guard count != 0 || value != nil || squares != nil else { return nil }
             return AggregateRow(group: group, period: period, count: count, value: value, squares: squares)
         }
         return Dictionary(grouping: rows) { "\($0.period.millisecondsSince1970)|\($0.group)" }.values.map { shards -> AggregateRow in
@@ -98,19 +108,23 @@ extension EntityStore {
     /// Reads a view's grid at cell resolution — one point per non-empty bucket cell,
     /// dated at the cell's position within its period (e.g. the hour of the day).
     ///
+    /// `from` and `to` bound the points by that cell date, so a period the range
+    /// opens or closes inside of contributes only the cells the range covers.
+    ///
     public func series(entity: String, view viewName: String, from: Date? = nil, to: Date? = nil) async throws -> [AggregateSeriesPoint] {
         let definition = try await registry.definition(for: entity)
         guard let view = definition.view(named: viewName) else {
             throw SchemaError.unknownField(viewName)
         }
         let bucket = view.bucket ?? .hour
+        let covers = Self.cellFilter(view, from: from, to: to)
         let isStats = view.stats != nil
         let kind = view.metric?.kind
         var points: [AggregateSeriesPoint] = []
 
-        for record in try await gridRecords(entity: entity, view: viewName, from: from, to: to) {
+        for record in try await gridRecords(entity: entity, view: viewName, from: Self.gridStart(from, of: view), to: to) {
             guard let period = record["date"] as? Date, let group = record["group_key"] as? String else { continue }
-            for index in 0..<(isStats ? Aggregate.squareOffset : Aggregate.cellCount) {
+            for index in 0..<(isStats ? Aggregate.squareOffset : Aggregate.cellCount) where covers(period, index) {
                 let count = Int(record[Aggregate.countCell(index)] as? Int64 ?? 0)
                 let value = record[Aggregate.valueCell(index)] as? Double
                 guard count != 0 || value != nil else { continue }
@@ -138,6 +152,33 @@ extension EntityStore {
         }
     }
 
+    private static func period(of bucket: AggregateView.Bucket) -> Calendar.Component? {
+        switch bucket {
+        case .hour: .day
+        case .weekday: .weekOfYear
+        case .day: .month
+        case .lifetime: nil
+        }
+    }
+
+    private static func gridStart(_ from: Date?, of view: AggregateView) -> Date? {
+        guard let from else { return nil }
+        guard view.histogram == nil else { return EntityCoder.periodStart(of: .day, for: from) }
+        guard let period = period(of: view.bucket ?? .hour) else { return from }
+        return EntityCoder.periodStart(of: period, for: from)
+    }
+
+    private static func cellFilter(_ view: AggregateView, from: Date?, to: Date?) -> (Date, Int) -> Bool {
+        guard view.histogram == nil, from != nil || to != nil else { return { _, _ in true } }
+        let bucket = view.bucket ?? .hour
+        return { period, index in
+            let date = cellDate(bucket, period: period, index: index)
+            if let from, date < from { return false }
+            if let to, date >= to { return false }
+            return true
+        }
+    }
+
     public func totals(entity: String, view viewName: String, from: Date? = nil, to: Date? = nil, having: (AggregateTotal) -> Bool = { _ in true }) async throws
         -> [AggregateTotal]
     {
@@ -154,14 +195,20 @@ extension EntityStore {
         }.filter(having).sorted { $0.group < $1.group }
     }
 
+    /// Interpolates a percentile from a histogram view's counts.
+    ///
+    /// A histogram's cells hold value buckets rather than times, so `from` and
+    /// `to` resolve no finer than the day its grid is keyed by — a bound inside
+    /// a day takes that whole day in.
+    ///
     public func percentile(_ p: Double, entity: String, view viewName: String, from: Date? = nil, to: Date? = nil) async throws -> Double? {
         let definition = try await registry.definition(for: entity)
-        guard let histogram = definition.view(named: viewName)?.histogram else {
+        guard let view = definition.view(named: viewName), let histogram = view.histogram else {
             throw SchemaError.invalidValue(viewName)
         }
 
         var counts = [Double](repeating: 0, count: histogram.bounds.count + 1)
-        for record in try await gridRecords(entity: entity, view: viewName, from: from, to: to) {
+        for record in try await gridRecords(entity: entity, view: viewName, from: Self.gridStart(from, of: view), to: to) {
             for index in counts.indices {
                 counts[index] += Double(record[Aggregate.countCell(index)] as? Int64 ?? 0)
             }
@@ -247,21 +294,17 @@ extension EntityStore {
         -> [String: GridFold]?
     {
         guard group == nil || query.groupField == nil || query.groupField == group else { return nil }
-        guard let (view, bucket) = Self.foldPlan(for: query, in: definition, summing: field, grouping: group) else { return nil }
-        let period: Calendar.Component = bucket == .hour ? .day : (bucket == .weekday ? .weekOfYear : .month)
-        let records = try await gridRecords(
-            entity: entity, view: view.name, from: query.from.map { EntityCoder.periodStart(of: period, for: $0) }, to: query.to)
+        guard let view = Self.foldPlan(for: query, in: definition, summing: field, grouping: group) else { return nil }
+        let covers = Self.cellFilter(view, from: query.from, to: query.to)
+        let records = try await gridRecords(entity: entity, view: view.name, from: Self.gridStart(query.from, of: view), to: query.to)
 
         var folded: [String: GridFold] = [:]
         for record in records where query.groupKey == nil || record["group_key"] as? String == query.groupKey {
             guard let start = record["date"] as? Date, let key = record["group_key"] as? String else { continue }
             var bucketed = folded[group == nil ? "" : key] ?? GridFold()
-            for index in 0..<Aggregate.squareOffset {
+            for index in 0..<Aggregate.squareOffset where covers(start, index) {
                 let count = Int(record[Aggregate.countCell(index)] as? Int64 ?? 0)
                 guard count != 0 else { continue }
-                let date = Self.cellDate(bucket, period: start, index: index)
-                if let from = query.from, date < from { continue }
-                if let to = query.to, date >= to { continue }
                 bucketed.count += count
                 bucketed.total += record[Aggregate.valueCell(index)] as? Double ?? 0
             }
@@ -313,9 +356,9 @@ extension EntityStore {
         }
     }
 
-    private static func foldPlan(for query: CountQuery, in definition: EntityDefinition, summing field: String?, grouping group: String?) -> (
-        view: AggregateView, bucket: AggregateView.Bucket
-    )? {
+    private static func foldPlan(for query: CountQuery, in definition: EntityDefinition, summing field: String?, grouping group: String?)
+        -> AggregateView?
+    {
         let ranged = query.from != nil || query.to != nil
         for view in definition.views ?? [] where view.histogram == nil && query.matchesGrouping(of: view) {
             guard group == nil || view.groupBy == group else { continue }
@@ -323,13 +366,13 @@ extension EntityStore {
             let bucket = view.bucket ?? .hour
             guard ranged else {
                 guard bucket == .lifetime else { continue }
-                return (view, bucket)
+                return view
             }
             guard bucket != .lifetime else { continue }
             let unit: Calendar.Component = bucket == .hour ? .hour : .day
             let aligned = [query.from, query.to].compactMap { $0 }.allSatisfy { EntityCoder.periodStart(of: unit, for: $0) == $0 }
             guard aligned else { continue }
-            return (view, bucket)
+            return view
         }
         return nil
     }
