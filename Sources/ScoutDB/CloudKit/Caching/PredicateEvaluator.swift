@@ -15,8 +15,7 @@ import Foundation
 /// A record missing a compared field never matches, mirroring the server; the
 /// tri-state result lets `NOT (field IN ...)` stay false for missing fields too.
 /// A predicate shape this evaluator cannot express is unknown rather than false,
-/// so a caller that must not guess can route the query to the server instead —
-/// see `supports(_:)`.
+/// so a caller that must not guess can route the query to the server instead.
 ///
 public enum PredicateEvaluator {
     private nonisolated(unsafe) static let truePredicate = NSPredicate(value: true)
@@ -60,13 +59,6 @@ public enum PredicateEvaluator {
         return nil
     }
 
-    /// Whether every node of `predicate` is one this evaluator can express.
-    ///
-    /// `evaluate(_:record:)` answers nil both for a field a record happens to
-    /// lack and for a shape it cannot read, and a caller serving a query from a
-    /// local mirror has to tell those apart: the first is a legitimate
-    /// non-match, the second means the mirror cannot answer at all.
-    ///
     package static func supports(_ predicate: NSPredicate) -> Bool {
         if let compound = predicate as? NSCompoundPredicate {
             guard let subpredicates = compound.subpredicates as? [NSPredicate] else { return false }
