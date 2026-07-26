@@ -22,6 +22,8 @@ try await store.write(["name": .string("crash"), "dump": .bytes(logData)],
 
 Staged files are content-addressed by hash, so retrying the same write reuses the same file
 instead of duplicating it, and an interrupted write never leaves an orphaned copy mid-upload.
+Concurrent writes carrying the same bytes share that one file, and it is retired only once the
+last of them lands — the first to finish never pulls it out from under the others.
 Read a written asset back promptly — the URL CloudKit hands back points into its own
 transient cache:
 
