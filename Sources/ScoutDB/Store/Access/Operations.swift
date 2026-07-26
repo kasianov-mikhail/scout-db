@@ -249,8 +249,8 @@ extension EntityStore {
         if let cursor {
             pageFilters.append(Filter(field: dateField, op: .greaterThanOrEquals, value: .date(cursor.date)))
         }
-        let (query, included) = try liveQuery(
-            pageFilters, entity: entity, sort: try serverSort([Sort(field: dateField)], using: definition), createdBy: creator, using: definition)
+        let sort = try serverSort([Sort(field: dateField)], using: definition) + [Self.uuidSort]
+        let (query, included) = try liveQuery(pageFilters, entity: entity, sort: sort, createdBy: creator, using: definition)
         let keys = try fields.map { try desiredKeys($0 + pageFilters.map(\.field) + [dateField], using: definition) }
 
         let collected = try await boundedRecords(matching: query, desiredKeys: keys, limit: limit, using: definition) { record in
@@ -321,7 +321,7 @@ extension EntityStore {
         if let cursor {
             pageFilters.append(Filter(field: field, op: descending ? .lessThanOrEquals : .greaterThanOrEquals, value: cursor.value))
         }
-        let sort = try serverSort([Sort(field: field, ascending: !descending)], using: definition)
+        let sort = try serverSort([Sort(field: field, ascending: !descending)], using: definition) + [Self.uuidSort]
         let (query, included) = try liveQuery(pageFilters, entity: entity, sort: sort, createdBy: creator, using: definition)
         let keys = try fields.map { try desiredKeys($0 + pageFilters.map(\.field) + [field], using: definition) }
 
@@ -346,6 +346,15 @@ extension EntityStore {
         guard order != .orderedSame else { return lhs.uuid < rhs.uuid }
         return descending ? order == .orderedDescending : order == .orderedAscending
     }
+
+    /// Breaks a keyset page's ties the way its cursor does.
+    ///
+    /// The cursor addresses a row by `(value, uuid)`, so rows sharing a value
+    /// have to reach the client in uuid order: served in any other order, a
+    /// page can end on a uuid past rows it never saw, and the next page — which
+    /// keeps only what sorts after the cursor — drops them for good.
+    ///
+    private static let uuidSort = ServerSort(field: "uuid", ascending: true)
 
     private static func pageKey(_ record: EntityRecord, _ dateField: String) -> (Date, String) {
         guard case .date(let date)? = record.values[dateField] else { return (.distantPast, record.uuid) }

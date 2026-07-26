@@ -189,6 +189,46 @@ struct PaginationTests {
         #expect(uuids == ["p-0", "p-1", "p-2", "p-3", "p-4"])
     }
 
+    @Test("A walk over records sharing one envelope date serves every one of them")
+    func tiedDatesArePagedWhole() async throws {
+        let shared = Date(timeIntervalSince1970: 1_000)
+        for index in (0..<25).reversed() {
+            var values = makePurchase().values
+            values["date"] = .date(shared)
+            try await store.write(values, entity: "purchase", uuid: String(format: "p-%02d", index))
+        }
+
+        var served: [String] = []
+        var cursor: EntityCursor?
+        repeat {
+            let page = try await store.read(entity: "purchase", limit: 10, after: cursor)
+            served += page.records.map(\.uuid)
+            cursor = page.cursor
+        } while cursor != nil
+
+        #expect(served == served.sorted())
+        #expect(Set(served).count == 25)
+    }
+
+    @Test("A field-ordered walk over records sharing one value serves every one of them")
+    func tiedFieldValuesArePagedWhole() async throws {
+        for index in (0..<25).reversed() {
+            var values = makePurchase().values
+            values["quantity"] = .int(7)
+            try await store.write(values, entity: "purchase", uuid: String(format: "q-%02d", index))
+        }
+
+        var served: [String] = []
+        var cursor: FieldCursor?
+        repeat {
+            let page = try await store.read(entity: "purchase", orderedBy: "quantity", limit: 10, after: cursor)
+            served += page.records.map(\.uuid)
+            cursor = page.cursor
+        } while cursor != nil
+
+        #expect(Set(served).count == 25)
+    }
+
     private func makeItemDatabase(count: Int) -> InMemoryDatabase {
         let database = InMemoryDatabase()
         for index in 0..<count {
