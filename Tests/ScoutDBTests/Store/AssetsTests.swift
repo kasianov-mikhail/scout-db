@@ -6,6 +6,7 @@
 // https://opensource.org/licenses/MIT.
 
 import CloudKit
+import CryptoKit
 import Foundation
 import ScoutDBTesting
 import Testing
@@ -29,6 +30,10 @@ struct AssetsTests {
                     FieldDefinition(name: "dump", type: .asset, storage: .slot(.asset, "a_00")),
                     FieldDefinition(name: "screenshot", type: .asset, storage: .slot(.asset, "a_01")),
                 ]))
+    }
+
+    private func stagedURL(for payload: Data) -> URL {
+        EntityCoder.stagingDirectory.appendingPathComponent(SHA256.hash(data: payload).hexString)
     }
 
     @Test("Bytes written to an asset field are staged into a file")
@@ -122,10 +127,7 @@ struct AssetsTests {
     @Test("A landed write retires its staged file")
     func stagedFileRetiredAfterWrite() async throws {
         let payload = Data("retire-\(UUID().uuidString)".utf8)
-        guard case .asset(let staged) = try EntityCoder.stage(payload) else {
-            Issue.record("Expected a staged asset URL")
-            return
-        }
+        let staged = stagedURL(for: payload)
 
         try await store.write(["dump": .bytes(payload)], entity: "report", uuid: "r-gc")
 
@@ -137,10 +139,7 @@ struct AssetsTests {
     @Test("A failed write keeps the staged file for the retry")
     func stagedFileSurvivesFailedWrite() async throws {
         let payload = Data("retry-\(UUID().uuidString)".utf8)
-        guard case .asset(let staged) = try EntityCoder.stage(payload) else {
-            Issue.record("Expected a staged asset URL")
-            return
-        }
+        let staged = stagedURL(for: payload)
 
         database.writeErrors = [CKError(.networkFailure)]
         await #expect(throws: CKError.self) {
@@ -158,16 +157,44 @@ struct AssetsTests {
     func stagedFileRetiredAfterUpdate() async throws {
         try await store.write(["name": .string("crash")], entity: "report", uuid: "r-up")
         let payload = Data("update-\(UUID().uuidString)".utf8)
-        guard case .asset(let staged) = try EntityCoder.stage(payload) else {
-            Issue.record("Expected a staged asset URL")
-            return
-        }
+        let staged = stagedURL(for: payload)
 
         try await store.update(entity: "report", uuid: "r-up") { $0.values["dump"] = .bytes(payload) }
 
         #expect(!FileManager.default.fileExists(atPath: staged.path))
         let record = try #require(try await store.read(entity: "report").first { $0.uuid == "r-up" })
         #expect(try record.assetData(for: "dump") == payload)
+    }
+
+    @Test("A landed write keeps a staged file another write still holds")
+    func stagedFileSurvivesAnotherHolder() async throws {
+        let payload = Data("shared-\(UUID().uuidString)".utf8)
+        guard case .asset(let staged) = try EntityCoder.stage(payload) else {
+            Issue.record("Expected a staged asset URL")
+            return
+        }
+        defer { try? FileManager.default.removeItem(at: staged) }
+
+        try await store.write(["dump": .bytes(payload)], entity: "report", uuid: "r-held")
+
+        #expect(FileManager.default.fileExists(atPath: staged.path))
+        #expect(try Data(contentsOf: staged) == payload)
+    }
+
+    @Test("Concurrent writes of identical bytes both read their asset back")
+    func concurrentWritesOfIdenticalBytes() async throws {
+        let payload = Data("concurrent-\(UUID().uuidString)".utf8)
+
+        async let first = store.write(["dump": .bytes(payload)], entity: "report", uuid: "r-c1")
+        async let second = store.write(["dump": .bytes(payload)], entity: "report", uuid: "r-c2")
+        _ = try await (first, second)
+
+        let records = try await store.read(entity: "report")
+        for uuid in ["r-c1", "r-c2"] {
+            let record = try #require(records.first { $0.uuid == uuid })
+            #expect(try record.assetData(for: "dump") == payload)
+        }
+        #expect(!FileManager.default.fileExists(atPath: stagedURL(for: payload).path))
     }
 
     @Test("Sweep removes stale staged orphans and keeps fresh ones")

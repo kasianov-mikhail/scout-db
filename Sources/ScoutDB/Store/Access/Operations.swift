@@ -101,6 +101,7 @@ extension EntityStore {
             let conflicts = try await save(pending.map(\.record))
             let losers = Dictionary(conflicts.map { ($0.recordID, $0) }, uniquingKeysWith: { first, _ in first })
             applied += pending.filter { losers[$0.record.recordID] == nil }
+            EntityCoder.abandonStagedAssets(in: pending.filter { losers[$0.record.recordID] != nil }.map(\.record))
             attempt += 1
             guard attempt < maxRetry else {
                 unresolved = conflicts.first

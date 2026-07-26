@@ -164,7 +164,12 @@ public struct EntityStore: Sendable {
         let (removedFromViews, addedToViews) = try await aggregationRebalance(entityRecords, stored: stored, using: definition)
 
         let encoded = try entityRecords.map { try coder.encode($0, using: definition) }
-        try await database.write(records: encoded)
+        do {
+            try await database.write(records: encoded)
+        } catch {
+            EntityCoder.abandonStagedAssets(in: encoded)
+            throw error
+        }
         EntityCoder.discardStagedAssets(in: encoded)
         try await aggregator.rebalance(removing: removedFromViews, adding: addedToViews, using: definition)
         noteChange(entity: entity)
