@@ -16,9 +16,13 @@ extension EntityStore {
     /// Folds a numeric field across the matching records, fetching only that
     /// field's slot rather than whole records.
     ///
-    /// CloudKit runs no aggregates server-side, so the rows still travel — but
-    /// as single-slot projections, not full payloads. `sum` of no rows is 0;
-    /// the other folds return nil.
+    /// A `sum` or `average` over a view that sums the folded field is answered
+    /// from that view's grid, for the query shapes ``count()`` covers, without
+    /// reading records at all. `minimum` and `maximum` always scan: a deleted
+    /// record's extremum cannot be un-applied, so the grid holds it only
+    /// best-effort. Otherwise CloudKit runs no aggregates server-side, so the
+    /// rows travel — as single-slot projections, not full payloads. `sum` of no
+    /// rows is 0; the other folds return nil.
     ///
     public func aggregate(_ fold: Fold, of field: String, entity: String, filters: [Filter] = []) async throws -> Double? {
         try await aggregate(fold, of: field, entity: entity, any: [filters])
@@ -29,6 +33,16 @@ extension EntityStore {
         let definition = try await registry.definition(for: entity)
         guard let target = definition.field(named: field, at: definition.version), [.int, .double].contains(target.type) else {
             throw SchemaError.invalidValue(field)
+        }
+        if let folded = try await gridFold(fold, of: field, entity: entity, any: branches) {
+            let total = folded.values.reduce(into: GridFold()) {
+                $0.count += $1.count; $0.total += $1.total
+            }
+            switch fold {
+            case .sum: return total.total
+            case .average: return total.count > 0 ? total.total / Double(total.count) : nil
+            case .minimum, .maximum: break
+            }
         }
         let scalars = try await read(entity: entity, any: branches, fields: [field]).compactMap { $0.values[field]?.scalar }
         switch fold {
@@ -58,6 +72,13 @@ extension EntityStore {
         guard definition.field(named: group, at: definition.version) != nil else {
             throw SchemaError.unknownField(group)
         }
+        if let folded = try await gridFold(fold, of: field, by: group, entity: entity, any: branches) {
+            switch fold {
+            case .sum: return folded.mapValues(\.total)
+            case .average: return folded.compactMapValues { $0.count > 0 ? $0.total / Double($0.count) : nil }
+            case .minimum, .maximum: break
+            }
+        }
         var buckets: [String: [Double]] = [:]
         for record in try await read(entity: entity, any: branches, fields: [field, group]) {
             guard let key = record.values[group]?.canonical, let scalar = record.values[field]?.scalar else { continue }
@@ -74,6 +95,10 @@ extension EntityStore {
     }
 
     /// Counts the matching records per distinct value of the grouping field.
+    ///
+    /// A view grouping by that field answers the covered query shapes from its
+    /// grid, without reading records.
+    ///
     public func counts(by group: String, entity: String, filters: [Filter] = []) async throws -> [String: Int] {
         try await counts(by: group, entity: entity, any: [filters])
     }
@@ -84,11 +109,32 @@ extension EntityStore {
         guard definition.field(named: group, at: definition.version) != nil else {
             throw SchemaError.unknownField(group)
         }
+        if branches.count == 1, try await alwaysPresent(group, entity: entity),
+            let folded = try await viewFold(of: nil, by: group, entity: entity, filters: branches[0])
+        {
+            return folded.mapValues(\.count)
+        }
         var counts: [String: Int] = [:]
         for record in try await read(entity: entity, any: branches, fields: [group]) {
             guard let key = record.values[group]?.canonical else { continue }
             counts[key, default: 0] += 1
         }
         return counts
+    }
+
+    private func gridFold(_ fold: Fold, of field: String, by group: String? = nil, entity: String, any branches: [[Filter]]) async throws
+        -> [String: GridFold]?
+    {
+        guard branches.count == 1 else { return nil }
+        switch fold {
+        case .sum:
+            break
+        case .average:
+            guard try await alwaysPresent(field, entity: entity) else { return nil }
+        case .minimum, .maximum:
+            return nil
+        }
+        if let group, try await alwaysPresent(group, entity: entity) == false { return nil }
+        return try await viewFold(of: field, by: group, entity: entity, filters: branches[0])
     }
 }
