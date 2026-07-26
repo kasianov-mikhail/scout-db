@@ -539,6 +539,49 @@ struct AggregatesTests {
         #expect(try await store.query("ledger").sum("amount", by: "product") == ["app": 16, "book": 4])
     }
 
+    @Test("A fold over one group asks the server for that group's rows only")
+    func groupScopedGridRead() async throws {
+        try await publishLedger()
+        let watched = GridQueries(backing: database)
+        let reader = EntityStore(database: watched, registry: registry)
+        #expect(database.records.filter { $0.recordType == "Aggregate" }.count == 2)
+
+        let scoped = try await reader.query("ledger").filter("product", .equals, "book").sum("amount")
+        #expect(scoped == 4)
+        let grouped = try #require(watched.grid.last)
+        #expect(grouped.query.predicate.predicateFormat.contains("group_key == \"book\""))
+        #expect(grouped.matched == 1)
+
+        let whole = try await reader.query("ledger").sum("amount")
+        #expect(whole == 20)
+        let ungrouped = try #require(watched.grid.last)
+        #expect(ungrouped.query.predicate.predicateFormat.contains("group_key") == false)
+        #expect(ungrouped.matched == 2)
+    }
+
+    @Test("A grid read projects the cells it folds, and only cells the schema declares")
+    func gridReadProjection() async throws {
+        try await publishLedger()
+        let watched = GridQueries(backing: database)
+        let reader = EntityStore(database: watched, registry: registry)
+
+        _ = try await reader.query("ledger").count()
+        var keys = try #require(watched.grid.last?.keys)
+        #expect(keys.contains("c_00") && keys.contains("c_31"))
+        #expect(keys.contains("c_32") == false)
+        #expect(keys.contains { $0.hasPrefix("f_") } == false)
+
+        _ = try await reader.query("ledger").sum("amount")
+        keys = try #require(watched.grid.last?.keys)
+        #expect(keys.contains("f_00") && keys.contains("f_30"))
+        #expect(keys.contains("f_31") == false)
+
+        _ = try await reader.aggregate(entity: "ledger", view: "by_product")
+        keys = try #require(watched.grid.last?.keys)
+        #expect(Set(keys).isSuperset(of: ["date", "group_key", "c_63", "f_62"]))
+        #expect(keys.contains("f_31") == false && keys.contains("f_63") == false)
+    }
+
     @Test("A fold with no covering view scans")
     func foldWithoutCoveringView() async throws {
         try await registry.publish(
@@ -559,5 +602,81 @@ struct AggregatesTests {
         #expect(try await store.query("fee").sum("tax") == 3)
         #expect(try await store.query("fee").count(by: "amount") == ["d10.0": 1, "d4.0": 1])
         #expect(try await store.query("fee").exclude("product", .equals, "app").sum("amount") == 4)
+    }
+}
+
+/// Forwards to an in-memory database while recording every grid query — the
+/// predicate it carried, the fields it asked for, and how many rows it moved.
+private final class GridQueries: CloudDatabase, @unchecked Sendable {
+    private let backing: InMemoryDatabase
+    private let lock = NSLock()
+    private var log: [(query: CKQuery, keys: [CKRecord.FieldKey]?, matched: Int)] = []
+
+    init(backing: InMemoryDatabase) {
+        self.backing = backing
+    }
+
+    var grid: [(query: CKQuery, keys: [CKRecord.FieldKey]?, matched: Int)] {
+        lock.withLock { log.filter { $0.query.recordType == Aggregate.recordType } }
+    }
+
+    func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
+    ) {
+        let response = try await backing.records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+        lock.withLock { log.append((query, desiredKeys, response.matchResults.count)) }
+        return response
+    }
+
+    func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
+    ) {
+        try await backing.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+    }
+
+    func save(_ record: CKRecord) async throws -> CKRecord {
+        try await backing.save(record)
+    }
+
+    func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {
+        try await backing.modifyRecords(saving: records, deleting: recordIDs)
+    }
+
+    func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
+        try await backing.saveIfUnchanged(records)
+    }
+
+    func save(subscription: CKSubscription) async throws {
+        try await backing.save(subscription: subscription)
+    }
+
+    func deleteSubscription(id: CKSubscription.ID) async throws {
+        try await backing.deleteSubscription(id: id)
+    }
+
+    func subscriptions() async throws -> [CKSubscription] {
+        try await backing.subscriptions()
+    }
+
+    func save(zone: CKRecordZone) async throws {
+        try await backing.save(zone: zone)
+    }
+
+    func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
+        try await backing.fetchRecord(id: id)
+    }
+
+    func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
+        try await backing.fetchRecords(ids: ids)
+    }
+
+    func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int?) async throws -> (
+        changed: [CKRecord], deleted: [CKRecord.ID], token: Data?
+    ) {
+        try await backing.zoneChanges(zoneID: zoneID, since: token, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+    }
+
+    func databaseChanges(since token: Data?) async throws -> (changed: [CKRecordZone.ID], deleted: [CKRecordZone.ID], token: Data?) {
+        try await backing.databaseChanges(since: token)
     }
 }
