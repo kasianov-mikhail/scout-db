@@ -16,9 +16,12 @@ import Foundation
 /// filters, sorts, pagination, and projections included, through the same
 /// evaluation the in-memory test double uses. The mirror feeds three ways:
 /// every successful write through this database lands in it, every
-/// full-fidelity `zoneChanges` pass flowing through applies its delta (a
-/// `SyncCoordinator` keeps it fresh for free), and `refresh()` walks each
-/// zone's feed from the replica's own token for a complete mirror. With a
+/// full-fidelity `zoneChanges` pass flowing through applies its delta and,
+/// when it continued from the replica's own position, advances that position
+/// too (so a `SyncCoordinator` walking a zone from the start both builds the
+/// mirror and keeps it fresh, with no second walk of the same feed), and
+/// `refresh()` walks each zone's feed from the replica's own token for a
+/// complete mirror. With a
 /// `storeURL` the mirror persists across launches, written on a short delay
 /// so a burst of changes costs one rewrite; `persistNow()` forces it, and a
 /// write lost to a crash is re-read from the feed rather than lost.
@@ -52,9 +55,11 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
         /// Reads of a replicated zone are answered from the mirror
         /// immediately — no network round trip, no offline timeout to wait
         /// out. Freshness comes from the passes that feed the mirror: a
-        /// `SyncCoordinator`, or `refresh()`. Until a zone's first refresh
-        /// completes it behaves like `networkFirst` — a half-built mirror
-        /// must not silently answer with partial results.
+        /// `SyncCoordinator`, or `refresh()`. Until a zone's feed has been
+        /// drained from the start — by a `refresh()`, or by the passes that
+        /// fed the mirror from its own position — it behaves like
+        /// `networkFirst`: a half-built mirror must not silently answer with
+        /// partial results.
         case localFirst
     }
 
@@ -517,8 +522,22 @@ public final class ReplicaCache: CloudDatabase, @unchecked Sendable {
         let response = try await backing.zoneChanges(zoneID: zoneID, since: token, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
         if feeds(desiredKeys) {
             upsert(response.changed, deleting: response.deleted)
+            adopt(response.token, of: zoneID, continuing: token, drained: resultsLimit == nil || response.changed.count + response.deleted.count == 0)
         }
         return response
+    }
+
+    private func adopt(_ next: Data?, of zoneID: CKRecordZone.ID, continuing token: Data?, drained: Bool) {
+        lock.withLock {
+            guard zones.contains(zoneID), tokens[zoneID] == token else { return }
+            if let next {
+                tokens[zoneID] = next
+            }
+            if drained {
+                completed.insert(zoneID)
+            }
+            scheduleArchiveLocked()
+        }
     }
 
     public func save(subscription: CKSubscription) async throws {

@@ -246,6 +246,49 @@ struct ReplicaCacheTests {
         #expect(offline.map(\.uuid) == ["p-1"])
     }
 
+    @Test("A pass that walks a zone from the start leaves the mirror complete")
+    func passCompletesTheMirror() async throws {
+        let direct = EntityStore(database: backing, registry: SchemaRegistry(database: backing), zoneID: zone)
+        try await writePurchases([3, 1, 2], through: direct)
+
+        let replica = ReplicaCache(backing: backing, zoneID: zone, readPolicy: .localFirst)
+        #expect(!replica.hasCompleteMirror)
+
+        _ = try await replica.zoneChanges(zoneID: zone, since: nil, desiredKeys: nil, resultsLimit: nil)
+        #expect(replica.hasCompleteMirror)
+
+        let served = EntityStore(database: replica, registry: registry, zoneID: zone)
+        backing.errors = [CKError(.notAuthenticated)]
+        #expect(try await served.read(entity: "purchase").count == 3)
+        #expect(backing.errors.count == 1)
+    }
+
+    @Test("A refresh after a pass does not walk the same feed again")
+    func refreshAfterPassIsIdle() async throws {
+        let direct = EntityStore(database: backing, registry: SchemaRegistry(database: backing), zoneID: zone)
+        try await writePurchases([3, 1, 2], through: direct)
+
+        let replica = ReplicaCache(backing: backing, zoneID: zone)
+        _ = try await replica.zoneChanges(zoneID: zone, since: nil, desiredKeys: nil, resultsLimit: nil)
+
+        #expect(try await replica.refresh() == 0)
+    }
+
+    @Test("A pass that skips ahead of the replica leaves its position alone")
+    func passFromAnotherPositionIsNotAdopted() async throws {
+        let direct = EntityStore(database: backing, registry: SchemaRegistry(database: backing), zoneID: zone)
+        try await writePurchases([3], through: direct)
+
+        let replica = ReplicaCache(backing: backing, zoneID: zone, readPolicy: .localFirst)
+        let ahead = try await backing.zoneChanges(zoneID: zone, since: nil, desiredKeys: nil, resultsLimit: nil)
+        try await writePurchases([1], through: direct)
+
+        _ = try await replica.zoneChanges(zoneID: zone, since: ahead.token, desiredKeys: nil, resultsLimit: nil)
+        #expect(!replica.hasCompleteMirror)
+        #expect(try await replica.refresh() > 0)
+        #expect(replica.hasCompleteMirror)
+    }
+
     @Test("A tombstone written through the replica hides the record offline")
     func tombstonesOffline() async throws {
         try await writePurchases([3, 1])
