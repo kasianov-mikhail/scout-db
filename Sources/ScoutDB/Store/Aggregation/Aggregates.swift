@@ -288,20 +288,26 @@ extension EntityStore {
     /// The count a declared view answers without scanning records, or nil when
     /// no view covers the query.
     ///
-    /// Covered shapes: no filters or a `groupBy` equality (lifetime view); an
+    /// Covered shapes: no filters, a `groupBy` equality or `in` list (lifetime
+    /// view), or OR branches of them differing only in the matched keys; an
     /// `envelopeDate` range whose bounds align with a view's cell resolution
     /// (hour cells for an hour view, day cells for day and weekday views); a
     /// threshold on a histogram's field that lands exactly on a declared bound.
     ///
     package func viewCount(entity: String, filters: [Filter]) async throws -> Int? {
+        try await viewCount(entity: entity, any: [filters])
+    }
+
+    package func viewCount(entity: String, any branches: [[Filter]]) async throws -> Int? {
         let definition = try await registry.definition(for: entity)
-        guard definition.views?.isEmpty == false, let query = CountQuery(filters, envelopeDate: definition.envelopeDate) else { return nil }
+        guard definition.views?.isEmpty == false, let query = CountQuery(any: branches, envelopeDate: definition.envelopeDate) else { return nil }
 
         if query.numericField != nil {
             guard query.from == nil, query.to == nil, let (view, cells) = Self.histogramPlan(for: query, in: definition) else { return nil }
-            let records = try await gridRecords(entity: entity, view: view.name, group: query.groupKey, counts: cells)
+            let records = try await gridRecords(entity: entity, view: view.name, group: query.serverGroup, counts: cells)
             var total = 0
             for record in records {
+                guard let key = record["group_key"] as? String, query.covers(key) else { continue }
                 for index in cells {
                     total += Int(record[Aggregate.countCell(index)] as? Int64 ?? 0)
                 }
@@ -319,8 +325,13 @@ extension EntityStore {
     }
 
     package func viewFold(of field: String?, by group: String?, entity: String, filters: [Filter]) async throws -> [String: GridFold]? {
+        try await viewFold(of: field, by: group, entity: entity, any: [filters])
+    }
+
+    package func viewFold(of field: String?, by group: String?, entity: String, any branches: [[Filter]]) async throws -> [String: GridFold]? {
         let definition = try await registry.definition(for: entity)
-        guard definition.views?.isEmpty == false, let query = CountQuery(filters, envelopeDate: definition.envelopeDate), query.numericField == nil
+        guard definition.views?.isEmpty == false, let query = CountQuery(any: branches, envelopeDate: definition.envelopeDate),
+            query.numericField == nil
         else { return nil }
         return try await gridFold(query, of: field, by: group, entity: entity, in: definition)
     }
@@ -339,12 +350,12 @@ extension EntityStore {
         let covers = Self.cellFilter(view, from: query.from, to: query.to)
         let cells = 0..<Aggregate.squareOffset
         let records = try await gridRecords(
-            entity: entity, view: view.name, group: query.groupKey, from: Self.gridStart(query.from, of: view), to: query.to, counts: cells,
+            entity: entity, view: view.name, group: query.serverGroup, from: Self.gridStart(query.from, of: view), to: query.to, counts: cells,
             values: field == nil ? nil : cells)
 
         var folded: [String: GridFold] = [:]
         for record in records {
-            guard let start = record["date"] as? Date, let key = record["group_key"] as? String else { continue }
+            guard let start = record["date"] as? Date, let key = record["group_key"] as? String, query.covers(key) else { continue }
             var bucketed = folded[group == nil ? "" : key] ?? GridFold()
             for index in cells where covers(start, index) {
                 let count = Int(record[Aggregate.countCell(index)] as? Int64 ?? 0)
@@ -360,12 +371,20 @@ extension EntityStore {
 
     private struct CountQuery {
         var groupField: String?
-        var groupKey: String?
+        var groupKeys: Set<String>?
         var from: Date?
         var to: Date?
         var numericField: String?
         var numericGTE: Double?
         var numericLT: Double?
+
+        var serverGroup: String? {
+            groupKeys?.count == 1 ? groupKeys?.first : nil
+        }
+
+        func covers(_ key: String) -> Bool {
+            groupKeys?.contains(key) ?? true
+        }
 
         init?(_ filters: [Filter], envelopeDate: String?) {
             for filter in filters {
@@ -380,7 +399,11 @@ extension EntityStore {
                 case (.equals, let value):
                     guard groupField == nil else { return nil }
                     groupField = filter.field
-                    groupKey = value.canonical
+                    groupKeys = [value.canonical]
+                case (.in, let value):
+                    guard groupField == nil, let keys = Self.elementCanonicals(of: value) else { return nil }
+                    groupField = filter.field
+                    groupKeys = keys
                 case (.greaterThanOrEquals, let value):
                     guard let scalar = value.scalar, numericField == nil || numericField == filter.field, numericGTE == nil else { return nil }
                     numericField = filter.field
@@ -395,8 +418,31 @@ extension EntityStore {
             }
         }
 
+        init?(any branches: [[Filter]], envelopeDate: String?) {
+            guard let first = branches.first, var merged = CountQuery(first, envelopeDate: envelopeDate) else { return nil }
+            for branch in branches.dropFirst() {
+                guard let query = CountQuery(branch, envelopeDate: envelopeDate),
+                    query.groupField == merged.groupField, query.from == merged.from, query.to == merged.to,
+                    query.numericField == merged.numericField, query.numericGTE == merged.numericGTE, query.numericLT == merged.numericLT,
+                    let keys = merged.groupKeys, let more = query.groupKeys
+                else { return nil }
+                merged.groupKeys = keys.union(more)
+            }
+            self = merged
+        }
+
         func matchesGrouping(of view: AggregateView) -> Bool {
             groupField == nil || groupField == view.groupBy
+        }
+
+        private static func elementCanonicals(of value: RecordValue) -> Set<String>? {
+            switch value {
+            case .strings(let values): Set(values)
+            case .ints(let values): Set(values.map { RecordValue.int($0).canonical })
+            case .doubles(let values): Set(values.map { RecordValue.double($0).canonical })
+            case .dates(let values): Set(values.map { RecordValue.date($0).canonical })
+            default: nil
+            }
         }
     }
 
