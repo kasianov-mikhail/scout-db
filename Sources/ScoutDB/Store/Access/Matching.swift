@@ -152,10 +152,13 @@ extension EntityStore {
                 guard let op = filter.op.serverOperator else {
                     throw SchemaError.unknownField(filter.field)
                 }
-                guard case .slot(_, let slot) = field.storage else {
+                guard case .slot(let pool, let slot) = field.storage else {
                     guard filter.op != .near else { throw SchemaError.invalidValue(filter.field) }
                     client.append(filter)
                     continue
+                }
+                guard pool.isQueryable else {
+                    throw SchemaError.invalidValue(filter.field)
                 }
                 server.append(ServerFilter(field: slot, op: op, value: filter.value, radius: filter.radius))
             }
@@ -165,10 +168,13 @@ extension EntityStore {
 
     func serverSort(_ sort: [Sort], using definition: EntityDefinition) throws -> [ServerSort] {
         try sort.map { sort in
-            guard let field = definition.field(named: sort.field, at: definition.version), case .slot(_, let slot) = field.storage else {
+            guard let field = definition.field(named: sort.field, at: definition.version), case .slot(let pool, let slot) = field.storage else {
                 throw SchemaError.unknownField(sort.field)
             }
             if sort.origin != nil, field.type != .location {
+                throw SchemaError.invalidValue(sort.field)
+            }
+            if sort.origin == nil, !pool.isSortable {
                 throw SchemaError.invalidValue(sort.field)
             }
             return ServerSort(field: slot, ascending: sort.ascending, origin: sort.origin)
