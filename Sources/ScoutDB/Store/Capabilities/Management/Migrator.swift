@@ -98,7 +98,8 @@ public struct Migrator: Sendable {
         let definition = try await registry.definition(for: entity)
         guard definition.enforcedKeys?.isEmpty == false || !EntityStore.exclusiveFields(of: definition).isEmpty else { return 0 }
         let store = EntityStore(database: database, registry: registry, keyProvider: keyProvider, zoneID: zoneID)
-        let records = try await store.read(entity: entity)
+        let fields = (definition.enforcedKeys ?? []).flatMap { $0 } + EntityStore.exclusiveFields(of: definition).map(\.name)
+        let records = try await store.read(entity: entity, fields: Array(Set(fields)))
         for chunk in records.chunked(into: batchSize) {
             try await store.claimUniqueKeys(of: chunk, using: definition)
         }
