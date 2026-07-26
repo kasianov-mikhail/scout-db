@@ -50,6 +50,9 @@ struct GridAggregator {
         if let (kind, total) = rhs.value {
             merged.value = (kind, merged.value.map { kind.combine($0.total, total) } ?? total)
         }
+        if let (kind, total) = rhs.removed {
+            merged.removed = (kind, merged.removed.map { kind.combine($0.total, total) } ?? total)
+        }
         return merged
     }
 
@@ -87,6 +90,8 @@ struct GridAggregator {
                         delta.value = (kind, delta.value.map { kind.combine($0.total, value) } ?? value)
                     } else if kind == .sum {
                         delta.value = (.sum, (delta.value?.total ?? 0) - value)
+                    } else {
+                        delta.removed = (kind, delta.removed.map { kind.combine($0.total, value) } ?? value)
                     }
                 }
                 if let scalar = view.stats.flatMap({ entityRecord.values[$0]?.scalar }) {
@@ -114,9 +119,17 @@ struct GridAggregator {
         var count: Int64 = 0
         var value: (kind: AggregateView.Metric, total: Double)?
         var squares: Double?
+        /// The extremum a removal took out of the cell, for the kinds a removal
+        /// cannot un-apply: the cell is at least as extreme as this already, so
+        /// an addition that does not beat it leaves the cell as it stands.
+        var removed: (kind: AggregateView.Metric, total: Double)?
 
         var isNoop: Bool {
-            count == 0 && (squares ?? 0) == 0 && (value.map { $0.kind == .sum && $0.total == 0 } ?? true)
+            guard count == 0, (squares ?? 0) == 0 else { return false }
+            guard let (kind, total) = value else { return true }
+            guard kind != .sum else { return total == 0 }
+            guard let removed else { return false }
+            return kind.combine(removed.total, total) == removed.total
         }
     }
 

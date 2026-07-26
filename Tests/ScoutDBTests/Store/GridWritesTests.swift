@@ -94,6 +94,39 @@ struct GridWritesTests {
         #expect(requests(.query) == 1)
     }
 
+    private func payment(amount: Double) -> EntityRecord {
+        EntityRecord(
+            entity: "payment", uuid: "p-0", schemaVersion: 2,
+            values: ["product": .string("app"), "amount": .double(amount), "date": .date(noon)])
+    }
+
+    @Test("An update that leaves a min view's value where it stands touches no slot")
+    func unchangedMinSkipsTheSlot() async throws {
+        let definition = paymentDefinition(views: [AggregateView(name: "cheapest", bucket: .lifetime, min: "amount")])
+        let stored = payment(amount: 5)
+        try await GridAggregator(database: database).record([stored], using: definition)
+        recorder.reset()
+
+        try await GridAggregator(database: database).rebalance(removing: [stored], adding: [payment(amount: 9)], using: definition)
+
+        #expect(requests(.fetch) == 0)
+        #expect(requests(.conditionalSave) == 0)
+        #expect(try #require(slots.first)["f_00"] as? Double == 5)
+    }
+
+    @Test("An update that lowers a min view's value still writes the slot")
+    func loweredMinWritesTheSlot() async throws {
+        let definition = paymentDefinition(views: [AggregateView(name: "cheapest", bucket: .lifetime, min: "amount")])
+        let stored = payment(amount: 5)
+        try await GridAggregator(database: database).record([stored], using: definition)
+        recorder.reset()
+
+        try await GridAggregator(database: database).rebalance(removing: [stored], adding: [payment(amount: 2)], using: definition)
+
+        #expect(requests(.conditionalSave) == 1)
+        #expect(try #require(slots.first)["f_00"] as? Double == 2)
+    }
+
     @Test("A slot another writer moved on is folded again over the server copy")
     func staleSlotRetriesOverTheServerCopy() async throws {
         let definition = paymentDefinition(views: [AggregateView(name: "revenue", bucket: .lifetime, sum: "amount")])
