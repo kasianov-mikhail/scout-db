@@ -195,6 +195,27 @@ struct ReplicaCacheTests {
         #expect(backing.errors.count == 1)
     }
 
+    @Test("A predicate the mirror cannot express goes to the server")
+    func inexpressiblePredicateDefers() async throws {
+        let replica = ReplicaCache(backing: backing, zoneID: zone, readPolicy: .localFirst)
+        let store = EntityStore(database: replica, registry: registry, zoneID: zone)
+        try await writePurchases([3], through: store)
+        try await replica.refresh()
+        #expect(replica.hasCompleteMirror)
+
+        let expressible = CKQuery(recordType: "Entity", predicate: NSPredicate(format: "entity == %@", "purchase"))
+        backing.errors = [CKError(.notAuthenticated)]
+        let served = try await replica.records(matching: expressible, inZone: zone, desiredKeys: nil, resultsLimit: 0)
+        #expect(served.matchResults.count == 1)
+        #expect(backing.errors.count == 1)
+
+        let inexpressible = CKQuery(recordType: "Entity", predicate: NSPredicate(format: "s_00 LIKE %@", "p-*"))
+        await #expect(throws: CKError.self) {
+            try await replica.records(matching: inexpressible, inZone: zone, desiredKeys: nil, resultsLimit: 0)
+        }
+        #expect(backing.errors.isEmpty)
+    }
+
     @Test("localFirst completeness survives a relaunch")
     func localFirstPersistence() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("scout-replica-\(UUID().uuidString)")
