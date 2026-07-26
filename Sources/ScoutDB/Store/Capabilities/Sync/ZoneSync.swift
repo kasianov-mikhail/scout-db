@@ -52,13 +52,29 @@ public struct SyncProjection: Sendable {
 
 extension EntityStore {
     /// Fetches everything that changed in the store's zone since the token —
-    /// every entity in one round trip, unlike the per-entity `changes(entity:since:)`.
+    /// every entity in one round trip; `changes(entity:since:)` narrows the
+    /// same feed to one entity.
     ///
     /// A nil token replays the zone from the beginning. Records of retired or
     /// unknown entities are skipped.
     ///
     public func zoneChanges(since token: Data? = nil) async throws -> ZoneDelta {
         try await zoneChanges(since: token, desiredKeys: nil)
+    }
+
+    /// One entity's slice of the zone change feed since the token.
+    ///
+    /// Rides the same resumable feed as ``zoneChanges(since:)``, so the cost
+    /// scales with what changed rather than with the entity's size, and the
+    /// token marks the server's own feed position — exact where a
+    /// modification-date cursor drops writes sharing its instant and drifts
+    /// with clock skew. Tombstones arrive in `records` with `deleted` set;
+    /// CloudKit hard deletes carry no entity name, so `deleted` stays
+    /// unfiltered. Requires a store configured with a custom zone.
+    ///
+    public func changes(entity: String, since token: Data? = nil) async throws -> ZoneDelta {
+        let delta = try await zoneChanges(since: token)
+        return ZoneDelta(records: delta.records.filter { $0.entity == entity }, deleted: delta.deleted, token: delta.token)
     }
 
     /// A projected zone pass: changed records carry only the projected fields.

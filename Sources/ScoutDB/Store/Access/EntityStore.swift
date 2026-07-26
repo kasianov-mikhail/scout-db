@@ -366,18 +366,6 @@ public struct EntityStore: Sendable {
         return Array(ranked.prefix(limit))
     }
 
-    public func changes(entity: String, since cursor: Date? = nil) async throws -> (records: [EntityRecord], cursor: Date?) {
-        let definition = try await registry.definition(for: entity)
-        var filters = [ServerFilter(field: "entity", op: .equals, value: .string(entity))]
-        if let cursor {
-            filters.append(ServerFilter(field: "modificationDate", op: .greaterThan, value: .date(cursor)))
-        }
-        let query = ckQuery(Entity.recordType, filters: filters)
-        let records = try await database.allRecords(matching: query, inZone: zoneID)
-        let next = records.compactMap(\.recordModificationDate).max() ?? cursor
-        return (try decode(records, using: definition), next)
-    }
-
     func decode(_ records: [CKRecord], using definition: EntityDefinition) throws -> [EntityRecord] {
         let coder = EntityCoder(keyProvider: keyProvider)
         return try records.compactMap { try decode($0, with: coder, using: definition) }
