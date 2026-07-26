@@ -240,7 +240,7 @@ extension EntityStore {
     package func alwaysPresent(_ field: String, entity: String) async throws -> Bool {
         let definition = try await registry.definition(for: entity)
         guard let target = definition.field(named: field, at: definition.version) else { return false }
-        return target.required == true || target.defaultValue != nil
+        return target.alwaysPresent
     }
 
     private func gridFold(_ query: CountQuery, of field: String?, by group: String?, entity: String, in definition: EntityDefinition) async throws

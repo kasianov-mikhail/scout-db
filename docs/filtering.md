@@ -50,6 +50,19 @@ branch:
 
 Prefer a single `in` filter when the branches only differ by one field's value.
 
+## 🚫 Exclusions
+
+`exclude(_:_:_:)` keeps the records a predicate does *not* match:
+
+```swift
+.exclude("status", .equals, "archived")
+```
+
+A negated comparison, equality or `in` runs on the server as its complementary operator —
+`!=`, `>=`, `NOT IN` — as long as the field is declared `.required` or carries a
+`.defaultValue`, so that no record can be missing it. Every other negation is evaluated
+client-side after decoding, and there a record missing the field is kept.
+
 ## ⚡ Performance
 
 Some operators (`matches`, `isNull`, substring `contains` without a shadow field) scan the

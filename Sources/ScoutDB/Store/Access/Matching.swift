@@ -59,6 +59,20 @@ extension EntityStore {
             case .endsWith, .like, .matches, .isNull, .isNotNull: nil
             }
         }
+
+        var complement: Match? {
+            switch self {
+            case .equals: .notEquals
+            case .notEquals: .equals
+            case .in: .notIn
+            case .notIn: .in
+            case .greaterThan: .lessThanOrEquals
+            case .greaterThanOrEquals: .lessThan
+            case .lessThan: .greaterThanOrEquals
+            case .lessThanOrEquals: .greaterThan
+            default: nil
+            }
+        }
     }
 
     static func ordered(_ lhs: EntityRecord, _ rhs: EntityRecord, by sorts: [Sort]) -> Bool {
@@ -119,7 +133,13 @@ extension EntityStore {
                 guard filter.op != .near, filter.op != .search else {
                     throw SchemaError.invalidValue(filter.field)
                 }
-                client.append(filter)
+                if let op = filter.op.complement?.serverOperator, field.alwaysPresent, case .slot(let pool, let slot) = field.storage,
+                    pool.isQueryable
+                {
+                    server.append(ServerFilter(field: slot, op: op, value: filter.value))
+                } else {
+                    client.append(filter)
+                }
                 continue
             }
             switch filter.op {

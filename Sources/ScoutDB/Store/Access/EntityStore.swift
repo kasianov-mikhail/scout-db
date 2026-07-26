@@ -58,8 +58,12 @@ public struct EntityStore: Sendable {
         public let op: Match
         public let value: RecordValue
         public var radius: Double?
-        /// A negated filter keeps the records its predicate does NOT match; it
-        /// always runs client-side, so a record missing the field is kept.
+        /// A negated filter keeps the records its predicate does NOT match.
+        ///
+        /// It runs on the server as the complementary operator when the field
+        /// is always present — `required`, or carrying a default — and
+        /// otherwise client-side, where a record missing the field is kept.
+        ///
         public var negated = false
 
         public init(field: String, op: Match, value: RecordValue, radius: Double? = nil, negated: Bool = false) {

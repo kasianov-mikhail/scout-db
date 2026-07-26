@@ -54,8 +54,11 @@ public struct QueryBuilder: Sendable {
 
     /// Excludes the records matching the filter — a `NOT` over one predicate.
     ///
-    /// The complement is evaluated client-side after decoding, so a record
-    /// missing the field is kept; `near` and `search` cannot be negated.
+    /// A comparison, equality or `in` over an always-present slot field —
+    /// `.required`, or carrying a `.defaultValue` — is sent to the server as its
+    /// complementary operator; every other negation is evaluated client-side
+    /// after decoding, so a record missing the field is kept. `near` and
+    /// `search` cannot be negated.
     ///
     public func exclude(_ filter: EntityStore.Filter) -> Self {
         var negated = filter
