@@ -9,20 +9,65 @@ import CloudKit
 import Foundation
 import ScoutDB
 
+/// An in-memory `CloudDatabase` that stands in for CloudKit in tests.
+///
+/// The double is safe for concurrent use: a lock guards every piece of its
+/// mutable state, and each protocol call takes it for the whole operation, so
+/// concurrent reads and writes see whole records rather than a half-applied
+/// one. That matches what its callers assume — the library fans reads and
+/// writes out across task groups — and the settable properties tests poke
+/// (`records`, `errors`, `writeErrors`, `pageLimit`) go through the same lock.
+///
 public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
-    public var records: [CKRecord] = []
-    public var storedSubscriptions: [CKSubscription] = []
-    public var zones: [CKRecordZone.ID] = []
-    private var changeLog: [(sequence: Int64, id: CKRecord.ID, deleted: Bool)] = []
-    private var zoneLog: [(sequence: Int64, zone: CKRecordZone.ID)] = []
-    private var sequence: Int64 = 0
-    public var errors: [Error] = []
-    public var writeErrors: [Error] = []
+    private struct State {
+        var records: [CKRecord] = []
+        var subscriptions: [CKSubscription] = []
+        var zones: [CKRecordZone.ID] = []
+        var changeLog: [(sequence: Int64, id: CKRecord.ID, deleted: Bool)] = []
+        var zoneLog: [(sequence: Int64, zone: CKRecordZone.ID)] = []
+        var sequence: Int64 = 0
+        var errors: [any Error] = []
+        var writeErrors: [any Error] = []
+        var pageLimit: Int?
+        var rawConflictErrors = false
+        var unindexed: Set<CKRecord.ID> = []
+    }
+
+    private let lock = NSLock()
+    private var state = State()
+
+    public var records: [CKRecord] {
+        get { lock.withLock { state.records } }
+        set { lock.withLock { state.records = newValue } }
+    }
+
+    public var storedSubscriptions: [CKSubscription] {
+        get { lock.withLock { state.subscriptions } }
+        set { lock.withLock { state.subscriptions = newValue } }
+    }
+
+    public var zones: [CKRecordZone.ID] {
+        get { lock.withLock { state.zones } }
+        set { lock.withLock { state.zones = newValue } }
+    }
+
+    public var errors: [any Error] {
+        get { lock.withLock { state.errors } }
+        set { lock.withLock { state.errors = newValue } }
+    }
+
+    public var writeErrors: [any Error] {
+        get { lock.withLock { state.writeErrors } }
+        set { lock.withLock { state.writeErrors = newValue } }
+    }
 
     /// Caps every response page the way the CloudKit server does, so tests can
     /// force multi-page reads even for requests made at
     /// `CKQueryOperation.maximumResults`. `nil` leaves only `resultsLimit` in effect.
-    public var pageLimit: Int?
+    public var pageLimit: Int? {
+        get { lock.withLock { state.pageLimit } }
+        set { lock.withLock { state.pageLimit = newValue } }
+    }
 
     /// Reports a lost conditional save the way `CKDatabase` reports it — a raw
     /// `CKError.serverRecordChanged` carrying the server record — rather than a
@@ -32,7 +77,10 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     /// double that only ever produces the friendlier one hides the paths that
     /// match on the error's type.
     ///
-    public var rawConflictErrors = false
+    public var rawConflictErrors: Bool {
+        get { lock.withLock { state.rawConflictErrors } }
+        set { lock.withLock { state.rawConflictErrors = newValue } }
+    }
 
     /// Record IDs the query index has not caught up with: absent from every
     /// query response, still reachable by a fetch.
@@ -42,97 +90,113 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     /// cannot tell a path that survives the lag from one that reads through the
     /// index.
     ///
-    public var unindexed: Set<CKRecord.ID> = []
+    public var unindexed: Set<CKRecord.ID> {
+        get { lock.withLock { state.unindexed } }
+        set { lock.withLock { state.unindexed = newValue } }
+    }
 
     public init() {}
 
     public func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        if let error = errors.popLast() {
-            throw error
+        try lock.withLock {
+            if let error = state.errors.popLast() {
+                throw error
+            }
+            return pageLocked(query: query, zoneID: zoneID, desiredKeys: desiredKeys, offset: 0, resultsLimit: resultsLimit)
         }
-        return page(query: query, zoneID: zoneID, desiredKeys: desiredKeys, offset: 0, resultsLimit: resultsLimit)
     }
 
     public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        if let error = errors.popLast() {
-            throw error
+        try lock.withLock {
+            if let error = state.errors.popLast() {
+                throw error
+            }
+            guard let page = LocalQuery.resume(indexedLocked(), from: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit, pageLimit: state.pageLimit)
+            else {
+                throw CKError(.invalidArguments)
+            }
+            return page
         }
-        guard let page = LocalQuery.resume(indexed, from: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit, pageLimit: pageLimit) else {
-            throw CKError(.invalidArguments)
-        }
-        return page
     }
 
-    private var indexed: [CKRecord] {
-        unindexed.isEmpty ? records : records.filter { !unindexed.contains($0.recordID) }
+    private func indexedLocked() -> [CKRecord] {
+        state.unindexed.isEmpty ? state.records : state.records.filter { !state.unindexed.contains($0.recordID) }
     }
 
-    private func page(query: CKQuery, zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, offset: Int, resultsLimit: Int) -> (
+    private func pageLocked(query: CKQuery, zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, offset: Int, resultsLimit: Int) -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        LocalQuery.page(indexed, matching: query, inZone: zoneID, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit, pageLimit: pageLimit)
+        LocalQuery.page(
+            indexedLocked(), matching: query, inZone: zoneID, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit,
+            pageLimit: state.pageLimit)
     }
 
     public func save(_ record: CKRecord) async throws -> CKRecord {
-        if let error = writeErrors.popLast() ?? errors.popLast() {
-            throw error
+        try lock.withLock {
+            if let error = state.writeErrors.popLast() ?? state.errors.popLast() {
+                throw error
+            }
+            if let server = conflictingServerLocked(for: record) {
+                throw RecordConflictError(serverRecord: server)
+            }
+            upsertLocked(record)
+            return record
         }
-        if let server = conflictingServer(for: record) {
-            throw RecordConflictError(serverRecord: server)
-        }
-        upsert(record)
-        return record
     }
 
     public func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {
-        if let error = writeErrors.popLast() ?? errors.popLast() {
-            throw error
-        }
-        records.forEach(upsert)
-        let deleting = Set(recordIDs)
-        self.records.removeAll { deleting.contains($0.recordID) }
-        for id in recordIDs {
-            sequence += 1
-            changeLog.append((sequence, id, true))
-            zoneLog.append((sequence, id.zoneID))
+        try lock.withLock {
+            if let error = state.writeErrors.popLast() ?? state.errors.popLast() {
+                throw error
+            }
+            records.forEach(upsertLocked)
+            let deleting = Set(recordIDs)
+            state.records.removeAll { deleting.contains($0.recordID) }
+            for id in recordIDs {
+                state.sequence += 1
+                state.changeLog.append((state.sequence, id, true))
+                state.zoneLog.append((state.sequence, id.zoneID))
+            }
         }
     }
 
     public func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
-        var queued: [CKRecord.ID: any Error] = [:]
-        let batch = Set(records.map(\.recordID))
-        while let next = (writeErrors.last ?? errors.last) as? RecordConflictError, batch.contains(next.serverRecord.recordID),
-            queued[next.serverRecord.recordID] == nil
-        {
-            if writeErrors.isEmpty {
-                errors.removeLast()
-            } else {
-                writeErrors.removeLast()
+        try lock.withLock {
+            var queued: [CKRecord.ID: any Error] = [:]
+            let batch = Set(records.map(\.recordID))
+            while let next = (state.writeErrors.last ?? state.errors.last) as? RecordConflictError, batch.contains(next.serverRecord.recordID),
+                queued[next.serverRecord.recordID] == nil
+            {
+                if state.writeErrors.isEmpty {
+                    state.errors.removeLast()
+                } else {
+                    state.writeErrors.removeLast()
+                }
+                queued[next.serverRecord.recordID] = next
             }
-            queued[next.serverRecord.recordID] = next
-        }
-        if queued.isEmpty, let error = writeErrors.popLast() ?? errors.popLast() {
-            if let conflict = error as? RecordConflictError {
-                queued[conflict.serverRecord.recordID] = conflict
-            } else if Self.isTransport(error) {
-                throw error
-            } else {
-                queued[records[0].recordID] = error
+            if queued.isEmpty, let error = state.writeErrors.popLast() ?? state.errors.popLast() {
+                if let conflict = error as? RecordConflictError {
+                    queued[conflict.serverRecord.recordID] = conflict
+                } else if Self.isTransport(error) {
+                    throw error
+                } else {
+                    queued[records[0].recordID] = error
+                }
             }
-        }
-        return records.map { record in
-            if let failure = queued[record.recordID] {
-                return (record.recordID, .failure(failure))
+            return records.map { record in
+                if let failure = queued[record.recordID] {
+                    return (record.recordID, .failure(failure))
+                }
+                if let server = conflictingServerLocked(for: record) {
+                    return (record.recordID, .failure(Self.conflict(with: server, raw: state.rawConflictErrors)))
+                }
+                upsertLocked(record)
+                return (record.recordID, .success(record))
             }
-            if let server = conflictingServer(for: record) {
-                return (record.recordID, .failure(Self.conflict(with: server, raw: rawConflictErrors)))
-            }
-            upsert(record)
-            return (record.recordID, .success(record))
         }
     }
 
@@ -147,91 +211,108 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         return [.networkUnavailable, .networkFailure, .serviceUnavailable].contains(error.code)
     }
 
-    private func conflictingServer(for record: CKRecord) -> CKRecord? {
-        guard let stored = records.first(where: { $0.recordType == record.recordType && $0.recordID == record.recordID }),
+    private func conflictingServerLocked(for record: CKRecord) -> CKRecord? {
+        guard let stored = state.records.first(where: { $0.recordType == record.recordType && $0.recordID == record.recordID }),
             stored.recordVersionTag != record.recordVersionTag
         else { return nil }
         return project(stored, keys: nil)
     }
 
     public func save(subscription: CKSubscription) async throws {
-        if let error = writeErrors.popLast() ?? errors.popLast() {
-            throw error
+        try lock.withLock {
+            if let error = state.writeErrors.popLast() ?? state.errors.popLast() {
+                throw error
+            }
+            state.subscriptions.removeAll { $0.subscriptionID == subscription.subscriptionID }
+            state.subscriptions.append(subscription)
         }
-        storedSubscriptions.removeAll { $0.subscriptionID == subscription.subscriptionID }
-        storedSubscriptions.append(subscription)
     }
 
     public func deleteSubscription(id: CKSubscription.ID) async throws {
-        if let error = writeErrors.popLast() ?? errors.popLast() {
-            throw error
+        try lock.withLock {
+            if let error = state.writeErrors.popLast() ?? state.errors.popLast() {
+                throw error
+            }
+            state.subscriptions.removeAll { $0.subscriptionID == id }
         }
-        storedSubscriptions.removeAll { $0.subscriptionID == id }
     }
 
     public func subscriptions() async throws -> [CKSubscription] {
-        if let error = errors.popLast() {
-            throw error
+        try lock.withLock {
+            if let error = state.errors.popLast() {
+                throw error
+            }
+            return state.subscriptions
         }
-        return storedSubscriptions
     }
 
     public func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
-        if let error = errors.popLast() {
-            throw error
+        try lock.withLock {
+            if let error = state.errors.popLast() {
+                throw error
+            }
+            return state.records.first { $0.recordID == id }.map { project($0, keys: nil) }
         }
-        return records.first { $0.recordID == id }.map { project($0, keys: nil) }
     }
 
     public func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
-        if let error = errors.popLast() {
-            throw error
+        try lock.withLock {
+            if let error = state.errors.popLast() {
+                throw error
+            }
+            let stored = Dictionary(state.records.map { ($0.recordID, $0) }, uniquingKeysWith: { first, _ in first })
+            return ids.compactMap { stored[$0].map { project($0, keys: nil) } }
         }
-        let stored = Dictionary(records.map { ($0.recordID, $0) }, uniquingKeysWith: { first, _ in first })
-        return ids.compactMap { stored[$0].map { project($0, keys: nil) } }
     }
 
     public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int?) async throws -> (
         changed: [CKRecord], deleted: [CKRecord.ID], token: Data?
     ) {
-        if let error = errors.popLast() {
-            throw error
+        try lock.withLock {
+            if let error = state.errors.popLast() {
+                throw error
+            }
+            let floor = token.flatMap { Int64(String(decoding: $0, as: UTF8.self)) } ?? 0
+            var latest: [CKRecord.ID: (sequence: Int64, deleted: Bool)] = [:]
+            for entry in state.changeLog where entry.sequence > floor && entry.id.zoneID == zoneID {
+                latest[entry.id] = (entry.sequence, entry.deleted)
+            }
+            var entries = latest.map { (id: $0.key, sequence: $0.value.sequence, deleted: $0.value.deleted) }.sorted { $0.sequence < $1.sequence }
+            var next = state.sequence
+            if let resultsLimit, entries.count > resultsLimit {
+                entries = Array(entries.prefix(resultsLimit))
+                next = entries.last?.sequence ?? state.sequence
+            }
+            let changed = entries.filter { !$0.deleted }
+                .compactMap { entry in state.records.first { $0.recordID == entry.id }.map { project($0, keys: desiredKeys) } }
+            let deleted = entries.filter(\.deleted).map(\.id).sorted { $0.recordName < $1.recordName }
+            return (changed.sorted { $0.recordID.recordName < $1.recordID.recordName }, deleted, Data("\(next)".utf8))
         }
-        let floor = token.flatMap { Int64(String(decoding: $0, as: UTF8.self)) } ?? 0
-        var latest: [CKRecord.ID: (sequence: Int64, deleted: Bool)] = [:]
-        for entry in changeLog where entry.sequence > floor && entry.id.zoneID == zoneID {
-            latest[entry.id] = (entry.sequence, entry.deleted)
-        }
-        var entries = latest.map { (id: $0.key, sequence: $0.value.sequence, deleted: $0.value.deleted) }.sorted { $0.sequence < $1.sequence }
-        var next = sequence
-        if let resultsLimit, entries.count > resultsLimit {
-            entries = Array(entries.prefix(resultsLimit))
-            next = entries.last?.sequence ?? sequence
-        }
-        let changed = entries.filter { !$0.deleted }.compactMap { entry in records.first { $0.recordID == entry.id }.map { project($0, keys: desiredKeys) } }
-        let deleted = entries.filter(\.deleted).map(\.id).sorted { $0.recordName < $1.recordName }
-        return (changed.sorted { $0.recordID.recordName < $1.recordID.recordName }, deleted, Data("\(next)".utf8))
     }
 
     public func save(zone: CKRecordZone) async throws {
-        if let error = writeErrors.popLast() ?? errors.popLast() {
-            throw error
+        try lock.withLock {
+            if let error = state.writeErrors.popLast() ?? state.errors.popLast() {
+                throw error
+            }
+            if !state.zones.contains(zone.zoneID) {
+                state.zones.append(zone.zoneID)
+            }
+            state.sequence += 1
+            state.zoneLog.append((state.sequence, zone.zoneID))
         }
-        if !zones.contains(zone.zoneID) {
-            zones.append(zone.zoneID)
-        }
-        sequence += 1
-        zoneLog.append((sequence, zone.zoneID))
     }
 
     public func databaseChanges(since token: Data?) async throws -> (changed: [CKRecordZone.ID], deleted: [CKRecordZone.ID], token: Data?) {
-        if let error = errors.popLast() {
-            throw error
+        try lock.withLock {
+            if let error = state.errors.popLast() {
+                throw error
+            }
+            let floor = token.flatMap { Int64(String(decoding: $0, as: UTF8.self)) } ?? 0
+            var seen: Set<CKRecordZone.ID> = []
+            let changed = state.zoneLog.filter { $0.sequence > floor }.map(\.zone).filter { seen.insert($0).inserted }
+            return (changed.sorted { $0.zoneName < $1.zoneName }, [], Data("\(state.sequence)".utf8))
         }
-        let floor = token.flatMap { Int64(String(decoding: $0, as: UTF8.self)) } ?? 0
-        var seen: Set<CKRecordZone.ID> = []
-        let changed = zoneLog.filter { $0.sequence > floor }.map(\.zone).filter { seen.insert($0).inserted }
-        return (changed.sorted { $0.zoneName < $1.zoneName }, [], Data("\(sequence)".utf8))
     }
 
     private let assetDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("InMemoryAssets-\(UUID().uuidString)", isDirectory: true)
@@ -254,15 +335,15 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         return stored
     }
 
-    private func upsert(_ record: CKRecord) {
+    private func upsertLocked(_ record: CKRecord) {
         let record = retainingAssets(of: record)
-        records.removeAll { $0.recordType == record.recordType && $0.recordID == record.recordID }
-        records.append(record)
+        state.records.removeAll { $0.recordType == record.recordType && $0.recordID == record.recordID }
+        state.records.append(record)
         record.overrideModificationDate(Date())
         record.overrideChangeTag(UUID().uuidString)
-        sequence += 1
-        changeLog.append((sequence, record.recordID, false))
-        zoneLog.append((sequence, record.recordID.zoneID))
+        state.sequence += 1
+        state.changeLog.append((state.sequence, record.recordID, false))
+        state.zoneLog.append((state.sequence, record.recordID.zoneID))
     }
 
     private func project(_ record: CKRecord, keys: [CKRecord.FieldKey]?) -> CKRecord {
