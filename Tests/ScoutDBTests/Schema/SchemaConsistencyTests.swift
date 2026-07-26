@@ -60,7 +60,7 @@ struct SchemaConsistencyTests {
         let fields = Self.fields(of: "Aggregate")
         #expect(fields.filter { $0.name.hasPrefix("c_") }.count == 64)
 
-        let buckets = 0...30
+        let buckets = 0..<Aggregate.valueCellCount
         let expected = Set(buckets.map(Aggregate.valueCell) + buckets.map(Aggregate.squareCell))
         #expect(Set(fields.map(\.name).filter { $0.hasPrefix("f_") }) == expected)
         let names = Set(fields.map(\.name))

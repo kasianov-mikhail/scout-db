@@ -56,6 +56,10 @@ public struct FieldDefinition: Codable, Equatable, Sendable {
         version >= (since ?? 1) && version < (until ?? .max)
     }
 
+    var alwaysPresent: Bool {
+        required == true || defaultValue != nil
+    }
+
     func overlaps(_ other: FieldDefinition) -> Bool {
         (since ?? 1) < (other.until ?? .max) && (other.since ?? 1) < (until ?? .max)
     }

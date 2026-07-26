@@ -10,7 +10,14 @@ import Foundation
 
 struct GridAggregator {
     let database: any CloudDatabase
+    let slots: SlotCache
     let maxRetry = 3
+    let maxBatch = 400
+
+    init(database: any CloudDatabase, slots: SlotCache = SlotCache()) {
+        self.database = database
+        self.slots = slots
+    }
 
     func record(_ batch: [EntityRecord], using definition: EntityDefinition) async throws {
         try await rebalance(removing: [], adding: batch, using: definition)
@@ -91,15 +98,6 @@ struct GridAggregator {
         return deltas
     }
 
-    private func apply(_ deltas: [GridSlot: [Int: CellDelta]]) async throws {
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            for (slot, cells) in deltas {
-                group.addTask { try await apply(cells, to: slot) }
-            }
-            try await group.waitForAll()
-        }
-    }
-
     private struct GridSlot: Hashable {
         let entity: String
         let view: String
@@ -136,68 +134,146 @@ struct GridAggregator {
         }
     }
 
-    private func apply(_ cells: [Int: CellDelta], to slot: GridSlot) async throws {
-        var record = try await lookup(entity: slot.entity, view: slot.view, group: slot.group, day: slot.day, shard: slot.shard)
-
-        for _ in 0..<maxRetry {
-            for (index, delta) in cells {
-                let countCell = Aggregate.countCell(index)
-                record[countCell] = (record[countCell] as? Int64 ?? 0) + delta.count
-                if let (kind, total) = delta.value {
-                    let valueCell = Aggregate.valueCell(index)
-                    record[valueCell] = (record[valueCell] as? Double).map { kind.combine($0, total) } ?? total
-                }
-                if let squares = delta.squares {
-                    let squareCell = Aggregate.squareCell(index)
-                    record[squareCell] = (record[squareCell] as? Double ?? 0) + squares
-                }
-            }
-            do {
-                try await database.write(record: record)
-                return
-            } catch let conflict as RecordConflictError {
-                record = conflict.serverRecord
-            }
-        }
-        throw RecordConflictError(serverRecord: record)
+    private struct Pending {
+        let slot: GridSlot
+        var record: CKRecord
+        let cells: [Int: CellDelta]
     }
 
-    private func lookup(entity: String, view: String, group: String, day: Date, shard: Int?) async throws -> CKRecord {
-        var components = [entity, view, group, "\(day.millisecondsSince1970)"]
-        if let shard, shard > 0 {
-            components.append("shard-\(shard)")
-        }
-        let recordID = CKRecord.ID(recordName: "grid-" + contentDigest(of: components))
-        if let existing = try await database.fetchRecord(id: recordID) {
-            return existing
-        }
-        if shard != nil {
-            let record = CKRecord(recordType: Aggregate.recordType, recordID: recordID)
-            record["entity"] = entity
-            record["view"] = view
-            record["group_key"] = group
-            record["date"] = day
-            return record
-        }
+    private func apply(_ deltas: [GridSlot: [Int: CellDelta]]) async throws {
+        guard deltas.count > 0 else { return }
+        var pending = try await open(deltas)
 
+        for _ in 0..<maxRetry {
+            for entry in pending.values {
+                Self.fold(entry.cells, into: entry.record)
+            }
+            var retry: [CKRecord.ID: CKRecord] = [:]
+            for chunk in Array(pending.values).chunked(into: maxBatch) {
+                for (id, result) in try await settle(chunk.map(\.record)) {
+                    switch result {
+                    case .success(let saved):
+                        await slots.keep(saved)
+                    case .failure(let error):
+                        guard let slot = pending[id]?.slot else { throw error }
+                        if let conflict = RecordConflictError(error) {
+                            await slots.keep(conflict.serverRecord)
+                            retry[id] = conflict.serverRecord
+                        } else if Self.vanished(error) {
+                            await slots.forget(id)
+                            retry[id] = Self.blank(slot, named: id)
+                        } else {
+                            throw error
+                        }
+                    }
+                }
+            }
+            guard retry.count > 0 else { return }
+            pending = pending.filter { retry[$0.key] != nil }
+            for (id, record) in retry {
+                pending[id]?.record = record
+            }
+        }
+        guard let stranded = pending.values.first else { return }
+        throw RecordConflictError(serverRecord: stranded.record)
+    }
+
+    private func settle(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
+        do {
+            return try await database.saveIfUnchanged(records)
+        } catch  where OfflineCache.isOffline(error) {
+            var settled: [(CKRecord.ID, Result<CKRecord, any Error>)] = []
+            for record in records {
+                settled.append((record.recordID, .success(try await database.save(record))))
+            }
+            return settled
+        }
+    }
+
+    private func open(_ deltas: [GridSlot: [Int: CellDelta]]) async throws -> [CKRecord.ID: Pending] {
+        var pending: [CKRecord.ID: Pending] = [:]
+        var cold: [(id: CKRecord.ID, slot: GridSlot, cells: [Int: CellDelta])] = []
+        for (slot, cells) in deltas {
+            let id = Self.recordID(of: slot)
+            if let cached = await slots.record(id) {
+                pending[id] = Pending(slot: slot, record: cached, cells: cells)
+            } else {
+                cold.append((id, slot, cells))
+            }
+        }
+        guard cold.count > 0 else { return pending }
+
+        var served: [CKRecord.ID: CKRecord] = [:]
+        for chunk in cold.map(\.id).sorted(by: { $0.recordName < $1.recordName }).chunked(into: maxBatch) {
+            for record in try await database.fetchRecords(ids: chunk) {
+                served[record.recordID] = record
+            }
+        }
+        for entry in cold {
+            var record = served[entry.id]
+            if record == nil, Self.renamed(entry.slot) {
+                record = try await adopt(entry.slot)
+            }
+            let resolved = record ?? Self.blank(entry.slot, named: entry.id)
+            pending[resolved.recordID] = Pending(slot: entry.slot, record: resolved, cells: entry.cells)
+        }
+        return pending
+    }
+
+    private func adopt(_ slot: GridSlot) async throws -> CKRecord? {
         let query = ckQuery(
             Aggregate.recordType,
             filters: [
-                ServerFilter(field: "entity", op: .equals, value: .string(entity)),
-                ServerFilter(field: "view", op: .equals, value: .string(view)),
-                ServerFilter(field: "group_key", op: .equals, value: .string(group)),
-                ServerFilter(field: "date", op: .equals, value: .date(day)),
+                ServerFilter(field: "entity", op: .equals, value: .string(slot.entity)),
+                ServerFilter(field: "view", op: .equals, value: .string(slot.view)),
+                ServerFilter(field: "group_key", op: .equals, value: .string(slot.group)),
+                ServerFilter(field: "date", op: .equals, value: .date(slot.day)),
             ])
-        if let existing = try await database.allRecords(matching: query).first {
-            return existing
-        }
+        return try await database.allRecords(matching: query).first
+    }
 
-        let record = CKRecord(recordType: Aggregate.recordType, recordID: recordID)
-        record["entity"] = entity
-        record["view"] = view
-        record["group_key"] = group
-        record["date"] = day
+    private static func fold(_ cells: [Int: CellDelta], into record: CKRecord) {
+        for (index, delta) in cells {
+            let countCell = Aggregate.countCell(index)
+            record[countCell] = (record[countCell] as? Int64 ?? 0) + delta.count
+            if let (kind, total) = delta.value {
+                let valueCell = Aggregate.valueCell(index)
+                record[valueCell] = (record[valueCell] as? Double).map { kind.combine($0, total) } ?? total
+            }
+            if let squares = delta.squares {
+                let squareCell = Aggregate.squareCell(index)
+                record[squareCell] = (record[squareCell] as? Double ?? 0) + squares
+            }
+        }
+    }
+
+    private static func components(of slot: GridSlot) -> [String] {
+        var components = [slot.entity, slot.view, slot.group, "\(slot.day.millisecondsSince1970)"]
+        if let shard = slot.shard, shard > 0 {
+            components.append("shard-\(shard)")
+        }
+        return components
+    }
+
+    private static func recordID(of slot: GridSlot) -> CKRecord.ID {
+        CKRecord.ID(recordName: "grid-" + contentDigest(of: components(of: slot)))
+    }
+
+    private static func renamed(_ slot: GridSlot) -> Bool {
+        slot.shard == nil && escapesSeparators(components(of: slot))
+    }
+
+    private static func blank(_ slot: GridSlot, named id: CKRecord.ID) -> CKRecord {
+        let record = CKRecord(recordType: Aggregate.recordType, recordID: id)
+        record["entity"] = slot.entity
+        record["view"] = slot.view
+        record["group_key"] = slot.group
+        record["date"] = slot.day
         return record
+    }
+
+    private static func vanished(_ error: any Error) -> Bool {
+        (error as? CKError)?.code == .unknownItem
     }
 }
 
@@ -207,10 +283,23 @@ enum Aggregate {
     static let cellCount = 64
     static let squareOffset = 32
 
+    /// How many cells of each half of a row can carry a value.
+    ///
+    /// The widest period a bucket addresses is a 31-day month, so a cell past
+    /// the 31st of either half never carries one and the schema declares none.
+    /// Histogram counts still span every cell.
+    ///
+    static let valueCellCount = 31
+
     private static let countCells = (0..<cellCount).map { String(format: "c_%02d", $0) }
     private static let valueCells = (0..<cellCount).map { String(format: "f_%02d", $0) }
 
     static func countCell(_ index: Int) -> String { countCells[index] }
     static func valueCell(_ index: Int) -> String { valueCells[index] }
     static func squareCell(_ index: Int) -> String { valueCells[index + squareOffset] }
+
+    /// The value cells of a cell range that the schema declares.
+    static func valueKeys(_ cells: Range<Int>) -> [String] {
+        cells.filter { $0 % squareOffset < valueCellCount }.map(valueCell)
+    }
 }

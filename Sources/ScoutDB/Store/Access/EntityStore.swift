@@ -12,10 +12,21 @@ import Foundation
 public struct EntityWrite: Sendable {
     public let values: [String: RecordValue]
     public let uuid: String
+    let assigned: Bool
 
-    public init(values: [String: RecordValue], uuid: String = UUID().uuidString) {
+    /// Writes under a uuid of the caller's choosing, replacing any record that
+    /// already carries it.
+    public init(values: [String: RecordValue], uuid: String) {
         self.values = values
         self.uuid = uuid
+        self.assigned = true
+    }
+
+    /// Writes under a fresh uuid, which no stored record can hold.
+    public init(values: [String: RecordValue]) {
+        self.values = values
+        self.uuid = UUID().uuidString
+        self.assigned = false
     }
 }
 
@@ -26,6 +37,11 @@ public struct EntityStore: Sendable {
     var trustedWriters: Set<String>?
     var enforceReferences = false
     var zoneID: CKRecordZone.ID?
+    let slots = SlotCache()
+
+    var aggregator: GridAggregator {
+        GridAggregator(database: database, slots: slots)
+    }
 
     /// Creates a store backed by any `CloudDatabase` implementation.
     ///
@@ -58,8 +74,12 @@ public struct EntityStore: Sendable {
         public let op: Match
         public let value: RecordValue
         public var radius: Double?
-        /// A negated filter keeps the records its predicate does NOT match; it
-        /// always runs client-side, so a record missing the field is kept.
+        /// A negated filter keeps the records its predicate does NOT match.
+        ///
+        /// It runs on the server as the complementary operator when the field
+        /// is always present — `required`, or carrying a default — and
+        /// otherwise client-side, where a record missing the field is kept.
+        ///
         public var negated = false
 
         public init(field: String, op: Match, value: RecordValue, radius: Double? = nil, negated: Bool = false) {
@@ -106,8 +126,9 @@ public struct EntityStore: Sendable {
         }
     }
 
-    @discardableResult public func write(_ values: [String: RecordValue], entity: String, uuid: String = UUID().uuidString) async throws -> String {
-        try await write([EntityWrite(values: values, uuid: uuid)], entity: entity)[0]
+    @discardableResult public func write(_ values: [String: RecordValue], entity: String, uuid: String? = nil) async throws -> String {
+        let entry = uuid.map { EntityWrite(values: values, uuid: $0) } ?? EntityWrite(values: values)
+        return try await write([entry], entity: entity)[0]
     }
 
     /// Writes a batch of records of one entity in chunked saves, folding their
@@ -120,9 +141,14 @@ public struct EntityStore: Sendable {
         let definition = try await registry.definition(for: entity)
         let coder = EntityCoder(keyProvider: keyProvider, zoneID: zoneID)
 
+        var stored: Set<String> = []
         let entityRecords = try batch.map { entry in
             let resolved = try coder.resolve(entry.values, at: definition.version, using: definition)
-            let uuid = try coder.naturalUUID(for: resolved, using: definition) ?? entry.uuid
+            let natural = try coder.naturalUUID(for: resolved, using: definition)
+            let uuid = natural ?? entry.uuid
+            if natural != nil || entry.assigned {
+                stored.insert(uuid)
+            }
             return EntityRecord(entity: entity, uuid: uuid, schemaVersion: definition.version, values: resolved)
         }
 
@@ -135,24 +161,24 @@ public struct EntityStore: Sendable {
         }
         try await claimUniqueKeys(of: entityRecords, using: definition)
 
-        let (removedFromViews, addedToViews) = try await aggregationRebalance(entityRecords, using: definition)
+        let (removedFromViews, addedToViews) = try await aggregationRebalance(entityRecords, stored: stored, using: definition)
 
         let encoded = try entityRecords.map { try coder.encode($0, using: definition) }
         try await database.write(records: encoded)
         EntityCoder.discardStagedAssets(in: encoded)
-        try await GridAggregator(database: database).rebalance(removing: removedFromViews, adding: addedToViews, using: definition)
+        try await aggregator.rebalance(removing: removedFromViews, adding: addedToViews, using: definition)
         noteChange(entity: entity)
         return entityRecords.map(\.uuid)
     }
 
-    private func aggregationRebalance(_ records: [EntityRecord], using definition: EntityDefinition) async throws -> (
+    private func aggregationRebalance(_ records: [EntityRecord], stored: Set<String>, using definition: EntityDefinition) async throws -> (
         removing: [EntityRecord], adding: [EntityRecord]
     ) {
         guard definition.views?.isEmpty == false else { return ([], []) }
-        let live = try await liveRecords(entity: definition.entity, uuids: records.map(\.uuid), using: definition)
-        let liveByUUID = Dictionary(live.map { ($0.uuid, $0) }, uniquingKeysWith: { first, _ in first })
         var latest: [String: EntityRecord] = [:]
         for record in records { latest[record.uuid] = record }
+        let live = try await liveRecords(entity: definition.entity, uuids: latest.keys.filter(stored.contains), using: definition)
+        let liveByUUID = Dictionary(live.map { ($0.uuid, $0) }, uniquingKeysWith: { first, _ in first })
         var removing: [EntityRecord] = []
         var adding: [EntityRecord] = []
         for (uuid, record) in latest {
@@ -179,7 +205,7 @@ public struct EntityStore: Sendable {
         let tombstones = try targets.map { try tombstone(entity: entity, uuid: $0, definition: definition, values: values[$0] ?? [:]) }
         try await database.write(records: tombstones)
         await releaseUniqueClaims(of: removed, using: definition)
-        try await GridAggregator(database: database).remove(removed, using: definition)
+        try await aggregator.remove(removed, using: definition)
         try await recordRevisions(removed, using: definition)
         noteChange(entity: entity)
     }
@@ -281,7 +307,7 @@ public struct EntityStore: Sendable {
             var seen: Set<String> = []
             var union: [EntityRecord] = []
             for branch in branches {
-                let page = try await read(entity: entity, filters: branch, fields: branchFields, limit: limit, createdBy: creator)
+                let page: [EntityRecord] = try await read(entity: entity, filters: branch, fields: branchFields, limit: limit, createdBy: creator)
                 for record in page where seen.insert(record.uuid).inserted {
                     union.append(record)
                     if union.count == limit { return union }

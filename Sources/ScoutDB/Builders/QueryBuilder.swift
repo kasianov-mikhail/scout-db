@@ -54,8 +54,11 @@ public struct QueryBuilder: Sendable {
 
     /// Excludes the records matching the filter — a `NOT` over one predicate.
     ///
-    /// The complement is evaluated client-side after decoding, so a record
-    /// missing the field is kept; `near` and `search` cannot be negated.
+    /// A comparison, equality or `in` over an always-present slot field —
+    /// `.required`, or carrying a `.defaultValue` — is sent to the server as its
+    /// complementary operator; every other negation is evaluated client-side
+    /// after decoding, so a record missing the field is kept. `near` and
+    /// `search` cannot be negated.
     ///
     public func exclude(_ filter: EntityStore.Filter) -> Self {
         var negated = filter
@@ -120,6 +123,12 @@ public struct QueryBuilder: Sendable {
 
     /// Keeps only the records a given user created — the public-database
     /// scoping, applied server-side through `creatorUserRecordID`.
+    ///
+    /// The scope is part of the query, so every terminal honors it: reads,
+    /// pages, streams, folds, and the `update`/`delete` sweeps alike. A scoped
+    /// fold or count always scans, since an aggregate view's grid folds every
+    /// writer's records together.
+    ///
     public func createdBy(_ user: String) -> Self {
         var builder = self
         builder.creator = user
@@ -164,47 +173,47 @@ public struct QueryBuilder: Sendable {
 
     /// Sums a numeric field across the matching records, fetching only that field.
     public func sum(_ field: String) async throws -> Double {
-        try await store.aggregate(.sum, of: field, entity: entity, any: branches()) ?? 0
+        try await store.aggregate(.sum, of: field, entity: entity, any: branches(), createdBy: creator) ?? 0
     }
 
     /// The smallest value of a numeric field across the matching records, if any match.
     public func minimum(_ field: String) async throws -> Double? {
-        try await store.aggregate(.minimum, of: field, entity: entity, any: branches())
+        try await store.aggregate(.minimum, of: field, entity: entity, any: branches(), createdBy: creator)
     }
 
     /// The largest value of a numeric field across the matching records, if any match.
     public func maximum(_ field: String) async throws -> Double? {
-        try await store.aggregate(.maximum, of: field, entity: entity, any: branches())
+        try await store.aggregate(.maximum, of: field, entity: entity, any: branches(), createdBy: creator)
     }
 
     /// The mean of a numeric field across the matching records, if any match.
     public func average(_ field: String) async throws -> Double? {
-        try await store.aggregate(.average, of: field, entity: entity, any: branches())
+        try await store.aggregate(.average, of: field, entity: entity, any: branches(), createdBy: creator)
     }
 
     /// Sums a numeric field per distinct value of the grouping field.
     public func sum(_ field: String, by group: String) async throws -> [String: Double] {
-        try await store.aggregate(.sum, of: field, by: group, entity: entity, any: branches())
+        try await store.aggregate(.sum, of: field, by: group, entity: entity, any: branches(), createdBy: creator)
     }
 
     /// The smallest value of a numeric field per distinct value of the grouping field.
     public func minimum(_ field: String, by group: String) async throws -> [String: Double] {
-        try await store.aggregate(.minimum, of: field, by: group, entity: entity, any: branches())
+        try await store.aggregate(.minimum, of: field, by: group, entity: entity, any: branches(), createdBy: creator)
     }
 
     /// The largest value of a numeric field per distinct value of the grouping field.
     public func maximum(_ field: String, by group: String) async throws -> [String: Double] {
-        try await store.aggregate(.maximum, of: field, by: group, entity: entity, any: branches())
+        try await store.aggregate(.maximum, of: field, by: group, entity: entity, any: branches(), createdBy: creator)
     }
 
     /// The mean of a numeric field per distinct value of the grouping field.
     public func average(_ field: String, by group: String) async throws -> [String: Double] {
-        try await store.aggregate(.average, of: field, by: group, entity: entity, any: branches())
+        try await store.aggregate(.average, of: field, by: group, entity: entity, any: branches(), createdBy: creator)
     }
 
     /// Counts the matching records per distinct value of the grouping field.
     public func count(by group: String) async throws -> [String: Int] {
-        try await store.counts(by: group, entity: entity, any: branches())
+        try await store.counts(by: group, entity: entity, any: branches(), createdBy: creator)
     }
 
     /// Returns one page of results ordered by the envelope date.
@@ -215,7 +224,7 @@ public struct QueryBuilder: Sendable {
         guard sorts.isEmpty else {
             throw SchemaError.invalidDefinition("Pagination is ordered by the envelope date and cannot honor sort clauses")
         }
-        return try await store.read(entity: entity, any: branches(), fields: projection, limit: size, after: cursor)
+        return try await store.read(entity: entity, any: branches(), fields: projection, limit: size, after: cursor, createdBy: creator)
     }
 
     /// Returns one keyset page ordered by the builder's sort clause.
@@ -228,22 +237,27 @@ public struct QueryBuilder: Sendable {
             throw SchemaError.invalidDefinition("A field-ordered page requires exactly one sort clause")
         }
         return try await store.read(
-            entity: entity, any: branches(), fields: projection, orderedBy: sort.field, descending: !sort.ascending, limit: size, after: cursor)
+            entity: entity, any: branches(), fields: projection, orderedBy: sort.field, descending: !sort.ascending, limit: size, after: cursor,
+            createdBy: creator)
     }
 
     /// Streams every matching record page by page.
     public func stream(pageSize: Int = 100) -> AsyncThrowingStream<EntityRecord, any Error> {
-        store.stream(entity: entity, any: branches(), fields: projection, pageSize: pageSize)
+        store.stream(entity: entity, any: branches(), fields: projection, pageSize: pageSize, createdBy: creator)
     }
 
     /// Rewrites every matching record through the transform.
     @discardableResult public func update(_ transform: (inout EntityRecord) throws -> Void) async throws -> Int {
-        try await store.updateAll(entity: entity, any: branches(), transform: transform)
+        try await store.updateAll(entity: entity, any: branches(), createdBy: creator, transform: transform)
     }
 
     /// Tombstones every matching record.
+    ///
+    /// A ``createdBy(_:)`` scope narrows the delete as it narrows a read: only
+    /// that user's records are tombstoned.
+    ///
     @discardableResult public func delete() async throws -> Int {
-        try await store.deleteAll(entity: entity, any: branches())
+        try await store.deleteAll(entity: entity, any: branches(), createdBy: creator)
     }
 
     /// Explains how the query splits into server predicates and client matchers,
@@ -255,7 +269,7 @@ public struct QueryBuilder: Sendable {
     /// base filters — a plan for a query that was never run.
     ///
     public func explain() async throws -> [QueryPlan] {
-        try await store.explain(entity: entity, any: branches(), sort: sorts)
+        try await store.explain(entity: entity, any: branches(), sort: sorts, createdBy: creator)
     }
 
     private func branches() -> [[EntityStore.Filter]] {

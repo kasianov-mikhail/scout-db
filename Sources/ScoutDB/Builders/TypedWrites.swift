@@ -15,7 +15,7 @@ extension EntityStore {
     /// the fields it knows. Returns the stored uuid, which a `unique(on:)`
     /// entity derives from the value itself.
     ///
-    @discardableResult public func write<T: EntityRepresentable>(_ item: T, uuid: String = UUID().uuidString) async throws -> String {
+    @discardableResult public func write<T: EntityRepresentable>(_ item: T, uuid: String? = nil) async throws -> String {
         try await write(item.recordValues, entity: T.entityName, uuid: uuid)
     }
 
@@ -24,7 +24,7 @@ extension EntityStore {
     /// Returns the stored uuid of every value, in batch order.
     ///
     @discardableResult public func write<T: EntityRepresentable>(_ items: [T]) async throws -> [String] {
-        try await write(items.map { EntityWrite(values: $0.recordValues, uuid: UUID().uuidString) }, entity: T.entityName)
+        try await write(items.map { EntityWrite(values: $0.recordValues) }, entity: T.entityName)
     }
 
     /// Rewrites one record through its Swift type, with the usual
