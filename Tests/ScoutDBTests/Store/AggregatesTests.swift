@@ -372,6 +372,19 @@ struct AggregatesTests {
         #expect(try await store.distinct(entity: "device", field: "model") == [.string("mk1")])
     }
 
+    @Test("A single-group aggregate read narrows to that group's rows")
+    func aggregateOneGroup() async throws {
+        try await publishPayment(views: [AggregateView(name: "revenue", groupBy: "product", bucket: .day, sum: "amount")])
+        try await writePayments([10, 5], product: "app")
+        try await writePayments([2], product: "book")
+
+        let rows = try await store.aggregate(entity: "payment", view: "revenue", group: "book")
+        #expect(rows.map(\.group) == ["book"])
+        #expect(rows.first?.value == 2)
+        #expect(try await store.totals(entity: "payment", view: "revenue", group: "app").map(\.value) == [15])
+        #expect(try await store.series(entity: "payment", view: "revenue", group: "book").map(\.count) == [1])
+    }
+
     @Test("Stats views expose variance and standard deviation")
     func stats() async throws {
         try await publishPayment(views: [AggregateView(name: "spread", stats: "amount")])
