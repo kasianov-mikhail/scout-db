@@ -71,17 +71,20 @@ extension EntityStore {
         guard let view = definition.view(named: viewName) else {
             throw SchemaError.unknownField(viewName)
         }
-        let records = try await gridRecords(entity: entity, view: viewName, from: Self.gridStart(from, of: view), to: to)
-        let covers = Self.cellFilter(view, from: from, to: to)
         let kind = view.metric?.kind
         let isStats = view.stats != nil
+        let cells = 0..<(isStats ? Aggregate.squareOffset : Aggregate.cellCount)
+        let records = try await gridRecords(
+            entity: entity, view: viewName, from: Self.gridStart(from, of: view), to: to, counts: cells,
+            values: kind == nil ? nil : 0..<Aggregate.cellCount)
+        let covers = Self.cellFilter(view, from: from, to: to)
 
         let rows = records.compactMap { record -> AggregateRow? in
             guard let period = record["date"] as? Date, let group = record["group_key"] as? String else { return nil }
             var count = 0
             var value: Double?
             var squares: Double?
-            for index in 0..<(isStats ? Aggregate.squareOffset : Aggregate.cellCount) where covers(period, index) {
+            for index in cells where covers(period, index) {
                 count += Int(record[Aggregate.countCell(index)] as? Int64 ?? 0)
                 if let kind, let cell = record[Aggregate.valueCell(index)] as? Double {
                     value = value.map { kind.combine($0, cell) } ?? cell
@@ -121,10 +124,14 @@ extension EntityStore {
         let isStats = view.stats != nil
         let kind = view.metric?.kind
         var points: [AggregateSeriesPoint] = []
+        let cells = 0..<(isStats ? Aggregate.squareOffset : Aggregate.cellCount)
 
-        for record in try await gridRecords(entity: entity, view: viewName, from: Self.gridStart(from, of: view), to: to) {
+        let records = try await gridRecords(
+            entity: entity, view: viewName, from: Self.gridStart(from, of: view), to: to, counts: cells, values: kind == nil ? nil : cells)
+
+        for record in records {
             guard let period = record["date"] as? Date, let group = record["group_key"] as? String else { continue }
-            for index in 0..<(isStats ? Aggregate.squareOffset : Aggregate.cellCount) where covers(period, index) {
+            for index in cells where covers(period, index) {
                 let count = Int(record[Aggregate.countCell(index)] as? Int64 ?? 0)
                 let value = record[Aggregate.valueCell(index)] as? Double
                 guard count != 0 || value != nil else { continue }
@@ -208,7 +215,7 @@ extension EntityStore {
         }
 
         var counts = [Double](repeating: 0, count: histogram.bounds.count + 1)
-        for record in try await gridRecords(entity: entity, view: viewName, from: Self.gridStart(from, of: view), to: to) {
+        for record in try await gridRecords(entity: entity, view: viewName, from: Self.gridStart(from, of: view), to: to, counts: counts.indices) {
             for index in counts.indices {
                 counts[index] += Double(record[Aggregate.countCell(index)] as? Int64 ?? 0)
             }
@@ -258,9 +265,9 @@ extension EntityStore {
 
         if query.numericField != nil {
             guard query.from == nil, query.to == nil, let (view, cells) = Self.histogramPlan(for: query, in: definition) else { return nil }
-            let records = try await gridRecords(entity: entity, view: view.name, from: nil, to: nil)
+            let records = try await gridRecords(entity: entity, view: view.name, group: query.groupKey, counts: cells)
             var total = 0
-            for record in records where query.groupKey == nil || record["group_key"] as? String == query.groupKey {
+            for record in records {
                 for index in cells {
                     total += Int(record[Aggregate.countCell(index)] as? Int64 ?? 0)
                 }
@@ -296,13 +303,16 @@ extension EntityStore {
         guard group == nil || query.groupField == nil || query.groupField == group else { return nil }
         guard let view = Self.foldPlan(for: query, in: definition, summing: field, grouping: group) else { return nil }
         let covers = Self.cellFilter(view, from: query.from, to: query.to)
-        let records = try await gridRecords(entity: entity, view: view.name, from: Self.gridStart(query.from, of: view), to: query.to)
+        let cells = 0..<Aggregate.squareOffset
+        let records = try await gridRecords(
+            entity: entity, view: view.name, group: query.groupKey, from: Self.gridStart(query.from, of: view), to: query.to, counts: cells,
+            values: field == nil ? nil : cells)
 
         var folded: [String: GridFold] = [:]
-        for record in records where query.groupKey == nil || record["group_key"] as? String == query.groupKey {
+        for record in records {
             guard let start = record["date"] as? Date, let key = record["group_key"] as? String else { continue }
             var bucketed = folded[group == nil ? "" : key] ?? GridFold()
-            for index in 0..<Aggregate.squareOffset where covers(start, index) {
+            for index in cells where covers(start, index) {
                 let count = Int(record[Aggregate.countCell(index)] as? Int64 ?? 0)
                 guard count != 0 else { continue }
                 bucketed.count += count
@@ -377,7 +387,7 @@ extension EntityStore {
         return nil
     }
 
-    private static func histogramPlan(for query: CountQuery, in definition: EntityDefinition) -> (view: AggregateView, cells: ClosedRange<Int>)? {
+    private static func histogramPlan(for query: CountQuery, in definition: EntityDefinition) -> (view: AggregateView, cells: Range<Int>)? {
         for view in definition.views ?? [] {
             guard let histogram = view.histogram, histogram.field == query.numericField, query.matchesGrouping(of: view) else { continue }
             var first = 0
@@ -391,22 +401,39 @@ extension EntityStore {
                 last = bound
             }
             guard first <= last else { continue }
-            return (view, first...last)
+            return (view, first..<last + 1)
         }
         return nil
     }
 
-    private func gridRecords(entity: String, view: String, from: Date?, to: Date?) async throws -> [CKRecord] {
+    /// Reads a view's grid records: the group the caller asked for, over the
+    /// period range it reads, projected to the cells it folds.
+    ///
+    /// A grid row is one group's period, so a query for a single group of a
+    /// high-cardinality view has no business paging through every other
+    /// group's rows — the server holds `group_key` indexed. Each row still
+    /// carries its own period and group key, which every fold keys on.
+    ///
+    /// `counts` and `values` are the cell ranges the caller reads; a fold that
+    /// reads no metric passes no `values` range at all.
+    ///
+    private func gridRecords(
+        entity: String, view: String, group: String? = nil, from: Date? = nil, to: Date? = nil, counts: Range<Int>, values: Range<Int>? = nil
+    ) async throws -> [CKRecord] {
         var filters = [
             ServerFilter(field: "entity", op: .equals, value: .string(entity)),
             ServerFilter(field: "view", op: .equals, value: .string(view)),
         ]
+        if let group {
+            filters.append(ServerFilter(field: "group_key", op: .equals, value: .string(group)))
+        }
         if let from {
             filters.append(ServerFilter(field: "date", op: .greaterThanOrEquals, value: .date(from)))
         }
         if let to {
             filters.append(ServerFilter(field: "date", op: .lessThan, value: .date(to)))
         }
-        return try await database.allRecords(matching: ckQuery(Aggregate.recordType, filters: filters))
+        let keys = ["date", "group_key"] + counts.map(Aggregate.countCell) + (values.map(Aggregate.valueKeys) ?? [])
+        return try await database.allRecords(matching: ckQuery(Aggregate.recordType, filters: filters), desiredKeys: keys)
     }
 }

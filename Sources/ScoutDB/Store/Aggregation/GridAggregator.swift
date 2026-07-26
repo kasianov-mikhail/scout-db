@@ -207,10 +207,23 @@ enum Aggregate {
     static let cellCount = 64
     static let squareOffset = 32
 
+    /// How many cells of each half of a row can carry a value.
+    ///
+    /// The widest period a bucket addresses is a 31-day month, so a cell past
+    /// the 31st of either half never carries one and the schema declares none.
+    /// Histogram counts still span every cell.
+    ///
+    static let valueCellCount = 31
+
     private static let countCells = (0..<cellCount).map { String(format: "c_%02d", $0) }
     private static let valueCells = (0..<cellCount).map { String(format: "f_%02d", $0) }
 
     static func countCell(_ index: Int) -> String { countCells[index] }
     static func valueCell(_ index: Int) -> String { valueCells[index] }
     static func squareCell(_ index: Int) -> String { valueCells[index + squareOffset] }
+
+    /// The value cells of a cell range that the schema declares.
+    static func valueKeys(_ cells: Range<Int>) -> [String] {
+        cells.filter { $0 % squareOffset < valueCellCount }.map(valueCell)
+    }
 }
