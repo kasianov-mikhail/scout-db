@@ -37,6 +37,11 @@ public struct EntityStore: Sendable {
     var trustedWriters: Set<String>?
     var enforceReferences = false
     var zoneID: CKRecordZone.ID?
+    let slots = SlotCache()
+
+    var aggregator: GridAggregator {
+        GridAggregator(database: database, slots: slots)
+    }
 
     /// Creates a store backed by any `CloudDatabase` implementation.
     ///
@@ -161,7 +166,7 @@ public struct EntityStore: Sendable {
         let encoded = try entityRecords.map { try coder.encode($0, using: definition) }
         try await database.write(records: encoded)
         EntityCoder.discardStagedAssets(in: encoded)
-        try await GridAggregator(database: database).rebalance(removing: removedFromViews, adding: addedToViews, using: definition)
+        try await aggregator.rebalance(removing: removedFromViews, adding: addedToViews, using: definition)
         noteChange(entity: entity)
         return entityRecords.map(\.uuid)
     }
@@ -200,7 +205,7 @@ public struct EntityStore: Sendable {
         let tombstones = try targets.map { try tombstone(entity: entity, uuid: $0, definition: definition, values: values[$0] ?? [:]) }
         try await database.write(records: tombstones)
         await releaseUniqueClaims(of: removed, using: definition)
-        try await GridAggregator(database: database).remove(removed, using: definition)
+        try await aggregator.remove(removed, using: definition)
         try await recordRevisions(removed, using: definition)
         noteChange(entity: entity)
     }
