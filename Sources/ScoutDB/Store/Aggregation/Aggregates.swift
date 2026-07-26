@@ -239,7 +239,21 @@ extension EntityStore {
         return histogram.bounds.last
     }
 
+    /// The distinct values of a field across the matching records.
+    ///
+    /// A view grouping by an always-present, unencrypted field answers the
+    /// query shapes ``viewCount(entity:filters:)`` covers from its grid — one
+    /// row per live value, without reading records. Every other shape scans,
+    /// fetching only the field's slot.
+    ///
     public func distinct(entity: String, field: String, filters: [Filter] = []) async throws -> [RecordValue] {
+        let definition = try await registry.definition(for: entity)
+        if let target = definition.field(named: field, at: definition.version), target.alwaysPresent, target.encrypted != true,
+            let parse = Self.canonicalParser(of: target.type),
+            let folded = try await viewFold(of: nil, by: field, entity: entity, filters: filters)
+        {
+            return folded.keys.sorted().compactMap(parse)
+        }
         var seen: Set<String> = []
         var values: [RecordValue] = []
         for record in try await read(entity: entity, filters: filters, fields: [field]) {
@@ -249,6 +263,26 @@ extension EntityStore {
             }
         }
         return values
+    }
+
+    private static func canonicalParser(of type: FieldType) -> ((String) -> RecordValue?)? {
+        switch type {
+        case .string, .text:
+            return { .string($0) }
+        case .int:
+            return { $0.hasPrefix("i") ? Int64($0.dropFirst()).map(RecordValue.int) : nil }
+        case .double:
+            return { $0.hasPrefix("d") ? Double($0.dropFirst()).map(RecordValue.double) : nil }
+        case .timestamp:
+            return { canonical in
+                guard canonical.hasPrefix("t"), let milliseconds = Int64(canonical.dropFirst()) else { return nil }
+                return .date(Date(millisecondsSince1970: milliseconds))
+            }
+        case .reference:
+            return { $0.hasPrefix("r") ? .reference(String($0.dropFirst())) : nil }
+        default:
+            return nil
+        }
     }
 
     /// The count a declared view answers without scanning records, or nil when
