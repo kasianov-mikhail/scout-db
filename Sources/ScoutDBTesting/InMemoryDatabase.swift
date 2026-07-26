@@ -34,6 +34,16 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     ///
     public var rawConflictErrors = false
 
+    /// Record IDs the query index has not caught up with: absent from every
+    /// query response, still reachable by a fetch.
+    ///
+    /// CloudKit indexes a write asynchronously, so only a fetch by ID reads a
+    /// record back immediately. A double that indexes every write on the spot
+    /// cannot tell a path that survives the lag from one that reads through the
+    /// index.
+    ///
+    public var unindexed: Set<CKRecord.ID> = []
+
     public init() {}
 
     public func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
@@ -51,16 +61,20 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         if let error = errors.popLast() {
             throw error
         }
-        guard let page = LocalQuery.resume(records, from: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit, pageLimit: pageLimit) else {
+        guard let page = LocalQuery.resume(indexed, from: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit, pageLimit: pageLimit) else {
             throw CKError(.invalidArguments)
         }
         return page
     }
 
+    private var indexed: [CKRecord] {
+        unindexed.isEmpty ? records : records.filter { !unindexed.contains($0.recordID) }
+    }
+
     private func page(query: CKQuery, zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, offset: Int, resultsLimit: Int) -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        LocalQuery.page(records, matching: query, inZone: zoneID, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit, pageLimit: pageLimit)
+        LocalQuery.page(indexed, matching: query, inZone: zoneID, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit, pageLimit: pageLimit)
     }
 
     public func save(_ record: CKRecord) async throws -> CKRecord {

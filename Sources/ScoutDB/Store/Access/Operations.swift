@@ -394,9 +394,14 @@ extension EntityStore {
     }
 
     /// Fetches a single record by its identifier, resolving the entity from the record itself.
+    ///
+    /// The record carries the uuid as its name, so this reaches it by ID and
+    /// reads a just-written record — a query would go through the index, which
+    /// lags a write.
+    ///
     public func fetch(uuid: String) async throws -> EntityRecord? {
-        let query = ckQuery(Entity.recordType, filters: [ServerFilter(field: "uuid", op: .equals, value: .string(uuid))])
-        guard let record = try await database.allRecords(matching: query, inZone: zoneID).first else { return nil }
+        let id = CKRecord.ID(recordName: uuid, zoneID: zoneID ?? .default)
+        guard let record = try await database.fetchRecord(id: id) else { return nil }
         guard let entity = record["entity"] as? String else { return nil }
         let definition = try await registry.definition(for: entity)
         let decoded = try decode([record], using: definition)
