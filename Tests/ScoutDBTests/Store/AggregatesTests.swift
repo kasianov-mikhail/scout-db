@@ -251,6 +251,54 @@ struct AggregatesTests {
         #expect(rows.first?.value == 9)
     }
 
+    @Test("A range opening mid-period keeps the rest of that period")
+    func rangeInsidePeriod() async throws {
+        try await publishPayment(views: [AggregateView(name: "revenue", groupBy: "product", bucket: .day, sum: "amount")])
+        let midMonth = noon.addingTimeInterval(14 * 86_400)
+        try await writePayments([1])
+        try await store.write(["product": .string("app"), "amount": .double(9), "date": .date(midMonth)], entity: "payment")
+
+        let month = EntityCoder.periodStart(of: .month, for: noon)
+        let fifteenth = EntityCoder.periodStart(of: .day, for: midMonth)
+
+        let tail = try await store.aggregate(entity: "payment", view: "revenue", from: fifteenth)
+        #expect(tail == [AggregateRow(group: "app", period: month, count: 1, value: 9, squares: nil)])
+
+        let head = try await store.aggregate(entity: "payment", view: "revenue", to: fifteenth)
+        #expect(head == [AggregateRow(group: "app", period: month, count: 1, value: 1, squares: nil)])
+
+        let whole = try await store.aggregate(entity: "payment", view: "revenue", from: month)
+        #expect(whole.first?.value == 10)
+        #expect(try await store.totals(entity: "payment", view: "revenue", from: fifteenth).first?.value == 9)
+    }
+
+    @Test("A series range drops the cells outside it")
+    func seriesInsidePeriod() async throws {
+        try await publishPayment(views: [AggregateView(name: "revenue", groupBy: "product", bucket: .hour, sum: "amount")])
+        let later = noon.addingTimeInterval(2 * 3_600)
+        try await writePayments([2])
+        try await store.write(["product": .string("app"), "amount": .double(9), "date": .date(later)], entity: "payment")
+
+        let points = try await store.series(entity: "payment", view: "revenue", from: noon.addingTimeInterval(3_600))
+        #expect(points == [AggregateSeriesPoint(group: "app", date: later, count: 1, value: 9)])
+    }
+
+    @Test("A stats range narrows the squares along with the values")
+    func statsInsidePeriod() async throws {
+        try await publishPayment(views: [AggregateView(name: "spread", bucket: .day, stats: "amount")])
+        let midMonth = noon.addingTimeInterval(14 * 86_400)
+        try await writePayments([100])
+        for amount: Double in [2, 4, 4, 4, 5, 5, 7, 9] {
+            try await store.write(["product": .string("app"), "amount": .double(amount), "date": .date(midMonth)], entity: "payment")
+        }
+
+        let fifteenth = EntityCoder.periodStart(of: .day, for: midMonth)
+        let row = try #require(try await store.aggregate(entity: "payment", view: "spread", from: fifteenth).first)
+        #expect(row.count == 8)
+        #expect(row.average == 5)
+        #expect(row.variance == 4)
+    }
+
     @Test("DISTINCT returns unique values")
     func distinct() async throws {
         try await publishPayment(views: [])
