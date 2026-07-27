@@ -281,7 +281,7 @@ extension EntityStore {
         return values
     }
 
-    private static func canonicalParser(of type: FieldType) -> ((String) -> RecordValue?)? {
+    static func canonicalParser(of type: FieldType) -> ((String) -> RecordValue?)? {
         switch type {
         case .string, .text:
             return { .string($0) }

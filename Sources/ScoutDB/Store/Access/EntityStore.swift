@@ -40,7 +40,9 @@ public struct EntityStore: Sendable {
     let slots = SlotCache()
 
     var aggregator: GridAggregator {
-        GridAggregator(database: database, slots: slots)
+        GridAggregator(database: database, slots: slots) { range, definition in
+            try await extremum(in: range, using: definition)
+        }
     }
 
     /// Creates a store backed by any `CloudDatabase` implementation.

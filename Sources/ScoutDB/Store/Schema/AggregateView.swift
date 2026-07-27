@@ -22,10 +22,25 @@ public struct AggregateView: Codable, Equatable, Sendable {
     /// record; readers sum the shards. Worth declaring only for slots many
     /// devices hit at once — every reader still fetches all shard records.
     public var shards: Int?
+    /// Keeps a `min`/`max` exact when the record holding the extremum leaves.
+    ///
+    /// An extremum cannot be un-applied from a counter, so by default a
+    /// removal decrements the count and leaves the value standing — it is the
+    /// most extreme value the cell ever saw, not the most extreme it still
+    /// holds. Declaring this recomputes the affected cell from the records
+    /// behind it instead, at the cost of one query per removal that actually
+    /// takes the extremum out. The recompute reads one cell's worth of
+    /// records — an hour, a day or a week of one group — so a `lifetime`
+    /// bucket rereads the whole group and is rarely worth it.
+    ///
+    /// Only for a `min` or `max` view, and not alongside `shards`: a shard
+    /// holds an arbitrary slice of the records, which no query can name.
+    ///
+    public var exact: Bool?
 
     public init(
         name: String, groupBy: String? = nil, bucket: Bucket? = nil, sum: String? = nil, min: String? = nil, max: String? = nil, stats: String? = nil,
-        histogram: Histogram? = nil, shards: Int? = nil
+        histogram: Histogram? = nil, shards: Int? = nil, exact: Bool? = nil
     ) {
         self.name = name
         self.groupBy = groupBy
@@ -36,6 +51,7 @@ public struct AggregateView: Codable, Equatable, Sendable {
         self.stats = stats
         self.histogram = histogram
         self.shards = shards
+        self.exact = exact
     }
 
     public struct Histogram: Codable, Equatable, Sendable {

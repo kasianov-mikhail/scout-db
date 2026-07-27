@@ -9,14 +9,29 @@ import CloudKit
 import Foundation
 
 struct GridAggregator {
+    /// One cell of one view, as a recompute asks for it.
+    struct CellRange: Sendable {
+        let view: AggregateView
+        let group: String
+        let period: Date
+        let index: Int
+    }
+
     let database: any CloudDatabase
     let slots: SlotCache
+    /// Reads a cell's extremum back from the records behind it, for a view that
+    /// declared `exact`; nil where no store is there to read them.
+    let recompute: (@Sendable (CellRange, EntityDefinition) async throws -> Double?)?
     let maxRetry = 3
     let maxBatch = 400
 
-    init(database: any CloudDatabase, slots: SlotCache = SlotCache()) {
+    init(
+        database: any CloudDatabase, slots: SlotCache = SlotCache(),
+        recompute: (@Sendable (CellRange, EntityDefinition) async throws -> Double?)? = nil
+    ) {
         self.database = database
         self.slots = slots
+        self.recompute = recompute
     }
 
     func record(_ batch: [EntityRecord], using definition: EntityDefinition) async throws {
@@ -38,7 +53,7 @@ struct GridAggregator {
             merged.compactMapValues { cells in
                 let live = cells.filter { !$0.value.isNoop }
                 return live.isEmpty ? nil : live
-            })
+            }, using: definition)
     }
 
     private static func merge(_ lhs: CellDelta, _ rhs: CellDelta) -> CellDelta {
@@ -150,20 +165,22 @@ struct GridAggregator {
     private struct Pending {
         let slot: GridSlot
         var record: CKRecord
-        let cells: [Int: CellDelta]
+        var cells: [Int: CellDelta]
     }
 
-    private func apply(_ deltas: [GridSlot: [Int: CellDelta]]) async throws {
+    private func apply(_ deltas: [GridSlot: [Int: CellDelta]], using definition: EntityDefinition) async throws {
         guard deltas.count > 0 else { return }
         var pending = try await open(deltas)
+        let exact = try await recomputed(&pending, using: definition)
 
         for _ in 0..<maxRetry {
             for entry in pending.values {
                 Self.fold(entry.cells, into: entry.record)
+                Self.settle(exact[entry.record.recordID], into: entry.record)
             }
             var retry: [CKRecord.ID: CKRecord] = [:]
             for chunk in Array(pending.values).chunked(into: maxBatch) {
-                for (id, result) in try await settle(chunk.map(\.record)) {
+                for (id, result) in try await settleSaves(chunk.map(\.record)) {
                     switch result {
                     case .success(let saved):
                         await slots.keep(saved)
@@ -191,7 +208,7 @@ struct GridAggregator {
         throw RecordConflictError(serverRecord: stranded.record)
     }
 
-    private func settle(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
+    private func settleSaves(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
         do {
             return try await database.saveIfUnchanged(records)
         } catch  where OfflineCache.isOffline(error) {
@@ -200,6 +217,45 @@ struct GridAggregator {
                 settled.append((record.recordID, .success(try await database.save(record))))
             }
             return settled
+        }
+    }
+
+    /// Reads back the cells an `exact` view can no longer trust, and takes the
+    /// removal that emptied them out of the fold.
+    ///
+    /// A cell qualifies only when a removal took a value out and the cell still
+    /// stands at exactly that value — the record that left was holding the
+    /// extremum. Anything else the ordinary fold already handles.
+    ///
+    private func recomputed(_ pending: inout [CKRecord.ID: Pending], using definition: EntityDefinition) async throws -> [CKRecord.ID: [Int: Double?]] {
+        guard let recompute else { return [:] }
+        var exact: [CKRecord.ID: [Int: Double?]] = [:]
+        for (id, entry) in pending {
+            guard let view = definition.view(named: entry.slot.view), view.exact == true, let metric = view.metric, metric.kind != .sum else { continue }
+            var settled: [Int: Double?] = [:]
+            for (index, delta) in entry.cells {
+                guard let removed = delta.removed, let stored = entry.record[Aggregate.valueCell(index)] as? Double, stored == removed.total else {
+                    continue
+                }
+                settled[index] = try await recompute(
+                    CellRange(view: view, group: entry.slot.group, period: entry.slot.day, index: index), definition)
+                pending[id]?.cells[index]?.value = nil
+                pending[id]?.cells[index]?.removed = nil
+            }
+            guard settled.count > 0 else { continue }
+            exact[id] = settled
+        }
+        return exact
+    }
+
+    private static func settle(_ cells: [Int: Double?]?, into record: CKRecord) {
+        guard let cells else { return }
+        for (index, value) in cells {
+            if let value {
+                record[Aggregate.valueCell(index)] = value
+            } else {
+                record[Aggregate.valueCell(index)] = nil
+            }
         }
     }
 
