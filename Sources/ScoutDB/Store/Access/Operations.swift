@@ -412,67 +412,49 @@ extension EntityStore {
         let definition = try await registry.definition(for: entity)
         let coder = EntityCoder(keyProvider: keyProvider)
         var seen: Set<String> = []
-        var pending: [EntityCoder.Rewrite] = []
-        for item in try await matchedBranches(entity: entity, branches: branches, createdBy: creator, using: definition) {
-            guard let uuid = item["uuid"] as? String, seen.insert(uuid).inserted else { continue }
-            pending.append(try coder.rewrite(item, using: definition, transform: transform))
+        var applied = 0
+        var unresolved: CKRecord?
+
+        for branch in branches where unresolved == nil {
+            let (query, included) = try liveQuery(branch, entity: entity, createdBy: creator, using: definition)
+            try await database.forEachPage(matching: query, inZone: zoneID) { page in
+                guard unresolved == nil else { return }
+                let matched = try page.filter { record in
+                    if let trustedWriters {
+                        guard let creator = record.recordCreator, trustedWriters.contains(creator) else { return false }
+                    }
+                    guard let uuid = record["uuid"] as? String, seen.insert(uuid).inserted else { return false }
+                    return included(try coder.decode(record, using: definition))
+                }
+                guard matched.count > 0 else { return }
+
+                var pending = try matched.map { try coder.rewrite($0, using: definition, transform: transform) }
+                var settled: [EntityCoder.Rewrite] = []
+                var attempt = 0
+                while pending.count > 0 {
+                    let conflicts = try await database.writeIfUnchanged(records: pending.map(\.record))
+                    let losers = Set(conflicts.map(\.recordID))
+                    settled += pending.filter { !losers.contains($0.record.recordID) }
+                    attempt += 1
+                    guard attempt < maxRetry else {
+                        unresolved = conflicts.first
+                        break
+                    }
+                    pending = try conflicts.map { try coder.rewrite($0, using: definition, transform: transform) }
+                }
+
+                guard settled.count > 0 else { return }
+                try await aggregator.rebalance(removing: settled.map(\.previous), adding: settled.map(\.next), using: definition)
+                try await recordRevisions(settled.map(\.previous), using: definition)
+                applied += settled.count
+                noteChange(entity: entity, changed: settled.map(\.next))
+            }
         }
 
-        var applied: [EntityCoder.Rewrite] = []
-        var attempt = 0
-        var unresolved: CKRecord?
-        while pending.count > 0 {
-            let conflicts = try await database.writeIfUnchanged(records: pending.map(\.record))
-            let losers = Set(conflicts.map(\.recordID))
-            applied += pending.filter { !losers.contains($0.record.recordID) }
-            attempt += 1
-            guard attempt < maxRetry else {
-                unresolved = conflicts.first
-                break
-            }
-            pending = try conflicts.map { try coder.rewrite($0, using: definition, transform: transform) }
-        }
-        try await aggregator.rebalance(removing: applied.map(\.previous), adding: applied.map(\.next), using: definition)
-        try await recordRevisions(applied.map(\.previous), using: definition)
-        if applied.count > 0 {
-            noteChange(entity: entity, changed: applied.map(\.next))
-        }
         if let unresolved {
             throw RecordConflictError(serverRecord: unresolved)
         }
-        return applied.count
-    }
-
-    private func matchedBranches(entity: String, branches: [[Filter]], createdBy creator: String?, using definition: EntityDefinition) async throws
-        -> [CKRecord]
-    {
-        struct Branch: @unchecked Sendable {
-            let index: Int
-            let records: [CKRecord]
-        }
-        return try await withThrowingTaskGroup(of: Branch.self) { group in
-            for (index, branch) in branches.enumerated() {
-                group.addTask {
-                    Branch(index: index, records: try await self.matchedItems(entity: entity, filters: branch, createdBy: creator, using: definition))
-                }
-            }
-            var collected: [Int: [CKRecord]] = [:]
-            for try await branch in group {
-                collected[branch.index] = branch.records
-            }
-            return collected.sorted { $0.key < $1.key }.flatMap(\.value)
-        }
-    }
-
-    func matchedItems(entity: String, filters: [Filter], createdBy creator: String? = nil, using definition: EntityDefinition) async throws -> [CKRecord] {
-        let (query, included) = try liveQuery(filters, entity: entity, createdBy: creator, using: definition)
-        let coder = EntityCoder(keyProvider: keyProvider)
-        return try await database.allRecords(matching: query, inZone: zoneID).filter { record in
-            if let trustedWriters {
-                guard let creator = record.recordCreator, trustedWriters.contains(creator) else { return false }
-            }
-            return included(try coder.decode(record, using: definition))
-        }
+        return applied
     }
 
     @discardableResult public func deleteAll(entity: String, filters: [Filter] = [], createdBy creator: String? = nil) async throws -> Int {

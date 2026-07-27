@@ -1191,6 +1191,31 @@ struct OperationsTests {
         #expect(records.allSatisfy { $0.values["quantity"] == .int(99) })
     }
 
+    @Test("updateAll patches across server pages and counts a uuid once across OR branches")
+    func updateAllAcrossPages() async throws {
+        for index in 0..<7 {
+            var values = makePurchase().values
+            values["quantity"] = .int(Int64(index))
+            try await store.write(values, entity: "purchase", uuid: "p-\(index)")
+        }
+        database.pageLimit = 2
+
+        let updated = try await store.updateAll(
+            entity: "purchase",
+            any: [
+                [EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-42"))],
+                [EntityStore.Filter(field: "quantity", op: .lessThan, value: .int(3))],
+            ]
+        ) { record in
+            record.values["comment"] = .string("swept")
+        }
+        #expect(updated == 7)
+
+        let records = try await store.read(entity: "purchase")
+        #expect(records.count == 7)
+        #expect(records.allSatisfy { $0.values["comment"] == .string("swept") })
+    }
+
     @Test("A batched update patches every named record and rejects a missing one")
     func updateBatch() async throws {
         for index in 0..<3 {
