@@ -157,6 +157,9 @@ latency-bound and the container is quiet.
 
 - `OfflineCache` and `ReplicaCache` are best-effort local answers, not a replacement for the
   server: writes still need a live network eventually to actually flush.
+- A replica mirrors the zones you name it, and aggregate grid records live in the default
+  zone (see [Aggregation](aggregation.md)) — so `aggregate`, `totals`, `series` and
+  `percentile` reach the server even against a complete mirror.
 - A partial replica's un-mirrored fields decode as `nil` — don't write a partial record back
   whole, same caveat as a projected sync delta.
 - `store.lease(...)` taken offline is decided against a cached record, so it says nothing about
