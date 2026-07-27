@@ -8,15 +8,33 @@
 import CloudKit
 import Foundation
 
-func withRateLimitRetry<R>(maxRetry: Int = 3, operation: () async throws -> R) async throws -> R {
+/// How long to wait before repeating a rate-limited request.
+///
+/// The server's own `retryAfterSeconds` wins whenever it sends one. Without it
+/// the wait doubles per attempt, and half of each window is randomized: clients
+/// that met the limit together would otherwise come back together and meet it
+/// again.
+///
+func retryDelay(attempt: Int, suggested: Double?, base: Double = 0.5, random: () -> Double = { Double.random(in: 0..<1) }) -> Double {
+    if let suggested {
+        return suggested
+    }
+    let window = base * pow(2, Double(Swift.max(0, attempt - 1)))
+    return window * (0.5 + 0.5 * random())
+}
+
+func withRateLimitRetry<R>(
+    maxRetry: Int = 3, sleep: (Double) async throws -> Void = { try await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) },
+    operation: () async throws -> R
+) async throws -> R {
     var attempt = 0
     while true {
         do {
             return try await operation()
         } catch let error as CKError where [.requestRateLimited, .zoneBusy].contains(error.code) {
             attempt += 1
-            guard attempt < maxRetry, let delay = error.retryAfterSeconds else { throw error }
-            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard attempt < maxRetry else { throw error }
+            try await sleep(retryDelay(attempt: attempt, suggested: error.retryAfterSeconds))
         }
     }
 }

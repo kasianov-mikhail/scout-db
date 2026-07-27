@@ -25,16 +25,28 @@ struct RateLimitRetryTests {
         #expect(calls == 3)
     }
 
-    @Test("A rate limit without a retry-after hint fails immediately")
+    @Test("A rate limit without a retry-after hint still retries, backing off")
     func noHint() async {
         var calls = 0
+        var waits: [Double] = []
         await #expect(throws: CKError.self) {
-            try await withRateLimitRetry {
+            try await withRateLimitRetry(sleep: { waits.append($0) }) {
                 calls += 1
                 throw CKError(.requestRateLimited)
             }
         }
-        #expect(calls == 1)
+        #expect(calls == 3)
+        #expect(waits.count == 2)
+        #expect(waits[1] > waits[0])
+    }
+
+    @Test("The backoff doubles per attempt and randomizes half of each window")
+    func backoff() {
+        #expect(retryDelay(attempt: 1, suggested: 4) == 4)
+        #expect(retryDelay(attempt: 1, suggested: nil, base: 1, random: { 0 }) == 0.5)
+        #expect(retryDelay(attempt: 1, suggested: nil, base: 1, random: { 1 }) == 1)
+        #expect(retryDelay(attempt: 2, suggested: nil, base: 1, random: { 0 }) == 1)
+        #expect(retryDelay(attempt: 3, suggested: nil, base: 1, random: { 1 }) == 4)
     }
 
     @Test("Exhausted retries surface the rate limit")

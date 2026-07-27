@@ -137,6 +137,22 @@ could still repair, or every device pays for the whole write history on its firs
 lock for coordinating exclusive access across processes; it throws `SchemaError.leaseHeld`
 if another owner already holds it.
 
+## 🚦 Pacing requests
+
+Every request ScoutDB sends passes a gate that keeps at most eight in flight at once, and a
+rate limit or a busy zone is retried up to three times — after the server's own
+`retryAfterSeconds` when it sends one, otherwise after a doubling wait with half of each
+window randomized, so clients that met the limit together do not return together. A retry
+gives its slot back before it waits, so a request sitting out a limit never holds the gate
+closed behind it.
+
+```swift
+await RequestPolicy.setMaxConcurrentRequests(4)   // eight by default
+```
+
+Lower it when a long migration keeps meeting rate limits; raise it when the work is
+latency-bound and the container is quiet.
+
 ## ⚠️ Limits
 
 - `OfflineCache` and `ReplicaCache` are best-effort local answers, not a replacement for the
