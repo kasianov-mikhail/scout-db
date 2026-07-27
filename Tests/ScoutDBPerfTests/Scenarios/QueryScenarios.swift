@@ -11,7 +11,7 @@ import ScoutDB
 extension PerfScenarios {
     static var queries: [PerfScenario] {
         [
-            PerfScenario("Queries", "all(), one product, unbounded", sql: 1, cost: .answer, writes: false) { world, _ in
+            PerfScenario("Queries", "all(), one product, unbounded", sql: 1, cost: .result, writes: false) { world, _ in
                 _ = try await world.store.query(PerfSchema.order)
                     .filter("product", .equals, .string(world.hotProduct))
                     .all()

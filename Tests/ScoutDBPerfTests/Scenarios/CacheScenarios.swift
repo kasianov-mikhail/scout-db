@@ -30,7 +30,7 @@ extension PerfScenarios {
                 try await world.store.write(world.newOrder(iteration), entity: PerfSchema.order, uuid: world.fresh("oc", iteration))
                 _ = try await cache.flush()
             },
-            PerfScenario("Offline cache", "ten writes, one flush", sql: 10, stack: .offline, iterations: 2) { world, iteration in
+            PerfScenario("Offline cache", "ten writes, one flush", sql: 10, cost: .result, stack: .offline, iterations: 2) { world, iteration in
                 guard let cache = world.offlineCache else { return }
                 for index in 0..<10 {
                     try await world.store.write(
@@ -43,7 +43,8 @@ extension PerfScenarios {
 
     static var replica: [PerfScenario] {
         [
-            PerfScenario("Replica cache", "pull 500 changes into the mirror", sql: 1, stack: .replica, iterations: 2, setUp: stageFeed(500)) { world, _ in
+            PerfScenario("Replica cache", "pull 500 changes into the mirror", sql: 1, cost: .result, stack: .replica, iterations: 2, setUp: stageFeed(500)) {
+                world, _ in
                 guard let cache = world.replicaCache else { return }
                 _ = try await cache.refresh()
             },

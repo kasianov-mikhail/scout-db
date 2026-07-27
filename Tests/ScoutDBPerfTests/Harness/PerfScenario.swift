@@ -21,23 +21,24 @@ struct PerfScenario: Sendable {
         case replica
     }
 
-    /// What a growth exponent above zero means for this scenario — whether the
-    /// reader should read it as a defect or as the shape of the work.
+    /// Why this scenario's cost may grow with the database — stated where it
+    /// would otherwise be read as a defect.
     ///
     /// The sweep measures requests per call; it cannot tell by itself whether a
     /// call that costs more on a larger database is leaking or simply carrying
-    /// more. This says which, per scenario, so the projection table reads as a
-    /// verdict rather than a list of numbers.
+    /// more. A scenario names the reason when there is one, and leaves it unset
+    /// when there is not: an unset cost is the claim that this work is bounded
+    /// whatever the database holds, and so the claim the sweep is really
+    /// testing. Growth there is overhead, and the row to look at first.
     ///
     enum Cost: String, Sendable {
-        /// The work is bounded whatever the database holds, so any growth is
-        /// overhead — the rows to look at first.
-        case fixed
-        /// The cost tracks what the call returns or the records it touches. A
-        /// dump of every record cannot cost less than reading them.
-        case answer
+        /// The cost tracks what the call returns, is handed, or must touch — a
+        /// batch of writes, a page run, a feed of changes, a cascade's
+        /// children. A dump of every record cannot cost less than reading them.
+        case result
         /// A pass over the whole database the caller opted into — a migration,
-        /// an integrity sweep — or a fallback a declared view would avoid.
+        /// an integrity sweep, a log compaction — or a fallback a declared view
+        /// would have avoided.
         case elective
     }
 
@@ -63,8 +64,8 @@ struct PerfScenario: Sendable {
     ///   over `updated_at`. That is where the overhead comes from.
     ///
     let sql: Int
-    /// How to read this scenario's growth; see ``Cost``.
-    let cost: Cost
+    /// Why this scenario is allowed to grow, or nil when it is not; see ``Cost``.
+    let cost: Cost?
     let stack: Stack
     /// Whether the body changes the database, and so whether the corpus has to
     /// be restored before the next scenario.
@@ -81,7 +82,7 @@ struct PerfScenario: Sendable {
     let body: @Sendable (PerfWorld, Int) async throws -> Void
 
     init(
-        _ feature: String, _ name: String, sql: Int, cost: Cost = .fixed, stack: Stack = .direct, writes: Bool = true, iterations: Int? = nil,
+        _ feature: String, _ name: String, sql: Int, cost: Cost? = nil, stack: Stack = .direct, writes: Bool = true, iterations: Int? = nil,
         setUp: (@Sendable (PerfWorld) async throws -> Void)? = nil, body: @escaping @Sendable (PerfWorld, Int) async throws -> Void
     ) {
         self.feature = feature
@@ -112,8 +113,8 @@ struct PerfResult: Sendable {
     let iterations: Int
     /// What the same operation costs a relational database, in statements.
     let sql: Int
-    /// How to read this scenario's growth; see ``PerfScenario/Cost``.
-    let cost: PerfScenario.Cost
+    /// Why this scenario is allowed to grow, or nil when it is not.
+    let cost: PerfScenario.Cost?
     let app: PerfRecorder.Tally
     let wire: PerfRecorder.Tally
     let failure: String?

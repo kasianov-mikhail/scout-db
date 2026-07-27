@@ -35,13 +35,14 @@ extension PerfScenarios {
 
     static var zoneSync: [PerfScenario] {
         [
-            PerfScenario("Zone sync", "drain a feed of 200 changes", sql: 1, writes: false, iterations: 2, setUp: stageFeed(200)) { world, _ in
+            PerfScenario("Zone sync", "drain a feed of 200 changes", sql: 1, cost: .result, writes: false, iterations: 2, setUp: stageFeed(200)) { world, _ in
                 _ = try await world.store.zoneChanges()
             },
-            PerfScenario("Zone sync", "drain a feed of 1000 changes", sql: 1, writes: false, iterations: 2, setUp: stageFeed(1_000)) { world, _ in
+            PerfScenario("Zone sync", "drain a feed of 1000 changes", sql: 1, cost: .result, writes: false, iterations: 2, setUp: stageFeed(1_000)) {
+                world, _ in
                 _ = try await world.store.zoneChanges()
             },
-            PerfScenario("Zone sync", "incremental after twenty writes", sql: 3, iterations: 2, setUp: stageFeed(200)) { world, iteration in
+            PerfScenario("Zone sync", "incremental after twenty writes", sql: 3, cost: .result, iterations: 2, setUp: stageFeed(200)) { world, iteration in
                 let token = try await world.store.zoneChanges().token
                 let batch = (0..<20).map { index in
                     EntityWrite(values: world.newOrder(iteration, offset: index), uuid: world.fresh("z\(index)", iteration))
@@ -49,12 +50,12 @@ extension PerfScenarios {
                 try await world.store.write(batch, entity: PerfSchema.order)
                 _ = try await world.store.zoneChanges(since: token)
             },
-            PerfScenario("Zone sync", "batched feed, 500 a batch", sql: 2, writes: false, iterations: 2, setUp: stageFeed(1_000)) { world, _ in
+            PerfScenario("Zone sync", "batched feed, 500 a batch", sql: 2, cost: .result, writes: false, iterations: 2, setUp: stageFeed(1_000)) { world, _ in
                 for try await _ in world.store.zoneChanges(batchSize: 500) {
                     continue
                 }
             },
-            PerfScenario("Zone sync", "projected feed of 1000", sql: 1, writes: false, iterations: 2, setUp: stageFeed(1_000)) { world, _ in
+            PerfScenario("Zone sync", "projected feed of 1000", sql: 1, cost: .result, writes: false, iterations: 2, setUp: stageFeed(1_000)) { world, _ in
                 _ = try await world.store.zoneChanges(
                     projecting: [
                         SyncProjection(entity: PerfSchema.item, fields: ["sku"]),
@@ -66,11 +67,11 @@ extension PerfScenarios {
 
     static var coordinator: [PerfScenario] {
         [
-            PerfScenario("Sync coordinator", "one pass over 200 changes", sql: 1, iterations: 2, setUp: stageFeed(200)) { world, _ in
+            PerfScenario("Sync coordinator", "one pass over 200 changes", sql: 1, cost: .result, iterations: 2, setUp: stageFeed(200)) { world, _ in
                 let coordinator = SyncCoordinator(store: world.store)
                 _ = try await coordinator.sync()
             },
-            PerfScenario("Sync coordinator", "four passes coalescing", sql: 1, iterations: 1, setUp: stageFeed(200)) { world, _ in
+            PerfScenario("Sync coordinator", "four passes coalescing", sql: 1, cost: .result, iterations: 1, setUp: stageFeed(200)) { world, _ in
                 let coordinator = SyncCoordinator(store: world.store)
                 try await withThrowingTaskGroup(of: Void.self) { group in
                     for _ in 0..<4 {
@@ -79,7 +80,7 @@ extension PerfScenarios {
                     try await group.waitForAll()
                 }
             },
-            PerfScenario("Sync coordinator", "a pass after a local write", sql: 3, iterations: 2, setUp: stageFeed(200)) { world, iteration in
+            PerfScenario("Sync coordinator", "a pass after a local write", sql: 3, cost: .result, iterations: 2, setUp: stageFeed(200)) { world, iteration in
                 let coordinator = SyncCoordinator(store: world.store)
                 _ = try await coordinator.sync()
                 try await world.store.write(world.newOrder(iteration), entity: PerfSchema.order, uuid: world.fresh("sc", iteration))
@@ -90,12 +91,12 @@ extension PerfScenarios {
 
     static var liveQueries: [PerfScenario] {
         [
-            PerfScenario("Live queries", "the first snapshot", sql: 1, cost: .answer, writes: false, iterations: 2) { world, _ in
+            PerfScenario("Live queries", "the first snapshot", sql: 1, cost: .result, writes: false, iterations: 2) { world, _ in
                 for try await _ in world.store.observe(entity: PerfSchema.order, filters: [.init(field: "status", op: .equals, value: .string("paid"))]) {
                     return
                 }
             },
-            PerfScenario("Live queries", "a snapshot, a write, and the fold after it", sql: 3, cost: .answer, iterations: 2) { world, iteration in
+            PerfScenario("Live queries", "a snapshot, a write, and the fold after it", sql: 3, cost: .result, iterations: 2) { world, iteration in
                 let stream = world.store.observe(entity: PerfSchema.order, filters: [.init(field: "status", op: .equals, value: .string("paid"))])
                 var iterator = stream.makeAsyncIterator()
                 _ = try await iterator.next()
