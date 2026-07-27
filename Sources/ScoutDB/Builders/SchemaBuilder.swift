@@ -36,6 +36,7 @@ public struct SchemaBuilder {
     private var views: [AggregateView]?
     private var keyID: String?
     private var ttl: Double?
+    private var audited: Bool?
 
     init(entity: String, registry: SchemaRegistry) {
         self.entity = entity
@@ -164,6 +165,19 @@ public struct SchemaBuilder {
         return builder
     }
 
+    /// Appends a revision record on every update and delete of the entity.
+    ///
+    /// Publish `EntityStore.revisionDefinition` before turning this on, and
+    /// trim the log with `compactRevisions(olderThan:of:)` — every entry rides
+    /// each zone sync. An `update()` that does not call this keeps whatever the
+    /// previous version declared.
+    ///
+    public func audited(_ audited: Bool = true) -> Self {
+        var builder = self
+        builder.audited = audited
+        return builder
+    }
+
     /// Publishes version 1 of the entity.
     public func create() async throws {
         var allocator = SlotAllocator()
@@ -214,7 +228,8 @@ public struct SchemaBuilder {
             enforcedKeys: enforcedKeys ?? previous?.enforcedKeys,
             views: views ?? previous?.views,
             keyID: keyID ?? previous?.keyID,
-            ttl: ttl ?? previous?.ttl
+            ttl: ttl ?? previous?.ttl,
+            audited: audited ?? previous?.audited
         )
         try await registry.publish(definition)
     }
