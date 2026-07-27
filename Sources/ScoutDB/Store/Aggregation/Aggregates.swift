@@ -309,6 +309,8 @@ extension EntityStore {
     /// `envelopeDate` range whose bounds align with a view's cell resolution
     /// (hour cells for an hour view, day cells for day and weekday views); a
     /// threshold on a histogram's field that lands exactly on a declared bound.
+    /// A strict threshold over an integer field counts as the half-open one it
+    /// equals — `> 15` is `>= 16` — so it lands on a bound of 16.
     ///
     package func viewCount(entity: String, filters: [Filter]) async throws -> Int? {
         try await viewCount(entity: entity, any: [filters])
@@ -428,6 +430,14 @@ extension EntityStore {
                     guard let scalar = value.scalar, numericField == nil || numericField == filter.field, numericLT == nil else { return nil }
                     numericField = filter.field
                     numericLT = scalar
+                case (.greaterThan, .int(let value)):
+                    guard value < Int64.max, numericField == nil || numericField == filter.field, numericGTE == nil else { return nil }
+                    numericField = filter.field
+                    numericGTE = Double(value + 1)
+                case (.lessThanOrEquals, .int(let value)):
+                    guard value < Int64.max, numericField == nil || numericField == filter.field, numericLT == nil else { return nil }
+                    numericField = filter.field
+                    numericLT = Double(value + 1)
                 default:
                     return nil
                 }

@@ -582,6 +582,31 @@ struct AggregatesTests {
                 }.count() == 3)
     }
 
+    @Test("A strict integer threshold counts as the half-open bound it equals")
+    func countThroughIntegerThreshold() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "basket",
+                fields: [
+                    FieldDefinition(name: "units", type: .int, storage: .slot(.int, "i_00"), required: true),
+                    FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
+                ], envelopeDate: "date",
+                views: [AggregateView(name: "sizes", histogram: AggregateView.Histogram(field: "units", bounds: [4, 16]))]))
+        for units: Int64 in [1, 5, 12, 16, 20, 30] {
+            try await store.write(["units": .int(units), "date": .date(noon)], entity: "basket")
+        }
+
+        let grid = try #require(database.records.first { $0.recordType == "Aggregate" && $0["view"] as? String == "sizes" })
+        grid["c_02"] = Int64(40)
+
+        #expect(try await store.query("basket").filter("units", .greaterThan, .int(15)).count() == 40)
+        #expect(try await store.query("basket").filter("units", .greaterThanOrEquals, .int(16)).count() == 40)
+        #expect(try await store.query("basket").filter("units", .lessThanOrEquals, .int(15)).count() == 3)
+        #expect(try await store.query("basket").filter("units", .lessThan, .int(16)).count() == 3)
+
+        #expect(try await store.query("basket").filter("units", .greaterThan, .int(14)).count() == 3)
+    }
+
     @Test("count() over an aligned date range reads the view's cells instead of scanning")
     func countThroughRange() async throws {
         try await registry.publish(

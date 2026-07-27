@@ -62,6 +62,11 @@ extension PerfScenarios {
                     .filter("quantity", .greaterThan, .int(15))
                     .count()
             },
+            PerfScenario("Queries", "count() at a histogram bound", sql: 1, writes: false) { world, _ in
+                _ = try await world.store.query(PerfSchema.order)
+                    .filter("total", .greaterThanOrEquals, .double(250))
+                    .count()
+            },
             PerfScenario("Queries", "sum(total) over a product", sql: 1, writes: false) { world, _ in
                 _ = try await world.store.query(PerfSchema.order)
                     .filter("product", .equals, .string(world.hotProduct))
