@@ -97,6 +97,32 @@ A duplicate throws `SchemaError.duplicateKey(fields:)`. Records missing a key fi
 exempt, and tombstoning a record frees its key. Like reference enforcement, this is a
 client-side pre-write check — two writers racing on the same key can still both win.
 
+`enforcedKey(on:)` is the one that holds under a race:
+
+```swift
+try await store.schema("account")
+    .field("email", .string, .required)
+    .enforcedKey(on: "email")
+    .create()
+```
+
+Each key value is held by its own claim record, and winning that claim is a
+compare-and-swap on the server, so of two writers racing on the same value exactly one
+lands and the other throws. Declaring it over existing data leaves the old values
+unclaimed until you run `Migrator.backfillClaims(entity:)` once — until that pass
+finishes, an old value can still be re-taken.
+
+| Declaration | Guarantee |
+|---|---|
+| `unique(on:)` | derives the record's identity, so a repeat write upserts rather than duplicates |
+| `uniqueKey(on:)` | advisory: validated by a read before the write, so a race can seat two |
+| `enforcedKey(on:)` | atomic: claim-backed compare-and-swap, so a race seats one |
+| `EntityStore.enforceReferences` | advisory: the parent is checked before the write, and can be deleted right after |
+
+Reach for `enforcedKey(on:)` when a duplicate would be a correctness problem, and for
+`uniqueKey(on:)` when it would merely be untidy — the claim costs a fetch and a
+conditional save per write batch.
+
 ## 🔢 Counters and set fields
 
 Atomic per-record mutation, distinct from the aggregate views in
