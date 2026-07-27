@@ -158,8 +158,10 @@ public struct QueryBuilder: Sendable {
     /// `groupBy`, an `envelopeDate` range aligned with the view's cell
     /// resolution (hours for an hour view, days for day and weekday views), or
     /// a threshold landing on a histogram bound — is answered from the view's
-    /// grid without scanning records. Every other query scans, fetching only
-    /// the envelope and the filtered fields rather than full payloads.
+    /// grid without scanning records. A strict threshold over an integer field
+    /// counts as the half-open one it equals, so `> 15` lands on a bound of 16.
+    /// Every other query scans, fetching only the envelope and the filtered
+    /// fields rather than full payloads.
     ///
     public func count() async throws -> Int {
         if creator == nil, let counted = try await store.viewCount(entity: entity, any: branches()) {
