@@ -88,6 +88,7 @@ enum PerfReport {
         let feature: String
         let scenario: String
         let sql: Int
+        let cost: PerfScenario.Cost
         let measured: [(size: DatasetSize, perOperation: Double)]
         let exponent: Double
         let base: Double
@@ -132,8 +133,8 @@ enum PerfReport {
             }
             let base = measured.last ?? (size: last.size, perOperation: last.perOperation)
             return Projection(
-                feature: last.feature, scenario: last.scenario, sql: last.sql, measured: measured, exponent: exponent, base: base.perOperation,
-                baseRecords: base.size.records)
+                feature: last.feature, scenario: last.scenario, sql: last.sql, cost: last.cost, measured: measured, exponent: exponent,
+                base: base.perOperation, baseRecords: base.size.records)
         }
     }
 
@@ -155,6 +156,7 @@ enum PerfReport {
         }
         columns.append(Column(title: "k", width: 6) { String(format: "%.2f", $0.exponent) })
         columns.append(Column(title: "growth", width: 8) { $0.growth })
+        columns.append(Column(title: "cost", width: 10) { $0.cost.rawValue })
         for level in levels {
             columns.append(Column(title: volume(level), width: 10) { number($0.requests(at: level)) })
         }
@@ -180,8 +182,17 @@ enum PerfReport {
             lines.append(columns.map { pad($0.value(projection), $0.width) }.joined())
         }
         lines.append(String(repeating: "-", count: width(of: columns)))
-        let growing = projections.filter { $0.exponent >= 0.15 }.count
-        lines.append("\(projections.count) scenarios · \(projections.count - growing) hold flat at any volume · \(growing) grow with the database")
+        let growing = projections.filter { $0.exponent >= 0.15 }
+        lines.append(
+            "\(projections.count) scenarios · \(projections.count - growing.count) hold flat at any volume · \(growing.count) grow with the database")
+        let overhead = growing.filter { $0.cost == .fixed }
+        lines.append(
+            "of those, \(growing.filter { $0.cost == .answer }.count) cost what they answer, "
+                + "\(growing.filter { $0.cost == .elective }.count) are passes over the whole database, "
+                + "and \(overhead.count) are bounded work that should not have grown")
+        for projection in overhead.sorted(by: { $0.exponent > $1.exponent }) {
+            lines.append("  ↳ \(projection.feature) · \(projection.scenario)")
+        }
         return lines.joined(separator: "\n")
     }
 
@@ -290,12 +301,14 @@ enum PerfReport {
         let measured: [String: Double]
         let exponent: Double
         let growth: String
+        let cost: String
         let projected: [String: Double]
 
         init(_ projection: Projection) {
             feature = projection.feature
             scenario = projection.scenario
             sql = projection.sql
+            cost = projection.cost.rawValue
             measured = Dictionary(uniqueKeysWithValues: projection.measured.map { ("\($0.size.records)", rounded($0.perOperation)) })
             exponent = rounded(projection.exponent)
             growth = projection.growth

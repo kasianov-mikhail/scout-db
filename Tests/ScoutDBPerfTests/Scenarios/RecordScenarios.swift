@@ -22,7 +22,7 @@ extension PerfScenarios {
             PerfScenario("Relations", "children of one customer", sql: 1, writes: false) { world, iteration in
                 _ = try await world.store.children(entity: PerfSchema.order, of: world.customer(iteration), via: "customer")
             },
-            PerfScenario("Relations", "orphans of the item entity", sql: 1, writes: false) { world, _ in
+            PerfScenario("Relations", "orphans of the item entity", sql: 1, cost: .elective, writes: false) { world, _ in
                 _ = try await world.store.orphans(entity: PerfSchema.item, field: "order")
             },
             PerfScenario("Relations", "delete one order, cascading", sql: 1) { world, iteration in
@@ -64,7 +64,7 @@ extension PerfScenarios {
             PerfScenario("Lifecycle", "compact tombstones", sql: 1, iterations: 2) { world, _ in
                 _ = try await world.store.compact(entity: PerfSchema.session, olderThan: Date().addingTimeInterval(60))
             },
-            PerfScenario("Lifecycle", "reap the expired sessions", sql: 1, iterations: 2) { world, _ in
+            PerfScenario("Lifecycle", "reap the expired sessions", sql: 1, cost: .answer, iterations: 2) { world, _ in
                 _ = try await world.store.reap(entity: PerfSchema.session, asOf: world.corpus.now)
             },
             PerfScenario("Lifecycle", "drop an entity", sql: 3, iterations: 1) { world, iteration in

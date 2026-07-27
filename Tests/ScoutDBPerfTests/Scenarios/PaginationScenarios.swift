@@ -37,14 +37,14 @@ extension PerfScenarios {
                     cursor = next
                 }
             },
-            PerfScenario("Pagination", "stream 500 records", sql: 5, writes: false, iterations: 2) { world, _ in
+            PerfScenario("Pagination", "stream 500 records", sql: 5, cost: .answer, writes: false, iterations: 2) { world, _ in
                 var seen = 0
                 for try await _ in world.store.query(PerfSchema.order).stream(pageSize: 100) {
                     seen += 1
                     if seen == 500 { return }
                 }
             },
-            PerfScenario("Pagination", "stream 2000 records, 500 a page", sql: 4, writes: false, iterations: 2) { world, _ in
+            PerfScenario("Pagination", "stream 2000 records, 500 a page", sql: 4, cost: .answer, writes: false, iterations: 2) { world, _ in
                 var seen = 0
                 for try await _ in world.store.query(PerfSchema.order).stream(pageSize: 500) {
                     seen += 1

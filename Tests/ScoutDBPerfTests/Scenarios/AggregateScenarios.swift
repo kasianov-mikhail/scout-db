@@ -15,7 +15,7 @@ extension PerfScenarios {
                 let window = world.window(days: 30)
                 _ = try await world.store.aggregate(entity: PerfSchema.order, view: "daily", from: window.from, to: window.to)
             },
-            PerfScenario("Aggregation", "aggregate(daily) over 18 months", sql: 1, writes: false) { world, _ in
+            PerfScenario("Aggregation", "aggregate(daily) over 18 months", sql: 1, cost: .answer, writes: false) { world, _ in
                 _ = try await world.store.aggregate(entity: PerfSchema.order, view: "daily")
             },
             PerfScenario("Aggregation", "series(daily) over 90 days", sql: 1, writes: false) { world, _ in
