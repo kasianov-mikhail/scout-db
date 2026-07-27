@@ -32,8 +32,9 @@ import Testing
 /// double — a linear array behind a lock — than the requests it counts would
 /// cost against CloudKit. Narrow it with `SCOUTDB_PERF_SIZES` while working on
 /// a scenario, and point `SCOUTDB_PERF_OUTPUT` somewhere to keep the JSON.
-/// `SCOUTDB_PERF_SUMMARY` takes a path to append the run's verdict and its
-/// growing scenarios to, as markdown — on CI, the job's step summary.
+/// `SCOUTDB_PERF_SUMMARY` takes a path to append the run's verdict, the
+/// scenarios that grew and what every feature costs to, as markdown — on CI,
+/// the job's step summary.
 ///
 /// The sweep repeats exactly — same corpus, same order, same counts — so two
 /// runs are diffable column for column.
