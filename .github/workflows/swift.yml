@@ -42,7 +42,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Sweep
-        run: swift test --filter PerfSuite
+        run: SCOUTDB_PERF_SUMMARY="$GITHUB_STEP_SUMMARY" swift test --filter PerfSuite
         env:
           SCOUTDB_PERF: 1
 

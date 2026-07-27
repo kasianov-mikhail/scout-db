@@ -148,11 +148,8 @@ enum PerfReport {
         }
     }
 
-    static func projectionTable(_ results: [PerfResult]) -> String {
-        let projections = projections(results)
-        guard let sample = projections.first, sample.measured.count > 1 else {
-            return "\nProjection needs at least two databases; run without SCOUTDB_PERF_SIZES to fit one."
-        }
+    /// The projection table's columns, sized from the run's own sizes.
+    private static func projectionColumns(sample: Projection) -> [Column<Projection>] {
         var columns: [Column<Projection>] = [
             Column(title: "feature", width: 14) { $0.feature },
             Column(title: "scenario", width: 34) { $0.scenario },
@@ -175,6 +172,33 @@ enum PerfReport {
                 guard projection.sql > 0 else { return "—" }
                 return "\(number(projection.requests(at: levels[levels.count - 1]) / Double(projection.sql)))×"
             })
+        return columns
+    }
+
+    /// What the run concluded: how many scenarios grew, and what their growth
+    /// means — with the ones claiming to be bounded named, since those are the
+    /// rows a reader has to act on.
+    private static func verdict(_ projections: [Projection]) -> [String] {
+        let growing = projections.filter { $0.exponent >= 0.15 }
+        let overhead = growing.filter { $0.cost == nil }
+        var lines = [
+            "\(projections.count) scenarios · \(projections.count - growing.count) hold flat at any volume · \(growing.count) grow with the database",
+            "of those, \(growing.filter { $0.cost == .result }.count) cost what they return, "
+                + "\(growing.filter { $0.cost == .elective }.count) are passes over the whole database, "
+                + "and \(overhead.count) are bounded work that should not have grown",
+        ]
+        for projection in overhead.sorted(by: { $0.exponent > $1.exponent }) {
+            lines.append("  ↳ \(projection.feature) · \(projection.scenario)")
+        }
+        return lines
+    }
+
+    static func projectionTable(_ results: [PerfResult]) -> String {
+        let projections = projections(results)
+        guard let sample = projections.first, sample.measured.count > 1 else {
+            return "\nProjection needs at least two databases; run without SCOUTDB_PERF_SIZES to fit one."
+        }
+        let columns = projectionColumns(sample: sample)
 
         var lines = [
             "", "Projection — requests per call at larger volumes",
@@ -192,18 +216,72 @@ enum PerfReport {
             lines.append(columns.map { pad($0.value(projection), $0.width) }.joined())
         }
         lines.append(String(repeating: "-", count: width(of: columns)))
-        let growing = projections.filter { $0.exponent >= 0.15 }
-        lines.append(
-            "\(projections.count) scenarios · \(projections.count - growing.count) hold flat at any volume · \(growing.count) grow with the database")
-        let overhead = growing.filter { $0.cost == nil }
-        lines.append(
-            "of those, \(growing.filter { $0.cost == .result }.count) cost what they return, "
-                + "\(growing.filter { $0.cost == .elective }.count) are passes over the whole database, "
-                + "and \(overhead.count) are bounded work that should not have grown")
-        for projection in overhead.sorted(by: { $0.exponent > $1.exponent }) {
-            lines.append("  ↳ \(projection.feature) · \(projection.scenario)")
+        lines += verdict(projections)
+        return lines.joined(separator: "\n")
+    }
+
+    // MARK: - Step summary
+
+    /// The run as a page of its own: the verdict, then every scenario that grew,
+    /// grouped by what its growth means.
+    ///
+    /// The full table is a hundred and thirty lines under the output of every
+    /// other test in the run, which nobody scrolls to. This is the part worth
+    /// reading — the flat scenarios say only that nothing happened, and the
+    /// group that should be empty comes first, because a row there is why the
+    /// job failed.
+    ///
+    static func page(_ results: [PerfResult]) -> String {
+        let projections = projections(results)
+        var lines = ["## ScoutDB — request cost by feature", "", summary(results)]
+        guard let sample = projections.first, sample.measured.count > 1 else {
+            lines += ["", "One database measured, so nothing is fitted; run without `SCOUTDB_PERF_SIZES` for the projection."]
+            return lines.joined(separator: "\n")
+        }
+
+        lines += ["", "```", verdict(projections).joined(separator: "\n"), "```"]
+        if sample.measured.count < DatasetSize.allCases.count {
+            lines += [
+                "",
+                "> \(sample.measured.count) of \(DatasetSize.allCases.count) databases measured. The fit reads one extra page as a curve at "
+                    + "these sizes, so a row below is a lead, not a verdict — only a full sweep decides.",
+            ]
+        }
+        let columns = projectionColumns(sample: sample)
+        let groups: [(title: String, cost: PerfScenario.Cost?)] = [
+            ("Bounded work that grew", nil),
+            ("Costs what it returns", .result),
+            ("Passes over the whole database", .elective),
+        ]
+        for group in groups {
+            let rows =
+                projections
+                .filter { $0.exponent >= 0.15 && $0.cost == group.cost }
+                .sorted { ($0.exponent, $0.base) > ($1.exponent, $1.base) }
+            guard rows.count > 0 else { continue }
+            lines += [
+                "", "### \(group.title)", "", "```",
+                columns.map { pad($0.title, $0.width) }.joined(),
+                String(repeating: "-", count: width(of: columns)),
+            ]
+            lines += rows.map { row in columns.map { pad($0.value(row), $0.width) }.joined() }
+            lines.append("```")
         }
         return lines.joined(separator: "\n")
+    }
+
+    /// Appends the page wherever the run was told to leave it — on CI, the
+    /// job's step summary, which the workflow renders on the run's own page.
+    static func write(_ page: String, to path: String) {
+        let url = URL(fileURLWithPath: path)
+        guard let data = (page + "\n").data(using: .utf8) else { return }
+        guard let handle = try? FileHandle(forWritingTo: url) else {
+            try? data.write(to: url)
+            return
+        }
+        defer { try? handle.close() }
+        _ = try? handle.seekToEnd()
+        try? handle.write(contentsOf: data)
     }
 
     // MARK: - JSON
