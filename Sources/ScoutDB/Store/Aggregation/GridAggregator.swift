@@ -49,11 +49,20 @@ struct GridAggregator {
                 merged[slot, default: [:]][index] = merged[slot]?[index].map { Self.merge($0, delta) } ?? delta
             }
         }
-        try await apply(
-            merged.compactMapValues { cells in
-                let live = cells.filter { !$0.value.isNoop }
-                return live.isEmpty ? nil : live
-            }, using: definition)
+        var live: [GridSlot: [Int: CellDelta]] = [:]
+        for (slot, cells) in merged {
+            let settled = cells.filter { !$0.value.isNoop(recomputing: recomputes(slot.view, in: definition)) }
+            guard settled.count > 0 else { continue }
+            live[slot] = settled
+        }
+        try await apply(live, using: definition)
+    }
+
+    /// Whether a view reads its cells back rather than folding a removal into
+    /// them — the `exact` extremum, which no counter can un-apply.
+    private func recomputes(_ view: String, in definition: EntityDefinition) -> Bool {
+        guard recompute != nil, let view = definition.view(named: view), view.exact == true, let metric = view.metric else { return false }
+        return metric.kind != .sum
     }
 
     private static func merge(_ lhs: CellDelta, _ rhs: CellDelta) -> CellDelta {
@@ -139,8 +148,15 @@ struct GridAggregator {
         /// an addition that does not beat it leaves the cell as it stands.
         var removed: (kind: AggregateView.Metric, total: Double)?
 
-        var isNoop: Bool {
+        /// Whether the cell can be left alone.
+        ///
+        /// A delta that took an extremum out of a `recomputing` view never
+        /// qualifies: the cell has to be read back before anything can be said
+        /// about what it still holds, and that read happens in `apply`.
+        ///
+        func isNoop(recomputing: Bool) -> Bool {
             guard count == 0, (squares ?? 0) == 0 else { return false }
+            guard !recomputing || removed == nil else { return false }
             guard let (kind, total) = value else { return true }
             guard kind != .sum else { return total == 0 }
             guard let removed else { return false }
