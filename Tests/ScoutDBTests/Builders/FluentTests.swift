@@ -41,6 +41,34 @@ struct FluentTests {
         }
     }
 
+    @Test("An update carries the audit flag the previous version declared")
+    func updateCarriesAuditFlag() async throws {
+        try await store.schema("ledger")
+            .field("code", .string, .required)
+            .field("date", .timestamp)
+            .envelopeDate("date")
+            .audited()
+            .create()
+        #expect(try await registry.definition(for: "ledger").audited == true)
+
+        try await store.schema("ledger")
+            .field("code", .string, .required)
+            .field("note", .string)
+            .field("date", .timestamp)
+            .update()
+
+        let updated = try await registry.definition(for: "ledger")
+        #expect(updated.version == 2)
+        #expect(updated.audited == true)
+
+        try await store.schema("ledger")
+            .field("code", .string, .required)
+            .field("date", .timestamp)
+            .audited(false)
+            .update()
+        #expect(try await registry.definition(for: "ledger").audited == false)
+    }
+
     @Test("shadow() declares a derived field the query planner narrows on")
     func shadowFields() async throws {
         try await store.schema("contact")

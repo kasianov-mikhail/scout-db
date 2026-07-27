@@ -420,6 +420,36 @@ struct OfflineCacheTests {
         #expect(record.values["quantity"] == .int(9))
     }
 
+    @Test("An update read online and queued offline keeps its edit through the merge")
+    func flushGraftsAnUpdateReadOnline() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+
+        backing.writeErrors = [CKError(.networkFailure)]
+        try await store.update(entity: "purchase", uuid: "p-1") { $0.values["quantity"] = .int(9) }
+        #expect(cache.pendingWrites == 1)
+
+        let server = try #require(backing.records.first { $0.recordID.recordName == "p-1" })
+        server["s_00"] = "sku-77"
+        backing.writeErrors = [RecordConflictError(serverRecord: server.copy() as! CKRecord)]
+
+        #expect(try await cache.flush() == 1)
+        let record = try #require(try await store.read(entity: "purchase").first)
+        #expect(record.values["product_id"] == .string("sku-77"))
+        #expect(record.values["quantity"] == .int(9))
+    }
+
+    @Test("A baseline is the record as it was read, not as the caller left it")
+    func baselinesAreNotAliased() async throws {
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+
+        let fetched = try #require(try await cache.fetchRecord(id: CKRecord.ID(recordName: "p-1")))
+        fetched["i_01"] = Int64(99)
+
+        backing.errors = [CKError(.networkUnavailable)]
+        let cached = try #require(try await cache.fetchRecord(id: CKRecord.ID(recordName: "p-1")))
+        #expect(cached["i_01"] as? Int64 == 3)
+    }
+
     @Test("Flush surfaces an overlapping edit as a conflict instead of overwriting")
     func flushSurfacesOverlappingEdit() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")

@@ -194,7 +194,8 @@ func liveResults(
                 var current = try await pass()
                 continuation.yield(current)
                 for await _ in ticks {
-                    if let splice, let changed = buffer?.take(), let merged = splice(current, changed) {
+                    let changed = buffer?.take()
+                    if let splice, let changed, let merged = splice(current, changed) {
                         current = merged
                     } else {
                         current = try await pass()

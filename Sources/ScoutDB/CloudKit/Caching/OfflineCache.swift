@@ -581,19 +581,19 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         let key = cacheKey(query, zoneID, desiredKeys, resultsLimit)
         do {
             let response = try await backing.records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
-            let page = response.matchResults.compactMap { try? $0.1.get() }
-            lock.withLock {
-                if desiredKeys == nil {
-                    for record in page {
-                        baselines[record.recordID] = record
-                        touchBaselineLocked(record.recordID)
+            if desiredKeys == nil || response.queryCursor == nil {
+                let page = response.matchResults.compactMap { try? $0.1.get() }.map { LocalQuery.project($0, keys: nil) }
+                lock.withLock {
+                    if desiredKeys == nil {
+                        for record in page {
+                            baselines[record.recordID] = record
+                            touchBaselineLocked(record.recordID)
+                        }
                     }
-                }
-                if response.queryCursor == nil {
-                    snapshots[key] = page
-                    touchSnapshotLocked(key)
-                }
-                if desiredKeys == nil || response.queryCursor == nil {
+                    if response.queryCursor == nil {
+                        snapshots[key] = page
+                        touchSnapshotLocked(key)
+                    }
                     enforceQuotasLocked()
                     scheduleArchiveLocked()
                 }
@@ -753,7 +753,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
 
     private func rememberLocked(_ records: [CKRecord]) {
         for record in records {
-            baselines[record.recordID] = record
+            baselines[record.recordID] = LocalQuery.project(record, keys: nil)
             touchBaselineLocked(record.recordID)
         }
         enforceQuotasLocked()

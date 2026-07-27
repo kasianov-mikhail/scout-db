@@ -189,6 +189,32 @@ struct AggregatesTests {
         #expect(try await store.aggregate(entity: "payment", view: "low").isEmpty)
     }
 
+    @Test("An exact min view recomputes when an update lifts a record off the extremum")
+    func updateRecomputesExactMin() async throws {
+        try await publishPayment(views: [AggregateView(name: "low", bucket: .day, min: "amount", exact: true)])
+        try await store.write(["product": .string("app"), "amount": .double(2), "date": .date(noon)], entity: "payment", uuid: "p1")
+        try await store.write(["product": .string("app"), "amount": .double(8), "date": .date(noon)], entity: "payment", uuid: "p2")
+
+        try await store.update(entity: "payment", uuid: "p1") { $0.values["amount"] = .double(6) }
+
+        let rows = try await store.aggregate(entity: "payment", view: "low")
+        #expect(rows.first?.count == 2)
+        #expect(rows.first?.value == 6)
+    }
+
+    @Test("An inexact min view keeps the extremum an update lifted a record off")
+    func updateKeepsInexactMin() async throws {
+        try await publishPayment(views: [AggregateView(name: "low", bucket: .day, min: "amount")])
+        try await store.write(["product": .string("app"), "amount": .double(2), "date": .date(noon)], entity: "payment", uuid: "p1")
+        try await store.write(["product": .string("app"), "amount": .double(8), "date": .date(noon)], entity: "payment", uuid: "p2")
+
+        try await store.update(entity: "payment", uuid: "p1") { $0.values["amount"] = .double(6) }
+
+        let rows = try await store.aggregate(entity: "payment", view: "low")
+        #expect(rows.first?.count == 2)
+        #expect(rows.first?.value == 2)
+    }
+
     @Test("An exact max view narrows its recompute to the removal's own group and day")
     func exactMaxNarrowsToItsCell() async throws {
         try await publishPayment(views: [AggregateView(name: "peak", groupBy: "product", bucket: .day, max: "amount", exact: true)])
