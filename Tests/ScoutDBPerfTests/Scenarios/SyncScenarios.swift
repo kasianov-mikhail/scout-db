@@ -95,7 +95,7 @@ extension PerfScenarios {
                     return
                 }
             },
-            PerfScenario("Live queries", "an unbounded re-query after one write", sql: 3, iterations: 2) { world, iteration in
+            PerfScenario("Live queries", "a snapshot, a write, and the fold after it", sql: 3, cost: .answer, iterations: 2) { world, iteration in
                 let stream = world.store.observe(entity: PerfSchema.order, filters: [.init(field: "status", op: .equals, value: .string("paid"))])
                 var iterator = stream.makeAsyncIterator()
                 _ = try await iterator.next()
