@@ -11,24 +11,24 @@ import ScoutDB
 extension PerfScenarios {
     static var relations: [PerfScenario] {
         [
-            PerfScenario("Relations", "join customers of 100 orders", sql: 1, writes: false) { world, iteration in
+            PerfScenario("Relations", "join customers of 100 orders", sql: 1, cost: .result, writes: false) { world, iteration in
                 let orders = try await world.store.fetch(entity: PerfSchema.order, uuids: world.orders(100, from: iteration))
                 _ = try await world.store.join(entity: PerfSchema.order, records: orders, field: "customer")
             },
-            PerfScenario("Relations", "join two hops, item to customer", sql: 1, writes: false) { world, iteration in
+            PerfScenario("Relations", "join two hops, item to customer", sql: 1, cost: .result, writes: false) { world, iteration in
                 let items = try await world.store.fetch(entity: PerfSchema.item, uuids: (0..<50).map { world.item(iteration &* 50 &+ $0) })
                 _ = try await world.store.join(entity: PerfSchema.item, records: items, path: ["order", "customer"])
             },
-            PerfScenario("Relations", "children of one customer", sql: 1, writes: false) { world, iteration in
+            PerfScenario("Relations", "children of one customer", sql: 1, cost: .result, writes: false) { world, iteration in
                 _ = try await world.store.children(entity: PerfSchema.order, of: world.customer(iteration), via: "customer")
             },
             PerfScenario("Relations", "orphans of the item entity", sql: 1, cost: .elective, writes: false) { world, _ in
                 _ = try await world.store.orphans(entity: PerfSchema.item, field: "order")
             },
-            PerfScenario("Relations", "delete one order, cascading", sql: 1) { world, iteration in
+            PerfScenario("Relations", "delete one order, cascading", sql: 1, cost: .result) { world, iteration in
                 try await world.store.delete(entity: PerfSchema.order, uuid: world.order(iteration), cascade: true)
             },
-            PerfScenario("Relations", "delete one customer, cascading", sql: 1, iterations: 2) { world, iteration in
+            PerfScenario("Relations", "delete one customer, cascading", sql: 1, cost: .result, iterations: 2) { world, iteration in
                 try await world.store.delete(entity: PerfSchema.customer, uuid: world.customer(iteration), cascade: true)
             },
         ]
@@ -41,7 +41,7 @@ extension PerfScenarios {
                     record.values["seconds"] = .int(Int64(iteration &+ 1) &* 60)
                 }
             },
-            PerfScenario("Revisions", "history of a record", sql: 7) { world, iteration in
+            PerfScenario("Revisions", "history of a record", sql: 7, cost: .result) { world, iteration in
                 let uuid = world.session(iteration)
                 for step in 0..<3 {
                     try await world.store.update(entity: PerfSchema.session, uuid: uuid) { record in
@@ -50,7 +50,7 @@ extension PerfScenarios {
                 }
                 _ = try await world.store.history(entity: PerfSchema.session, uuid: uuid)
             },
-            PerfScenario("Revisions", "compact the revision log", sql: 1, iterations: 2) { world, _ in
+            PerfScenario("Revisions", "compact the revision log", sql: 1, cost: .elective, iterations: 2) { world, _ in
                 _ = try await world.store.compactRevisions(olderThan: Date().addingTimeInterval(60))
             },
         ]
@@ -61,10 +61,10 @@ extension PerfScenarios {
             PerfScenario("Lifecycle", "restore a tombstoned record", sql: 1) { world, iteration in
                 _ = try await world.store.restore(entity: PerfSchema.session, uuid: world.tombstoned(iteration))
             },
-            PerfScenario("Lifecycle", "compact tombstones", sql: 1, iterations: 2) { world, _ in
+            PerfScenario("Lifecycle", "compact tombstones", sql: 1, cost: .elective, iterations: 2) { world, _ in
                 _ = try await world.store.compact(entity: PerfSchema.session, olderThan: Date().addingTimeInterval(60))
             },
-            PerfScenario("Lifecycle", "reap the expired sessions", sql: 1, cost: .answer, iterations: 2) { world, _ in
+            PerfScenario("Lifecycle", "reap the expired sessions", sql: 1, cost: .result, iterations: 2) { world, _ in
                 _ = try await world.store.reap(entity: PerfSchema.session, asOf: world.corpus.now)
             },
             PerfScenario("Lifecycle", "drop an entity", sql: 3, iterations: 1) { world, iteration in

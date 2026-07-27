@@ -31,7 +31,7 @@ extension PerfScenarios {
             PerfScenario("Unique keys", "write a customer, one fresh claim", sql: 1) { world, iteration in
                 try await world.store.write(newCustomer(world, iteration), entity: PerfSchema.customer, uuid: world.fresh("cus", iteration))
             },
-            PerfScenario("Unique keys", "batch of 50 customers, 50 claims", sql: 1, iterations: 2) { world, iteration in
+            PerfScenario("Unique keys", "batch of 50 customers, 50 claims", sql: 1, cost: .result, iterations: 2) { world, iteration in
                 let batch = (0..<50).map { index in
                     EntityWrite(values: newCustomer(world, iteration &* 100 &+ index), uuid: world.fresh("cb\(index)", iteration))
                 }
@@ -58,14 +58,14 @@ extension PerfScenarios {
 
     static var transactions: [PerfScenario] {
         [
-            PerfScenario("Transactions", "three writes in one transaction", sql: 1) { world, iteration in
+            PerfScenario("Transactions", "three writes in one transaction", sql: 1, cost: .result) { world, iteration in
                 try await world.store.transaction { draft in
                     for index in 0..<3 {
                         draft.write(world.newOrder(iteration, offset: index), entity: PerfSchema.order, uuid: world.fresh("tx\(index)", iteration))
                     }
                 }
             },
-            PerfScenario("Transactions", "a write, an update and a delete", sql: 3) { world, iteration in
+            PerfScenario("Transactions", "a write, an update and a delete", sql: 3, cost: .result) { world, iteration in
                 let uuid = world.fresh("mix", iteration)
                 try await world.store.transaction { draft in
                     draft.write(world.newOrder(iteration), entity: PerfSchema.order, uuid: uuid)
@@ -83,7 +83,7 @@ extension PerfScenarios {
                     ], entity: EntityStore.transactionEntity, uuid: world.fresh("env", iteration))
                 _ = try await world.store.repairTransactions()
             },
-            PerfScenario("Transactions", "compact committed envelopes", sql: 2, iterations: 2) { world, iteration in
+            PerfScenario("Transactions", "compact committed envelopes", sql: 2, cost: .elective, iterations: 2) { world, iteration in
                 try await world.store.transaction { draft in
                     draft.write(world.newOrder(iteration), entity: PerfSchema.order, uuid: world.fresh("cmp", iteration))
                 }

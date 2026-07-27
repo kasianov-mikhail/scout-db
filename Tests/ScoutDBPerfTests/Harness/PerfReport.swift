@@ -88,7 +88,7 @@ enum PerfReport {
         let feature: String
         let scenario: String
         let sql: Int
-        let cost: PerfScenario.Cost
+        let cost: PerfScenario.Cost?
         let measured: [(size: DatasetSize, perOperation: Double)]
         let exponent: Double
         let base: Double
@@ -156,7 +156,7 @@ enum PerfReport {
         }
         columns.append(Column(title: "k", width: 6) { String(format: "%.2f", $0.exponent) })
         columns.append(Column(title: "growth", width: 8) { $0.growth })
-        columns.append(Column(title: "cost", width: 10) { $0.cost.rawValue })
+        columns.append(Column(title: "cost", width: 10) { $0.cost?.rawValue ?? "—" })
         for level in levels {
             columns.append(Column(title: volume(level), width: 10) { number($0.requests(at: level)) })
         }
@@ -185,9 +185,9 @@ enum PerfReport {
         let growing = projections.filter { $0.exponent >= 0.15 }
         lines.append(
             "\(projections.count) scenarios · \(projections.count - growing.count) hold flat at any volume · \(growing.count) grow with the database")
-        let overhead = growing.filter { $0.cost == .fixed }
+        let overhead = growing.filter { $0.cost == nil }
         lines.append(
-            "of those, \(growing.filter { $0.cost == .answer }.count) cost what they answer, "
+            "of those, \(growing.filter { $0.cost == .result }.count) cost what they return, "
                 + "\(growing.filter { $0.cost == .elective }.count) are passes over the whole database, "
                 + "and \(overhead.count) are bounded work that should not have grown")
         for projection in overhead.sorted(by: { $0.exponent > $1.exponent }) {
@@ -308,7 +308,7 @@ enum PerfReport {
             feature = projection.feature
             scenario = projection.scenario
             sql = projection.sql
-            cost = projection.cost.rawValue
+            cost = projection.cost?.rawValue ?? "bounded"
             measured = Dictionary(uniqueKeysWithValues: projection.measured.map { ("\($0.size.records)", rounded($0.perOperation)) })
             exponent = rounded(projection.exponent)
             growth = projection.growth

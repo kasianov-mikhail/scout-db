@@ -36,10 +36,10 @@ extension PerfScenarios {
 
     static var porting: [PerfScenario] {
         [
-            PerfScenario("Porting", "export one entity", sql: 1, cost: .answer, writes: false, iterations: 2) { world, _ in
+            PerfScenario("Porting", "export one entity", sql: 1, cost: .result, writes: false, iterations: 2) { world, _ in
                 _ = try await world.store.export(entity: PerfSchema.item)
             },
-            PerfScenario("Porting", "import 100 records", sql: 1, iterations: 2) { world, iteration in
+            PerfScenario("Porting", "import 100 records", sql: 1, cost: .result, iterations: 2) { world, iteration in
                 let records = (0..<100).map { index in
                     EntityRecord(
                         entity: PerfSchema.item, uuid: world.fresh("imp\(index)", iteration), schemaVersion: 1,

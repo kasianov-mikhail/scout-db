@@ -24,13 +24,13 @@ extension PerfScenarios {
                         "added": .date(world.corpus.now),
                     ], entity: PerfSchema.item, uuid: world.fresh("itm", iteration))
             },
-            PerfScenario("Records", "batch of 400 items, one chunk", sql: 1, iterations: 2) { world, iteration in
+            PerfScenario("Records", "batch of 400 items, one chunk", sql: 1, cost: .result, iterations: 2) { world, iteration in
                 try await world.store.write(itemBatch(world, iteration, count: 400), entity: PerfSchema.item)
             },
-            PerfScenario("Records", "batch of 401 items, two chunks", sql: 1, iterations: 2) { world, iteration in
+            PerfScenario("Records", "batch of 401 items, two chunks", sql: 1, cost: .result, iterations: 2) { world, iteration in
                 try await world.store.write(itemBatch(world, iteration, count: 401), entity: PerfSchema.item)
             },
-            PerfScenario("Records", "batch of 50 orders, four views", sql: 1, iterations: 2) { world, iteration in
+            PerfScenario("Records", "batch of 50 orders, four views", sql: 1, cost: .result, iterations: 2) { world, iteration in
                 let batch = (0..<50).map { index in
                     EntityWrite(values: world.newOrder(iteration, offset: index), uuid: world.fresh("bulk\(index)", iteration))
                 }
@@ -39,10 +39,10 @@ extension PerfScenarios {
             PerfScenario("Records", "read one record by uuid", sql: 1, writes: false) { world, iteration in
                 _ = try await world.store.fetch(entity: PerfSchema.order, uuids: [world.order(iteration)])
             },
-            PerfScenario("Records", "fetch 100 uuids", sql: 1, writes: false) { world, iteration in
+            PerfScenario("Records", "fetch 100 uuids", sql: 1, cost: .result, writes: false) { world, iteration in
                 _ = try await world.store.fetch(entity: PerfSchema.order, uuids: world.orders(100, from: iteration))
             },
-            PerfScenario("Records", "fetch 500 uuids", sql: 1, writes: false) { world, iteration in
+            PerfScenario("Records", "fetch 500 uuids", sql: 1, cost: .result, writes: false) { world, iteration in
                 _ = try await world.store.fetch(entity: PerfSchema.order, uuids: world.orders(500, from: iteration))
             },
             PerfScenario("Records", "fetch by uuid, entity unknown", sql: 1, writes: false) { world, iteration in
@@ -53,12 +53,12 @@ extension PerfScenarios {
                     record.values["status"] = .string("shipped")
                 }
             },
-            PerfScenario("Records", "update 50 records under CAS", sql: 2, iterations: 2) { world, iteration in
+            PerfScenario("Records", "update 50 records under CAS", sql: 2, cost: .result, iterations: 2) { world, iteration in
                 try await world.store.update(entity: PerfSchema.order, uuids: world.orders(50, from: iteration)) { record in
                     record.values["status"] = .string("paid")
                 }
             },
-            PerfScenario("Records", "updateAll over a filter", sql: 1, cost: .answer, iterations: 2) { world, iteration in
+            PerfScenario("Records", "updateAll over a filter", sql: 1, cost: .result, iterations: 2) { world, iteration in
                 _ = try await world.store.query(PerfSchema.order)
                     .filter("product", .equals, .string(PerfSchema.products[iteration % PerfSchema.products.count]))
                     .filter("status", .equals, .string("placed"))
@@ -69,12 +69,12 @@ extension PerfScenarios {
             PerfScenario("Records", "delete one order", sql: 1) { world, iteration in
                 try await world.store.delete(entity: PerfSchema.order, uuid: world.order(iteration))
             },
-            PerfScenario("Records", "deleteAll over a filter", sql: 1, cost: .answer, iterations: 2) { world, iteration in
+            PerfScenario("Records", "deleteAll over a filter", sql: 1, cost: .result, iterations: 2) { world, iteration in
                 _ = try await world.store.query(PerfSchema.item)
                     .filter("sku", .equals, .string(PerfSchema.products[iteration % PerfSchema.products.count]))
                     .delete()
             },
-            PerfScenario("Records", "changes(entity:since:)", sql: 1, writes: false, iterations: 2, setUp: stageFeed(200)) { world, _ in
+            PerfScenario("Records", "changes(entity:since:)", sql: 1, cost: .result, writes: false, iterations: 2, setUp: stageFeed(200)) { world, _ in
                 _ = try await world.store.changes(entity: PerfSchema.item)
             },
         ]
