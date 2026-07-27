@@ -33,3 +33,23 @@ jobs:
 
       - name: Test
         run: swift test
+
+  sweep:
+    runs-on: macos-26
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Sweep
+        run: swift test --filter PerfSuite
+        env:
+          SCOUTDB_PERF: 1
+
+      - name: Keep the numbers
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: request-cost
+          path: .build/perf/requests.json
+          if-no-files-found: warn
