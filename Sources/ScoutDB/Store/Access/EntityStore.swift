@@ -172,7 +172,7 @@ public struct EntityStore: Sendable {
         }
         EntityCoder.discardStagedAssets(in: encoded)
         try await aggregator.rebalance(removing: removedFromViews, adding: addedToViews, using: definition)
-        noteChange(entity: entity)
+        noteChange(entity: entity, changed: entityRecords)
         return entityRecords.map(\.uuid)
     }
 
@@ -212,7 +212,7 @@ public struct EntityStore: Sendable {
         await releaseUniqueClaims(of: removed, using: definition)
         try await aggregator.remove(removed, using: definition)
         try await recordRevisions(removed, using: definition)
-        noteChange(entity: entity)
+        noteChange(entity: entity, changed: removed.map { Self.tombstoned($0) })
     }
 
     func liveRecords(entity: String, uuids: [String], using definition: EntityDefinition) async throws -> [EntityRecord] {

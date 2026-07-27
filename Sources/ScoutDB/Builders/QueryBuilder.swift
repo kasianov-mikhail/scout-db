@@ -93,6 +93,19 @@ public struct QueryBuilder: Sendable {
         return builder
     }
 
+    /// The filters and sorts a live pass can fold a landed change into, or nil
+    /// when the query's shape needs the pass run again.
+    ///
+    /// A limit can admit a record the change never mentioned once another
+    /// leaves the top of the result, a projection trims what the spliced record
+    /// would carry, an OR group spans branches a single filter list cannot
+    /// re-test, and a creator scope is not answerable from a record's values.
+    ///
+    var spliceable: (filters: [EntityStore.Filter], sort: [EntityStore.Sort])? {
+        guard groups.isEmpty, ceiling == nil, projection == nil, creator == nil else { return nil }
+        return (filters, sorts)
+    }
+
     /// Adds a sort clause; clauses apply in the order they are added.
     public func sort(_ field: String, _ direction: Direction = .ascending) -> Self {
         var builder = self

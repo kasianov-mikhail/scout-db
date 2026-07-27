@@ -27,7 +27,7 @@ extension EntityStore {
         try await claimUniqueKeys(of: [rewrite.next], using: definition)
         try await database.write(record: rewrite.record)
         try await aggregator.record([rewrite.next], using: definition)
-        noteChange(entity: entity)
+        noteChange(entity: entity, changed: [rewrite.next])
         return rewrite.next
     }
 
