@@ -54,5 +54,18 @@ struct PerfSuite {
         for result in results where result.failure != nil {
             Issue.record("\(result.feature)/\(result.scenario) [\(result.size.rawValue)] did not run: \(result.failure ?? "")")
         }
+        // Only a full sweep can accuse a scenario: the exponent is fitted from the two
+        // largest databases measured, and the two small ones are a handful of requests
+        // apart, where one page more reads as a curve.
+        for leak in PerfReport.projections(results)
+        where leak.cost == nil && leak.measured.count == DatasetSize.allCases.count && leak.exponent >= PerfReport.leakingExponent {
+            let measured = leak.measured.map { "\($0.size.rawValue) \(String(format: "%.1f", $0.perOperation))" }.joined(separator: ", ")
+            Issue.record(
+                """
+                \(leak.feature)/\(leak.scenario) grows with the database: \(measured), k=\(String(format: "%.2f", leak.exponent)).
+                Bounded work is what this sweep tests, so either the cost belongs to the work — say so with `cost: .result` \
+                or `cost: .elective` on the scenario — or the call is doing more than it should.
+                """)
+        }
     }
 }

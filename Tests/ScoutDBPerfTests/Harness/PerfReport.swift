@@ -112,6 +112,16 @@ enum PerfReport {
     /// The volumes the fit is projected to, beyond the largest database measured.
     static let levels = [100_000, 1_000_000, 10_000_000]
 
+    /// Where a scenario with no declared cost stops being worth a look and
+    /// starts being a failure.
+    ///
+    /// The table calls anything above 0.15 growing, which is deliberately
+    /// sensitive — a row worth reading, not a verdict. Failing the sweep is a
+    /// verdict, so it waits for growth no measurement wobble explains: at 0.3
+    /// the ten-million projection is some six times the twenty-thousand cost.
+    ///
+    static let leakingExponent = 0.3
+
     static func projections(_ results: [PerfResult]) -> [Projection] {
         var order: [String] = []
         var grouped: [String: [PerfResult]] = [:]
