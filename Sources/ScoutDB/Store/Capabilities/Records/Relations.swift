@@ -74,11 +74,61 @@ extension EntityStore {
         return try await read(entity: entity, filters: [Filter(field: field, op: reference.type.isList ? .contains : .equals, value: .string(parent))])
     }
 
-    public func orphans(entity: String, field: String) async throws -> [EntityRecord] {
-        let records = try await read(entity: entity)
-        let parents = try await join(entity: entity, records: records, field: field)
+    /// Reads every record whose reference `field` names a parent no live record
+    /// of the parent entity holds.
+    ///
+    /// An integrity sweep reads the entity whole and then probes the parents it
+    /// names, so the cost follows the entity's size and how many distinct
+    /// parents it references — not how many orphans come back. `fields` trims
+    /// the records it reads and returns; the reference field always rides along.
+    ///
+    public func orphans(entity: String, field: String, fields: [String]? = nil) async throws -> [EntityRecord] {
+        let definition = try await registry.definition(for: entity)
+        guard let parent = definition.field(named: field, at: definition.version)?.references else {
+            throw SchemaError.unknownField(field)
+        }
+        let records = try await read(entity: entity, fields: fields.map { $0 + [field] })
+        let keys = Set(records.flatMap { Self.referencedKeys($0.values[field]) })
+        guard keys.count > 0 else { return [] }
+        let alive = try await liveKeys(of: parent, among: keys.sorted())
         return records.filter { record in
-            Self.referencedKeys(record.values[field]).contains { parents[$0] == nil }
+            Self.referencedKeys(record.values[field]).contains { !alive.contains($0) }
+        }
+    }
+
+    /// Which of the keys name a live record of the entity.
+    ///
+    /// Asks the server for the uuids alone rather than fetching the records
+    /// behind them: an existence probe rides a whole query page, where a fetch
+    /// by id carries a hundred records a call and drags every field with it.
+    ///
+    private func liveKeys(of entity: String, among keys: [String]) async throws -> Set<String> {
+        let database = database
+        let zoneID = zoneID
+        let trustedWriters = trustedWriters
+        return try await withThrowingTaskGroup(of: [String].self) { group in
+            for chunk in keys.chunked(into: 200) {
+                group.addTask {
+                    let query = ckQuery(
+                        Entity.recordType,
+                        filters: [
+                            ServerFilter(field: "entity", op: .equals, value: .string(entity)),
+                            ServerFilter(field: "deleted", op: .equals, value: .int(0)),
+                            ServerFilter(field: "uuid", op: .in, value: .strings(chunk)),
+                        ])
+                    let records = try await database.allRecords(matching: query, inZone: zoneID, desiredKeys: ["uuid"])
+                    return records.filter { record in
+                        guard let trustedWriters else { return true }
+                        guard let creator = record.recordCreator else { return false }
+                        return trustedWriters.contains(creator)
+                    }.compactMap { $0["uuid"] as? String }
+                }
+            }
+            var alive: Set<String> = []
+            for try await chunk in group {
+                alive.formUnion(chunk)
+            }
+            return alive
         }
     }
 

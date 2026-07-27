@@ -1423,6 +1423,37 @@ struct OperationsTests {
         #expect(remaining.map(\.uuid) == ["b-2"])
     }
 
+    @Test("A tombstoned parent orphans its children, and a projection trims what comes back")
+    func orphansOfTombstonedParent() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "author",
+                fields: [
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
+                ]))
+        try await registry.publish(
+            makeDefinition(
+                entity: "book",
+                fields: [
+                    FieldDefinition(name: "title", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "author_id", type: .string, storage: .slot(.string, "s_01"), references: "author"),
+                ]))
+        try await store.write(["name": .string("Twain")], entity: "author", uuid: "a-1")
+        try await store.write(["title": .string("Tom"), "author_id": .string("a-1")], entity: "book", uuid: "b-1")
+
+        #expect(try await store.orphans(entity: "book", field: "author_id").isEmpty)
+
+        try await store.delete(entity: "author", uuid: "a-1")
+        let orphaned = try await store.orphans(entity: "book", field: "author_id")
+        #expect(orphaned.map(\.uuid) == ["b-1"])
+        #expect(orphaned.first?.values["title"] == .string("Tom"))
+
+        let projected = try await store.orphans(entity: "book", field: "author_id", fields: [])
+        #expect(projected.map(\.uuid) == ["b-1"])
+        #expect(projected.first?.values["title"] == nil)
+        #expect(projected.first?.values["author_id"] == .string("a-1"))
+    }
+
     @Test("Cascade delete reaches entities not yet cached in the registry")
     func cascadeUncached() async throws {
         try await registry.publish(
