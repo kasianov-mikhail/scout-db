@@ -12,23 +12,23 @@ import ScoutDB
 extension PerfScenarios {
     static var migrations: [PerfScenario] {
         [
-            PerfScenario("Migrations", "backfill a new version", sql: 2, iterations: 1) { world, _ in
+            PerfScenario("Migrations", "backfill a new version", sql: 2, cost: .elective, iterations: 1) { world, _ in
                 try await publishItemVersion(world, field: FieldDefinition(name: "discount", type: .double, storage: .slot(.double, "d_01"), since: 2))
                 _ = try await world.migrator.backfill(entity: PerfSchema.item) { record in
                     record.values["discount"] = .double(0)
                 }
             },
-            PerfScenario("Migrations", "rename a field's data", sql: 1, iterations: 1) { world, _ in
+            PerfScenario("Migrations", "rename a field's data", sql: 1, cost: .elective, iterations: 1) { world, _ in
                 try await publishItemVersion(world, field: FieldDefinition(name: "code", type: .string, storage: .slot(.string, "s_02"), since: 2))
                 _ = try await world.migrator.rename(entity: PerfSchema.item, from: "sku", to: "code")
             },
-            PerfScenario("Migrations", "backfill the enforced-key claims", sql: 1, iterations: 1) { world, _ in
+            PerfScenario("Migrations", "backfill the enforced-key claims", sql: 1, cost: .elective, iterations: 1) { world, _ in
                 _ = try await world.migrator.backfillClaims(entity: PerfSchema.customer)
             },
-            PerfScenario("Migrations", "rebuild one view's grid", sql: 1, iterations: 1) { world, _ in
+            PerfScenario("Migrations", "rebuild one view's grid", sql: 1, cost: .elective, iterations: 1) { world, _ in
                 _ = try await world.migrator.backfill(view: "revenue", entity: PerfSchema.order)
             },
-            PerfScenario("Migrations", "rotate the encryption key", sql: 1, iterations: 1) { world, _ in
+            PerfScenario("Migrations", "rotate the encryption key", sql: 1, cost: .elective, iterations: 1) { world, _ in
                 _ = try await world.migrator.rotateKey(entity: PerfSchema.session, to: "perf-key-2")
             },
         ]
@@ -36,7 +36,7 @@ extension PerfScenarios {
 
     static var porting: [PerfScenario] {
         [
-            PerfScenario("Porting", "export one entity", sql: 1, writes: false, iterations: 2) { world, _ in
+            PerfScenario("Porting", "export one entity", sql: 1, cost: .answer, writes: false, iterations: 2) { world, _ in
                 _ = try await world.store.export(entity: PerfSchema.item)
             },
             PerfScenario("Porting", "import 100 records", sql: 1, iterations: 2) { world, iteration in

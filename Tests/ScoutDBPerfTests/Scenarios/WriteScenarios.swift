@@ -58,7 +58,7 @@ extension PerfScenarios {
                     record.values["status"] = .string("paid")
                 }
             },
-            PerfScenario("Records", "updateAll over a filter", sql: 1, iterations: 2) { world, iteration in
+            PerfScenario("Records", "updateAll over a filter", sql: 1, cost: .answer, iterations: 2) { world, iteration in
                 _ = try await world.store.query(PerfSchema.order)
                     .filter("product", .equals, .string(PerfSchema.products[iteration % PerfSchema.products.count]))
                     .filter("status", .equals, .string("placed"))
@@ -69,7 +69,7 @@ extension PerfScenarios {
             PerfScenario("Records", "delete one order", sql: 1) { world, iteration in
                 try await world.store.delete(entity: PerfSchema.order, uuid: world.order(iteration))
             },
-            PerfScenario("Records", "deleteAll over a filter", sql: 1, iterations: 2) { world, iteration in
+            PerfScenario("Records", "deleteAll over a filter", sql: 1, cost: .answer, iterations: 2) { world, iteration in
                 _ = try await world.store.query(PerfSchema.item)
                     .filter("sku", .equals, .string(PerfSchema.products[iteration % PerfSchema.products.count]))
                     .delete()

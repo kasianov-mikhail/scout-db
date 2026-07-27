@@ -90,7 +90,7 @@ extension PerfScenarios {
 
     static var liveQueries: [PerfScenario] {
         [
-            PerfScenario("Live queries", "the first snapshot", sql: 1, writes: false, iterations: 2) { world, _ in
+            PerfScenario("Live queries", "the first snapshot", sql: 1, cost: .answer, writes: false, iterations: 2) { world, _ in
                 for try await _ in world.store.observe(entity: PerfSchema.order, filters: [.init(field: "status", op: .equals, value: .string("paid"))]) {
                     return
                 }

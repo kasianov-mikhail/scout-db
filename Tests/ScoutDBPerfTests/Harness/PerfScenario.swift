@@ -21,6 +21,26 @@ struct PerfScenario: Sendable {
         case replica
     }
 
+    /// What a growth exponent above zero means for this scenario — whether the
+    /// reader should read it as a defect or as the shape of the work.
+    ///
+    /// The sweep measures requests per call; it cannot tell by itself whether a
+    /// call that costs more on a larger database is leaking or simply carrying
+    /// more. This says which, per scenario, so the projection table reads as a
+    /// verdict rather than a list of numbers.
+    ///
+    enum Cost: String, Sendable {
+        /// The work is bounded whatever the database holds, so any growth is
+        /// overhead — the rows to look at first.
+        case fixed
+        /// The cost tracks what the call returns or the records it touches. A
+        /// dump of every record cannot cost less than reading them.
+        case answer
+        /// A pass over the whole database the caller opted into — a migration,
+        /// an integrity sweep — or a fallback a declared view would avoid.
+        case elective
+    }
+
     let feature: String
     let name: String
     /// What the same work costs a relational database, in statements.
@@ -43,6 +63,8 @@ struct PerfScenario: Sendable {
     ///   over `updated_at`. That is where the overhead comes from.
     ///
     let sql: Int
+    /// How to read this scenario's growth; see ``Cost``.
+    let cost: Cost
     let stack: Stack
     /// Whether the body changes the database, and so whether the corpus has to
     /// be restored before the next scenario.
@@ -59,12 +81,13 @@ struct PerfScenario: Sendable {
     let body: @Sendable (PerfWorld, Int) async throws -> Void
 
     init(
-        _ feature: String, _ name: String, sql: Int, stack: Stack = .direct, writes: Bool = true, iterations: Int? = nil,
+        _ feature: String, _ name: String, sql: Int, cost: Cost = .fixed, stack: Stack = .direct, writes: Bool = true, iterations: Int? = nil,
         setUp: (@Sendable (PerfWorld) async throws -> Void)? = nil, body: @escaping @Sendable (PerfWorld, Int) async throws -> Void
     ) {
         self.feature = feature
         self.name = name
         self.sql = sql
+        self.cost = cost
         self.stack = stack
         self.writes = writes
         self.iterations = iterations
@@ -89,6 +112,8 @@ struct PerfResult: Sendable {
     let iterations: Int
     /// What the same operation costs a relational database, in statements.
     let sql: Int
+    /// How to read this scenario's growth; see ``PerfScenario/Cost``.
+    let cost: PerfScenario.Cost
     let app: PerfRecorder.Tally
     let wire: PerfRecorder.Tally
     let failure: String?

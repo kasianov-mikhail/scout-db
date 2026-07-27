@@ -15,6 +15,11 @@ import Testing
 /// would cost a relational database in statements, the ratio between the two,
 /// and a projection of both to larger volumes.
 ///
+/// The projection's `cost` column says how to read a scenario that grows: a
+/// dump or a sweep that carries more on a bigger database is doing its job,
+/// while bounded work that grows is overhead. The footer counts the three and
+/// names the scenarios in the last group.
+///
 /// Run it deliberately:
 ///
 /// ```
