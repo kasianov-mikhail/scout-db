@@ -49,6 +49,31 @@ struct UniqueClaimsTests {
         #expect(try await store.read(entity: "badge").map(\.uuid) == ["b-1"])
     }
 
+    @Test("A sweep claims the key it moves and releases the one it left behind")
+    func sweepReclaimsMovedKeys() async throws {
+        try await store.write(["code": .string("gold")], entity: "badge", uuid: "b-1")
+        #expect(try await store.query("badge").filter("code", .equals, "gold").update { $0.values["code"] = .string("silver") } == 1)
+
+        #expect(claims.count == 1)
+        #expect(claims.first?["owner"] as? String == "b-1")
+        await #expect(throws: SchemaError.duplicateKey(fields: ["code"])) {
+            try await store.write(["code": .string("silver")], entity: "badge", uuid: "b-2")
+        }
+        try await store.write(["code": .string("gold")], entity: "badge", uuid: "b-3")
+        #expect(claims.count == 2)
+    }
+
+    @Test("A sweep onto a key another record holds is rejected")
+    func sweepRejectsContestedKey() async throws {
+        try await store.write(["code": .string("gold")], entity: "badge", uuid: "b-1")
+        try await store.write(["code": .string("silver")], entity: "badge", uuid: "b-2")
+
+        await #expect(throws: SchemaError.duplicateKey(fields: ["code"])) {
+            try await store.query("badge").filter("code", .equals, "gold").update { $0.values["code"] = .string("silver") }
+        }
+        #expect(try await store.read(entity: "badge", filters: [.init(field: "code", op: .equals, value: .string("gold"))]).map(\.uuid) == ["b-1"])
+    }
+
     @Test("Re-writing the holder keeps its claim and succeeds")
     func idempotentRewrite() async throws {
         try await store.write(["code": .string("gold")], entity: "badge", uuid: "b-1")

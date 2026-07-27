@@ -406,11 +406,17 @@ extension EntityStore {
     /// retried, like a single `update`. Exhausting `maxRetry` throws the conflict
     /// after the records that did land are accounted for.
     ///
+    /// A page that moves a unique, enforced or exclusive key validates and
+    /// claims it before saving, and releases the claims it left behind after —
+    /// the sweep holds the same constraints a single `update` does, and a value
+    /// another record already holds fails the page with `duplicateKey`.
+    ///
     @discardableResult public func updateAll(
         entity: String, any branches: [[Filter]], maxRetry: Int = 3, createdBy creator: String? = nil, transform: (inout EntityRecord) throws -> Void
     ) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         let coder = EntityCoder(keyProvider: keyProvider)
+        let owned = (definition.enforcedKeys ?? []) + Self.exclusiveFields(of: definition).map { [$0.name] }
         var seen: Set<String> = []
         var applied = 0
         var unresolved: CKRecord?
@@ -430,8 +436,13 @@ extension EntityStore {
 
                 var pending = try matched.map { try coder.rewrite($0, using: definition, transform: transform) }
                 var settled: [EntityCoder.Rewrite] = []
+                var claimed: [String: EntityRecord] = [:]
                 var attempt = 0
                 while pending.count > 0 {
+                    try await claimRewrites(pending, since: claimed, using: definition)
+                    for rewrite in pending {
+                        claimed[rewrite.next.uuid] = rewrite.next
+                    }
                     let conflicts = try await database.writeIfUnchanged(records: pending.map(\.record))
                     let losers = Set(conflicts.map(\.recordID))
                     settled += pending.filter { !losers.contains($0.record.recordID) }
@@ -444,6 +455,9 @@ extension EntityStore {
                 }
 
                 guard settled.count > 0 else { return }
+                if !owned.isEmpty {
+                    await releaseStaleClaims(for: owned, of: Array(zip(settled.map(\.previous), settled.map(\.next))), using: definition)
+                }
                 try await aggregator.rebalance(removing: settled.map(\.previous), adding: settled.map(\.next), using: definition)
                 try await recordRevisions(settled.map(\.previous), using: definition)
                 applied += settled.count
