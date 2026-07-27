@@ -78,6 +78,11 @@ try await migrator.backfill(entity: "purchase") { record in
 }
 ```
 
+Every pass walks the entity a page at a time and writes each page before reading the next, so
+what it holds is a page rather than the whole entity. The cursor keeps its place in a result
+the pass is changing underneath it, so a record its own writes take out of the query can be
+skipped by the page that follows — repeat the run and the shrinking query picks it up.
+
 Backfill is idempotent by construction — migrated records leave the query that feeds it — so
 an interrupted run is safe to repeat. The `transform` closure handles type conversions;
 renamed slot values carry over automatically.
@@ -85,6 +90,24 @@ renamed slot values carry over automatically.
 Reverse migrations are the same operation pointed backwards: definitions describe every
 version, so records can be re-encoded at an older version too. The only one-way door is data
 a forward migration actually erased.
+
+## 📦 Dumps
+
+A whole entity as JSON, for backups, container-to-container transfer, or seeding a test
+database:
+
+```swift
+let count = try await store.export(entity: "purchase", to: scratchURL)   // a page at a time
+try await store.importRecords(try Data(contentsOf: scratchURL), entity: "purchase")
+```
+
+`export(entity:)` returns the same array as `Data` when the entity is small enough to hold;
+the file variant holds a page instead and appends, which is the one to reach for on an entity
+that does not fit in memory. Encrypted values are exported decrypted when the store has the
+key, and asset fields are inlined as bytes so the dump travels — treat it as plaintext.
+Import upserts by uuid and validates against the current schema, so a dump taken at an older
+version migrates on the way in. A failure part-way leaves a partial file, so write to a
+scratch URL and move it into place once the call returns.
 
 ## 🔒 Invariants
 

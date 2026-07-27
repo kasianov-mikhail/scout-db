@@ -111,13 +111,34 @@ extension CloudDatabase {
     }
 
     func allRecords(matching query: CKQuery, inZone zoneID: CKRecordZone.ID? = nil, desiredKeys: [CKRecord.FieldKey]? = nil) async throws -> [CKRecord] {
+        var collected: [CKRecord] = []
+        try await forEachPage(matching: query, inZone: zoneID, desiredKeys: desiredKeys) { collected += $0 }
+        return collected
+    }
+
+    /// Walks the query's pages, handing each one over as it lands.
+    ///
+    /// The shape for a pass over more records than the caller should hold at
+    /// once: `allRecords` gathers every page before the first is seen, so its
+    /// memory follows the whole result rather than a page of it.
+    ///
+    /// The cursor keeps its place in a result the body may be changing
+    /// underneath it, so a record the body's own writes take out of the query
+    /// can be skipped by the page that follows — a pass built on this has to be
+    /// one that is safe to repeat.
+    ///
+    func forEachPage(
+        matching query: CKQuery, inZone zoneID: CKRecordZone.ID? = nil, desiredKeys: [CKRecord.FieldKey]? = nil,
+        _ body: ([CKRecord]) async throws -> Void
+    ) async throws {
         var (results, cursor) = try await records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: CKQueryOperation.maximumResults)
-        while let token = cursor {
+        while true {
+            try await body(try results.map { try $0.1.get() })
+            guard let token = cursor else { return }
             let page = try await records(continuingMatchFrom: token, desiredKeys: desiredKeys, resultsLimit: CKQueryOperation.maximumResults)
-            results += page.matchResults
+            results = page.matchResults
             cursor = page.queryCursor
         }
-        return try results.map { try $0.1.get() }
     }
 
     func write(record: CKRecord) async throws {

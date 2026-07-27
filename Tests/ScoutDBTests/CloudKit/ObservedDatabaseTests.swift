@@ -249,6 +249,21 @@ extension ObservedDatabaseTests {
         #expect(recorder.operations.filter { $0.kind == .query || $0.kind == .continuation }.count <= 4)
     }
 
+    @Test("A sweep writes each page as it lands rather than gathering the whole entity")
+    func sweepsWritePerPage() async throws {
+        backing.pageLimit = 2
+        for index in 0..<5 {
+            try await store.write(
+                ["product_id": .string("sku-1"), "date": .date(Date(timeIntervalSince1970: TimeInterval(index)))],
+                entity: "purchase", uuid: "p-\(index)")
+        }
+
+        recorder.reset()
+        #expect(try await store.deleteAll(entity: "purchase") == 5)
+        #expect(recorder.operations.filter { $0.kind == .modify }.count == 3)
+        #expect(try await store.read(entity: "purchase").isEmpty)
+    }
+
     @Test("A capped read escalates its page size instead of one request per scanned record")
     func boundedReadEscalatesPages() async throws {
         for index in 0..<60 {

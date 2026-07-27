@@ -61,20 +61,22 @@ public struct Migrator: Sendable {
                 ServerFilter(field: "schema_version", op: .lessThan, value: .int(Int64(definition.version))),
                 ServerFilter(field: "deleted", op: .equals, value: .int(0)),
             ])
-        let outdated = try await database.allRecords(matching: query, inZone: zoneID)
-
         let coder = EntityCoder(keyProvider: keyProvider)
-        let migrated = try outdated.map { record in
-            try coder.rewrite(record, using: definition) { entityRecord in
-                let previous = entityRecord
-                entityRecord = EntityRecord(
-                    entity: entity, uuid: previous.uuid, schemaVersion: definition.version, values: rekey(previous, using: definition))
-                try transform(&entityRecord, previous)
+        var migrated = 0
+        try await database.forEachPage(matching: query, inZone: zoneID) { page in
+            let rewritten = try page.map { record in
+                try coder.rewrite(record, using: definition) { entityRecord in
+                    let previous = entityRecord
+                    entityRecord = EntityRecord(
+                        entity: entity, uuid: previous.uuid, schemaVersion: definition.version, values: rekey(previous, using: definition))
+                    try transform(&entityRecord, previous)
+                }
             }
+            guard rewritten.count > 0 else { return }
+            try await database.write(records: rewritten.map(\.record))
+            migrated += rewritten.count
         }
-
-        try await database.write(records: migrated.map(\.record))
-        return migrated.count
+        return migrated
     }
 
     /// Rebuilds one view's grid from the entity's live records.
@@ -99,11 +101,14 @@ public struct Migrator: Sendable {
         guard definition.enforcedKeys?.isEmpty == false || !EntityStore.exclusiveFields(of: definition).isEmpty else { return 0 }
         let store = EntityStore(database: database, registry: registry, keyProvider: keyProvider, zoneID: zoneID)
         let fields = (definition.enforcedKeys ?? []).flatMap { $0 } + EntityStore.exclusiveFields(of: definition).map(\.name)
-        let records = try await store.read(entity: entity, fields: Array(Set(fields)))
-        for chunk in records.chunked(into: batchSize) {
-            try await store.claimUniqueKeys(of: chunk, using: definition)
+        var claimed = 0
+        try await store.forEachPage(entity: entity, fields: Array(Set(fields))) { page in
+            for chunk in page.chunked(into: batchSize) {
+                try await store.claimUniqueKeys(of: chunk, using: definition)
+            }
+            claimed += page.count
         }
-        return records.count
+        return claimed
     }
 
     @discardableResult public func backfill(view viewName: String, entity: String, batchSize: Int = 400) async throws -> Int {
@@ -112,33 +117,37 @@ public struct Migrator: Sendable {
             throw SchemaError.unknownField(viewName)
         }
 
-        let grid = try await database.allRecords(
+        try await database.forEachPage(
             matching: ckQuery(
                 Aggregate.recordType,
                 filters: [
                     ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                     ServerFilter(field: "view", op: .equals, value: .string(viewName)),
-                ]))
-        for chunk in grid.map(\.recordID).chunked(into: batchSize) {
-            try await database.modifyRecords(saving: [], deleting: chunk)
+                ])
+        ) { page in
+            for chunk in page.map(\.recordID).chunked(into: batchSize) {
+                try await database.modifyRecords(saving: [], deleting: chunk)
+            }
         }
 
         var scoped = definition
         scoped.views = [view]
-        let records = try await database.allRecords(
+        let coder = EntityCoder(keyProvider: keyProvider)
+        let aggregator = GridAggregator(database: database)
+        var counted = 0
+        try await database.forEachPage(
             matching: ckQuery(
                 Entity.recordType,
                 filters: [
                     ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                     ServerFilter(field: "deleted", op: .equals, value: .int(0)),
-                ]), inZone: zoneID)
-        let coder = EntityCoder(keyProvider: keyProvider)
-        let aggregator = GridAggregator(database: database)
-        var counted = 0
-        for chunk in records.chunked(into: batchSize) {
-            let decoded = try chunk.map { try coder.decode($0, using: definition) }
-            try await aggregator.record(decoded, using: scoped)
-            counted += decoded.count
+                ]), inZone: zoneID
+        ) { page in
+            for chunk in page.chunked(into: batchSize) {
+                let decoded = try chunk.map { try coder.decode($0, using: definition) }
+                try await aggregator.record(decoded, using: scoped)
+                counted += decoded.count
+            }
         }
         return counted
     }
@@ -167,20 +176,25 @@ public struct Migrator: Sendable {
                 ServerFilter(field: "deleted", op: .equals, value: .int(0)),
             ])
         let coder = EntityCoder(keyProvider: keyProvider)
-        let rewritten = try await database.allRecords(matching: query, inZone: zoneID).map { record -> CKRecord in
-            let decoded: EntityRecord
-            do {
-                decoded = try coder.decode(record, using: definition)
-            } catch {
-                decoded = try coder.decode(record, using: rotated)
+        var sealed = 0
+        try await database.forEachPage(matching: query, inZone: zoneID) { page in
+            let rewritten = try page.map { record -> CKRecord in
+                let decoded: EntityRecord
+                do {
+                    decoded = try coder.decode(record, using: definition)
+                } catch {
+                    decoded = try coder.decode(record, using: rotated)
+                }
+                var next = decoded
+                next.values = try coder.resolve(next.values, at: next.schemaVersion, using: rotated)
+                return try coder.encode(next, using: rotated, into: record)
             }
-            var next = decoded
-            next.values = try coder.resolve(next.values, at: next.schemaVersion, using: rotated)
-            return try coder.encode(next, using: rotated, into: record)
+            guard rewritten.count > 0 else { return }
+            try await database.write(records: rewritten)
+            sealed += rewritten.count
         }
-        try await database.write(records: rewritten)
         try await registry.publish(rotated)
-        return rewritten.count
+        return sealed
     }
 
     private func rekey(_ decoded: EntityRecord, using definition: EntityDefinition) -> [String: RecordValue] {

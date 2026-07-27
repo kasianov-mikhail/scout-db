@@ -486,16 +486,23 @@ extension EntityStore {
     ///
     @discardableResult public func deleteAll(entity: String, any branches: [[Filter]], createdBy creator: String? = nil) async throws -> Int {
         let definition = try await registry.definition(for: entity)
-        let victims = try await read(entity: entity, any: branches, createdBy: creator)
-        let tombstones = try victims.map { try tombstone(entity: entity, uuid: $0.uuid, definition: definition, values: $0.values) }
-        try await database.write(records: tombstones)
-        await releaseUniqueClaims(of: victims, using: definition)
-        try await aggregator.remove(victims, using: definition)
-        try await recordRevisions(victims, using: definition)
-        if victims.count > 0 {
-            noteChange(entity: entity, changed: victims.map { Self.tombstoned($0) })
+        var seen: Set<String> = []
+        var removed = 0
+        for branch in branches {
+            let (query, included) = try liveQuery(branch, entity: entity, createdBy: creator, using: definition)
+            try await forEachPage(matching: query, using: definition) { page in
+                let victims = page.filter { included($0) && seen.insert($0.uuid).inserted }
+                guard victims.count > 0 else { return }
+                let tombstones = try victims.map { try tombstone(entity: entity, uuid: $0.uuid, definition: definition, values: $0.values) }
+                try await database.write(records: tombstones)
+                await releaseUniqueClaims(of: victims, using: definition)
+                try await aggregator.remove(victims, using: definition)
+                try await recordRevisions(victims, using: definition)
+                removed += victims.count
+                noteChange(entity: entity, changed: victims.map { Self.tombstoned($0) })
+            }
         }
-        return victims.count
+        return removed
     }
 
     @discardableResult public func reap(entity: String, asOf: Date) async throws -> Int {
@@ -507,17 +514,19 @@ extension EntityStore {
                 ServerFilter(field: "expires", op: .lessThan, value: .date(asOf)),
                 ServerFilter(field: "deleted", op: .equals, value: .int(0)),
             ])
-        let expired = try decode(try await database.allRecords(matching: query, inZone: zoneID), using: definition).filter { !$0.deleted }
-
-        let tombstones = try expired.sorted { $0.uuid < $1.uuid }
-            .map { try tombstone(entity: entity, uuid: $0.uuid, definition: definition, values: $0.values) }
-        try await database.write(records: tombstones)
-        await releaseUniqueClaims(of: expired, using: definition)
-        try await aggregator.remove(expired, using: definition)
-        if expired.count > 0 {
+        var reaped = 0
+        try await forEachPage(matching: query, using: definition) { page in
+            let expired = page.filter { !$0.deleted }
+            guard expired.count > 0 else { return }
+            let tombstones = try expired.sorted { $0.uuid < $1.uuid }
+                .map { try tombstone(entity: entity, uuid: $0.uuid, definition: definition, values: $0.values) }
+            try await database.write(records: tombstones)
+            await releaseUniqueClaims(of: expired, using: definition)
+            try await aggregator.remove(expired, using: definition)
+            reaped += expired.count
             noteChange(entity: entity, changed: expired.map { Self.tombstoned($0) })
         }
-        return expired.count
+        return reaped
     }
 
     public func fetch(entity: String, uuids: [String]) async throws -> [EntityRecord] {
