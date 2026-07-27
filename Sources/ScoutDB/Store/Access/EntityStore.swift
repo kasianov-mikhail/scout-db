@@ -366,6 +366,32 @@ public struct EntityStore: Sendable {
         return Array(ranked.prefix(limit))
     }
 
+    /// Walks a query's pages, decoding each one before the body sees it.
+    ///
+    /// The streaming half of ``read(entity:filters:sort:fields:limit:createdBy:)``,
+    /// for a pass that touches more records than it should hold: peak memory is
+    /// a page rather than the whole result. Records the body writes out of the
+    /// query may be skipped by the page after them, so a pass built on this has
+    /// to be safe to repeat.
+    ///
+    func forEachPage(matching query: CKQuery, desiredKeys: [String]? = nil, using definition: EntityDefinition, _ body: ([EntityRecord]) async throws -> Void)
+        async throws
+    {
+        try await database.forEachPage(matching: query, inZone: zoneID, desiredKeys: desiredKeys) { page in
+            try await body(try decode(page, using: definition))
+        }
+    }
+
+    /// Walks the entity's live records a page at a time.
+    func forEachPage(entity: String, fields: [String]? = nil, _ body: ([EntityRecord]) async throws -> Void) async throws {
+        let definition = try await registry.definition(for: entity)
+        let (query, included) = try liveQuery([], entity: entity, using: definition)
+        let keys = try fields.map { try desiredKeys($0, using: definition) }
+        try await forEachPage(matching: query, desiredKeys: keys, using: definition) { page in
+            try await body(page.filter(included))
+        }
+    }
+
     func decode(_ records: [CKRecord], using definition: EntityDefinition) throws -> [EntityRecord] {
         let coder = EntityCoder(keyProvider: keyProvider)
         return try records.compactMap { try decode($0, with: coder, using: definition) }

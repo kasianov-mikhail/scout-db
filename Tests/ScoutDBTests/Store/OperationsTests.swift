@@ -848,6 +848,29 @@ struct OperationsTests {
         #expect(try await targetStore.read(entity: "purchase").count == 1)
     }
 
+    @Test("An export to a file writes the same array a page at a time")
+    func exportToFile() async throws {
+        database.pageLimit = 2
+        for index in 0..<5 {
+            var values = makePurchase().values
+            values["quantity"] = .int(Int64(index))
+            try await store.write(values, entity: "purchase", uuid: "p-\(index)")
+        }
+        try await store.delete(entity: "purchase", uuid: "p-4")
+
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("export-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        #expect(try await store.export(entity: "purchase", to: url) == 4)
+        #expect(try Data(contentsOf: url) == (try await store.export(entity: "purchase")))
+
+        let target = InMemoryDatabase()
+        let targetRegistry = SchemaRegistry(database: target)
+        try await targetRegistry.publish(makePurchaseDefinition())
+        let targetStore = EntityStore(database: target, registry: targetRegistry)
+        #expect(try await targetStore.importRecords(try Data(contentsOf: url), entity: "purchase") == 4)
+        #expect(try await targetStore.read(entity: "purchase").map(\.uuid).sorted() == ["p-0", "p-1", "p-2", "p-3"])
+    }
+
     @Test("A live query re-yields on every local mutation")
     func liveQuery() async throws {
         var live = store.observe(entity: "purchase", sort: [.init(field: "date")]).makeAsyncIterator()
