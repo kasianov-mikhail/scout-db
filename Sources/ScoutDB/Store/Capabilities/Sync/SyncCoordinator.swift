@@ -160,8 +160,11 @@ public final class SyncCoordinator: @unchecked Sendable {
         if let tokenURL, let persist {
             try? persist.write(to: tokenURL, options: .atomic)
         }
-        for entity in Set(delta.records.map(\.entity)) {
-            store.noteChange(entity: entity)
+        let byEntity = Dictionary(grouping: delta.records, by: \.entity)
+        for (entity, records) in byEntity {
+            // A projected pass carries partial records, which a live query
+            // cannot fold into a result of whole ones.
+            store.noteChange(entity: entity, changed: projections == nil ? records : nil)
         }
     }
 

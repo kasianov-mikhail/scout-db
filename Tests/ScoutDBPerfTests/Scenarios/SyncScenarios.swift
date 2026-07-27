@@ -95,6 +95,13 @@ extension PerfScenarios {
                     return
                 }
             },
+            PerfScenario("Live queries", "an unbounded re-query after one write", sql: 3, iterations: 2) { world, iteration in
+                let stream = world.store.observe(entity: PerfSchema.order, filters: [.init(field: "status", op: .equals, value: .string("paid"))])
+                var iterator = stream.makeAsyncIterator()
+                _ = try await iterator.next()
+                try await world.store.write(world.newOrder(iteration), entity: PerfSchema.order, uuid: world.fresh("live", iteration))
+                _ = try await iterator.next()
+            },
             PerfScenario("Live queries", "a re-query after one write", sql: 3, iterations: 2) { world, iteration in
                 let stream = world.store.query(PerfSchema.order)
                     .filter("product", .equals, .string(world.hotProduct))

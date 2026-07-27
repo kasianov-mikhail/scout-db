@@ -125,7 +125,7 @@ extension EntityStore {
             try await group.waitForAll()
         }
         if applied.count > 0 {
-            noteChange(entity: entity)
+            noteChange(entity: entity, changed: next)
         }
         if let unresolved {
             throw RecordConflictError(serverRecord: unresolved)
@@ -435,7 +435,7 @@ extension EntityStore {
         try await aggregator.rebalance(removing: applied.map(\.previous), adding: applied.map(\.next), using: definition)
         try await recordRevisions(applied.map(\.previous), using: definition)
         if applied.count > 0 {
-            noteChange(entity: entity)
+            noteChange(entity: entity, changed: applied.map(\.next))
         }
         if let unresolved {
             throw RecordConflictError(serverRecord: unresolved)
@@ -493,7 +493,7 @@ extension EntityStore {
         try await aggregator.remove(victims, using: definition)
         try await recordRevisions(victims, using: definition)
         if victims.count > 0 {
-            noteChange(entity: entity)
+            noteChange(entity: entity, changed: victims.map { Self.tombstoned($0) })
         }
         return victims.count
     }
@@ -515,7 +515,7 @@ extension EntityStore {
         await releaseUniqueClaims(of: expired, using: definition)
         try await aggregator.remove(expired, using: definition)
         if expired.count > 0 {
-            noteChange(entity: entity)
+            noteChange(entity: entity, changed: expired.map { Self.tombstoned($0) })
         }
         return expired.count
     }

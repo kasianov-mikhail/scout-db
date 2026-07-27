@@ -14,7 +14,7 @@ import Testing
 
 @Suite("Live query coalescing")
 struct LiveQueryCoalescingTests {
-    @Test("Writes landing during a pass share one trailing pass")
+    @Test("Writes landing during a pass fold into one trailing result, with no second query")
     func burstCoalesces() async throws {
         let database = InMemoryDatabase()
         let registry = SchemaRegistry(database: database)
@@ -42,7 +42,43 @@ struct LiveQueryCoalescingTests {
 
         try await Task.sleep(for: .milliseconds(50))
         #expect(await seen.passes == 2)
-        #expect(await gated.gate.calls == 2)
+        #expect(await gated.gate.calls == 1)
+    }
+
+    @Test("A live query folds a landed write in and re-reads only what it cannot")
+    func splicesKnownChanges() async throws {
+        let database = InMemoryDatabase()
+        let registry = SchemaRegistry(database: database)
+        try await registry.publish(makePurchaseDefinition())
+        let gated = GatedQueryDatabase(backing: database)
+        let store = EntityStore(database: gated, registry: registry)
+        await gated.gate.open()
+
+        var values = makePurchase().values
+        values["product_id"] = .string("sku-42")
+        try await store.write(values, entity: "purchase", uuid: "p-1")
+
+        let seen = Seen()
+        let stream = store.query("purchase").filter("product_id", .equals, "sku-42").observe()
+        let consumer = Task {
+            for try await records in stream {
+                await seen.record(records.map(\.uuid))
+            }
+        }
+        defer { consumer.cancel() }
+        try await poll { await seen.passes == 1 }
+        #expect(await seen.latest == ["p-1"])
+        let opening = await gated.gate.calls
+
+        try await store.write(values, entity: "purchase", uuid: "p-2")
+        try await poll { await seen.latest == ["p-1", "p-2"] }
+
+        var other = values
+        other["product_id"] = .string("sku-9")
+        try await store.write(other, entity: "purchase", uuid: "p-3")
+        try await store.delete(entity: "purchase", uuid: "p-1")
+        try await poll { await seen.latest == ["p-2"] }
+        #expect(await gated.gate.calls == opening)
     }
 
     @Test("Every raw tick survives a slow consumer")

@@ -224,7 +224,7 @@ extension EntityStore {
         try await database.write(records: tombstones)
         await releaseUniqueClaims(of: victims, using: child)
         try await aggregator.remove(victims, using: child)
-        noteChange(entity: child.entity)
+        noteChange(entity: child.entity, changed: victims.map { EntityStore.tombstoned($0) })
         try await cascadeDelete(entity: child.entity, uuids: victims.map(\.uuid))
     }
 

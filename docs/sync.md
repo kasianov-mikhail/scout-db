@@ -118,6 +118,15 @@ one that picks up everything the burst changed, not one full query per change. T
 the settled result instead of every step. `changeTicks(entity:)` is the uncoalesced stream
 underneath, one tick per landed mutation, if you want to drive something else with it.
 
+A mutation that names the records it changed — every write, update, delete, and unprojected
+sync pass — is folded into the last result instead of re-read, so the stream costs the query
+once and the changes after it. The fold re-tests each changed record against every filter, so
+a record that stops matching leaves the result and one that starts matching joins it. Some
+shapes still go back to the server: a `limit`, because a record leaving the top can admit one
+the change never mentioned; a projection, an OR group, or a `createdBy` scope; a `near` filter
+or a distance sort, which have no client-side equivalent; and any mutation that cannot name
+what it touched, such as a compaction or a projected sync pass.
+
 ## ⚖️ Trade-offs
 
 - Progress from a batched walk is a running count, not a fraction — the total size of an
