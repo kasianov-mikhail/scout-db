@@ -72,8 +72,12 @@ covering view it falls back to a client-side scan — materialize a view for lar
 <td>Aggregates update by compare-and-swap on the grid record's change tag, instead of overwriting each other.</td>
 </tr>
 <tr>
+<td>🎯 <strong>An extremum can be kept exact.</strong></td>
+<td>Declare <code>exact: true</code> on a <code>min</code>/<code>max</code> view and a removal that takes the standing extremum out recomputes that cell from the records behind it, instead of leaving the value it saw. The recompute reads one cell — an hour, a day or a week of one group — so a <code>lifetime</code> bucket rereads the group whole. Not available alongside <code>shards</code>, whose slices no query can name, or when the view groups by a payload or encrypted field, which no filter can narrow by.</td>
+</tr>
+<tr>
 <td>🔁 <strong>Deletes and updates rebalance the views.</strong></td>
-<td><code>delete</code>, <code>deleteAll</code>, <code>reap</code>, <code>update</code>, and <code>updateAll</code> reverse the removed record's contribution, so <code>count</code>, <code>sum</code>, <code>stats</code>, and <code>histogram</code> views stay accurate as records change. A <code>min</code>/<code>max</code> extremum is the exception: it cannot be recomputed without rescanning, so its value is left as-is when a record leaves (the count still decrements). Backfill a <code>min</code>/<code>max</code> view if you need it exact after deletes.</td>
+<td><code>delete</code>, <code>deleteAll</code>, <code>reap</code>, <code>update</code>, and <code>updateAll</code> reverse the removed record's contribution, so <code>count</code>, <code>sum</code>, <code>stats</code>, and <code>histogram</code> views stay accurate as records change. A <code>min</code>/<code>max</code> extremum is the exception: it cannot be un-applied, so its value is left as-is when a record leaves (the count still decrements) unless the view declares <code>exact</code>. Backfilling a <code>min</code>/<code>max</code> view also restores it.</td>
 </tr>
 </tbody>
 </table>

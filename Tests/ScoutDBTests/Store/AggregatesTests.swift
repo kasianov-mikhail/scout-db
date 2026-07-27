@@ -168,6 +168,73 @@ struct AggregatesTests {
         #expect(rows.first?.value == 2)
     }
 
+    @Test("An exact min view recomputes the cell the removed extremum left")
+    func deleteRecomputesExactMin() async throws {
+        try await publishPayment(views: [AggregateView(name: "low", bucket: .day, min: "amount", exact: true)])
+        try await store.write(["product": .string("app"), "amount": .double(2), "date": .date(noon)], entity: "payment", uuid: "p1")
+        try await store.write(["product": .string("app"), "amount": .double(8), "date": .date(noon)], entity: "payment", uuid: "p2")
+        try await store.write(["product": .string("app"), "amount": .double(5), "date": .date(noon)], entity: "payment", uuid: "p3")
+
+        try await store.delete(entity: "payment", uuid: "p1")
+        var rows = try await store.aggregate(entity: "payment", view: "low")
+        #expect(rows.first?.count == 2)
+        #expect(rows.first?.value == 5)
+
+        try await store.delete(entity: "payment", uuid: "p2")
+        rows = try await store.aggregate(entity: "payment", view: "low")
+        #expect(rows.first?.count == 1)
+        #expect(rows.first?.value == 5)
+
+        try await store.delete(entity: "payment", uuid: "p3")
+        #expect(try await store.aggregate(entity: "payment", view: "low").isEmpty)
+    }
+
+    @Test("An exact max view narrows its recompute to the removal's own group and day")
+    func exactMaxNarrowsToItsCell() async throws {
+        try await publishPayment(views: [AggregateView(name: "peak", groupBy: "product", bucket: .day, max: "amount", exact: true)])
+        let nextDay = noon.addingTimeInterval(86_400)
+        try await store.write(["product": .string("app"), "amount": .double(9), "date": .date(noon)], entity: "payment", uuid: "a1")
+        try await store.write(["product": .string("app"), "amount": .double(4), "date": .date(noon)], entity: "payment", uuid: "a2")
+        try await store.write(["product": .string("app"), "amount": .double(30), "date": .date(nextDay)], entity: "payment", uuid: "a3")
+        try await store.write(["product": .string("book"), "amount": .double(20), "date": .date(noon)], entity: "payment", uuid: "b1")
+
+        try await store.delete(entity: "payment", uuid: "a1")
+
+        let firstDay = EntityCoder.periodStart(of: .day, for: noon)
+        let secondDay = EntityCoder.periodStart(of: .day, for: nextDay)
+        let points = try await store.series(entity: "payment", view: "peak")
+        #expect(points.first { $0.group == "app" && $0.date == firstDay }?.value == 4)
+        #expect(points.first { $0.group == "app" && $0.date == secondDay }?.value == 30)
+        #expect(points.first { $0.group == "book" }?.value == 20)
+    }
+
+    @Test("A view left inexact keeps the extremum it saw, and an invalid exact view is rejected")
+    func exactViewRules() async throws {
+        try await publishPayment(views: [AggregateView(name: "low", bucket: .day, min: "amount")])
+        try await store.write(["product": .string("app"), "amount": .double(2), "date": .date(noon)], entity: "payment", uuid: "p1")
+        try await store.write(["product": .string("app"), "amount": .double(8), "date": .date(noon)], entity: "payment", uuid: "p2")
+        try await store.delete(entity: "payment", uuid: "p1")
+        #expect(try await store.aggregate(entity: "payment", view: "low").first?.value == 2)
+
+        let sharded = makeDefinition(
+            entity: "e", fields: [FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"))],
+            views: [AggregateView(name: "x", bucket: .lifetime, max: "amount", shards: 4, exact: true)])
+        #expect(throws: SchemaError.self) { try sharded.validate() }
+
+        let summed = makeDefinition(
+            entity: "e", fields: [FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"))],
+            views: [AggregateView(name: "x", bucket: .lifetime, sum: "amount", exact: true)])
+        #expect(throws: SchemaError.self) { try summed.validate() }
+
+        let payloadGrouped = makeDefinition(
+            entity: "e",
+            fields: [
+                FieldDefinition(name: "kind", type: .string, storage: .payload),
+                FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
+            ], views: [AggregateView(name: "x", groupBy: "kind", bucket: .lifetime, max: "amount", exact: true)])
+        #expect(throws: SchemaError.self) { try payloadGrouped.validate() }
+    }
+
     @Test("Series exposes cells at bucket resolution")
     func series() async throws {
         try await publishPayment(views: [AggregateView(name: "revenue", groupBy: "product", bucket: .hour, sum: "amount")])

@@ -195,6 +195,19 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
             if let shards = view.shards, !(2...64).contains(shards) {
                 throw SchemaError.invalidDefinition("View '\(view.name)' must shard into 2...64 records")
             }
+            if view.exact == true {
+                guard view.min != nil || view.max != nil else {
+                    throw SchemaError.invalidDefinition("View '\(view.name)' can only keep a min or max exact")
+                }
+                guard view.shards == nil else {
+                    throw SchemaError.invalidDefinition("View '\(view.name)' cannot keep an extremum exact across shards")
+                }
+                if let groupBy = view.groupBy {
+                    guard let field = field(named: groupBy, at: version), case .slot = field.storage, field.encrypted != true else {
+                        throw SchemaError.invalidDefinition("View '\(view.name)' can only keep an extremum exact when it groups by a filterable field")
+                    }
+                }
+            }
             if let histogram = view.histogram {
                 guard histogram.bounds.count > 0, histogram.bounds.count < 64, histogram.bounds == histogram.bounds.sorted() else {
                     throw SchemaError.invalidDefinition("View '\(view.name)' has invalid histogram bounds")
