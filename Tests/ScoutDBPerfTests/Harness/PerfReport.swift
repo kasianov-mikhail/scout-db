@@ -99,6 +99,12 @@ enum PerfReport {
             return base * pow(Double(records) / Double(baseRecords), exponent)
         }
 
+        /// How many requests the call spends for each statement SQL would
+        /// spend, on the largest database measured.
+        var overhead: Double? {
+            sql > 0 ? base / Double(sql) : nil
+        }
+
         var growth: String {
             switch exponent {
             case ..<0.15: "flat"
@@ -149,7 +155,11 @@ enum PerfReport {
     }
 
     /// The projection table's columns, sized from the run's own sizes.
-    private static func projectionColumns(sample: Projection) -> [Column<Projection>] {
+    ///
+    /// `projected` drops the fit and everything downstream of it, for a run that
+    /// measured one database and so has no slope to project along.
+    ///
+    private static func projectionColumns(sample: Projection, projected: Bool = true) -> [Column<Projection>] {
         var columns: [Column<Projection>] = [
             Column(title: "feature", width: 14) { $0.feature },
             Column(title: "scenario", width: 34) { $0.scenario },
@@ -161,8 +171,12 @@ enum PerfReport {
                     projection.measured.indices.contains(index) ? number(projection.measured[index].perOperation) : "—"
                 })
         }
+        columns.append(Column(title: "over", width: 8) { $0.overhead.map { "\(number($0))×" } ?? "—" })
+        guard projected else {
+            columns.append(Column(title: "cost", width: 10) { $0.cost?.rawValue ?? "—" })
+            return columns
+        }
         columns.append(Column(title: "k", width: 6) { String(format: "%.2f", $0.exponent) })
-        columns.append(Column(title: "growth", width: 8) { $0.growth })
         columns.append(Column(title: "cost", width: 10) { $0.cost?.rawValue ?? "—" })
         for level in levels {
             columns.append(Column(title: volume(level), width: 10) { number($0.requests(at: level)) })
@@ -222,52 +236,117 @@ enum PerfReport {
 
     // MARK: - Step summary
 
-    /// The run as a page of its own: the verdict, then every scenario that grew,
-    /// grouped by what its growth means.
+    /// The run as a page of its own: the verdict, the scenarios that grew when
+    /// they claimed they would not, and what every feature costs.
     ///
     /// The full table is a hundred and thirty lines under the output of every
-    /// other test in the run, which nobody scrolls to. This is the part worth
-    /// reading — the flat scenarios say only that nothing happened, and the
-    /// group that should be empty comes first, because a row there is why the
-    /// job failed.
+    /// other test in the run, which nobody scrolls to. This is the same numbers
+    /// arranged to be read. The group that should be empty comes first, because
+    /// a row there is why the job failed; the feature roll-up under it covers
+    /// the rest of the sweep, since a scenario that holds flat still has a
+    /// coefficient against SQL worth knowing, and a reader looking up one
+    /// feature should not have to know in advance whether it grew.
     ///
     static func page(_ results: [PerfResult]) -> String {
         let projections = projections(results)
         var lines = ["## ScoutDB — request cost by feature", "", summary(results)]
-        guard let sample = projections.first, sample.measured.count > 1 else {
-            lines += ["", "One database measured, so nothing is fitted; run without `SCOUTDB_PERF_SIZES` for the projection."]
-            return lines.joined(separator: "\n")
+        guard let sample = projections.first else { return lines.joined(separator: "\n") }
+        let fitted = sample.measured.count > 1
+
+        if fitted {
+            lines += ["", "```", verdict(projections).joined(separator: "\n"), "```"]
+            if sample.measured.count < DatasetSize.allCases.count {
+                lines += [
+                    "",
+                    "> \(sample.measured.count) of \(DatasetSize.allCases.count) databases measured. The fit reads one extra page as a curve at "
+                        + "these sizes, so a row below is a lead, not a verdict — only a full sweep decides.",
+                ]
+            }
+        } else {
+            lines += ["", "> One database measured, so nothing is fitted; run without `SCOUTDB_PERF_SIZES` for the projection."]
         }
 
-        lines += ["", "```", verdict(projections).joined(separator: "\n"), "```"]
-        if sample.measured.count < DatasetSize.allCases.count {
-            lines += [
-                "",
-                "> \(sample.measured.count) of \(DatasetSize.allCases.count) databases measured. The fit reads one extra page as a curve at "
-                    + "these sizes, so a row below is a lead, not a verdict — only a full sweep decides.",
-            ]
+        let columns = projectionColumns(sample: sample, projected: fitted)
+        if fitted {
+            let grew = projections.filter { $0.exponent >= 0.15 && $0.cost == nil }.sorted { ($0.exponent, $0.base) > ($1.exponent, $1.base) }
+            if grew.count > 0 {
+                lines += block(
+                    "Bounded work that grew", note: "work that claimed to cost the same whatever the database holds, and did not",
+                    columns: columns, rows: grew)
+            }
         }
-        let columns = projectionColumns(sample: sample)
-        let groups: [(title: String, cost: PerfScenario.Cost?)] = [
-            ("Bounded work that grew", nil),
-            ("Costs what it returns", .result),
-            ("Passes over the whole database", .elective),
+        lines += block(
+            "Every feature", note: "one call of each of the feature's scenarios, added up, against the statements SQL would spend on the same work",
+            columns: featureColumns, rows: features(projections).sorted { ($0.overhead ?? 0, $0.requests) > ($1.overhead ?? 0, $1.requests) })
+
+        lines += [
+            "", "<details>", "<summary>Every scenario</summary>", "", "```",
+            columns.map { pad($0.title, $0.width) }.joined(),
+            String(repeating: "-", count: width(of: columns)),
         ]
-        for group in groups {
-            let rows =
-                projections
-                .filter { $0.exponent >= 0.15 && $0.cost == group.cost }
-                .sorted { ($0.exponent, $0.base) > ($1.exponent, $1.base) }
-            guard rows.count > 0 else { continue }
-            lines += [
-                "", "### \(group.title)", "", "```",
-                columns.map { pad($0.title, $0.width) }.joined(),
-                String(repeating: "-", count: width(of: columns)),
-            ]
-            lines += rows.map { row in columns.map { pad($0.value(row), $0.width) }.joined() }
-            lines.append("```")
+        var feature: String?
+        for projection in projections {
+            if let feature, feature != projection.feature { lines.append("") }
+            feature = projection.feature
+            lines.append(columns.map { pad($0.value(projection), $0.width) }.joined())
         }
+        lines += ["```", "", "</details>"]
         return lines.joined(separator: "\n")
+    }
+
+    /// One feature's scenarios as a single line.
+    private struct Feature: Sendable {
+        let name: String
+        let scenarios: Int
+        /// One call of each of the feature's scenarios, on the largest database
+        /// measured.
+        let requests: Double
+        let sql: Int
+        let growing: Int
+        /// The scenario that spends the most requests per statement.
+        let worst: Projection?
+
+        var overhead: Double? {
+            sql > 0 ? requests / Double(sql) : nil
+        }
+    }
+
+    private static let featureColumns: [Column<Feature>] = [
+        Column(title: "feature", width: 18) { $0.name },
+        Column(title: "scen", width: 6) { "\($0.scenarios)" },
+        Column(title: "req/op", width: 8) { number($0.requests) },
+        Column(title: "sql", width: 6) { "\($0.sql)" },
+        Column(title: "over", width: 8) { $0.overhead.map { "\(number($0))×" } ?? "—" },
+        Column(title: "grows", width: 7) { "\($0.growing)" },
+        Column(title: "worst", width: 8) { $0.worst?.overhead.map { "\(number($0))×" } ?? "—" },
+        Column(title: "its scenario", width: 34) { $0.worst?.scenario ?? "—" },
+    ]
+
+    private static func features(_ projections: [Projection]) -> [Feature] {
+        var order: [String] = []
+        var grouped: [String: [Projection]] = [:]
+        for projection in projections {
+            if grouped[projection.feature] == nil { order.append(projection.feature) }
+            grouped[projection.feature, default: []].append(projection)
+        }
+        return order.map { name in
+            let rows = grouped[name] ?? []
+            return Feature(
+                name: name, scenarios: rows.count, requests: rows.reduce(0) { $0 + $1.base }, sql: rows.reduce(0) { $0 + $1.sql },
+                growing: rows.filter { $0.exponent >= 0.15 }.count,
+                worst: rows.max { ($0.overhead ?? -1) < ($1.overhead ?? -1) })
+        }
+    }
+
+    private static func block<Row>(_ title: String, note: String, columns: [Column<Row>], rows: [Row]) -> [String] {
+        var lines = [
+            "", "### \(title)", "", note, "", "```",
+            columns.map { pad($0.title, $0.width) }.joined(),
+            String(repeating: "-", count: width(of: columns)),
+        ]
+        lines += rows.map { row in columns.map { pad($0.value(row), $0.width) }.joined() }
+        lines.append("```")
+        return lines
     }
 
     /// Appends the page wherever the run was told to leave it — on CI, the
