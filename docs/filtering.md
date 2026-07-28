@@ -1,4 +1,4 @@
-# 🔍 Filtering
+# Filtering
 
 Open a query with `store.query(_:)`, chain clauses, finish with an executor:
 
@@ -30,7 +30,17 @@ requires exactly one `sort` on a slot-backed scalar field.
 The clauses in between are `filter`, `exclude`, `group`, `sort`, `nearest(_:latitude:longitude:)`
 for a nearest-first distance order, `fields` for a projection, `limit`, and `createdBy`.
 
-## ➕ Folds
+## Table of Contents
+- [Folds](#folds)
+- [Creator scope](#creator-scope)
+- [Operator sugar](#operator-sugar)
+- [OR groups](#or-groups)
+- [Exclusions](#exclusions)
+- [Performance](#performance)
+- [Shadow fields](#shadow-fields)
+- [Existence and projections](#existence-and-projections)
+
+## Folds
 
 Numbers over the matching records, fetching only the folded field — no view required:
 
@@ -46,7 +56,7 @@ does. These scan what the query selects — a declared view answers `count()`, a
 `min`/`max` view answers `minimum()`/`maximum()`, from the grid instead. See
 [Aggregation](aggregation.md).
 
-## 👤 Creator scope
+## Creator scope
 
 `createdBy(_:)` keeps only the records a given user wrote, matched server-side on
 `creatorUserRecordID` — the public-database pattern. It is part of the query, so every
@@ -60,7 +70,7 @@ try await store.query("purchase").createdBy(me).sum("total")
 A scoped fold or count always reads records: an aggregate view's grid folds every writer's
 contributions together and cannot be split back by creator.
 
-## 🧪 Operator sugar
+## Operator sugar
 
 ```swift
 .filter("quantity" > 5)          // ranges: > >= < <=
@@ -73,7 +83,7 @@ contributions together and cannot be split back by creator.
 String equality via `==` collides with Swift's own `String == String`, so spell it
 `.filter("field", .equals, "value")`.
 
-## 🔀 OR groups
+## OR groups
 
 CloudKit combines predicates with `AND` only. A group of alternatives is `OR`-ed inside and
 `AND`-ed with the rest of the query; behind the scenes it fans out into one server query per
@@ -88,7 +98,7 @@ branch:
 
 Prefer a single `in` filter when the branches only differ by one field's value.
 
-## 🚫 Exclusions
+## Exclusions
 
 `exclude(_:_:_:)` keeps the records a predicate does *not* match:
 
@@ -101,14 +111,14 @@ A negated comparison, equality or `in` runs on the server as its complementary o
 `.defaultValue`, so that no record can be missing it. Every other negation is evaluated
 client-side after decoding, and there a record missing the field is kept.
 
-## ⚡ Performance
+## Performance
 
 Some operators (`matches`, `isNull`, substring `contains` without a shadow field) scan the
 records the rest of the query selects — on large entities, combine them with at least one
 selective filter such as an equality or a date range. `explain()` prints the plan of a query
 when in doubt.
 
-## 👻 Shadow fields
+## Shadow fields
 
 Three matching capabilities CloudKit lacks are recovered by declaring a derived shadow field
 once; the matching operators pick it up automatically:
@@ -133,7 +143,7 @@ field as `title_reversed`, with the type the transform calls for.
 A shadow is recomputed on every write, so records written before you declared one carry it
 only after a `Migrator.backfill(entity:)` pass.
 
-## 🎯 Existence and projections
+## Existence and projections
 
 `isNull` / `isNotNull` are always client-side — CloudKit cannot match a missing field — and
 work on payload fields too. Projections fetch only what you name:

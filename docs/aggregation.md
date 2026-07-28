@@ -1,4 +1,4 @@
-# 📊 Aggregation
+# Aggregation
 
 CloudKit has no server-side `SUM` or `GROUP BY` — a query returns records, never computed
 values. ScoutDB materializes aggregates at write time instead: declare `views` on an entity,
@@ -21,7 +21,12 @@ of grid records.
 Those records are bookkeeping, not entity data, but they still cost a read. Cache the rows
 in your app if you read them on a hot path.
 
-## 📐 Metrics
+## Table of Contents
+- [Metrics](#metrics)
+- [Reading](#reading)
+- [Trade-offs](#trade-offs)
+
+## Metrics
 
 Every view counts writes (`COUNT`). One metric per view on top of that:
 
@@ -35,7 +40,7 @@ Every view counts writes (`COUNT`). One metric per view on top of that:
 Buckets: `hour` (default), `weekday`, `day`, and `lifetime` — one running total per group with
 no time grid, the only bucket that works without an `envelopeDate`.
 
-## 📖 Reading
+## Reading
 
 ```swift
 let rows = try await store.aggregate(entity: "payment", view: "revenue", from: june, to: july)
@@ -60,7 +65,7 @@ closure. `distinct` reads the grid of a view grouped by the field when one cover
 grid row per live value, no record scan. Without a covering view it falls back to a
 client-side scan — materialize a view for large entities.
 
-## ⚖️ Trade-offs
+## Trade-offs
 
 <table>
 <colgroup>

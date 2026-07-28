@@ -1,4 +1,4 @@
-# 📚 Guides
+# Guides
 
 | | Guide | Description |
 |:-:|-|-|

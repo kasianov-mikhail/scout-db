@@ -1,4 +1,4 @@
-# 📴 Offline
+# Offline
 
 `OfflineCache` sits between `EntityStore` and the real `CKDatabase`: it queues writes and
 replays cached reads when the network is down. It implements the same `CloudDatabase`
@@ -9,7 +9,17 @@ let cache = OfflineCache(backing: cloudDatabase, storeURL: cacheFileURL)
 let store = EntityStore(database: cache, registry: registry)
 ```
 
-## 📥 Offline reads and queued writes
+## Table of Contents
+- [Offline reads and queued writes](#offline-reads-and-queued-writes)
+- [What counts as offline](#what-counts-as-offline)
+- [Flushing and conflicts](#flushing-and-conflicts)
+- [Cache quotas](#cache-quotas)
+- [Outbox transactions and leases](#outbox-transactions-and-leases)
+- [Pacing requests](#pacing-requests)
+- [Telemetry](#telemetry)
+- [Limits](#limits)
+
+## Offline reads and queued writes
 
 `OfflineCache` caches the first page of every query it sees. On a transport failure — no
 network, service unavailable — a read replays the last cached page, overlaid with anything
@@ -44,7 +54,7 @@ only the first page of plain reads and plain writes get this treatment. A batche
 `update(entity:uuids:)` saves its records conditionally and so refuses offline, where a
 single `update(entity:uuid:)` still queues.
 
-## 🚧 What counts as offline
+## What counts as offline
 
 Besides the outright transport errors — `networkUnavailable`, `networkFailure`,
 `serviceUnavailable`, and any `URLError` — the fallback also covers:
@@ -58,7 +68,7 @@ Besides the outright transport errors — `networkUnavailable`, `networkFailure`
 A queued write still needs a *live* flush eventually: an account that never returns leaves the
 queue where it is, inspectable through `cache.queuedWrites`.
 
-## 🔀 Flushing and conflicts
+## Flushing and conflicts
 
 ```swift
 do {
@@ -91,7 +101,7 @@ carries over correctly if you return `.save`. Without a resolver — or when one
 `.surface` — the write is dequeued and reported in `OfflineFlushError.conflicts` instead of
 silently lost or silently overwritten.
 
-## 📏 Cache quotas
+## Cache quotas
 
 `OfflineCache(backing:storeURL:snapshotLimit:baselineLimit:conflictResolver:)` bounds both
 caches with LRU eviction (`snapshotLimit: 50`, `baselineLimit: 500` by default). An evicted
@@ -99,7 +109,7 @@ snapshot loses offline coverage for that one query; an evicted baseline downgrad
 mergeable flush to a surfaced conflict rather than a silent correctness loss. Restarting the
 app from a persisted `storeURL` restores entries as oldest — usage history isn't persisted.
 
-## 📤 Outbox transactions and leases
+## Outbox transactions and leases
 
 `store.transaction { draft in ... }` writes a durable envelope record before applying its
 steps and marks it committed after — an interrupted process resumes and finishes the
@@ -113,7 +123,7 @@ could still repair, or every device pays for the whole write history when it rea
 lock for coordinating exclusive access across processes; it throws `SchemaError.leaseHeld`
 if another owner already holds it.
 
-## 🚦 Pacing requests
+## Pacing requests
 
 Every request ScoutDB sends passes a gate that keeps at most eight in flight at once, and a
 rate limit or a busy zone is retried up to three times — after the server's own
@@ -129,7 +139,7 @@ await RequestPolicy.setMaxConcurrentRequests(4)   // eight by default
 Lower it when a long migration keeps meeting rate limits; raise it when the work is
 latency-bound and the container is quiet.
 
-## 📈 Telemetry
+## Telemetry
 
 `ObservedDatabase` is a `CloudDatabase` decorator that reports every settled call — kind,
 duration, record count, and the error if it threw — to an observer of yours:
@@ -144,7 +154,7 @@ It composes with the other decorators, and where you wrap decides what you measu
 queue-served writes included. `record(_:)` is called synchronously on the calling task, so
 hand the operation off to a logger or a metrics pipeline rather than blocking in it.
 
-## ⚠️ Limits
+## Limits
 
 - `OfflineCache` is a best-effort local answer, not a replacement for the server: writes
   still need a live network eventually to actually flush, and a query the cache has never

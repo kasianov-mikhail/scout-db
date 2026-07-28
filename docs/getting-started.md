@@ -1,6 +1,15 @@
-# 🚀 Getting Started
+# Getting Started
 
-## 📦 Installation
+## Table of Contents
+- [Installation](#installation)
+- [Upload the schema](#upload-the-schema)
+- [Connect](#connect)
+- [Declare an entity](#declare-an-entity)
+- [Write and query](#write-and-query)
+- [Testing without a container](#testing-without-a-container)
+- [Where to go next](#where-to-go-next)
+
+## Installation
 
 ```swift
 dependencies: [
@@ -8,7 +17,7 @@ dependencies: [
 ]
 ```
 
-## 📤 Upload the schema
+## Upload the schema
 
 The physical CloudKit schema ships as the [`Schema`](../Schema) file at the repository root.
 Upload it once per container through the CloudKit Console: select your container, open
@@ -17,7 +26,7 @@ Upload it once per container through the CloudKit Console: select your container
 Deploy to Production from the CloudKit Console when ready. After that the file is frozen —
 every schema change in your app is a data change, not a re-import.
 
-## 🔌 Connect
+## Connect
 
 ```swift
 import CloudKit
@@ -28,7 +37,7 @@ let registry = SchemaRegistry(database: database)
 let store = EntityStore(database: database, registry: registry)
 ```
 
-## 🧱 Declare an entity
+## Declare an entity
 
 ```swift
 try await store.schema("purchase")
@@ -43,7 +52,7 @@ try await store.schema("purchase")
 
 Fields marked `.payload` skip server-side filtering — use it for everything you never filter on.
 
-## ✍️ Write and query
+## Write and query
 
 ```swift
 try await store.write([
@@ -59,7 +68,7 @@ let recent = try await store.query("purchase")
     .take(20)
 ```
 
-## 🧪 Testing without a container
+## Testing without a container
 
 The package ships a second library, `ScoutDBTesting`, whose `InMemoryDatabase` implements the
 same `CloudDatabase` protocol the real one does — so a test drives the whole store, schema
@@ -75,7 +84,7 @@ let store = EntityStore(database: database, registry: SchemaRegistry(database: d
 `InMemoryContainer` stands in for `CloudContainer` when the code under test checks account
 status, and it can be made to report any `CKAccountStatus` you want to exercise.
 
-## 🧭 Where to go next
+## Where to go next
 
 | Doc | Covers |
 |---|---|
