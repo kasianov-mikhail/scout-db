@@ -7,8 +7,12 @@
 
 import Foundation
 
+/// A coordinate pair, as carried by a `location` field.
 public struct GeoPoint: Equatable, Sendable, Codable {
+    /// Degrees north of the equator.
     public let latitude: Double
+
+    /// Degrees east of the prime meridian.
     public let longitude: Double
 
     public init(latitude: Double, longitude: Double) {
@@ -17,20 +21,53 @@ public struct GeoPoint: Equatable, Sendable, Codable {
     }
 }
 
+/// A value as a record carries it, one case per `FieldType`.
+///
+/// Reading and writing usually goes through `EntityRecord`'s typed subscript,
+/// which converts to and from the Swift types; match on the cases only when
+/// the field's type is not known ahead of time.
+///
 public enum RecordValue: Equatable, Sendable {
+    /// Text, behind both the `string` and the `text` field types.
     case string(String)
+
+    /// A whole number, always widened to 64 bits.
     case int(Int64)
+
+    /// A floating-point number.
     case double(Double)
+
+    /// A point in time, kept to the millisecond.
     case date(Date)
+
+    /// An opaque blob, stored inline with the record.
     case bytes(Data)
+
+    /// A coordinate pair.
     case location(latitude: Double, longitude: Double)
+
+    /// The uuid of a record in the entity the field references.
     case reference(String)
+
+    /// A file uploaded alongside the record rather than inside it.
     case asset(URL)
+
+    /// A list of strings; also what an `ngrams` derivation produces.
     case strings([String])
+
+    /// A list of whole numbers.
     case ints([Int64])
+
+    /// A list of floating-point numbers.
     case doubles([Double])
+
+    /// A list of points in time.
     case dates([Date])
+
+    /// A list of coordinate pairs.
     case locations([GeoPoint])
+
+    /// A list of files uploaded alongside the record.
     case assets([URL])
 }
 

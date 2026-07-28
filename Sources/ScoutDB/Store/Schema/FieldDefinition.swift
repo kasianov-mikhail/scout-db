@@ -7,21 +7,65 @@
 
 import Foundation
 
+/// One field of an entity, as published in its definition.
+///
+/// A field is never edited in place: retyping or moving it closes the old
+/// declaration at a version and opens a new one, so `EntityDefinition.fields`
+/// holds every declaration the entity has ever had and `since`/`until` say
+/// which versions each one covers.
+///
 public struct FieldDefinition: Codable, Equatable, Sendable {
+    /// The name the field carries in a record's values, unique among the
+    /// fields active at any one version.
     public let name: String
+
+    /// The value type every write to the field must match.
     public let type: FieldType
+
+    /// Where the value lives: a slot of its pool, which the server can filter
+    /// and sort on, or the record's payload blob, which it cannot.
     public let storage: Storage
+
+    /// The first version carrying the field; `nil` reads as version 1.
     public var since: Int?
+
+    /// The first version no longer carrying the field; `nil` means it is still
+    /// active.
     public var until: Int?
+
+    /// Rejects a write that leaves the field without a value, once defaults
+    /// and derivations have been applied.
     public var required: Bool?
+
+    /// The value a write that omits the field gets instead.
     public var defaultValue: RecordValue?
+
+    /// The closed set of strings every value of the field must come from.
     public var allowed: [String]?
+
+    /// The inclusive lower bound every numeric scalar of the field must clear.
     public var minimum: Double?
+
+    /// The inclusive upper bound every numeric scalar of the field must stay
+    /// under.
     public var maximum: Double?
+
+    /// Makes the field a shadow of another one, recomputed from its source on
+    /// every write rather than supplied by the caller.
     public var derived: Derivation?
+
+    /// Seals the value under the definition's `keyID` before it leaves the
+    /// device; only a payload field can be encrypted.
     public var encrypted: Bool?
+
+    /// The entity whose uuids this field holds, making it a reference that
+    /// `join`, `children` and the reference checks can follow.
     public var references: String?
+
+    /// Restricts a scalar reference to one holder per parent, claim-backed the
+    /// way `EntityDefinition.enforcedKeys` are.
     public var exclusive: Bool?
+
     /// A whole-string regular expression every value of the field must match.
     public var pattern: String?
 
@@ -52,6 +96,8 @@ public struct FieldDefinition: Codable, Equatable, Sendable {
         case defaultValue = "default"
     }
 
+    /// Whether the given version carries the field, `since` inclusive and
+    /// `until` exclusive.
     public func isActive(at version: Int) -> Bool {
         version >= (since ?? 1) && version < (until ?? .max)
     }
@@ -65,8 +111,13 @@ public struct FieldDefinition: Codable, Equatable, Sendable {
     }
 }
 
+/// How a derived field is recomputed: which field it reads, and what it makes
+/// of that value.
 public struct Derivation: Codable, Equatable, Sendable {
+    /// The field being shadowed, itself a field of the same entity.
     public let source: String
+
+    /// What the source value is turned into.
     public let transform: Transform
 
     public init(source: String, transform: Transform) {
@@ -74,13 +125,27 @@ public struct Derivation: Codable, Equatable, Sendable {
         self.transform = transform
     }
 
+    /// The transforms a derived field can apply to its source.
+    ///
+    /// `lowercase` and `fold` serve normalized comparisons, `reversed` turns
+    /// an `endsWith` into a server-side `beginsWith`, `ngrams` narrows
+    /// `contains` and `like` before the exact client check, `hour`, `day`,
+    /// `week` and `month` truncate a timestamp to group by it, and `hmac`
+    /// keeps an encrypted field filterable through a keyed digest.
+    ///
     public enum Transform: String, Codable, Sendable {
         case lowercase, fold, reversed, ngrams, hour, day, week, month, hmac
     }
 }
 
+/// Where a field's value is written in the underlying record.
 public enum Storage: Equatable, Sendable {
+    /// A named slot of the given pool: filterable and sortable server-side,
+    /// and limited to the pool's capacity.
     case slot(Pool, String)
+
+    /// The record's payload blob: outside the pools, and outside the server's
+    /// reach — every filter over it runs client-side.
     case payload
 }
 

@@ -7,21 +7,51 @@
 
 import Foundation
 
+/// A materialized aggregate over one entity, updated by every write instead of
+/// computed by a read.
+///
+/// A view lays a grid over the entity — one cell per group and period — and
+/// each cell is a record holding the count and, at most, one metric. Reads
+/// fetch those cells, never the records behind them.
+///
 public struct AggregateView: Codable, Equatable, Sendable {
+    /// Names the view within its entity; reads ask for it by this name.
     public let name: String
+
+    /// The field whose value splits the grid into groups; without it the whole
+    /// entity is one group.
     public var groupBy: String?
+
+    /// The period one cell covers, `hour` when left unsaid.
     public var bucket: Bucket?
+
+    /// Keeps a running total of the named field, which `average` derives from
+    /// at read time.
     public var sum: String?
+
+    /// Keeps the smallest value of the named field the cell has seen, or still
+    /// holds when `exact` is on.
     public var min: String?
+
+    /// Keeps the largest value of the named field the cell has seen, or still
+    /// holds when `exact` is on.
     public var max: String?
+
+    /// Keeps Σx and Σx² of the named field, which `variance` and
+    /// `standardDeviation` derive from at read time.
     public var stats: String?
+
+    /// Counts the named field's values into fixed buckets, which percentiles
+    /// are read off.
     public var histogram: Histogram?
+
     /// Spreads each grid slot over this many shard records.
     ///
     /// Concurrent writers of one hot slot stop contending on a single CAS
     /// record; readers sum the shards. Worth declaring only for slots many
     /// devices hit at once — every reader still fetches all shard records.
     public var shards: Int?
+
     /// Keeps a `min`/`max` exact when the record holding the extremum leaves.
     ///
     /// An extremum cannot be un-applied from a counter, so by default a
@@ -54,8 +84,13 @@ public struct AggregateView: Codable, Equatable, Sendable {
         self.exact = exact
     }
 
+    /// The bucketing of a numeric field into counters, one per range.
     public struct Histogram: Codable, Equatable, Sendable {
+        /// The numeric field whose values are bucketed.
         public let field: String
+
+        /// The buckets' exclusive upper bounds, ascending; whatever reaches
+        /// the last one lands in an overflow bucket past it.
         public let bounds: [Double]
 
         public init(field: String, bounds: [Double]) {
@@ -64,13 +99,19 @@ public struct AggregateView: Codable, Equatable, Sendable {
         }
     }
 
+    /// The period one grid cell of a view covers.
     public enum Bucket: String, Codable, Sendable {
+        /// Cells an hour wide, or a day wide — `weekday` and `day` both read
+        /// per day and differ only in how many cells share a grid record, a
+        /// week's worth or a month's.
         case hour, weekday, day
+
         /// One running total per group, with no time grid — the categorical
         /// counter. The only bucket that works without an envelope date.
         case lifetime
     }
 
+    /// How a cell folds the values written into it.
     public enum Metric: Equatable, Sendable {
         case sum, min, max
 
