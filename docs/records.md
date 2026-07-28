@@ -61,20 +61,14 @@ let chain = try await store.join(entity: "order", records: purchases,
                                   path: ["order_id", "customer_id"])
 ```
 
-The reverse direction and integrity checks:
+The reverse direction:
 
 ```swift
 let lineItems = try await store.children(entity: "purchase", of: order, via: "order_id")
-let dangling  = try await store.orphans(entity: "purchase", field: "order_id")
 
 try await store.delete(entity: "order", uuid: "o-1", cascade: true)
 // scalar references to o-1 are deleted; list references are detached, not deleted
 ```
-
-`orphans` is a whole-entity sweep: it reads the entity, then asks the server which of the
-parents its records name are still live. The cost follows the entity's size and its distinct
-parent count, not the number of orphans found — pass `fields:` to trim what it reads back,
-and run it as an occasional integrity check rather than on a screen.
 
 Turn on `EntityStore.enforceReferences` to reject writes that would create a dangling
 reference, and to enforce `.exclusiveReference` uniqueness. Both checks are client-side —
