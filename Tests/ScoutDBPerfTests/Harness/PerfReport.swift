@@ -35,7 +35,7 @@ enum PerfReport {
         Column(title: "save", width: 5) { "\($0.app[.save])" },
         Column(title: "modify", width: 7) { "\($0.app[.modify])" },
         Column(title: "cas", width: 5) { "\($0.app[.conditionalSave])" },
-        Column(title: "sync", width: 5) { "\($0.app[.zoneChanges] + $0.app[.databaseChanges])" },
+        Column(title: "sync", width: 5) { "\($0.app[.databaseChanges])" },
         Column(title: "other", width: 6) { "\(other(of: $0.app))" },
         Column(title: "total", width: 6) { "\($0.app.total)" },
         Column(title: "req/op", width: 7) { number($0.perOperation) },

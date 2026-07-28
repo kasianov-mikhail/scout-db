@@ -50,8 +50,8 @@ public struct EntityStore: Sendable {
     /// With `enforceReferences` on, every write checks that its reference fields
     /// name live parent records and throws `SchemaError.brokenReference` otherwise.
     /// With a `zoneID`, entity records live in that custom zone — the shape CKShare
-    /// and zone-scoped sync build on; schema and aggregate bookkeeping stay in the
-    /// default zone. Call `ensureZone()` once before the first zoned write.
+    /// builds on; schema and aggregate bookkeeping stay in the default zone. Call
+    /// `ensureZone()` once before the first zoned write.
     ///
     public init(
         database: any CloudDatabase, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil, trustedWriters: Set<String>? = nil,

@@ -13,7 +13,7 @@ enum PerfScenarios {
     static var all: [PerfScenario] {
         schema + queries + writes + pagination + aggregates + counters + uniqueKeys + transactions + leases + conflicts
             + relations + revisions + lifecycle + assets + encryption + migrations + sharing
-            + zoneSync + coordinator + liveQueries + subscriptions + pushEvents + offline + replica
+            + liveQueries + subscriptions + pushEvents + offline + replica
     }
 }
 

@@ -32,24 +32,6 @@ struct SyncContractTests {
         }
     }
 
-    @Test("Zone deltas report writes and deletes incrementally")
-    func zoneChangesDelta() async throws {
-        try await withContract { f in
-            let entity = try await f.publishOrder()
-            try await f.store.write(orderValues(), entity: entity, uuid: "zc-1")
-            try await f.store.write(orderValues(), entity: entity, uuid: "zc-2")
-
-            let initial = try await f.store.zoneChanges()
-            #expect(Set(initial.records.map(\.uuid)) == ["zc-1", "zc-2"])
-            #expect(initial.token != nil)
-
-            try await f.store.delete(entity: entity, uuid: "zc-1")
-            let delta = try await f.store.zoneChanges(since: initial.token)
-            #expect(delta.records.map(\.uuid) == ["zc-1"])
-            #expect(delta.records.first?.deleted == true)
-        }
-    }
-
     @Test("Zone discovery reports zones with new activity incrementally")
     func zoneDiscovery() async throws {
         try await withContract { f in
@@ -67,47 +49,6 @@ struct SyncContractTests {
             try await eventually {
                 try await f.database.databaseChanges(since: token).changed.contains(f.zoneID)
             }
-        }
-    }
-
-    @Test("A batched zone walk pages the feed with per-batch tokens")
-    func batchedZoneChanges() async throws {
-        try await withContract { f in
-            let entity = try await f.publishOrder()
-            for index in 0..<5 {
-                try await f.store.write(orderValues(), entity: entity, uuid: "bz-\(index)")
-            }
-
-            var uuids: [String] = []
-            var batches = 0
-            var last: Data?
-            for try await delta in f.store.zoneChanges(batchSize: 2) {
-                uuids += delta.records.map(\.uuid)
-                last = delta.token ?? last
-                batches += 1
-            }
-            #expect(Set(uuids) == ["bz-0", "bz-1", "bz-2", "bz-3", "bz-4"])
-            #expect(batches >= 2)
-
-            let after = try await f.store.zoneChanges(since: last)
-            #expect(after.records.isEmpty)
-        }
-    }
-
-    @Test("A projected zone pass carries only the requested fields")
-    func projectedZoneChanges() async throws {
-        try await withContract { f in
-            let entity = try await f.publishOrder()
-            try await f.store.write(orderValues(product: "sku-9", quantity: 4, note: "heavy payload"), entity: entity, uuid: "pz-1")
-
-            let delta = try await f.store.zoneChanges(projecting: [SyncProjection(entity: entity, fields: ["quantity"])])
-            let record = try #require(delta.records.first { $0.uuid == "pz-1" })
-            #expect(record.values["quantity"] == .int(4))
-            #expect(record.values["product"] == nil)
-            #expect(record.values["note"] == nil)
-
-            let full = try await f.store.zoneChanges()
-            #expect(try #require(full.records.first { $0.uuid == "pz-1" }).values["product"] == .string("sku-9"))
         }
     }
 
@@ -132,11 +73,13 @@ struct SyncContractTests {
             }
             try await eventually { try await f.store.read(entity: entity).count == 3 }
 
-            let replica = ReplicaCache(backing: UnpluggedReads(backing: f.database), zoneID: f.zoneID)
+            let unplugged = UnpluggedReads(backing: f.database)
+            let replica = ReplicaCache(backing: unplugged, zoneID: f.zoneID)
             try await eventually {
                 try await replica.refresh(batchSize: 2)
                 return replica.recordCount >= 3
             }
+            unplugged.unplug()
 
             let offline = EntityStore(database: replica, registry: f.registry, zoneID: f.zoneID)
             let filtered = try await offline.read(entity: entity, filters: [.init(field: "quantity", op: .greaterThan, value: .int(1))])
@@ -174,23 +117,39 @@ struct SyncContractTests {
     }
 }
 
+/// Passes reads through until `unplug()`, and fails them as offline after it —
+/// the mirror is built while the network works, then answers on its own.
 private final class UnpluggedReads: CloudDatabase, @unchecked Sendable {
     let backing: any CloudDatabase
+    private let lock = NSLock()
+    private var unplugged = false
 
     init(backing: any CloudDatabase) {
         self.backing = backing
     }
 
+    func unplug() {
+        lock.withLock { unplugged = true }
+    }
+
+    private func reachable() throws {
+        if lock.withLock({ unplugged }) {
+            throw CKError(.networkUnavailable)
+        }
+    }
+
     func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        throw CKError(.networkUnavailable)
+        try reachable()
+        return try await backing.records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
     }
 
     func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        throw CKError(.networkUnavailable)
+        try reachable()
+        return try await backing.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
     }
 
     func save(_ record: CKRecord) async throws -> CKRecord {
@@ -223,12 +182,6 @@ private final class UnpluggedReads: CloudDatabase, @unchecked Sendable {
 
     func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
         try await backing.fetchRecord(id: id)
-    }
-
-    func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int?) async throws -> (
-        changed: [CKRecord], deleted: [CKRecord.ID], token: Data?
-    ) {
-        try await backing.zoneChanges(zoneID: zoneID, since: token, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
     }
 
     func databaseChanges(since token: Data?) async throws -> (changed: [CKRecordZone.ID], deleted: [CKRecordZone.ID], token: Data?) {

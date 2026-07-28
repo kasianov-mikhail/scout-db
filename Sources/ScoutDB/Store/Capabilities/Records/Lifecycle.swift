@@ -33,8 +33,9 @@ extension EntityStore {
 
     /// Physically deletes the entity's tombstones last modified before the cutoff.
     ///
-    /// Purged deletes disappear from change feeds and can no longer be restored —
-    /// run a compact only past every device's sync horizon.
+    /// A purged delete can no longer be restored, and a device that has not read
+    /// since simply never learns of it — run a compact only past the horizon where
+    /// every device has caught up.
     ///
     @discardableResult public func compact(entity: String, olderThan cutoff: Date) async throws -> Int {
         let query = ckQuery(
@@ -54,7 +55,7 @@ extension EntityStore {
     /// Physically deletes the entity's live records matching the filters.
     ///
     /// The shape behind log compaction: a purged record leaves no tombstone, so
-    /// it stops riding the zone feed instead of shrinking to one.
+    /// it stops being stored at all instead of shrinking to one.
     ///
     func purge(entity: String, filters: [Filter]) async throws -> Int {
         let victims = try await read(entity: entity, filters: filters, fields: [])
@@ -67,9 +68,9 @@ extension EntityStore {
 
     /// Tombstones every record of the entity, then retires its schema.
     ///
-    /// Returns how many records were tombstoned. The tombstones stay behind for
-    /// change feeds; republishing the schema brings the entity back, without its
-    /// dropped records.
+    /// Returns how many records were tombstoned. The tombstones stay behind so a
+    /// replica learns the records are gone; republishing the schema brings the
+    /// entity back, without its dropped records.
     ///
     @discardableResult public func drop(entity: String) async throws -> Int {
         let removed = try await deleteAll(entity: entity)

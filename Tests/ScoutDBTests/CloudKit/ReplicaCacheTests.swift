@@ -122,38 +122,33 @@ struct ReplicaCacheTests {
         #expect(Set(collected).count == collected.count)
     }
 
-    @Test("refresh walks the feed from the replica's own token")
+    @Test("refresh rebuilds the mirror from a full scan of the zone")
     func refreshBuildsMirror() async throws {
         let direct = EntityStore(database: backing, registry: SchemaRegistry(database: backing), zoneID: zone)
         try await writePurchases([1, 2, 3, 4, 5], through: direct)
 
         #expect(try await replica.refresh(batchSize: 2) >= 5)
-        #expect(try await replica.refresh(batchSize: 2) == 0)
+        #expect(try await replica.refresh(batchSize: 2) >= 5)
 
         backing.errors = [CKError(.networkUnavailable)]
         let offline = try await store.read(entity: "purchase")
         #expect(offline.count == 5)
     }
 
-    @Test("Full feed passes flowing through keep the mirror fresh; projected ones do not corrupt it")
-    func passiveFeeding() async throws {
+    @Test("A refresh picks up an edit and drops a record the zone lost")
+    func refreshTracksTheZone() async throws {
         try await writePurchases([3])
 
         let direct = EntityStore(database: backing, registry: SchemaRegistry(database: backing), zoneID: zone)
         try await direct.update(entity: "purchase", uuid: "p-0") { $0.values["quantity"] = .int(9) }
-        _ = try await replica.zoneChanges(zoneID: zone, since: nil, desiredKeys: nil, resultsLimit: nil)
+        try await replica.refresh()
 
         backing.errors = [CKError(.networkUnavailable)]
         let offline = try await store.read(entity: "purchase")
         #expect(offline.first?.values["quantity"] == .int(9))
 
-        _ = try await replica.zoneChanges(zoneID: zone, since: nil, desiredKeys: ["e_uuid"], resultsLimit: nil)
-        backing.errors = [CKError(.networkUnavailable)]
-        let after = try await store.read(entity: "purchase")
-        #expect(after.first?.values["quantity"] == .int(9))
-
         try await backing.modifyRecords(saving: [], deleting: [CKRecord.ID(recordName: "p-0", zoneID: zone)])
-        _ = try await replica.zoneChanges(zoneID: zone, since: nil, desiredKeys: nil, resultsLimit: nil)
+        try await replica.refresh()
         backing.errors = [CKError(.networkUnavailable)]
         #expect(try await store.read(entity: "purchase").isEmpty)
     }
@@ -246,49 +241,6 @@ struct ReplicaCacheTests {
         #expect(offline.map(\.uuid) == ["p-1"])
     }
 
-    @Test("A pass that walks a zone from the start leaves the mirror complete")
-    func passCompletesTheMirror() async throws {
-        let direct = EntityStore(database: backing, registry: SchemaRegistry(database: backing), zoneID: zone)
-        try await writePurchases([3, 1, 2], through: direct)
-
-        let replica = ReplicaCache(backing: backing, zoneID: zone, readPolicy: .localFirst)
-        #expect(!replica.hasCompleteMirror)
-
-        _ = try await replica.zoneChanges(zoneID: zone, since: nil, desiredKeys: nil, resultsLimit: nil)
-        #expect(replica.hasCompleteMirror)
-
-        let served = EntityStore(database: replica, registry: registry, zoneID: zone)
-        backing.errors = [CKError(.notAuthenticated)]
-        #expect(try await served.read(entity: "purchase").count == 3)
-        #expect(backing.errors.count == 1)
-    }
-
-    @Test("A refresh after a pass does not walk the same feed again")
-    func refreshAfterPassIsIdle() async throws {
-        let direct = EntityStore(database: backing, registry: SchemaRegistry(database: backing), zoneID: zone)
-        try await writePurchases([3, 1, 2], through: direct)
-
-        let replica = ReplicaCache(backing: backing, zoneID: zone)
-        _ = try await replica.zoneChanges(zoneID: zone, since: nil, desiredKeys: nil, resultsLimit: nil)
-
-        #expect(try await replica.refresh() == 0)
-    }
-
-    @Test("A pass that skips ahead of the replica leaves its position alone")
-    func passFromAnotherPositionIsNotAdopted() async throws {
-        let direct = EntityStore(database: backing, registry: SchemaRegistry(database: backing), zoneID: zone)
-        try await writePurchases([3], through: direct)
-
-        let replica = ReplicaCache(backing: backing, zoneID: zone, readPolicy: .localFirst)
-        let ahead = try await backing.zoneChanges(zoneID: zone, since: nil, desiredKeys: nil, resultsLimit: nil)
-        try await writePurchases([1], through: direct)
-
-        _ = try await replica.zoneChanges(zoneID: zone, since: ahead.token, desiredKeys: nil, resultsLimit: nil)
-        #expect(!replica.hasCompleteMirror)
-        #expect(try await replica.refresh() > 0)
-        #expect(replica.hasCompleteMirror)
-    }
-
     @Test("A tombstone written through the replica hides the record offline")
     func tombstonesOffline() async throws {
         try await writePurchases([3, 1])
@@ -313,7 +265,6 @@ struct ReplicaCacheTests {
 
         let second = ReplicaCache(backing: backing, zoneID: zone, storeURL: url)
         #expect(second.recordCount == first.recordCount)
-        #expect(try await second.refresh() == 0)
         let secondStore = EntityStore(database: second, registry: registry, zoneID: zone)
         backing.errors = [CKError(.networkUnavailable)]
         let offline = try await secondStore.read(entity: "purchase", filters: [.init(field: "quantity", op: .equals, value: .int(7))])
@@ -378,7 +329,7 @@ struct ReplicaCacheTests {
 
     @Test("A partial replica serves only the reads its fields cover")
     func partialReplica() async throws {
-        let keys = try await store.replicaFields(projecting: [SyncProjection(entity: "purchase", fields: ["quantity"])])
+        let keys = try await store.replicaFields(projecting: [ReplicaProjection(entity: "purchase", fields: ["quantity"])])
         let partial = ReplicaCache(backing: backing, zoneID: zone, fields: keys)
         let store = EntityStore(database: partial, registry: SchemaRegistry(database: partial), zoneID: zone)
         try await writePurchases([3, 1, 2], through: store)
@@ -404,7 +355,7 @@ struct ReplicaCacheTests {
 
     @Test("A partial localFirst replica sends uncovered reads to the network")
     func partialLocalFirst() async throws {
-        let keys = try await store.replicaFields(projecting: [SyncProjection(entity: "purchase", fields: ["quantity"])])
+        let keys = try await store.replicaFields(projecting: [ReplicaProjection(entity: "purchase", fields: ["quantity"])])
         let partial = ReplicaCache(backing: backing, zoneID: zone, readPolicy: .localFirst, fields: keys)
         let store = EntityStore(database: partial, registry: SchemaRegistry(database: partial), zoneID: zone)
         try await writePurchases([3], through: store)

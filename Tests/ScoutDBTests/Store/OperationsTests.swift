@@ -471,60 +471,6 @@ struct OperationsTests {
         }
     }
 
-    @Test("Zone delta sync walks the change feed across entities by token")
-    func zoneDeltaSync() async throws {
-        let zone = CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName)
-        let zoned = EntityStore(database: database, registry: registry, zoneID: zone)
-        try await zoned.ensureZone()
-
-        try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        let first = try await zoned.zoneChanges()
-        #expect(first.records.map(\.uuid) == ["p-1"])
-        #expect(first.deleted.isEmpty)
-
-        let idle = try await zoned.zoneChanges(since: first.token)
-        #expect(idle.records.isEmpty)
-
-        try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-2")
-        try await zoned.delete(entity: "purchase", uuid: "p-1")
-        let second = try await zoned.zoneChanges(since: first.token)
-        #expect(Set(second.records.map(\.uuid)) == ["p-1", "p-2"])
-        #expect(second.records.first { $0.uuid == "p-1" }?.deleted == true)
-
-        await #expect(throws: SchemaError.self) {
-            _ = try await store.zoneChanges()
-        }
-    }
-
-    @Test("Batched zone sync walks the feed with per-batch tokens")
-    func batchedZoneSync() async throws {
-        let zone = CKRecordZone.ID(zoneName: "scout-batched", ownerName: CKCurrentUserDefaultName)
-        let zoned = EntityStore(database: database, registry: registry, zoneID: zone)
-        try await zoned.ensureZone()
-        for index in 0..<5 {
-            try await zoned.write(makePurchase().values, entity: "purchase", uuid: "b-\(index)")
-        }
-
-        var batches: [ZoneDelta] = []
-        for try await delta in zoned.zoneChanges(batchSize: 2) {
-            batches.append(delta)
-        }
-        #expect(batches.map(\.records.count) == [2, 2, 1])
-        #expect(batches.flatMap { $0.records.map(\.uuid) }.sorted() == ["b-0", "b-1", "b-2", "b-3", "b-4"])
-
-        var resumed: [String] = []
-        for try await delta in zoned.zoneChanges(since: batches[0].token, batchSize: 2) {
-            resumed += delta.records.map(\.uuid)
-        }
-        #expect(resumed.sorted() == ["b-2", "b-3", "b-4"])
-
-        var idle = 0
-        for try await _ in zoned.zoneChanges(since: batches.last?.token, batchSize: 2) {
-            idle += 1
-        }
-        #expect(idle == 0)
-    }
-
     @Test("Push payloads map to change events and back to records")
     func pushEvents() async throws {
         #expect(ChangeEvent(reason: .recordCreated, recordName: "p-1", subscriptionID: "scout-purchase")?.kind == .created)
@@ -570,39 +516,6 @@ struct OperationsTests {
             "entity": "purchase" as NSString, "schema_version": 2 as NSNumber, "uuid": "p-1" as NSString, "deleted": 1 as NSNumber,
         ]
         #expect(try await store.record(uuid: "p-1", pushedFields: tombstone) == nil)
-    }
-
-    @Test("The sync coordinator advances its token, persists it, and flushes the offline queue")
-    func syncCoordinator() async throws {
-        let zone = CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName)
-        let tokenURL = FileManager.default.temporaryDirectory.appendingPathComponent("scout-token-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: tokenURL) }
-
-        let cache = OfflineCache(backing: database)
-        let zoned = EntityStore(database: cache, registry: registry, zoneID: zone)
-        try await zoned.ensureZone()
-        let coordinator = SyncCoordinator(store: zoned, cache: cache, tokenURL: tokenURL)
-
-        try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        #expect(try await coordinator.sync().records.map(\.uuid) == ["p-1"])
-        #expect(try await coordinator.sync().records.isEmpty)
-
-        try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-2")
-        let pushed = try await coordinator.handlePush(["ck": ["nid": "n", "qry": ["sid": "scout-purchase", "fo": 1]]])
-        #expect(pushed?.records.map(\.uuid) == ["p-2"])
-        #expect(try await coordinator.handlePush(["aps": ["alert": "hi"]]) == nil)
-
-        let relaunched = SyncCoordinator(store: zoned, cache: cache, tokenURL: tokenURL)
-        #expect(try await relaunched.sync().records.isEmpty)
-        relaunched.reset()
-        #expect(try await relaunched.sync().records.count == 2)
-
-        database.writeErrors = [CKError(.networkFailure)]
-        try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-3")
-        #expect(cache.pendingWrites == 1)
-        let delta = try await coordinator.sync()
-        #expect(cache.pendingWrites == 0)
-        #expect(delta.records.map(\.uuid).contains("p-3"))
     }
 
     @Test("Share participants and the public permission are managed through the store")

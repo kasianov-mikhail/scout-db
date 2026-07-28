@@ -239,24 +239,4 @@ struct StoreContractTests {
             }
         }
     }
-
-    @Test("The change token scopes an entity's changes to what came after it")
-    func changesCursor() async throws {
-        try await withContract { f in
-            let entity = try await f.publishOrder()
-            try await f.store.write(orderValues(), entity: entity, uuid: "m-1")
-
-            var token: Data?
-            try await eventually {
-                let delta = try await f.store.changes(entity: entity)
-                token = delta.token
-                return delta.records.map(\.uuid) == ["m-1"]
-            }
-
-            try await f.store.write(orderValues(), entity: entity, uuid: "m-2")
-            try await eventually {
-                try await f.store.changes(entity: entity, since: token).records.map(\.uuid) == ["m-2"]
-            }
-        }
-    }
 }

@@ -9,6 +9,28 @@ import Foundation
 import ScoutDB
 
 extension PerfScenarios {
+    /// The records a mirror scenario finds in the zone.
+    ///
+    /// A restored corpus is handed to the scenario's database outright, so the
+    /// records that reach the replica through the store have to be written
+    /// first, and that staging is not charged to the measurement.
+    ///
+    static func stageRecords(_ count: Int) -> @Sendable (PerfWorld) async throws -> Void {
+        { world in
+            let batch = (0..<count).map { index in
+                let values: [String: RecordValue] = [
+                    "order": .string(world.order(index)),
+                    "sku": .string(PerfSchema.products[index % PerfSchema.products.count]),
+                    "quantity": .int(1),
+                    "price": .double(4.99),
+                    "added": .date(world.corpus.now),
+                ]
+                return EntityWrite(values: values, uuid: "feed-\(world.runID)-\(index)")
+            }
+            try await world.store.write(batch, entity: PerfSchema.item)
+        }
+    }
+
     static var offline: [PerfScenario] {
         [
             PerfScenario("Offline cache", "a read the cache has not seen", sql: 1, stack: .offline, writes: false) { world, iteration in
@@ -43,7 +65,9 @@ extension PerfScenarios {
 
     static var replica: [PerfScenario] {
         [
-            PerfScenario("Replica cache", "pull 500 changes into the mirror", sql: 1, cost: .result, stack: .replica, iterations: 2, setUp: stageFeed(500)) {
+            PerfScenario(
+                "Replica cache", "rebuild a mirror of 500 records", sql: 1, cost: .result, stack: .replica, iterations: 2, setUp: stageRecords(500)
+            ) {
                 world, _ in
                 guard let cache = world.replicaCache else { return }
                 _ = try await cache.refresh()

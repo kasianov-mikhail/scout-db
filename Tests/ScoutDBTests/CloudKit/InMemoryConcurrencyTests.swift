@@ -49,9 +49,6 @@ struct InMemoryConcurrencyTests {
                 group.addTask {
                     _ = try await self.database.fetchRecords(ids: (0..<100).map { CKRecord.ID(recordName: "t-\($0)", zoneID: self.zoneID) })
                 }
-                group.addTask {
-                    _ = try await self.database.zoneChanges(zoneID: self.zoneID, since: nil, desiredKeys: nil, resultsLimit: nil)
-                }
             }
             try await group.waitForAll()
         }

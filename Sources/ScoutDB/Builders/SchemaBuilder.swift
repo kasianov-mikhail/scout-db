@@ -168,9 +168,9 @@ public struct SchemaBuilder {
     /// Appends a revision record on every update and delete of the entity.
     ///
     /// Publish `EntityStore.revisionDefinition` before turning this on, and
-    /// trim the log with `compactRevisions(olderThan:of:)` — every entry rides
-    /// each zone sync. An `update()` that does not call this keeps whatever the
-    /// previous version declared.
+    /// trim the log with `compactRevisions(olderThan:of:)` — every entry is a
+    /// record of its own. An `update()` that does not call this keeps whatever
+    /// the previous version declared.
     ///
     public func audited(_ audited: Bool = true) -> Self {
         var builder = self
