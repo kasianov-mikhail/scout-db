@@ -152,15 +152,15 @@ struct GridAggregator {
 
     static func bucket(_ bucket: AggregateView.Bucket, for date: Date) -> (period: Date, index: Int) {
         let calendar = EntityCoder.calendar
-        switch bucket {
+        return switch bucket {
         case .hour:
-            return (EntityCoder.periodStart(of: .day, for: date), calendar.component(.hour, from: date))
+            (EntityCoder.periodStart(of: .day, for: date), calendar.component(.hour, from: date))
         case .weekday:
-            return (EntityCoder.periodStart(of: .weekOfYear, for: date), calendar.component(.weekday, from: date) - 1)
+            (EntityCoder.periodStart(of: .weekOfYear, for: date), calendar.component(.weekday, from: date) - 1)
         case .day:
-            return (EntityCoder.periodStart(of: .month, for: date), calendar.component(.day, from: date) - 1)
+            (EntityCoder.periodStart(of: .month, for: date), calendar.component(.day, from: date) - 1)
         case .lifetime:
-            return (Date(timeIntervalSince1970: 0), 0)
+            (Date(timeIntervalSince1970: 0), 0)
         }
     }
 

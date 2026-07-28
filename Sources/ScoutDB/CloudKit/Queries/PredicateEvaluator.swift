@@ -29,9 +29,12 @@ public enum PredicateEvaluator {
                 var sawUnknown = false
                 for subpredicate in subpredicates {
                     switch evaluate(subpredicate, record: record) {
-                    case .some(false): return false
-                    case .none: sawUnknown = true
-                    case .some(true): break
+                    case .some(false):
+                        return false
+                    case .none:
+                        sawUnknown = true
+                    case .some(true):
+                        break
                     }
                 }
                 return sawUnknown ? nil : true
@@ -39,9 +42,12 @@ public enum PredicateEvaluator {
                 var sawUnknown = false
                 for subpredicate in subpredicates {
                     switch evaluate(subpredicate, record: record) {
-                    case .some(true): return true
-                    case .none: sawUnknown = true
-                    case .some(false): break
+                    case .some(true):
+                        return true
+                    case .none:
+                        sawUnknown = true
+                    case .some(false):
+                        break
                     }
                 }
                 return sawUnknown ? nil : false
@@ -73,9 +79,12 @@ public enum PredicateEvaluator {
         let target = comparison.rightExpression.constantValue
         let value: Any? =
             switch key {
-            case "modificationDate": record.recordModificationDate
-            case "creatorUserRecordID": record.recordCreator
-            default: record[key]
+            case "modificationDate":
+                record.recordModificationDate
+            case "creatorUserRecordID":
+                record.recordCreator
+            default:
+                record[key]
             }
         guard let value else { return nil }
 
@@ -176,32 +185,48 @@ public enum PredicateEvaluator {
 
     private static func recordName(of value: Any?) -> String? {
         switch value {
-        case let value as CKRecord.Reference: value.recordID.recordName
-        case let value as String: value
-        default: nil
+        case let value as CKRecord.Reference:
+            value.recordID.recordName
+        case let value as String:
+            value
+        default:
+            nil
         }
     }
 
     private static func assetPath(of value: Any?) -> String? {
         switch value {
-        case let value as CKAsset: value.fileURL?.absoluteString
-        case let value as URL: value.absoluteString
-        default: nil
+        case let value as CKAsset:
+            value.fileURL?.absoluteString
+        case let value as URL:
+            value.absoluteString
+        default:
+            nil
         }
     }
 
     private static func rank(of value: Any?) -> Int {
         switch value {
-        case is NSNumber: 0
-        case is String: 1
-        case is Date: 2
-        case is Data: 3
-        case is CLLocation: 4
-        case is CKRecord.Reference: 5
-        case is CKAsset: 6
-        case is URL: 7
-        case is [Any]: 8
-        default: 9
+        case is NSNumber:
+            0
+        case is String:
+            1
+        case is Date:
+            2
+        case is Data:
+            3
+        case is CLLocation:
+            4
+        case is CKRecord.Reference:
+            5
+        case is CKAsset:
+            6
+        case is URL:
+            7
+        case is [Any]:
+            8
+        default:
+            9
         }
     }
 

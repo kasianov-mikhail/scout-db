@@ -160,20 +160,24 @@ extension EntityStore {
     private static func cellDate(_ bucket: AggregateView.Bucket, period: Date, index: Int) -> Date {
         switch bucket {
         case .hour:
-            return EntityCoder.calendar.date(byAdding: .hour, value: index, to: period) ?? period
+            EntityCoder.calendar.date(byAdding: .hour, value: index, to: period) ?? period
         case .weekday, .day:
-            return EntityCoder.calendar.date(byAdding: .day, value: index, to: period) ?? period
+            EntityCoder.calendar.date(byAdding: .day, value: index, to: period) ?? period
         case .lifetime:
-            return period
+            period
         }
     }
 
     private static func period(of bucket: AggregateView.Bucket) -> Calendar.Component? {
         switch bucket {
-        case .hour: .day
-        case .weekday: .weekOfYear
-        case .day: .month
-        case .lifetime: nil
+        case .hour:
+            .day
+        case .weekday:
+            .weekOfYear
+        case .day:
+            .month
+        case .lifetime:
+            nil
         }
     }
 

@@ -89,9 +89,12 @@ public struct SchemaBuilder {
     public func shadow(_ source: String, _ transform: Derivation.Transform) -> Self {
         let type: FieldType =
             switch transform {
-            case .ngrams: .stringList
-            case .hour, .day, .week, .month: .timestamp
-            default: .string
+            case .ngrams:
+                .stringList
+            case .hour, .day, .week, .month:
+                .timestamp
+            default:
+                .string
             }
         var builder = self
         builder.declarations.append(
@@ -238,19 +241,29 @@ public struct SchemaBuilder {
         var field = FieldDefinition(name: declaration.name, type: declaration.type, storage: resolved, since: since)
         for constraint in declaration.constraints {
             switch constraint {
-            case .required: field.required = true
-            case .payload: break
-            case .encrypted: field.encrypted = true
-            case .allowed(let values): field.allowed = values
-            case .defaultValue(let value): field.defaultValue = value
-            case .minimum(let value): field.minimum = value
-            case .maximum(let value): field.maximum = value
-            case .derived(let source, let transform): field.derived = Derivation(source: source, transform: transform)
-            case .references(let entity): field.references = entity
+            case .required:
+                field.required = true
+            case .payload:
+                break
+            case .encrypted:
+                field.encrypted = true
+            case .allowed(let values):
+                field.allowed = values
+            case .defaultValue(let value):
+                field.defaultValue = value
+            case .minimum(let value):
+                field.minimum = value
+            case .maximum(let value):
+                field.maximum = value
+            case .derived(let source, let transform):
+                field.derived = Derivation(source: source, transform: transform)
+            case .references(let entity):
+                field.references = entity
             case .exclusiveReference(let entity):
                 field.references = entity
                 field.exclusive = true
-            case .matches(let pattern): field.pattern = pattern
+            case .matches(let pattern):
+                field.pattern = pattern
             }
         }
         return field

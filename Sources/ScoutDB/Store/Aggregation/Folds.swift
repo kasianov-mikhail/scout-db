@@ -44,19 +44,27 @@ extension EntityStore {
         if creator == nil, let folded = try await gridFold(fold, of: field, entity: entity, any: branches) {
             let count = folded.values.reduce(0) { $0 + $1.count }
             let values = folded.values.compactMap(\.value)
-            switch fold {
-            case .sum: return values.reduce(0, +)
-            case .average: return count > 0 ? values.reduce(0, +) / Double(count) : nil
-            case .minimum: return values.min()
-            case .maximum: return values.max()
+            return switch fold {
+            case .sum:
+                values.reduce(0, +)
+            case .average:
+                count > 0 ? values.reduce(0, +) / Double(count) : nil
+            case .minimum:
+                values.min()
+            case .maximum:
+                values.max()
             }
         }
         let scalars = try await read(entity: entity, any: branches, fields: [field], createdBy: creator).compactMap { $0.values[field]?.scalar }
-        switch fold {
-        case .sum: return scalars.reduce(0, +)
-        case .minimum: return scalars.min()
-        case .maximum: return scalars.max()
-        case .average: return scalars.isEmpty ? nil : scalars.reduce(0, +) / Double(scalars.count)
+        return switch fold {
+        case .sum:
+            scalars.reduce(0, +)
+        case .minimum:
+            scalars.min()
+        case .maximum:
+            scalars.max()
+        case .average:
+            scalars.isEmpty ? nil : scalars.reduce(0, +) / Double(scalars.count)
         }
     }
 
@@ -84,10 +92,13 @@ extension EntityStore {
             throw SchemaError.unknownField(group)
         }
         if creator == nil, let folded = try await gridFold(fold, of: field, by: group, entity: entity, any: branches) {
-            switch fold {
-            case .sum: return folded.mapValues { $0.value ?? 0 }
-            case .average: return folded.compactMapValues { fold in fold.count > 0 ? fold.value.map { $0 / Double(fold.count) } : nil }
-            case .minimum, .maximum: return folded.compactMapValues(\.value)
+            return switch fold {
+            case .sum:
+                folded.mapValues { $0.value ?? 0 }
+            case .average:
+                folded.compactMapValues { fold in fold.count > 0 ? fold.value.map { $0 / Double(fold.count) } : nil }
+            case .minimum, .maximum:
+                folded.compactMapValues(\.value)
             }
         }
         var buckets: [String: [Double]] = [:]
@@ -97,10 +108,14 @@ extension EntityStore {
         }
         return buckets.mapValues { scalars in
             switch fold {
-            case .sum: scalars.reduce(0, +)
-            case .minimum: scalars.min() ?? 0
-            case .maximum: scalars.max() ?? 0
-            case .average: scalars.reduce(0, +) / Double(scalars.count)
+            case .sum:
+                scalars.reduce(0, +)
+            case .minimum:
+                scalars.min() ?? 0
+            case .maximum:
+                scalars.max() ?? 0
+            case .average:
+                scalars.reduce(0, +) / Double(scalars.count)
             }
         }
     }

@@ -76,9 +76,12 @@ public struct AggregateView: Codable, Equatable, Sendable {
 
         func combine(_ lhs: Double, _ rhs: Double) -> Double {
             switch self {
-            case .sum: lhs + rhs
-            case .min: Swift.min(lhs, rhs)
-            case .max: Swift.max(lhs, rhs)
+            case .sum:
+                lhs + rhs
+            case .min:
+                Swift.min(lhs, rhs)
+            case .max:
+                Swift.max(lhs, rhs)
             }
         }
     }
@@ -93,9 +96,12 @@ public struct AggregateView: Codable, Equatable, Sendable {
 
     func answers(_ kind: Metric, of field: String) -> Bool {
         switch kind {
-        case .sum: sum == field || stats == field
-        case .min: min == field && exact == true
-        case .max: max == field && exact == true
+        case .sum:
+            sum == field || stats == field
+        case .min:
+            min == field && exact == true
+        case .max:
+            max == field && exact == true
         }
     }
 }
