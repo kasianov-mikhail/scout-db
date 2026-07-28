@@ -1,9 +1,14 @@
-# 🧰 Operations
+# Operations
 
 What surrounds the reads and writes themselves: durable multi-step work, the gate every
 request passes through, and the hook that reports what each call cost.
 
-## 📤 Outbox transactions and leases
+## Table of Contents
+- [Outbox transactions and leases](#outbox-transactions-and-leases)
+- [Pacing requests](#pacing-requests)
+- [Telemetry](#telemetry)
+
+## Outbox transactions and leases
 
 `store.transaction { draft in ... }` writes a durable envelope record before applying its
 steps and marks it committed after — an interrupted process resumes and finishes the
@@ -17,7 +22,7 @@ could still repair, or every device pays for the whole write history when it rea
 lock for coordinating exclusive access across processes; it throws `SchemaError.leaseHeld`
 if another owner already holds it.
 
-## 🚦 Pacing requests
+## Pacing requests
 
 Every request ScoutDB sends passes a gate that keeps at most eight in flight at once, and a
 rate limit or a busy zone is retried up to three times — after the server's own
@@ -33,7 +38,7 @@ await RequestPolicy.setMaxConcurrentRequests(4)   // eight by default
 Lower it when a long migration keeps meeting rate limits; raise it when the work is
 latency-bound and the container is quiet.
 
-## 📈 Telemetry
+## Telemetry
 
 `ObservedDatabase` is a `CloudDatabase` decorator that reports every settled call — kind,
 duration, record count, and the error if it threw — to an observer of yours:

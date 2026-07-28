@@ -20,9 +20,7 @@
 /// Every stored property must be optional — a record is free to miss any
 /// field — and maps to its snake_cased name unless `@Field` names the schema
 /// field explicitly; `@Transient` keeps a property out entirely. Without an
-/// argument the entity name is the snake_cased type name. The macro is the
-/// Swift-first counterpart of `scoutdb-codegen`, which generates the same
-/// conformance from a published schema.
+/// argument the entity name is the snake_cased type name.
 ///
 @attached(extension, conformances: EntityRepresentable, names: named(entityName), named(fieldName(for:)), named(init(record:)), named(recordValues))
 public macro Entity(_ name: String? = nil) = #externalMacro(module: "ScoutDBMacros", type: "EntityMacro")

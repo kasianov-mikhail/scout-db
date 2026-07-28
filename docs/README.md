@@ -1,8 +1,7 @@
-# 📚 Guides
+# Guides
 
 | | Guide | Description |
 |:-:|-|-|
-| 🚀 | [Getting Started](getting-started.md) | Install the package and upload the physical [`Schema`](../Schema) once through the CloudKit Console. |
 | 🧬 | [Schema](schema.md) | Declare fields and constraints with the schema builder, backed by versioned `SchemaDescriptor` records instead of the append-only CloudKit schema. |
 | 🔄 | [Migrations](migrations.md) | Publish schema changes as new, immutable entity versions so every record ever written stays readable. |
 | 🧩 | [Macros](macros.md) | Map Swift structs to schema fields with `@Entity` instead of raw `[String: RecordValue]` dictionaries. |

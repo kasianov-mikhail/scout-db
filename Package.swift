@@ -18,10 +18,6 @@ let package = Package(
             name: "ScoutDBTesting",
             targets: ["ScoutDBTesting"]
         ),
-        .plugin(
-            name: "CodegenPlugin",
-            targets: ["CodegenPlugin"]
-        ),
     ],
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-syntax.git", "600.0.0"..<"700.0.0")
@@ -41,17 +37,6 @@ let package = Package(
         .target(
             name: "ScoutDBTesting",
             dependencies: ["ScoutDB"]
-        ),
-        .executableTarget(
-            name: "scoutdb-codegen",
-            dependencies: ["ScoutDB"],
-            path: "Sources/ScoutDBCodegen/Tool"
-        ),
-        .plugin(
-            name: "CodegenPlugin",
-            capability: .buildTool(),
-            dependencies: ["scoutdb-codegen"],
-            path: "Sources/ScoutDBCodegen/Plugin"
         ),
         .testTarget(
             name: "ScoutDBTests",

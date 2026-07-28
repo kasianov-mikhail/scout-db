@@ -1,4 +1,4 @@
-# 📊 Aggregation
+# Aggregation
 
 CloudKit has no server-side `SUM` or `GROUP BY` — a query returns records, never computed
 values. ScoutDB materializes aggregates at write time instead: declare `views` on an entity,
@@ -21,7 +21,11 @@ of grid records.
 Those records are bookkeeping, not entity data, but they still cost a read. Cache the rows
 in your app if you read them on a hot path.
 
-## 📐 Metrics
+## Table of Contents
+- [Metrics](#metrics)
+- [Reading](#reading)
+
+## Metrics
 
 Every view counts writes (`COUNT`). One metric per view on top of that:
 
@@ -35,7 +39,7 @@ Every view counts writes (`COUNT`). One metric per view on top of that:
 Buckets: `hour` (default), `weekday`, `day`, and `lifetime` — one running total per group with
 no time grid, the only bucket that works without an `envelopeDate`.
 
-## 📖 Reading
+## Reading
 
 ```swift
 let rows = try await store.aggregate(entity: "payment", view: "revenue", from: june, to: july)
@@ -59,34 +63,3 @@ closure. `distinct` reads the grid of a view grouped by the field when one cover
 (a `lifetime` view covers the unfiltered call) and the field is required or defaulted — one
 grid row per live value, no record scan. Without a covering view it falls back to a
 client-side scan — materialize a view for large entities.
-
-## ⚖️ Trade-offs
-
-<table>
-<colgroup>
-<col width="38%">
-<col width="62%">
-</colgroup>
-<tbody>
-<tr>
-<td>🔮 <strong>Questions must be known in advance.</strong></td>
-<td>A view added later covers new writes only. <code>Migrator.backfill(view:entity:)</code> drops the view's grid and recounts it from the entity's live records — quiesce writers for the pass, or a write landing mid-rebuild counts twice or not at all. The same call repairs a drifted grid.</td>
-</tr>
-<tr>
-<td>✍️ <strong>Write amplification.</strong></td>
-<td>Each view adds one counter update per write.</td>
-</tr>
-<tr>
-<td>🤝 <strong>Concurrent writers merge.</strong></td>
-<td>Aggregates update by compare-and-swap on the grid record's change tag, instead of overwriting each other.</td>
-</tr>
-<tr>
-<td>🎯 <strong>An extremum can be kept exact.</strong></td>
-<td>Declare <code>exact: true</code> on a <code>min</code>/<code>max</code> view and a removal that takes the standing extremum out recomputes that cell from the records behind it, instead of leaving the value it saw. The recompute reads one cell — an hour, a day or a week of one group — so a <code>lifetime</code> bucket rereads the group whole. That is also what makes the value readable: <code>minimum()</code> and <code>maximum()</code> fold an exact view's grid for the query shapes <code>count()</code> covers, while an inexact view leaves them scanning. Not available alongside <code>shards</code>, whose slices no query can name, or when the view groups by a payload or encrypted field, which no filter can narrow by.</td>
-</tr>
-<tr>
-<td>🔁 <strong>Deletes and updates rebalance the views.</strong></td>
-<td><code>delete</code>, <code>deleteAll</code>, <code>update</code>, and <code>updateAll</code> reverse the removed record's contribution, so <code>count</code>, <code>sum</code>, <code>stats</code>, and <code>histogram</code> views stay accurate as records change. A <code>min</code>/<code>max</code> extremum is the exception: it cannot be un-applied, so its value is left as-is when a record leaves (the count still decrements) unless the view declares <code>exact</code>. Backfilling a <code>min</code>/<code>max</code> view also restores it.</td>
-</tr>
-</tbody>
-</table>

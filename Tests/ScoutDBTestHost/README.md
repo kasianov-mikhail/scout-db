@@ -1,4 +1,4 @@
-# 🧪 Live contract runs
+# Live contract runs
 
 The contract suite in `Tests/ScoutDBTests/Contract` runs against the in-memory
 double on every `swift test`. This host runs the **same tests** against a real
@@ -8,6 +8,11 @@ double encodes (save policies, query semantics, index lag, CAS conflicts).
 A live run needs a signed app with the iCloud entitlement — unsigned `swift
 test` bundles cannot call `CKContainer` at all. This directory holds an
 [XcodeGen](https://github.com/yonaskolb/XcodeGen) spec for that host.
+
+## Table of Contents
+- [One-time setup](#one-time-setup)
+- [First-run schema bootstrap](#first-run-schema-bootstrap)
+- [What to expect](#what-to-expect)
 
 ## One-time setup
 
