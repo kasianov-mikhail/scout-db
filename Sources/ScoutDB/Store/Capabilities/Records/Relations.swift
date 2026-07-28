@@ -104,7 +104,6 @@ extension EntityStore {
     ///
     private func liveKeys(of entity: String, among keys: [String]) async throws -> Set<String> {
         let database = database
-        let trustedWriters = trustedWriters
         return try await withThrowingTaskGroup(of: [String].self) { group in
             for chunk in keys.chunked(into: 200) {
                 group.addTask {
@@ -116,11 +115,7 @@ extension EntityStore {
                             ServerFilter(field: "uuid", op: .in, value: .strings(chunk)),
                         ])
                     let records = try await database.allRecords(matching: query, desiredKeys: ["uuid"])
-                    return records.filter { record in
-                        guard let trustedWriters else { return true }
-                        guard let creator = record.recordCreator else { return false }
-                        return trustedWriters.contains(creator)
-                    }.compactMap { $0["uuid"] as? String }
+                    return records.filter(self.trusted).compactMap { $0["uuid"] as? String }
                 }
             }
             var alive: Set<String> = []
@@ -202,8 +197,11 @@ extension EntityStore {
             return collected
         }
 
-        for target in detaching {
-            try await detach(entity: target.entity, field: target.field, uuids: uuids)
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for target in detaching {
+                group.addTask { try await detach(entity: target.entity, field: target.field, uuids: uuids) }
+            }
+            try await group.waitForAll()
         }
         for (index, target) in referring.enumerated() {
             guard let victims = probed[index], victims.count > 0 else { continue }
@@ -221,8 +219,7 @@ extension EntityStore {
     private func tombstone(_ victims: [EntityRecord], using child: EntityDefinition) async throws {
         let tombstones = try victims.map { try tombstone(entity: child.entity, uuid: $0.uuid, definition: child, values: $0.values) }
         try await database.write(records: tombstones)
-        await releaseUniqueClaims(of: victims, using: child)
-        try await aggregator.remove(victims, using: child)
+        try await settle(removed: victims, using: child, auditing: false)
         noteChange(entity: child.entity, changed: victims.map { EntityStore.tombstoned($0) })
         try await cascadeDelete(entity: child.entity, uuids: victims.map(\.uuid))
     }

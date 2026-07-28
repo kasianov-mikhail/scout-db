@@ -46,9 +46,7 @@ extension EntityStore {
                 ServerFilter(field: "modificationDate", op: .lessThan, value: .date(cutoff)),
             ])
         let victims = try await database.allRecords(matching: query).map(\.recordID)
-        for chunk in victims.chunked(into: 400) {
-            try await database.modifyRecords(saving: [], deleting: chunk)
-        }
+        try await database.delete(records: victims)
         return victims.count
     }
 
@@ -60,9 +58,7 @@ extension EntityStore {
     func purge(entity: String, filters: [Filter]) async throws -> Int {
         let victims = try await read(entity: entity, filters: filters, fields: [])
         let ids = victims.map { CKRecord.ID(recordName: $0.uuid) }
-        for chunk in ids.chunked(into: 400) {
-            try await database.modifyRecords(saving: [], deleting: chunk)
-        }
+        try await database.delete(records: ids)
         return ids.count
     }
 

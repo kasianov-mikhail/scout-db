@@ -136,4 +136,28 @@ extension CKRecord {
     public func overrideChangeTag(_ tag: String) {
         objc_setAssociatedObject(self, &changeTagKey, tag, .OBJC_ASSOCIATION_RETAIN)
     }
+
+    /// Carries the record's injected system fields onto a record built from it.
+    ///
+    /// The seam every duplicate goes through, so a new overridable system field
+    /// is carried everywhere at once rather than at the copies that remembered.
+    ///
+    public func carryOverrides(to other: CKRecord) {
+        if let tag = recordVersionTag {
+            other.overrideChangeTag(tag)
+        }
+        if let date = recordModificationDate {
+            other.overrideModificationDate(date)
+        }
+        if let creator = recordCreator {
+            other.overrideCreator(creator)
+        }
+    }
+
+    /// A copy of the record that keeps the system fields `copy()` drops.
+    public func duplicate() -> CKRecord {
+        let copy = self.copy() as! CKRecord
+        carryOverrides(to: copy)
+        return copy
+    }
 }

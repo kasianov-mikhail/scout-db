@@ -242,7 +242,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         lock.withLock {
             pending.map { op in
                 switch op {
-                case .save(let record): return .save(record.copy() as! CKRecord)
+                case .save(let record): return .save(record.duplicate())
                 case .delete(let id): return .delete(id)
                 }
             }
@@ -467,33 +467,43 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     }
 
     private func submit(_ records: [CKRecord]) async throws -> [(record: CKRecord, result: Result<CKRecord, any Error>)] {
-        guard records.count > 0 else { return [] }
-        do {
-            let batch = try await backing.saveIfUnchanged(records)
-            let byID = Dictionary(records.map { ($0.recordID, $0) }, uniquingKeysWith: { first, _ in first })
-            return batch.compactMap { entry in byID[entry.0].map { ($0, entry.1) } }
-        } catch  where Self.isOffline(error) {
-            throw error
-        } catch  where Self.exceedsBatchLimit(error) && records.count > 1 {
-            let half = records.count / 2
-            return try await submit(Array(records[..<half])) + submit(Array(records[half...]))
-        } catch {
-            return records.map { ($0, .failure(error)) }
+        try await bisecting(records) { batch in
+            let results = try await backing.saveIfUnchanged(batch)
+            let byID = Dictionary(batch.map { ($0.recordID, $0) }, uniquingKeysWith: { first, _ in first })
+            return results.compactMap { entry in byID[entry.0].map { (record: $0, result: entry.1) } }
+        } failing: { batch, error in
+            batch.map { (record: $0, result: .failure(error)) }
         }
     }
 
     private func submit(deleting ids: [CKRecord.ID]) async throws -> [OfflineFlushError.Failure] {
-        guard ids.count > 0 else { return [] }
-        do {
-            try await backing.modifyRecords(saving: [], deleting: ids)
+        try await bisecting(ids) { batch in
+            try await backing.modifyRecords(saving: [], deleting: batch)
             return []
+        } failing: { batch, error in
+            batch.map { OfflineFlushError.Failure(recordID: $0, error: error) }
+        }
+    }
+
+    /// Sends the batch, halving it and retrying when the server calls it too big.
+    ///
+    /// A transport failure propagates — the flush stops and the queue keeps its
+    /// writes — while anything else is reported per item, so one poisoned record
+    /// does not fail the ones batched with it.
+    ///
+    private func bisecting<Item, Outcome>(
+        _ items: [Item], _ send: ([Item]) async throws -> [Outcome], failing: ([Item], any Error) -> [Outcome]
+    ) async throws -> [Outcome] {
+        guard items.count > 0 else { return [] }
+        do {
+            return try await send(items)
         } catch  where Self.isOffline(error) {
             throw error
-        } catch  where Self.exceedsBatchLimit(error) && ids.count > 1 {
-            let half = ids.count / 2
-            return try await submit(deleting: Array(ids[..<half])) + submit(deleting: Array(ids[half...]))
+        } catch  where Self.exceedsBatchLimit(error) && items.count > 1 {
+            let half = items.count / 2
+            return try await bisecting(Array(items[..<half]), send, failing: failing) + bisecting(Array(items[half...]), send, failing: failing)
         } catch {
-            return ids.map { OfflineFlushError.Failure(recordID: $0, error: error) }
+            return failing(items, error)
         }
     }
 
@@ -528,10 +538,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
             guard let their = theirs[key], !Self.equalValues(value, their) else { continue }
             return nil
         }
-        let merged = server.copy() as! CKRecord
-        if let tag = server.recordVersionTag {
-            merged.overrideChangeTag(tag)
-        }
+        let merged = server.duplicate()
         for (key, value) in mine {
             merged[key] = value
         }
@@ -662,7 +669,7 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
     private static func retainingStagedAssets(_ record: CKRecord) -> CKRecord {
         let staged = record.allKeys().filter { (record[$0] as? CKAsset)?.fileURL.map(EntityCoder.isStaged) == true }
         guard staged.count > 0 else { return record }
-        let copy = record.copy() as! CKRecord
+        let copy = record.duplicate()
         for key in staged {
             guard let url = (copy[key] as? CKAsset)?.fileURL else { continue }
             let retained = EntityCoder.stagingDirectory.appendingPathComponent("offline-" + UUID().uuidString)
@@ -738,11 +745,11 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         case .delete:
             return .deleted
         case .save(let queued):
-            return .record(queued.copy() as! CKRecord)
+            return .record(queued.duplicate())
         case nil:
             guard let baseline = baselines[id] else { return .unknown }
             touchBaselineLocked(id)
-            return .record(baseline.copy() as! CKRecord)
+            return .record(baseline.duplicate())
         }
     }
 

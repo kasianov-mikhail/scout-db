@@ -188,14 +188,17 @@ public struct Migrator: Sendable {
     }
 
     private func rekey(_ decoded: EntityRecord, using definition: EntityDefinition) -> [String: RecordValue] {
-        let oldFields = definition.fields(at: decoded.schemaVersion)
+        var predecessors: [String: FieldDefinition] = [:]
+        for field in definition.fields(at: decoded.schemaVersion) {
+            guard case .slot(_, let slot) = field.storage, predecessors[slot] == nil else { continue }
+            predecessors[slot] = field
+        }
         var values: [String: RecordValue] = [:]
         for field in definition.fields(at: definition.version) {
             if let value = decoded.values[field.name] {
                 values[field.name] = value
-            } else if case .slot(let pool, let slot) = field.storage {
-                let predecessor = oldFields.first { .slot(pool, slot) == $0.storage }
-                values[field.name] = predecessor.flatMap { decoded.values[$0.name] }
+            } else if case .slot(_, let slot) = field.storage {
+                values[field.name] = predecessors[slot].flatMap { decoded.values[$0.name] }
             }
         }
         return values

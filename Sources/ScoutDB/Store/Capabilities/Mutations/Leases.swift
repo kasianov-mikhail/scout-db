@@ -5,6 +5,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
 import Foundation
 
 extension EntityStore {
@@ -24,11 +25,8 @@ extension EntityStore {
     ///
     @discardableResult public func lease(entity: String, uuid: String, owner: String, for duration: TimeInterval, maxRetry: Int = 3) async throws -> Lease {
         var attempt = 0
-        var stored = try await items(entity: entity, uuids: [uuid]).first { !Self.isTombstone($0) }
+        var record = try await liveItem(entity: entity, uuid: uuid)
         while true {
-            guard let record = stored else {
-                throw SchemaError.notFound(uuid)
-            }
             if let holder = record["lease_owner"] as? String, holder != owner, let until = record["lease_until"] as? Date, until > Date() {
                 throw SchemaError.leaseHeld(owner: holder, until: until)
             }
@@ -41,16 +39,14 @@ extension EntityStore {
             } catch let conflict as RecordConflictError {
                 attempt += 1
                 guard attempt < maxRetry else { throw conflict }
-                stored = conflict.serverRecord
+                record = conflict.serverRecord
             }
         }
     }
 
     /// Releases the owner's lease; someone else's lease stays put.
     public func release(entity: String, uuid: String, owner: String) async throws {
-        guard let record = try await items(entity: entity, uuids: [uuid]).first(where: { !Self.isTombstone($0) }) else {
-            throw SchemaError.notFound(uuid)
-        }
+        let record = try await liveItem(entity: entity, uuid: uuid)
         guard record["lease_owner"] as? String == owner else { return }
         record["lease_owner"] = nil
         record["lease_until"] = nil
@@ -59,12 +55,18 @@ extension EntityStore {
 
     /// The record's live lease, or nil when it is free or the lease expired.
     public func leaseHolder(entity: String, uuid: String) async throws -> Lease? {
-        guard let record = try await items(entity: entity, uuids: [uuid]).first(where: { !Self.isTombstone($0) }) else {
-            throw SchemaError.notFound(uuid)
-        }
+        let record = try await liveItem(entity: entity, uuid: uuid)
         guard let owner = record["lease_owner"] as? String, let until = record["lease_until"] as? Date, until > Date() else {
             return nil
         }
         return Lease(owner: owner, until: until)
+    }
+
+    /// The record behind the uuid, or `notFound` when it is missing or tombstoned.
+    private func liveItem(entity: String, uuid: String) async throws -> CKRecord {
+        guard let record = try await items(entity: entity, uuids: [uuid]).first(where: { !Self.isTombstone($0) }) else {
+            throw SchemaError.notFound(uuid)
+        }
+        return record
     }
 }

@@ -120,6 +120,18 @@ extension EntityStore {
         lhs == rhs ? .orderedSame : (lhs < rhs ? .orderedAscending : .orderedDescending)
     }
 
+    /// The client-side predicates for the filters, each inverted where negated.
+    ///
+    /// The one place a filter becomes a predicate, so a read and the live query
+    /// spliced onto it keep the same client-side semantics.
+    ///
+    static func matchers(for filters: [Filter]) throws -> [(EntityRecord) -> Bool] {
+        try filters.map { filter -> (EntityRecord) -> Bool in
+            let base = try matcher(for: filter)
+            return filter.negated ? { !base($0) } : base
+        }
+    }
+
     func split(_ filters: [Filter], entity: String, using definition: EntityDefinition) throws -> (server: [ServerFilter], client: [Filter]) {
         var server = [ServerFilter(field: "entity", op: .equals, value: .string(entity))]
         var client: [Filter] = []
@@ -216,10 +228,10 @@ extension EntityStore {
         case .greaterThan, .greaterThanOrEquals, .lessThan, .lessThanOrEquals:
             return comparisonMatcher(for: filter)
         case .in:
-            let options = options(of: filter.value)
+            let options = filter.value.members ?? [filter.value]
             return { $0.values[field].map(options.contains) ?? false }
         case .notIn:
-            let options = options(of: filter.value)
+            let options = filter.value.members ?? [filter.value]
             return { record in record.values[field].map { !options.contains($0) } ?? false }
         case .beginsWith:
             guard case .string(let prefix) = filter.value else { return { _ in false } }
@@ -273,16 +285,6 @@ extension EntityStore {
         switch (lhs, rhs) {
         case (.string, .string), (.date, .date): true
         default: lhs.scalar != nil && rhs.scalar != nil
-        }
-    }
-
-    private static func options(of value: RecordValue) -> [RecordValue] {
-        switch value {
-        case .strings(let values): values.map(RecordValue.string)
-        case .ints(let values): values.map(RecordValue.int)
-        case .doubles(let values): values.map(RecordValue.double)
-        case .dates(let values): values.map(RecordValue.date)
-        default: [value]
         }
     }
 

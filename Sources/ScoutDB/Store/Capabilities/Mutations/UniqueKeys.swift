@@ -170,21 +170,7 @@ extension EntityStore {
     }
 
     private func claimRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
-        struct Chunk: @unchecked Sendable {
-            let records: [CKRecord]
-        }
-        guard ids.count > 100 else { return try await database.fetchRecords(ids: ids) }
-        let database = database
-        return try await withThrowingTaskGroup(of: Chunk.self) { group in
-            for chunk in ids.chunked(into: 100) {
-                group.addTask { Chunk(records: try await database.fetchRecords(ids: chunk)) }
-            }
-            var records: [CKRecord] = []
-            for try await chunk in group {
-                records += chunk.records
-            }
-            return records
-        }
+        try await database.fetchRecords(ids: ids, batchSize: 100)
     }
 
     func releaseUniqueClaims(of records: [EntityRecord], using definition: EntityDefinition) async {
@@ -197,11 +183,7 @@ extension EntityStore {
                 owners[UniqueClaim.recordID(entity: definition.entity, digest: digest)] = record.uuid
             }
         }
-        guard owners.count > 0 else { return }
-        guard let claims = try? await claimRecords(ids: owners.keys.sorted { $0.recordName < $1.recordName }) else { return }
-        let mine = claims.filter { $0["owner"] as? String == owners[$0.recordID] }.map(\.recordID)
-        guard mine.count > 0 else { return }
-        try? await database.delete(records: mine)
+        await release(owners)
     }
 
     func releaseStaleClaims(for keys: [[String]], of rewritten: [(previous: EntityRecord, next: EntityRecord)], using definition: EntityDefinition) async {
@@ -212,6 +194,12 @@ extension EntityStore {
                 owners[UniqueClaim.recordID(entity: definition.entity, digest: old)] = previous.uuid
             }
         }
+        await release(owners)
+    }
+
+    /// Deletes the claims the owners still hold, leaving a claim another record
+    /// has since taken alone.
+    private func release(_ owners: [CKRecord.ID: String]) async {
         guard owners.count > 0 else { return }
         guard let claims = try? await claimRecords(ids: owners.keys.sorted { $0.recordName < $1.recordName }) else { return }
         let mine = claims.filter { $0["owner"] as? String == owners[$0.recordID] }.map(\.recordID)
@@ -246,12 +234,19 @@ extension EntityStore {
         guard let probe, Self.membership(of: values) != nil else {
             return try await read(entity: definition.entity, fields: key)
         }
-        var holders: [EntityRecord] = []
-        for chunk in values.chunked(into: 100) {
-            guard let list = Self.membership(of: chunk) else { continue }
-            holders += try await read(entity: definition.entity, filters: [Filter(field: probe, op: .in, value: list)], fields: key)
+        let lists = values.chunked(into: 100).compactMap { Self.membership(of: $0) }
+        return try await withThrowingTaskGroup(of: [EntityRecord].self) { group in
+            for list in lists {
+                group.addTask {
+                    try await self.read(entity: definition.entity, filters: [Filter(field: probe, op: .in, value: list)], fields: key)
+                }
+            }
+            var holders: [EntityRecord] = []
+            for try await chunk in group {
+                holders += chunk
+            }
+            return holders
         }
-        return holders
     }
 
     static func membership(of values: [RecordValue]) -> RecordValue? {

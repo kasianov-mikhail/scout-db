@@ -70,15 +70,7 @@ extension EntityStore {
     ///
     func splice(_ current: [EntityRecord], with changed: [EntityRecord], entity: String, filters: [Filter], sort: [Sort]) -> [EntityRecord]? {
         guard filters.allSatisfy({ $0.radius == nil }), sort.allSatisfy({ $0.origin == nil }) else { return nil }
-        let matchers: [(EntityRecord) -> Bool]
-        do {
-            matchers = try filters.map { filter -> (EntityRecord) -> Bool in
-                let base = try Self.matcher(for: filter)
-                return filter.negated ? { !base($0) } : base
-            }
-        } catch {
-            return nil
-        }
+        guard let matchers = try? Self.matchers(for: filters) else { return nil }
 
         var order = current.map(\.uuid)
         var byID = Dictionary(current.map { ($0.uuid, $0) }, uniquingKeysWith: { _, last in last })
