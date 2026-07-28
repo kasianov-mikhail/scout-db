@@ -12,22 +12,12 @@ public struct Migrator: Sendable {
     let database: any CloudDatabase
     let registry: SchemaRegistry
     var keyProvider: (any EncryptionKeyProvider)?
-    var zoneID: CKRecordZone.ID?
 
     /// Creates a migrator backed by any `CloudDatabase` implementation.
-    ///
-    /// Pass the `zoneID` of the store being migrated: a pass then reads that
-    /// zone's records and writes its claims there, the way the store does.
-    /// Without one a pass reads every zone and claims in the default zone,
-    /// which is right only for a store that has no custom zone either.
-    ///
-    public init(
-        database: any CloudDatabase, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil, zoneID: CKRecordZone.ID? = nil
-    ) {
+    public init(database: any CloudDatabase, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil) {
         self.database = database
         self.registry = registry
         self.keyProvider = keyProvider
-        self.zoneID = zoneID
     }
 
     @discardableResult public func backfill(entity: String, transform: (inout EntityRecord) throws -> Void = { _ in }) async throws -> Int {
@@ -63,7 +53,7 @@ public struct Migrator: Sendable {
             ])
         let coder = EntityCoder(keyProvider: keyProvider)
         var migrated = 0
-        try await database.forEachPage(matching: query, inZone: zoneID) { page in
+        try await database.forEachPage(matching: query) { page in
             let rewritten = try page.map { record in
                 try coder.rewrite(record, using: definition) { entityRecord in
                     let previous = entityRecord
@@ -99,7 +89,7 @@ public struct Migrator: Sendable {
     @discardableResult public func backfillClaims(entity: String, batchSize: Int = 400) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         guard definition.enforcedKeys?.isEmpty == false || !EntityStore.exclusiveFields(of: definition).isEmpty else { return 0 }
-        let store = EntityStore(database: database, registry: registry, keyProvider: keyProvider, zoneID: zoneID)
+        let store = EntityStore(database: database, registry: registry, keyProvider: keyProvider)
         let fields = (definition.enforcedKeys ?? []).flatMap { $0 } + EntityStore.exclusiveFields(of: definition).map(\.name)
         var claimed = 0
         try await store.forEachPage(entity: entity, fields: Array(Set(fields))) { page in
@@ -141,7 +131,7 @@ public struct Migrator: Sendable {
                 filters: [
                     ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                     ServerFilter(field: "deleted", op: .equals, value: .int(0)),
-                ]), inZone: zoneID
+                ])
         ) { page in
             for chunk in page.chunked(into: batchSize) {
                 let decoded = try chunk.map { try coder.decode($0, using: definition) }
@@ -177,7 +167,7 @@ public struct Migrator: Sendable {
             ])
         let coder = EntityCoder(keyProvider: keyProvider)
         var sealed = 0
-        try await database.forEachPage(matching: query, inZone: zoneID) { page in
+        try await database.forEachPage(matching: query) { page in
             let rewritten = try page.map { record -> CKRecord in
                 let decoded: EntityRecord
                 do {

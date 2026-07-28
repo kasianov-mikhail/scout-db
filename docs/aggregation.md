@@ -18,9 +18,8 @@ try await store.schema("payment")
 One grid record covers one group and period; a million writes still read back as a handful
 of grid records.
 
-Those records are bookkeeping, not entity data, so they live in the container's default
-zone even when the store keeps its records in a custom one. Cache the rows in your app if
-you read them on a hot path.
+Those records are bookkeeping, not entity data, but they still cost a read. Cache the rows
+in your app if you read them on a hot path.
 
 ## 📐 Metrics
 

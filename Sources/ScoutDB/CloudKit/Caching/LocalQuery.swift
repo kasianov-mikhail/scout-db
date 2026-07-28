@@ -11,8 +11,8 @@ import Foundation
 
 /// Server-shaped query execution against a local record set.
 ///
-/// Filter, sort, page, project. The in-memory test double and the zone
-/// replica both answer queries through it, so the two stay behaviorally
+/// Filter, sort, page, project. The in-memory test double and the offline
+/// cache both answer queries through it, so the two stay behaviorally
 /// identical.
 ///
 package enum LocalQuery {
@@ -20,22 +20,21 @@ package enum LocalQuery {
     ///
     /// At most `resultsLimit` records per response (`maximumResults`, i.e. 0,
     /// means "as many as fit under `pageLimit`") and a cursor whenever matches
-    /// remain beyond the page. A zone scopes the scan; nil searches all zones.
+    /// remain beyond the page.
     ///
     package static func page(
-        _ records: [CKRecord], matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, offset: Int,
+        _ records: [CKRecord], matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, offset: Int,
         resultsLimit: Int, pageLimit: Int? = nil
     ) -> (matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?) {
         let matched =
             records
-            .filter { zoneID == nil || $0.recordID.zoneID == zoneID }
             .filter { $0.recordType == query.recordType && PredicateEvaluator.evaluate(query.predicate, record: $0) == true }
             .sorted(by: query.sortDescriptors ?? [])
         let capacity = Swift.min(resultsLimit > 0 ? resultsLimit : Int.max, pageLimit ?? Int.max)
         let page = matched.dropFirst(offset).prefix(capacity).map { project($0, keys: desiredKeys) }
         let end = offset + page.count
         let cursor: QueryCursor? =
-            end < matched.count ? .materialized(query: query, zoneID: zoneID, remaining: matched.dropFirst(end).map(\.recordID)) : nil
+            end < matched.count ? .materialized(query: query, remaining: matched.dropFirst(end).map(\.recordID)) : nil
         return (page.map { ($0.recordID, .success($0)) }, cursor)
     }
 
@@ -52,9 +51,9 @@ package enum LocalQuery {
         switch cursor {
         case .cloudKit:
             return nil
-        case .offset(let query, let zoneID, let offset):
-            return page(records, matching: query, inZone: zoneID, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit, pageLimit: pageLimit)
-        case .materialized(let query, let zoneID, let remaining):
+        case .offset(let query, let offset):
+            return page(records, matching: query, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit, pageLimit: pageLimit)
+        case .materialized(let query, let remaining):
             let capacity = Swift.min(resultsLimit > 0 ? resultsLimit : Int.max, pageLimit ?? Int.max)
             let byID = Dictionary(records.map { ($0.recordID, $0) }, uniquingKeysWith: { first, _ in first })
             var served: [(CKRecord.ID, Result<CKRecord, any Error>)] = []
@@ -67,7 +66,7 @@ package enum LocalQuery {
                 index += 1
             }
             let rest = remaining.dropFirst(index)
-            let cursor: QueryCursor? = rest.isEmpty ? nil : .materialized(query: query, zoneID: zoneID, remaining: Array(rest))
+            let cursor: QueryCursor? = rest.isEmpty ? nil : .materialized(query: query, remaining: Array(rest))
             return (served, cursor)
         }
     }

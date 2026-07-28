@@ -96,7 +96,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     private struct State {
         var table = RecordTable()
         var subscriptions: [CKSubscription] = []
-        var zones: [CKRecordZone.ID] = []
         var errors: [any Error] = []
         var writeErrors: [any Error] = []
         var pageLimit: Int?
@@ -115,11 +114,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     public var storedSubscriptions: [CKSubscription] {
         get { lock.withLock { state.subscriptions } }
         set { lock.withLock { state.subscriptions = newValue } }
-    }
-
-    public var zones: [CKRecordZone.ID] {
-        get { lock.withLock { state.zones } }
-        set { lock.withLock { state.zones = newValue } }
     }
 
     public var errors: [any Error] {
@@ -168,14 +162,14 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
 
     public init() {}
 
-    public func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+    public func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
         try lock.withLock {
             if let error = state.errors.popLast() {
                 throw error
             }
-            return pageLocked(query: query, zoneID: zoneID, desiredKeys: desiredKeys, offset: 0, resultsLimit: resultsLimit)
+            return pageLocked(query: query, desiredKeys: desiredKeys, offset: 0, resultsLimit: resultsLimit)
         }
     }
 
@@ -199,12 +193,11 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         return state.unindexed.isEmpty ? records : records.filter { !state.unindexed.contains($0.recordID) }
     }
 
-    private func pageLocked(query: CKQuery, zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, offset: Int, resultsLimit: Int) -> (
+    private func pageLocked(query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, offset: Int, resultsLimit: Int) -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
         LocalQuery.page(
-            indexedLocked(), matching: query, inZone: zoneID, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit,
-            pageLimit: state.pageLimit)
+            indexedLocked(), matching: query, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit, pageLimit: state.pageLimit)
     }
 
     public func save(_ record: CKRecord) async throws -> CKRecord {
@@ -327,17 +320,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
                 throw error
             }
             return ids.compactMap { state.table.record(id: $0).map { project($0, keys: nil) } }
-        }
-    }
-
-    public func save(zone: CKRecordZone) async throws {
-        try lock.withLock {
-            if let error = state.writeErrors.popLast() ?? state.errors.popLast() {
-                throw error
-            }
-            if !state.zones.contains(zone.zoneID) {
-                state.zones.append(zone.zoneID)
-            }
         }
     }
 

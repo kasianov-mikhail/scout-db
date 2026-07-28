@@ -44,17 +44,14 @@ final class ContractFixture {
     let database: any CloudDatabase
     let registry: SchemaRegistry
     let store: EntityStore
-    let zoneID: CKRecordZone.ID
     private let run: String
     private var published: [String] = []
 
     init() async throws {
         run = UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(10).lowercased()
         database = ContractBackend.makeDatabase()
-        zoneID = CKRecordZone.ID(zoneName: "contract_\(run)")
         registry = SchemaRegistry(database: database)
-        store = EntityStore(database: database, registry: registry, zoneID: zoneID)
-        try await store.ensureZone()
+        store = EntityStore(database: database, registry: registry)
     }
 
     func entity(_ name: String) -> String {
@@ -85,9 +82,6 @@ final class ContractFixture {
     func tearDown() async {
         for entity in published {
             try? await registry.retire(entity: entity)
-        }
-        if let database = database as? CKDatabase {
-            _ = try? await database.modifyRecordZones(saving: [], deleting: [zoneID])
         }
     }
 }

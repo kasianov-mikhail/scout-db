@@ -104,7 +104,6 @@ extension EntityStore {
     ///
     private func liveKeys(of entity: String, among keys: [String]) async throws -> Set<String> {
         let database = database
-        let zoneID = zoneID
         let trustedWriters = trustedWriters
         return try await withThrowingTaskGroup(of: [String].self) { group in
             for chunk in keys.chunked(into: 200) {
@@ -116,7 +115,7 @@ extension EntityStore {
                             ServerFilter(field: "deleted", op: .equals, value: .int(0)),
                             ServerFilter(field: "uuid", op: .in, value: .strings(chunk)),
                         ])
-                    let records = try await database.allRecords(matching: query, inZone: zoneID, desiredKeys: ["uuid"])
+                    let records = try await database.allRecords(matching: query, desiredKeys: ["uuid"])
                     return records.filter { record in
                         guard let trustedWriters else { return true }
                         guard let creator = record.recordCreator else { return false }

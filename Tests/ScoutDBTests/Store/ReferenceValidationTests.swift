@@ -136,10 +136,10 @@ final class CountingFetches: CloudDatabase, @unchecked Sendable {
         try await request(fetch: true) { try await backing.fetchRecord(id: id) }
     }
 
-    func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+    func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        try await request { try await backing.records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: resultsLimit) }
+        try await request { try await backing.records(matching: query, desiredKeys: desiredKeys, resultsLimit: resultsLimit) }
     }
 
     func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
@@ -170,9 +170,5 @@ final class CountingFetches: CloudDatabase, @unchecked Sendable {
 
     func subscriptions() async throws -> [CKSubscription] {
         try await backing.subscriptions()
-    }
-
-    func save(zone: CKRecordZone) async throws {
-        try await backing.save(zone: zone)
     }
 }

@@ -36,7 +36,6 @@ public struct EntityStore: Sendable {
     var keyProvider: (any EncryptionKeyProvider)?
     var trustedWriters: Set<String>?
     var enforceReferences = false
-    var zoneID: CKRecordZone.ID?
     let slots = SlotCache()
 
     var aggregator: GridAggregator {
@@ -49,26 +48,16 @@ public struct EntityStore: Sendable {
     ///
     /// With `enforceReferences` on, every write checks that its reference fields
     /// name live parent records and throws `SchemaError.brokenReference` otherwise.
-    /// With a `zoneID`, entity records live in that custom zone; schema and
-    /// aggregate bookkeeping stay in the default zone. Call `ensureZone()` once
-    /// before the first zoned write.
     ///
     public init(
         database: any CloudDatabase, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil, trustedWriters: Set<String>? = nil,
-        enforceReferences: Bool = false, zoneID: CKRecordZone.ID? = nil
+        enforceReferences: Bool = false
     ) {
         self.database = database
         self.registry = registry
         self.keyProvider = keyProvider
         self.trustedWriters = trustedWriters
         self.enforceReferences = enforceReferences
-        self.zoneID = zoneID
-    }
-
-    /// Creates the store's custom zone if one is configured; safe to repeat.
-    public func ensureZone() async throws {
-        guard let zoneID else { return }
-        try await database.save(zone: CKRecordZone(zoneID: zoneID))
     }
 
     public struct Filter: Equatable, Sendable {
@@ -141,7 +130,7 @@ public struct EntityStore: Sendable {
     @discardableResult public func write(_ batch: [EntityWrite], entity: String) async throws -> [String] {
         guard batch.count > 0 else { return [] }
         let definition = try await registry.definition(for: entity)
-        let coder = EntityCoder(keyProvider: keyProvider, zoneID: zoneID)
+        let coder = EntityCoder(keyProvider: keyProvider)
 
         var stored: Set<String> = []
         let entityRecords = try batch.map { entry in
@@ -223,7 +212,7 @@ public struct EntityStore: Sendable {
     }
 
     func tombstone(entity: String, uuid: String, definition: EntityDefinition, values: [String: RecordValue] = [:]) throws -> CKRecord {
-        try EntityCoder(keyProvider: keyProvider, zoneID: zoneID)
+        try EntityCoder(keyProvider: keyProvider)
             .encode(EntityRecord(entity: entity, uuid: uuid, schemaVersion: definition.version, values: values, deleted: true), using: definition)
     }
 
@@ -243,7 +232,7 @@ public struct EntityStore: Sendable {
         if let limit {
             return Array(try await boundedRecords(matching: query, desiredKeys: keys, limit: limit, using: definition, where: included).prefix(limit))
         }
-        return try decode(try await database.allRecords(matching: query, inZone: zoneID, desiredKeys: keys), using: definition).filter(included)
+        return try decode(try await database.allRecords(matching: query, desiredKeys: keys), using: definition).filter(included)
     }
 
     func liveQuery(_ filters: [Filter], entity: String, sort: [ServerSort] = [], createdBy creator: String? = nil, using definition: EntityDefinition)
@@ -270,7 +259,7 @@ public struct EntityStore: Sendable {
     ) async throws -> [EntityRecord] {
         var collected: [EntityRecord] = []
         var page = Self.cappedPage(limit == Int.max ? limit : limit + 1)
-        var (batch, token) = try await database.records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: page)
+        var (batch, token) = try await database.records(matching: query, desiredKeys: desiredKeys, resultsLimit: page)
         while true {
             collected += try decode(batch.map { try $0.1.get() }, using: definition).filter(included)
             guard collected.count < limit, let cursor = token else { break }
@@ -379,7 +368,7 @@ public struct EntityStore: Sendable {
     func forEachPage(matching query: CKQuery, desiredKeys: [String]? = nil, using definition: EntityDefinition, _ body: ([EntityRecord]) async throws -> Void)
         async throws
     {
-        try await database.forEachPage(matching: query, inZone: zoneID, desiredKeys: desiredKeys) { page in
+        try await database.forEachPage(matching: query, desiredKeys: desiredKeys) { page in
             try await body(try decode(page, using: definition))
         }
     }

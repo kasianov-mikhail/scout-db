@@ -15,10 +15,9 @@ import Testing
 @Suite("InMemory concurrency")
 struct InMemoryConcurrencyTests {
     let database = InMemoryDatabase()
-    let zoneID = CKRecordZone.ID(zoneName: "z-1", ownerName: CKCurrentUserDefaultName)
 
     private func makeRecord(_ index: Int) -> CKRecord {
-        CKRecord(recordType: "Thing", recordID: CKRecord.ID(recordName: "t-\(index)", zoneID: zoneID))
+        CKRecord(recordType: "Thing", recordID: CKRecord.ID(recordName: "t-\(index)"))
     }
 
     @Test("Concurrent writes land whole")
@@ -47,7 +46,7 @@ struct InMemoryConcurrencyTests {
                     _ = try await self.database.save(self.makeRecord(index))
                 }
                 group.addTask {
-                    _ = try await self.database.fetchRecords(ids: (0..<100).map { CKRecord.ID(recordName: "t-\($0)", zoneID: self.zoneID) })
+                    _ = try await self.database.fetchRecords(ids: (0..<100).map { CKRecord.ID(recordName: "t-\($0)") })
                 }
             }
             try await group.waitForAll()

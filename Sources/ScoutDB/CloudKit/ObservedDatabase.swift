@@ -13,7 +13,7 @@ public struct DatabaseOperation: Sendable {
     public enum Kind: String, Sendable {
         case query, continuation, save, modify, conditionalSave
         case subscriptionSave, subscriptionDelete, subscriptionList
-        case zoneSave, fetch
+        case fetch
     }
 
     public let kind: Kind
@@ -60,11 +60,11 @@ public final class ObservedDatabase: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    public func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+    public func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
         try await measure(.query, counting: { $0.matchResults.count }) {
-            try await backing.records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+            try await backing.records(matching: query, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
         }
     }
 
@@ -109,12 +109,6 @@ public final class ObservedDatabase: CloudDatabase, @unchecked Sendable {
     public func subscriptions() async throws -> [CKSubscription] {
         try await measure(.subscriptionList, counting: { $0.count }) {
             try await backing.subscriptions()
-        }
-    }
-
-    public func save(zone: CKRecordZone) async throws {
-        try await measure(.zoneSave) {
-            try await backing.save(zone: zone)
         }
     }
 

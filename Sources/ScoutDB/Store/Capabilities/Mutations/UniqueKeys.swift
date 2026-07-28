@@ -11,8 +11,8 @@ import Foundation
 enum UniqueClaim {
     static let recordType = "UniqueClaim"
 
-    static func recordID(entity: String, digest: String, zoneID: CKRecordZone.ID?) -> CKRecord.ID {
-        CKRecord.ID(recordName: "claim-" + contentDigest(of: [entity, digest]), zoneID: zoneID ?? .default)
+    static func recordID(entity: String, digest: String) -> CKRecord.ID {
+        CKRecord.ID(recordName: "claim-" + contentDigest(of: [entity, digest]))
     }
 }
 
@@ -96,7 +96,7 @@ extension EntityStore {
         var pending: [CKRecord.ID: PendingClaim] = [:]
         for (index, group) in groups.enumerated() {
             for (digest, owner) in group.owners {
-                let id = UniqueClaim.recordID(entity: definition.entity, digest: digest, zoneID: zoneID)
+                let id = UniqueClaim.recordID(entity: definition.entity, digest: digest)
                 guard pending[id] == nil else { continue }
                 pending[id] = PendingClaim(group: index, digest: digest, owner: owner)
             }
@@ -194,7 +194,7 @@ extension EntityStore {
         for record in records {
             for key in keys {
                 guard let digest = Self.keyDigest(key, in: record.values) else { continue }
-                owners[UniqueClaim.recordID(entity: definition.entity, digest: digest, zoneID: zoneID)] = record.uuid
+                owners[UniqueClaim.recordID(entity: definition.entity, digest: digest)] = record.uuid
             }
         }
         guard owners.count > 0 else { return }
@@ -209,7 +209,7 @@ extension EntityStore {
         for (previous, next) in rewritten {
             for key in keys {
                 guard let old = Self.keyDigest(key, in: previous.values), old != Self.keyDigest(key, in: next.values) else { continue }
-                owners[UniqueClaim.recordID(entity: definition.entity, digest: old, zoneID: zoneID)] = previous.uuid
+                owners[UniqueClaim.recordID(entity: definition.entity, digest: old)] = previous.uuid
             }
         }
         guard owners.count > 0 else { return }

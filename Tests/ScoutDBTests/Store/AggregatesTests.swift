@@ -904,10 +904,10 @@ private final class GridQueries: CloudDatabase, @unchecked Sendable {
         lock.withLock { log.filter { $0.query.recordType == Aggregate.recordType } }
     }
 
-    func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+    func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        let response = try await backing.records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+        let response = try await backing.records(matching: query, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
         lock.withLock { log.append((query, desiredKeys, response.matchResults.count)) }
         return response
     }
@@ -940,10 +940,6 @@ private final class GridQueries: CloudDatabase, @unchecked Sendable {
 
     func subscriptions() async throws -> [CKSubscription] {
         try await backing.subscriptions()
-    }
-
-    func save(zone: CKRecordZone) async throws {
-        try await backing.save(zone: zone)
     }
 
     func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {

@@ -396,7 +396,7 @@ enum PerfReport {
     }
 
     private static func other(of tally: PerfRecorder.Tally) -> Int {
-        tally[.subscriptionSave] + tally[.subscriptionDelete] + tally[.subscriptionList] + tally[.zoneSave]
+        tally[.subscriptionSave] + tally[.subscriptionDelete] + tally[.subscriptionList]
     }
 
     private static func width<Row>(of columns: [Column<Row>]) -> Int {

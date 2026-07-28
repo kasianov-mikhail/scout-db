@@ -347,28 +347,6 @@ struct OperationsTests {
         #expect(database.storedSubscriptions.isEmpty)
     }
 
-    @Test("A zoned store keeps entity records and tombstones in its custom zone")
-    func customZone() async throws {
-        let zone = CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName)
-        let zoned = EntityStore(database: database, registry: registry, zoneID: zone)
-        try await zoned.ensureZone()
-        try await zoned.ensureZone()
-        #expect(database.zones == [zone])
-
-        try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        let stored = try #require(database.records.first { $0.recordType == "Entity" })
-        #expect(stored.recordID.zoneID == zone)
-        #expect(try await zoned.read(entity: "purchase").map(\.uuid) == ["p-1"])
-
-        try await zoned.delete(entity: "purchase", uuid: "p-1")
-        let tombstone = try #require(database.records.first { $0.recordType == "Entity" })
-        #expect(tombstone.recordID.zoneID == zone)
-        #expect(try await zoned.read(entity: "purchase").isEmpty)
-
-        let descriptor = try #require(database.records.first { $0.recordType == "SchemaDescriptor" })
-        #expect(descriptor.recordID.zoneID != zone)
-    }
-
     @Test("Drop tombstones the records and retires the schema; a republish revives the entity")
     func dropEntity() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
@@ -463,23 +441,6 @@ struct OperationsTests {
             "entity": "purchase" as NSString, "schema_version": 2 as NSNumber, "uuid": "p-1" as NSString, "deleted": 1 as NSNumber,
         ]
         #expect(try await store.record(uuid: "p-1", pushedFields: tombstone) == nil)
-    }
-
-    @Test("A zoned store's queries stay inside its zone")
-    func zoneScopedQueries() async throws {
-        let zone = CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName)
-        let zoned = EntityStore(database: database, registry: registry, zoneID: zone)
-        try await zoned.ensureZone()
-
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-default")
-        try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-zoned")
-
-        #expect(try await zoned.read(entity: "purchase").map(\.uuid) == ["p-zoned"])
-        #expect(Set(try await store.read(entity: "purchase").map(\.uuid)) == ["p-default", "p-zoned"])
-
-        #expect(try await zoned.fetch(uuid: "p-default") == nil)
-        #expect(try await zoned.fetch(uuid: "p-zoned")?.uuid == "p-zoned")
-        #expect(try await zoned.read(entity: "purchase", limit: 5).records.map(\.uuid) == ["p-zoned"])
     }
 
     @Test("A distance sort ranks nearest-first, missing locations last")
