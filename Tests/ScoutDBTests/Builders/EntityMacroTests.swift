@@ -70,7 +70,7 @@ struct EntityMacroTests {
             ["product_id": .string("sku-2"), "quantity": .int(7), "amount": .double(70), "date": .date(Date(timeIntervalSince1970: 2_000))],
             entity: "purchase", uuid: "p-2")
 
-        let big = try await store.query(MacroPurchase.self).filter(\.quantity > 5).all()
+        let big = try await store.query(MacroPurchase.self).filter(\.quantity > 5).take(100)
         #expect(big.map(\.productId) == ["sku-2"])
         #expect(big.first?.price == 70)
         #expect(big.first?.badge == nil)

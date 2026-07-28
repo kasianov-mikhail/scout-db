@@ -11,27 +11,25 @@ import ScoutDB
 extension PerfScenarios {
     static var queries: [PerfScenario] {
         [
-            PerfScenario("Queries", "all(), one product, unbounded", sql: 1, cost: .result, writes: false) { world, _ in
+            PerfScenario("Queries", "take 200 of one product", sql: 1, writes: false) { world, _ in
                 _ = try await world.store.query(PerfSchema.order)
                     .filter("product", .equals, .string(world.hotProduct))
-                    .all()
+                    .take(200)
             },
-            PerfScenario("Queries", "filter + sort + limit 20", sql: 1, writes: false) { world, _ in
+            PerfScenario("Queries", "filter + sort + take 20", sql: 1, writes: false) { world, _ in
                 _ = try await world.store.query(PerfSchema.order)
                     .filter("status", .equals, .string("paid"))
                     .sort("total", .descending)
-                    .limit(20)
-                    .all()
+                    .take(20)
             },
-            PerfScenario("Queries", "OR group of three products, limit 50", sql: 1, writes: false) { world, _ in
+            PerfScenario("Queries", "OR group of three products, take 50", sql: 1, writes: false) { world, _ in
                 _ = try await world.store.query(PerfSchema.order)
                     .group {
                         $0.filter("product", .equals, .string(PerfSchema.products[0]))
                         $0.filter("product", .equals, .string(PerfSchema.products[1]))
                         $0.filter("product", .equals, .string(PerfSchema.products[2]))
                     }
-                    .limit(50)
-                    .all()
+                    .take(50)
             },
             PerfScenario("Queries", "OR of two conjunctions", sql: 1, writes: false) { world, _ in
                 _ = try await world.store.query(PerfSchema.order)
@@ -43,21 +41,19 @@ extension PerfScenarios {
                             EntityStore.Filter(field: "status", op: .equals, value: .string("refunded")),
                             EntityStore.Filter(field: "total", op: .greaterThan, value: .double(2_000)))
                     }
-                    .limit(50)
-                    .all()
+                    .take(50)
             },
             PerfScenario("Queries", "exclude, client-side negation", sql: 1, writes: false) { world, _ in
                 _ = try await world.store.query(PerfSchema.order)
                     .exclude("status", .equals, .string("refunded"))
-                    .limit(100)
-                    .all()
+                    .take(100)
             },
             PerfScenario("Queries", "count(), covered by a view", sql: 1, writes: false) { world, _ in
                 _ = try await world.store.query(PerfSchema.order)
                     .filter("product", .equals, .string(world.hotProduct))
                     .count()
             },
-            PerfScenario("Queries", "count(), scanning", sql: 1, cost: .elective, writes: false) { world, _ in
+            PerfScenario("Queries", "count() over a named domain", sql: 1, writes: false) { world, _ in
                 _ = try await world.store.query(PerfSchema.order)
                     .filter("quantity", .greaterThan, .int(15))
                     .count()
@@ -72,7 +68,7 @@ extension PerfScenarios {
                     .filter("product", .equals, .string(world.hotProduct))
                     .sum("total")
             },
-            PerfScenario("Queries", "maximum(total), always scanning", sql: 1, cost: .result, writes: false) { world, _ in
+            PerfScenario("Queries", "maximum(total) from an exact view", sql: 1, writes: false) { world, _ in
                 _ = try await world.store.query(PerfSchema.order)
                     .filter("product", .equals, .string(world.hotProduct))
                     .maximum("total")
@@ -93,8 +89,7 @@ extension PerfScenarios {
                 _ = try await world.store.query(PerfSchema.order)
                     .filter("product", .equals, .string(world.hotProduct))
                     .fields("total", "date")
-                    .limit(200)
-                    .all()
+                    .take(200)
             },
             PerfScenario("Queries", "explain the plan", sql: 1, writes: false) { world, _ in
                 _ = try await world.store.query(PerfSchema.order)

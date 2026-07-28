@@ -76,7 +76,7 @@ covering view it falls back to a client-side scan — materialize a view for lar
 </tr>
 <tr>
 <td>🎯 <strong>An extremum can be kept exact.</strong></td>
-<td>Declare <code>exact: true</code> on a <code>min</code>/<code>max</code> view and a removal that takes the standing extremum out recomputes that cell from the records behind it, instead of leaving the value it saw. The recompute reads one cell — an hour, a day or a week of one group — so a <code>lifetime</code> bucket rereads the group whole. Not available alongside <code>shards</code>, whose slices no query can name, or when the view groups by a payload or encrypted field, which no filter can narrow by.</td>
+<td>Declare <code>exact: true</code> on a <code>min</code>/<code>max</code> view and a removal that takes the standing extremum out recomputes that cell from the records behind it, instead of leaving the value it saw. The recompute reads one cell — an hour, a day or a week of one group — so a <code>lifetime</code> bucket rereads the group whole. That is also what makes the value readable: <code>minimum()</code> and <code>maximum()</code> fold an exact view's grid for the query shapes <code>count()</code> covers, while an inexact view leaves them scanning. Not available alongside <code>shards</code>, whose slices no query can name, or when the view groups by a payload or encrypted field, which no filter can narrow by.</td>
 </tr>
 <tr>
 <td>🔁 <strong>Deletes and updates rebalance the views.</strong></td>

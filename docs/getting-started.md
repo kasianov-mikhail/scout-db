@@ -56,8 +56,7 @@ try await store.write([
 let recent = try await store.query("purchase")
     .filter("quantity" > 1)
     .sort("date", .descending)
-    .limit(20)
-    .all()
+    .take(20)
 ```
 
 ## 🧭 Where to go next

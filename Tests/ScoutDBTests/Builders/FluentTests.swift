@@ -89,8 +89,8 @@ struct FluentTests {
         try await store.write(["email": .string("ada@gmail.com"), "bio": .string("systems engineer")], entity: "contact", uuid: "c-1")
         try await store.write(["email": .string("bob@icloud.com"), "bio": .string("designer")], entity: "contact", uuid: "c-2")
 
-        #expect(try await store.query("contact").filter("email", .endsWith, "gmail.com").all().map(\.uuid) == ["c-1"])
-        #expect(try await store.query("contact").filter("bio", .contains, "engineer").all().map(\.uuid) == ["c-1"])
+        #expect(try await store.query("contact").filter("email", .endsWith, "gmail.com").take(100).map(\.uuid) == ["c-1"])
+        #expect(try await store.query("contact").filter("bio", .contains, "engineer").take(100).map(\.uuid) == ["c-1"])
 
         let plans = try await store.query("contact").filter("email", .endsWith, "gmail.com").explain()
         #expect(plans.first?.server.contains { $0.contains("moc.liamg") } == true)
@@ -113,8 +113,7 @@ struct FluentTests {
         let records = try await store.query("purchase")
             .filter("quantity" > 1)
             .sort("quantity", .descending)
-            .limit(1)
-            .all()
+            .take(1)
         #expect(records.map(\.uuid) == ["p-0"])
     }
 
@@ -141,7 +140,7 @@ struct FluentTests {
                 $0.filter("product_id", .equals, "sku-2")
             }
             .sort("date")
-            .all()
+            .take(100)
         #expect(records.map(\.uuid) == ["p-0", "p-2"])
     }
 
@@ -189,7 +188,7 @@ struct FluentTests {
         let records = try await store.query("purchase")
             .exclude("product_id", .equals, "sku-1")
             .sort("date")
-            .all()
+            .take(100)
         #expect(records.map(\.uuid) == ["p-0", "p-2"])
 
         #expect(try await store.query("purchase").filter("quantity" > 1).exclude("quantity", .equals, 3).count() == 1)
@@ -200,7 +199,7 @@ struct FluentTests {
         await #expect(throws: SchemaError.invalidValue("product_id")) {
             _ = try await store.query("purchase")
                 .exclude(.init(field: "product_id", op: .near, value: .location(latitude: 0, longitude: 0), radius: 10))
-                .all()
+                .take(100)
         }
     }
 
@@ -230,7 +229,7 @@ struct FluentTests {
     @Test("A malformed regex filter throws instead of matching nothing")
     func malformedPatternFilter() async throws {
         await #expect(throws: SchemaError.invalidValue("product_id")) {
-            _ = try await store.query("purchase").filter("product_id", .matches, "(").all()
+            _ = try await store.query("purchase").filter("product_id", .matches, "(").take(100)
         }
         #expect(try await store.query("purchase").filter("product_id", .matches, "sku-[0-9]").count() == 3)
     }
@@ -243,7 +242,7 @@ struct FluentTests {
                 $0.all("quantity" > 1, "quantity" < 3)
             }
             .sort("date")
-            .all()
+            .take(100)
         #expect(records.map(\.uuid) == ["p-1", "p-2"])
 
         let count = try await store.query("purchase")
@@ -272,7 +271,7 @@ struct FluentTests {
                 $0.filter("product_id", .equals, "sku-2")
             }
             .delete()
-        let remaining = try await store.query("purchase").all()
+        let remaining = try await store.query("purchase").take(100)
         #expect(remaining.map(\.uuid) == ["p-1"])
     }
 
@@ -389,7 +388,7 @@ struct FluentTests {
                 guard case .int(let quantity)? = record.values["quantity"] else { return }
                 record.values["quantity"] = .int(quantity + 1)
             }
-        let records = try await store.query("purchase").sort("date").all()
+        let records = try await store.query("purchase").sort("date").take(100)
         #expect(records.map { $0.values["quantity"] } == [.int(4), .int(1), .int(3)])
     }
 
@@ -413,7 +412,7 @@ struct FluentTests {
         item.amount = 12.5
         #expect(try await store.write(item, uuid: "t-1") == "t-1")
 
-        let stored = try await store.query(TypedPurchase.self).filter(\.quantity > 4).all()
+        let stored = try await store.query(TypedPurchase.self).filter(\.quantity > 4).take(100)
         #expect(stored.map(\.productId) == ["sku-9"])
         #expect(stored.first?.amount == 12.5)
 
@@ -439,7 +438,7 @@ struct FluentTests {
         let cheap = try await store.query(TypedPurchase.self)
             .filter(\.quantity > 1)
             .sort(\.quantity)
-            .all()
+            .take(100)
         #expect(cheap.map(\.quantity) == [2, 3])
         #expect(cheap.map(\.productId) == ["sku-2", "sku-0"])
 
@@ -451,7 +450,7 @@ struct FluentTests {
         #expect(try await store.query(TypedPurchase.self).filter(\.amount <= 20).count() == 2)
 
         await #expect(throws: SchemaError.self) {
-            _ = try await store.query(TypedPurchase.self).filter(\.untracked == "x").all()
+            _ = try await store.query(TypedPurchase.self).filter(\.untracked == "x").take(100)
         }
     }
 
@@ -483,7 +482,7 @@ struct FluentTests {
         #expect(try await updates.next()?.count == 2)
 
         database.records.first { $0.recordID.recordName == "p-0" }?.overrideCreator("user-a")
-        let mine = try await store.query(TypedPurchase.self).createdBy("user-a").all()
+        let mine = try await store.query(TypedPurchase.self).createdBy("user-a").take(100)
         #expect(mine.map(\.productId) == ["sku-0"])
     }
 

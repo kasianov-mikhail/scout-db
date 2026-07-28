@@ -15,22 +15,19 @@ extension PerfScenarios {
             PerfScenario("Offline cache", "a read the cache has not seen", sql: 1, stack: .offline, writes: false) { world, iteration in
                 _ = try await world.store.query(PerfSchema.order)
                     .filter("product", .equals, .string(PerfSchema.products[iteration % PerfSchema.products.count]))
-                    .limit(100)
-                    .all()
+                    .take(100)
             },
             PerfScenario(
                 "Offline cache", "the same read, cache warm", sql: 1, stack: .offline, writes: false,
                 setUp: { world in
                     _ = try await world.store.query(PerfSchema.order)
                         .filter("product", .equals, .string(world.hotProduct))
-                        .limit(100)
-                        .all()
+                        .take(100)
                 }
             ) { world, _ in
                 _ = try await world.store.query(PerfSchema.order)
                     .filter("product", .equals, .string(world.hotProduct))
-                    .limit(100)
-                    .all()
+                    .take(100)
             },
             PerfScenario(
                 "Offline cache", "flush one queued write", sql: 1, stack: .offline, iterations: 1,

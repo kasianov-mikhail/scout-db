@@ -700,6 +700,31 @@ struct AggregatesTests {
         #expect(try await store.query("basket").filter("units", .greaterThan, .int(14)).count() == 3)
     }
 
+    @Test("A threshold on a bounded integer field names the grid keys it covers")
+    func countThroughNamedDomain() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "crate",
+                fields: [
+                    FieldDefinition(name: "units", type: .int, storage: .slot(.int, "i_00"), required: true, minimum: 1, maximum: 20),
+                    FieldDefinition(name: "weight", type: .int, storage: .slot(.int, "i_01"), required: true),
+                ], views: [AggregateView(name: "by_units", groupBy: "units", bucket: .lifetime)]))
+        for units: Int64 in [1, 5, 12, 16, 20] {
+            try await store.write(["units": .int(units), "weight": .int(units * 100)], entity: "crate")
+        }
+
+        let grid = try #require(database.records.first { $0.recordType == "Aggregate" && $0["group_key"] as? String == "i16" })
+        grid["c_00"] = Int64(41)
+
+        #expect(try await store.query("crate").filter("units", .greaterThan, .int(15)).count() == 42)
+        #expect(try await store.query("crate").filter("units", .greaterThanOrEquals, .int(16)).count() == 42)
+        #expect(try await store.query("crate").filter("units", .lessThan, .int(16)).count() == 3)
+        #expect(try await store.query("crate").filter("units", .lessThanOrEquals, .int(12)).count() == 3)
+        #expect(try await store.query("crate").filter("units", .greaterThanOrEquals, .int(21)).count() == 0)
+
+        #expect(try await store.query("crate").filter("weight", .greaterThan, .int(1_500)).count() == 2)
+    }
+
     @Test("count() over an aligned date range reads the view's cells instead of scanning")
     func countThroughRange() async throws {
         try await registry.publish(
@@ -799,6 +824,36 @@ struct AggregatesTests {
 
         #expect(try await store.query("ledger").minimum("amount") == 4)
         #expect(try await store.query("ledger").maximum("amount") == 10)
+    }
+
+    @Test("An extremum reads an exact view's grid, while an inexact one scans")
+    func extremumThroughExactView() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "reading",
+                fields: [
+                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00"), required: true),
+                    FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"), required: true),
+                ],
+                views: [
+                    AggregateView(name: "peak", groupBy: "product", bucket: .lifetime, max: "amount", exact: true),
+                    AggregateView(name: "trough", groupBy: "product", bucket: .lifetime, min: "amount"),
+                ]))
+        for (product, amount) in [("app", 10.0), ("app", 6.0), ("book", 4.0)] {
+            try await store.write(["product": .string(product), "amount": .double(amount)], entity: "reading")
+        }
+
+        let grid = try #require(
+            database.records.first {
+                $0.recordType == "Aggregate" && $0["view"] as? String == "peak" && $0["group_key"] as? String == "book"
+            })
+        grid["f_00"] = 41.0
+
+        #expect(try await store.query("reading").maximum("amount") == 41)
+        #expect(try await store.query("reading").filter("product", .equals, "book").maximum("amount") == 41)
+        #expect(try await store.query("reading").maximum("amount", by: "product") == ["app": 10, "book": 41])
+
+        #expect(try await store.query("reading").minimum("amount") == 4)
     }
 
     @Test("Grouped folds and count(by:) read the grouping view's grid")

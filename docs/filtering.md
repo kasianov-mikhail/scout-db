@@ -7,13 +7,12 @@ let failures = try await store.query("log")
     .filter("level", .equals, "error")
     .filter("date" > .date(yesterday))
     .sort("date", .descending)
-    .limit(50)
-    .all()
+    .take(50)
 ```
 
 | Executor | Returns |
 |---|---|
-| `all()` | every matching record |
+| `take(_:)` | at most that many matching records |
 | `first()` | the first matching record, if any |
 | `count()` | the number of matches |
 | `paginate(size:after:)` | one page plus a cursor for the next |
@@ -26,7 +25,7 @@ let failures = try await store.query("log")
 
 `createdBy(_:)` keeps only the records a given user wrote, matched server-side on
 `creatorUserRecordID` — the public-database pattern. It is part of the query, so every
-executor honors it: the folds and `count(by:)` as much as `all()`, and a scoped `update(_:)`
+executor honors it: the folds and `count(by:)` as much as `take(_:)`, and a scoped `update(_:)`
 or `delete()` never touches another user's records.
 
 ```swift

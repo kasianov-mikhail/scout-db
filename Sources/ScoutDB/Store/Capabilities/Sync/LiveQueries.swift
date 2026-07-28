@@ -171,7 +171,7 @@ extension QueryBuilder {
         return liveResults(
             ticks: store.changeTicks(entity: entity, buffering: .bufferingNewest(1), into: buffer), buffer: buffer, splice: splice
         ) {
-            try await all()
+            try await records(limit: bound)
         }
     }
 }

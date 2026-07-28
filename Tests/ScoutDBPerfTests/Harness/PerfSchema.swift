@@ -68,8 +68,9 @@ enum PerfSchema {
             views: [
                 AggregateView(name: "daily", groupBy: "product", bucket: .day),
                 AggregateView(name: "revenue", groupBy: "product", bucket: .lifetime, sum: "total"),
-                AggregateView(name: "peak", groupBy: "product", bucket: .lifetime, max: "total"),
+                AggregateView(name: "peak", groupBy: "product", bucket: .lifetime, max: "total", exact: true),
                 AggregateView(name: "by_status", groupBy: "status", bucket: .lifetime),
+                AggregateView(name: "by_quantity", groupBy: "quantity", bucket: .lifetime),
                 AggregateView(name: "spend", histogram: AggregateView.Histogram(field: "total", bounds: [50, 100, 250, 500, 1_000, 2_500])),
             ])
     }
