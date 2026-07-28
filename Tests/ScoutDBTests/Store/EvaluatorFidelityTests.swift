@@ -79,7 +79,7 @@ struct EvaluatorFidelityTests {
         #expect(PredicateEvaluator.compare(low, low) == .orderedSame)
     }
 
-    @Test("Every server filter the store can emit stays expressible", arguments: ServerFilter.Operator.allCases)
+    @Test("Every server filter the store can emit is decidable locally", arguments: ServerFilter.Operator.allCases)
     func serverFiltersStayExpressible(op: ServerFilter.Operator) {
         let value: RecordValue =
             switch op {
@@ -87,8 +87,13 @@ struct EvaluatorFidelityTests {
             case .near: .location(latitude: 1, longitude: 2)
             default: .string("a")
             }
-        let filter = ServerFilter(field: "s_00", op: op, value: value, radius: op == .near ? 10 : nil)
-        #expect(PredicateEvaluator.supports(ckQuery("Entity", filters: [filter]).predicate))
+        let field = op == .near ? "g_00" : "s_00"
+        let record = CKRecord(recordType: "Entity", recordID: CKRecord.ID(recordName: "r"))
+        record["s_00"] = "a"
+        record["g_00"] = CLLocation(latitude: 1, longitude: 2)
+
+        let filter = ServerFilter(field: field, op: op, value: value, radius: op == .near ? 10 : nil)
+        #expect(PredicateEvaluator.evaluate(ckQuery("Entity", filters: [filter]).predicate, record: record) != nil)
     }
 
     @Test("An inexpressible predicate is unknown, not false")
@@ -97,7 +102,6 @@ struct EvaluatorFidelityTests {
         record["s_00"] = "abc"
         #expect(PredicateEvaluator.evaluate(NSPredicate(format: "s_00 LIKE %@", "a*"), record: record) == nil)
         #expect(PredicateEvaluator.evaluate(NSPredicate(format: "s_00 == s_01"), record: record) == nil)
-        #expect(PredicateEvaluator.supports(NSPredicate(format: "s_00 LIKE %@", "a*")) == false)
-        #expect(PredicateEvaluator.supports(NSPredicate(format: "s_00 == %@", "abc")) == true)
+        #expect(PredicateEvaluator.evaluate(NSPredicate(format: "s_00 == %@", "abc"), record: record) == true)
     }
 }

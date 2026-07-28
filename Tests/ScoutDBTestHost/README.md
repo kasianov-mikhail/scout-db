@@ -3,7 +3,7 @@
 The contract suite in `Tests/ScoutDBTests/Contract` runs against the in-memory
 double on every `swift test`. This host runs the **same tests** against a real
 CloudKit private database, which is the only way to verify the assumptions the
-double encodes (save policies, query semantics, zone deltas, CAS conflicts).
+double encodes (save policies, query semantics, index lag, CAS conflicts).
 
 A live run needs a signed app with the iCloud entitlement — unsigned `swift
 test` bundles cannot call `CKContainer` at all. This directory holds an
@@ -60,10 +60,10 @@ Two one-time steps, both observed on the first real run:
 - The suite polls (`eventually`) instead of asserting immediate consistency —
   freshly written records reach the query indexes with a lag of seconds, so a
   live run takes minutes, not the double's milliseconds.
-- Every run is hermetic: a run-salted private zone plus run-salted entity
-  names; teardown deletes the zone and retires the schemas. Leftover
-  `Aggregate` grid rows and retired `Schema` rows may accumulate in the
-  development environment — reset it from the Console when it gets noisy.
+- Every run is hermetic: run-salted entity names, and teardown retires the
+  schemas it published. Leftover `Aggregate` grid rows and retired `Schema`
+  rows may accumulate in the development environment — reset it from the
+  Console when it gets noisy.
 - One test (`staleConditionalSave`) is live-only by design: the in-memory
   double accepts every conditional save today, and the live run exists to keep
   that divergence visible.

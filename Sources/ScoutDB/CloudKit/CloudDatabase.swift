@@ -13,21 +13,10 @@ import CloudKit
 /// traffics in it directly forces every test double into single-page reads.
 /// Real CloudKit pages carry the opaque cursor. Local scans mint
 /// `materialized` — the query plus the already-matched, already-ordered ids
-/// still to serve, so a continuation never re-evaluates the query;
-/// `offset` is the legacy local shape and re-evaluates on every page.
+/// still to serve, so a continuation never re-evaluates the query.
 public enum QueryCursor: @unchecked Sendable {
     case cloudKit(CKQueryOperation.Cursor)
-    case offset(query: CKQuery, offset: Int)
     case materialized(query: CKQuery, remaining: [CKRecord.ID])
-}
-
-extension QueryCursor {
-    package var localScan: CKQuery? {
-        switch self {
-        case .cloudKit: return nil
-        case .offset(let query, _), .materialized(let query, _): return query
-        }
-    }
 }
 
 /// A seam shaped exactly like the CKDatabase calls the store makes — not a

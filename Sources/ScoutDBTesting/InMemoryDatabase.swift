@@ -169,7 +169,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
             if let error = state.errors.popLast() {
                 throw error
             }
-            return pageLocked(query: query, desiredKeys: desiredKeys, offset: 0, resultsLimit: resultsLimit)
+            return pageLocked(query: query, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
         }
     }
 
@@ -193,11 +193,10 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         return state.unindexed.isEmpty ? records : records.filter { !state.unindexed.contains($0.recordID) }
     }
 
-    private func pageLocked(query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, offset: Int, resultsLimit: Int) -> (
+    private func pageLocked(query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        LocalQuery.page(
-            indexedLocked(), matching: query, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit, pageLimit: state.pageLimit)
+        LocalQuery.page(indexedLocked(), matching: query, desiredKeys: desiredKeys, resultsLimit: resultsLimit, pageLimit: state.pageLimit)
     }
 
     public func save(_ record: CKRecord) async throws -> CKRecord {

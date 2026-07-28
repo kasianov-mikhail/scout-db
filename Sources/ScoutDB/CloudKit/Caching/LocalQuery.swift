@@ -16,23 +16,22 @@ import Foundation
 /// identical.
 ///
 package enum LocalQuery {
-    /// One page of matches from `offset`, mirroring the server's paging.
+    /// The first page of matches, mirroring the server's paging.
     ///
     /// At most `resultsLimit` records per response (`maximumResults`, i.e. 0,
     /// means "as many as fit under `pageLimit`") and a cursor whenever matches
     /// remain beyond the page.
     ///
     package static func page(
-        _ records: [CKRecord], matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, offset: Int,
-        resultsLimit: Int, pageLimit: Int? = nil
+        _ records: [CKRecord], matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int, pageLimit: Int? = nil
     ) -> (matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?) {
         let matched =
             records
             .filter { $0.recordType == query.recordType && PredicateEvaluator.evaluate(query.predicate, record: $0) == true }
             .sorted(by: query.sortDescriptors ?? [])
         let capacity = Swift.min(resultsLimit > 0 ? resultsLimit : Int.max, pageLimit ?? Int.max)
-        let page = matched.dropFirst(offset).prefix(capacity).map { project($0, keys: desiredKeys) }
-        let end = offset + page.count
+        let page = matched.prefix(capacity).map { project($0, keys: desiredKeys) }
+        let end = page.count
         let cursor: QueryCursor? =
             end < matched.count ? .materialized(query: query, remaining: matched.dropFirst(end).map(\.recordID)) : nil
         return (page.map { ($0.recordID, .success($0)) }, cursor)
@@ -42,8 +41,7 @@ package enum LocalQuery {
     ///
     /// A `materialized` cursor is answered from its carried id order — no
     /// re-filtering and no re-sorting; an id whose record left the store is
-    /// skipped, and an updated record is served in its current state. A legacy
-    /// `offset` cursor re-evaluates the query the way the first page did.
+    /// skipped, and an updated record is served in its current state.
     ///
     package static func resume(
         _ records: [CKRecord], from cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int, pageLimit: Int? = nil
@@ -51,8 +49,6 @@ package enum LocalQuery {
         switch cursor {
         case .cloudKit:
             return nil
-        case .offset(let query, let offset):
-            return page(records, matching: query, desiredKeys: desiredKeys, offset: offset, resultsLimit: resultsLimit, pageLimit: pageLimit)
         case .materialized(let query, let remaining):
             let capacity = Swift.min(resultsLimit > 0 ? resultsLimit : Int.max, pageLimit ?? Int.max)
             let byID = Dictionary(records.map { ($0.recordID, $0) }, uniquingKeysWith: { first, _ in first })
