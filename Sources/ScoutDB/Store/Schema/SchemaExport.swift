@@ -8,7 +8,7 @@
 import Foundation
 
 extension EntityDefinition {
-    /// The canonical `.entity.json` bytes the codegen toolchain consumes.
+    /// The canonical `.entity.json` bytes of a published definition.
     ///
     /// Formatting is stable — pretty-printed with sorted keys — so exports
     /// diff cleanly under version control.
