@@ -71,7 +71,6 @@ let recent = try await store.query("purchase")
 | 📊 [Aggregation](aggregation.md) | materialized counters, sums, and percentiles |
 | 📎 [Records](records.md) | assets, relations, revisions, soft delete, and TTL |
 | 🧩 [The @Entity macro](macros.md) | typed structs instead of value dictionaries |
-| 🔗 [Sharing](sharing.md) | zone-wide and single-record `CKShare`s |
 | 📡 [Sync](sync.md) | push-triggered reads, push payloads, and live queries |
 | 📴 [Offline](offline.md) | the queued write cache |
 | 🔐 [Security](security.md) | field encryption and trusted writers |
