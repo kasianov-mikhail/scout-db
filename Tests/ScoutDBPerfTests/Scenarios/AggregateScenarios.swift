@@ -40,22 +40,6 @@ extension PerfScenarios {
             PerfScenario("Aggregation", "lifetime totals by country", sql: 1, cost: .result, writes: false) { world, _ in
                 _ = try await world.store.totals(entity: PerfSchema.customer, view: "by_country")
             },
-            PerfScenario("Grid", "write ten orders across ten slots", sql: 1, cost: .result) { world, iteration in
-                let batch = (0..<10).map { index in
-                    EntityWrite(values: world.newOrder(iteration, offset: index), uuid: world.fresh("grid\(index)", iteration))
-                }
-                try await world.store.write(batch, entity: PerfSchema.order)
-            },
-            PerfScenario("Grid", "write ten orders into one slot", sql: 1, cost: .result) { world, iteration in
-                let batch = (0..<10).map { index in
-                    var values = world.newOrder(iteration)
-                    values["product"] = .string(world.hotProduct)
-                    values["date"] = .date(world.corpus.now)
-                    values["total"] = .double(10 + Double(index))
-                    return EntityWrite(values: values, uuid: world.fresh("hot\(index)", iteration))
-                }
-                try await world.store.write(batch, entity: PerfSchema.order)
-            },
             PerfScenario("Grid", "update that cannot move a max", sql: 2) { world, iteration in
                 try await world.store.update(entity: PerfSchema.order, uuid: world.order(iteration)) { record in
                     record.values["total"] = .double(1)

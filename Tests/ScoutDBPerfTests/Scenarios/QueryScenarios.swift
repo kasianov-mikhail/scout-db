@@ -72,6 +72,14 @@ extension PerfScenarios {
                     .filter("product", .equals, .string(world.hotProduct))
                     .sum("total")
             },
+            PerfScenario("Queries", "maximum(total), always scanning", sql: 1, cost: .result, writes: false) { world, _ in
+                _ = try await world.store.query(PerfSchema.order)
+                    .filter("product", .equals, .string(world.hotProduct))
+                    .maximum("total")
+            },
+            PerfScenario("Queries", "sum(total) by product", sql: 1, writes: false) { world, _ in
+                _ = try await world.store.query(PerfSchema.order).sum("total", by: "product")
+            },
             PerfScenario("Queries", "count(by: status)", sql: 1, writes: false) { world, _ in
                 _ = try await world.store.query(PerfSchema.order).count(by: "status")
             },

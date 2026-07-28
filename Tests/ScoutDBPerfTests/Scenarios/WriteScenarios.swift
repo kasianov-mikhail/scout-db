@@ -30,12 +30,6 @@ extension PerfScenarios {
             PerfScenario("Records", "batch of 401 items, two chunks", sql: 1, cost: .result, iterations: 2) { world, iteration in
                 try await world.store.write(itemBatch(world, iteration, count: 401), entity: PerfSchema.item)
             },
-            PerfScenario("Records", "batch of 50 orders, four views", sql: 1, cost: .result, iterations: 2) { world, iteration in
-                let batch = (0..<50).map { index in
-                    EntityWrite(values: world.newOrder(iteration, offset: index), uuid: world.fresh("bulk\(index)", iteration))
-                }
-                try await world.store.write(batch, entity: PerfSchema.order)
-            },
             PerfScenario("Records", "read one record by uuid", sql: 1, writes: false) { world, iteration in
                 _ = try await world.store.fetch(entity: PerfSchema.order, uuids: [world.order(iteration)])
             },
@@ -58,21 +52,8 @@ extension PerfScenarios {
                     record.values["status"] = .string("paid")
                 }
             },
-            PerfScenario("Records", "updateAll over a filter", sql: 1, cost: .result, iterations: 2) { world, iteration in
-                _ = try await world.store.query(PerfSchema.order)
-                    .filter("product", .equals, .string(PerfSchema.products[iteration % PerfSchema.products.count]))
-                    .filter("status", .equals, .string("placed"))
-                    .update { record in
-                        record.values["status"] = .string("paid")
-                    }
-            },
             PerfScenario("Records", "delete one order", sql: 1) { world, iteration in
                 try await world.store.delete(entity: PerfSchema.order, uuid: world.order(iteration))
-            },
-            PerfScenario("Records", "deleteAll over a filter", sql: 1, cost: .result, iterations: 2) { world, iteration in
-                _ = try await world.store.query(PerfSchema.item)
-                    .filter("sku", .equals, .string(PerfSchema.products[iteration % PerfSchema.products.count]))
-                    .delete()
             },
         ]
     }

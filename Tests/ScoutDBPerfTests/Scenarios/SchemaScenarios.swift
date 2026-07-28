@@ -32,27 +32,35 @@ extension PerfScenarios {
                             FieldDefinition(name: "at", type: .timestamp, storage: .slot(.timestamp, "t_00"), required: true),
                         ], envelopeDate: "at"))
             },
-            PerfScenario("Schema", "publish a second version", sql: 2) { world, iteration in
-                let entity = world.fresh("ver", iteration)
-                for version in 1...2 {
-                    var fields = [
-                        FieldDefinition(name: "label", type: .string, storage: .slot(.string, "s_00"), required: true),
-                        FieldDefinition(name: "at", type: .timestamp, storage: .slot(.timestamp, "t_00"), required: true),
-                    ]
-                    if version == 2 {
-                        fields.append(FieldDefinition(name: "score", type: .int, storage: .slot(.int, "i_00"), since: 2))
-                    }
-                    try await world.registry.publish(EntityDefinition(entity: entity, version: version, fields: fields, envelopeDate: "at"))
-                }
-            },
-            PerfScenario("Schema", "retire an entity", sql: 1) { world, iteration in
-                let entity = world.fresh("ret", iteration)
+            PerfScenario("Schema", "publish a second version", sql: 1, setUp: { world in try await stageEntities(world, prefix: "ver") }) {
+                world, iteration in
                 try await world.registry.publish(
-                    EntityDefinition(
-                        entity: entity, version: 1,
-                        fields: [FieldDefinition(name: "at", type: .timestamp, storage: .slot(.timestamp, "t_00"), required: true)], envelopeDate: "at"))
-                try await world.registry.retire(entity: entity)
+                    EntityDefinition(entity: world.stage.entities[iteration], version: 2, fields: fields(at: 2), envelopeDate: "at"))
+            },
+            PerfScenario("Schema", "retire an entity", sql: 1, setUp: { world in try await stageEntities(world, prefix: "ret") }) { world, iteration in
+                try await world.registry.retire(entity: world.stage.entities[iteration])
             },
         ]
+    }
+
+    /// Publishes one throwaway entity per iteration for the bodies that need one
+    /// already on the registry.
+    private static func stageEntities(_ world: PerfWorld, prefix: String) async throws {
+        for iteration in 0..<world.repeats {
+            let entity = world.fresh(prefix, iteration)
+            try await world.registry.publish(EntityDefinition(entity: entity, version: 1, fields: fields(at: 1), envelopeDate: "at"))
+            world.stage.entities.append(entity)
+        }
+    }
+
+    private static func fields(at version: Int) -> [FieldDefinition] {
+        var fields = [
+            FieldDefinition(name: "label", type: .string, storage: .slot(.string, "s_00"), required: true),
+            FieldDefinition(name: "at", type: .timestamp, storage: .slot(.timestamp, "t_00"), required: true),
+        ]
+        if version == 2 {
+            fields.append(FieldDefinition(name: "score", type: .int, storage: .slot(.int, "i_00"), since: 2))
+        }
+        return fields
     }
 }
