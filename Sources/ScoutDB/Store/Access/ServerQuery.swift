@@ -44,18 +44,30 @@ struct ServerFilter: Equatable, Sendable {
     var predicate: NSPredicate {
         let value = value.predicateValue
         return switch op {
-        case .equals: NSPredicate(format: "%K == %@", field, value)
-        case .notEquals: NSPredicate(format: "%K != %@", field, value)
-        case .greaterThan: NSPredicate(format: "%K > %@", field, value)
-        case .greaterThanOrEquals: NSPredicate(format: "%K >= %@", field, value)
-        case .lessThan: NSPredicate(format: "%K < %@", field, value)
-        case .lessThanOrEquals: NSPredicate(format: "%K <= %@", field, value)
-        case .in: NSPredicate(format: "%K IN %@", field, value)
-        case .notIn: NSPredicate(format: "NOT (%K IN %@)", field, value)
-        case .beginsWith: NSPredicate(format: "%K BEGINSWITH %@", field, value)
-        case .contains: NSPredicate(format: "%K CONTAINS %@", field, value)
-        case .near: NSPredicate(format: "distanceToLocation:fromLocation:(%K, %@) < %f", field, value, radius ?? 0)
-        case .search: NSPredicate(format: "self contains %@", value)
+        case .equals:
+            NSPredicate(format: "%K == %@", field, value)
+        case .notEquals:
+            NSPredicate(format: "%K != %@", field, value)
+        case .greaterThan:
+            NSPredicate(format: "%K > %@", field, value)
+        case .greaterThanOrEquals:
+            NSPredicate(format: "%K >= %@", field, value)
+        case .lessThan:
+            NSPredicate(format: "%K < %@", field, value)
+        case .lessThanOrEquals:
+            NSPredicate(format: "%K <= %@", field, value)
+        case .in:
+            NSPredicate(format: "%K IN %@", field, value)
+        case .notIn:
+            NSPredicate(format: "NOT (%K IN %@)", field, value)
+        case .beginsWith:
+            NSPredicate(format: "%K BEGINSWITH %@", field, value)
+        case .contains:
+            NSPredicate(format: "%K CONTAINS %@", field, value)
+        case .near:
+            NSPredicate(format: "distanceToLocation:fromLocation:(%K, %@) < %f", field, value, radius ?? 0)
+        case .search:
+            NSPredicate(format: "self contains %@", value)
         }
     }
 }

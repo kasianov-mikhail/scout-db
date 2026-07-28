@@ -45,33 +45,55 @@ extension EntityStore {
 
         var serverOperator: ServerFilter.Operator? {
             switch self {
-            case .equals: .equals
-            case .notEquals: .notEquals
-            case .greaterThan: .greaterThan
-            case .greaterThanOrEquals: .greaterThanOrEquals
-            case .lessThan: .lessThan
-            case .lessThanOrEquals: .lessThanOrEquals
-            case .in: .in
-            case .notIn: .notIn
-            case .beginsWith: .beginsWith
-            case .contains: .contains
-            case .near: .near
-            case .search: .search
-            case .endsWith, .like, .matches, .isNull, .isNotNull: nil
+            case .equals:
+                .equals
+            case .notEquals:
+                .notEquals
+            case .greaterThan:
+                .greaterThan
+            case .greaterThanOrEquals:
+                .greaterThanOrEquals
+            case .lessThan:
+                .lessThan
+            case .lessThanOrEquals:
+                .lessThanOrEquals
+            case .in:
+                .in
+            case .notIn:
+                .notIn
+            case .beginsWith:
+                .beginsWith
+            case .contains:
+                .contains
+            case .near:
+                .near
+            case .search:
+                .search
+            case .endsWith, .like, .matches, .isNull, .isNotNull:
+                nil
             }
         }
 
         var complement: Match? {
             switch self {
-            case .equals: .notEquals
-            case .notEquals: .equals
-            case .in: .notIn
-            case .notIn: .in
-            case .greaterThan: .lessThanOrEquals
-            case .greaterThanOrEquals: .lessThan
-            case .lessThan: .greaterThanOrEquals
-            case .lessThanOrEquals: .greaterThan
-            default: nil
+            case .equals:
+                .notEquals
+            case .notEquals:
+                .equals
+            case .in:
+                .notIn
+            case .notIn:
+                .in
+            case .greaterThan:
+                .lessThanOrEquals
+            case .greaterThanOrEquals:
+                .lessThan
+            case .lessThan:
+                .greaterThanOrEquals
+            case .lessThanOrEquals:
+                .greaterThan
+            default:
+                nil
             }
         }
     }
@@ -235,9 +257,12 @@ extension EntityStore {
             guard case .string(let needle) = filter.value else { return { _ in false } }
             return { record in
                 switch record.values[field] {
-                case .string(let text)?: text.contains(needle)
-                case .strings(let members)?: members.contains(needle)
-                default: false
+                case .string(let text)?:
+                    text.contains(needle)
+                case .strings(let members)?:
+                    members.contains(needle)
+                default:
+                    false
                 }
             }
         case .endsWith:
@@ -268,18 +293,24 @@ extension EntityStore {
         return { record in
             guard let value = record.values[field], comparable(value, filter.value) else { return false }
             return switch (filter.op, rank(value, filter.value)) {
-            case (.greaterThan, .orderedDescending), (.lessThan, .orderedAscending): true
-            case (.greaterThanOrEquals, .orderedDescending), (.greaterThanOrEquals, .orderedSame): true
-            case (.lessThanOrEquals, .orderedAscending), (.lessThanOrEquals, .orderedSame): true
-            default: false
+            case (.greaterThan, .orderedDescending), (.lessThan, .orderedAscending):
+                true
+            case (.greaterThanOrEquals, .orderedDescending), (.greaterThanOrEquals, .orderedSame):
+                true
+            case (.lessThanOrEquals, .orderedAscending), (.lessThanOrEquals, .orderedSame):
+                true
+            default:
+                false
             }
         }
     }
 
     private static func comparable(_ lhs: RecordValue, _ rhs: RecordValue) -> Bool {
         switch (lhs, rhs) {
-        case (.string, .string), (.date, .date): true
-        default: lhs.scalar != nil && rhs.scalar != nil
+        case (.string, .string), (.date, .date):
+            true
+        default:
+            lhs.scalar != nil && rhs.scalar != nil
         }
     }
 
@@ -293,9 +324,12 @@ extension EntityStore {
     static func wildcardPattern(_ pattern: String) -> String {
         pattern.map { character -> String in
             switch character {
-            case "*": ".*"
-            case "?": "."
-            default: NSRegularExpression.escapedPattern(for: String(character))
+            case "*":
+                ".*"
+            case "?":
+                "."
+            default:
+                NSRegularExpression.escapedPattern(for: String(character))
             }
         }.joined()
     }

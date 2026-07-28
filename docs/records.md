@@ -1,7 +1,7 @@
 # Records
 
 Beyond writing and querying fields, individual records carry files, references to other
-entities, an optional audit trail, and soft-delete/TTL lifecycle. This page covers those
+entities, an optional audit trail, and a soft-delete lifecycle. This page covers those
 capabilities; field encryption is covered in [Security](security.md) and materialized
 aggregates in [Aggregation](aggregation.md).
 
@@ -10,7 +10,7 @@ aggregates in [Aggregation](aggregation.md).
 - [Relations](#relations)
 - [Unique keys](#unique-keys)
 - [Counters and set fields](#counters-and-set-fields)
-- [Soft delete, restore, and TTL](#soft-delete-restore-and-ttl)
+- [Soft delete and restore](#soft-delete-and-restore)
 - [Revisions](#revisions)
 
 ## Assets
@@ -150,10 +150,10 @@ try await store.remove(["clearance"], from: "tags", entity: "product", uuid: "p-
 Never call `increment` inside a `transaction` — transaction replays are at-least-once, and a
 replayed increment would double-count.
 
-## Soft delete, restore, and TTL
+## Soft delete and restore
 
-Every record's envelope carries `deleted` and `expires` (see [Schema](schema.md#envelope)).
-The lifecycle API around them:
+Every record's envelope carries a `deleted` flag (see [Schema](schema.md#envelope)).
+The lifecycle API around it:
 
 | Method | Effect |
 |---|---|
@@ -171,8 +171,7 @@ try await store.compact(entity: "purchase", olderThan: cutoff)
 try await store.drop(entity: "purchase")
 ```
 
-`compact` erases tombstones for good — a record purged this way can no longer be restored. TTL is declared with `.ttl(_ seconds:)` on the schema, which stamps an
-`expires` cutoff onto every record's envelope; no built-in sweep reads it.
+`compact` erases tombstones for good — a record purged this way can no longer be restored.
 
 ## Revisions
 

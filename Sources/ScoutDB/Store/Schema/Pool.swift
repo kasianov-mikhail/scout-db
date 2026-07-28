@@ -28,15 +28,19 @@ public enum Pool: String, Codable, CaseIterable, Sendable {
 
     var isQueryable: Bool {
         switch self {
-        case .asset, .assetList: false
-        default: true
+        case .asset, .assetList:
+            false
+        default:
+            true
         }
     }
 
     var isSortable: Bool {
         switch self {
-        case .string, .text, .int, .double, .timestamp: true
-        default: false
+        case .string, .text, .int, .double, .timestamp:
+            true
+        default:
+            false
         }
     }
 

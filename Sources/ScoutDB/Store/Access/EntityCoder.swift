@@ -118,9 +118,6 @@ struct EntityCoder {
         record["schema_version"] = Int64(entityRecord.schemaVersion)
         record["uuid"] = entityRecord.uuid
         record["deleted"] = Int64(entityRecord.deleted ? 1 : 0)
-        if let ttl = definition.ttl, let dateField = definition.envelopeDate, case .date(let date)? = values[dateField] {
-            record["expires"] = date.addingTimeInterval(ttl)
-        }
 
         var payload: [String: RecordValue] = [:]
         for field in fields {
@@ -203,25 +200,25 @@ struct EntityCoder {
     private func derive(_ derivation: Derivation, from source: RecordValue?, keyID: String?) throws -> RecordValue? {
         switch (derivation.transform, source) {
         case (.lowercase, .string(let value)?):
-            return .string(value.lowercased())
+            .string(value.lowercased())
         case (.fold, .string(let value)?):
-            return .string(value.folded)
+            .string(value.folded)
         case (.reversed, .string(let value)?):
-            return .string(String(value.reversed()))
+            .string(String(value.reversed()))
         case (.ngrams, .string(let value)?):
-            return .strings(Self.trigrams(of: value.folded))
+            .strings(Self.trigrams(of: value.folded))
         case (.hmac, let value?):
-            return .string(try surrogate(for: value.canonical, keyID: keyID))
+            .string(try surrogate(for: value.canonical, keyID: keyID))
         case (.hour, .date(let value)?):
-            return .date(Self.periodStart(of: .hour, for: value))
+            .date(Self.periodStart(of: .hour, for: value))
         case (.day, .date(let value)?):
-            return .date(Self.periodStart(of: .day, for: value))
+            .date(Self.periodStart(of: .day, for: value))
         case (.week, .date(let value)?):
-            return .date(Self.periodStart(of: .weekOfYear, for: value))
+            .date(Self.periodStart(of: .weekOfYear, for: value))
         case (.month, .date(let value)?):
-            return .date(Self.periodStart(of: .month, for: value))
+            .date(Self.periodStart(of: .month, for: value))
         default:
-            return nil
+            nil
         }
     }
 }
@@ -249,68 +246,105 @@ extension String {
 extension RecordValue {
     var canonical: String {
         switch self {
-        case .string(let value): return value
-        case .int(let value): return "i\(value)"
-        case .double(let value): return "d\(value)"
-        case .date(let value): return "t\(value.millisecondsSince1970)"
-        case .bytes(let value): return "b\(value.base64EncodedString())"
-        case .strings(let value): return value.joined(separator: ",")
-        case .ints(let value): return "i[\(value.map { "\($0)" }.joined(separator: ","))]"
-        case .doubles(let value): return "d[\(value.map { "\($0)" }.joined(separator: ","))]"
-        case .dates(let value): return "t[\(value.map { String($0.millisecondsSince1970) }.joined(separator: ","))]"
-        case .locations(let value): return "g[\(value.map { "\($0.latitude);\($0.longitude)" }.joined(separator: ","))]"
-        case .assets(let value): return "a[\(value.map(\.absoluteString).joined(separator: ","))]"
-        case .location(let latitude, let longitude): return "g\(latitude),\(longitude)"
-        case .reference(let value): return "r\(value)"
-        case .asset(let value): return "a\(value.absoluteString)"
+        case .string(let value):
+            value
+        case .int(let value):
+            "i\(value)"
+        case .double(let value):
+            "d\(value)"
+        case .date(let value):
+            "t\(value.millisecondsSince1970)"
+        case .bytes(let value):
+            "b\(value.base64EncodedString())"
+        case .strings(let value):
+            value.joined(separator: ",")
+        case .ints(let value):
+            "i[\(value.map { "\($0)" }.joined(separator: ","))]"
+        case .doubles(let value):
+            "d[\(value.map { "\($0)" }.joined(separator: ","))]"
+        case .dates(let value):
+            "t[\(value.map { String($0.millisecondsSince1970) }.joined(separator: ","))]"
+        case .locations(let value):
+            "g[\(value.map { "\($0.latitude);\($0.longitude)" }.joined(separator: ","))]"
+        case .assets(let value):
+            "a[\(value.map(\.absoluteString).joined(separator: ","))]"
+        case .location(let latitude, let longitude):
+            "g\(latitude),\(longitude)"
+        case .reference(let value):
+            "r\(value)"
+        case .asset(let value):
+            "a\(value.absoluteString)"
         }
     }
 
     var scalar: Double? {
         switch self {
-        case .int(let value): Double(value)
-        case .double(let value): value
-        default: nil
+        case .int(let value):
+            Double(value)
+        case .double(let value):
+            value
+        default:
+            nil
         }
     }
 
     var members: [RecordValue]? {
         switch self {
-        case .strings(let values): values.map(RecordValue.string)
-        case .ints(let values): values.map(RecordValue.int)
-        case .doubles(let values): values.map(RecordValue.double)
-        case .dates(let values): values.map(RecordValue.date)
-        default: nil
+        case .strings(let values):
+            values.map(RecordValue.string)
+        case .ints(let values):
+            values.map(RecordValue.int)
+        case .doubles(let values):
+            values.map(RecordValue.double)
+        case .dates(let values):
+            values.map(RecordValue.date)
+        default:
+            nil
         }
     }
 
     var isEmptyList: Bool {
         switch self {
-        case .strings(let value): value.isEmpty
-        case .ints(let value): value.isEmpty
-        case .doubles(let value): value.isEmpty
-        case .dates(let value): value.isEmpty
-        case .locations(let value): value.isEmpty
-        case .assets(let value): value.isEmpty
-        default: false
+        case .strings(let value):
+            value.isEmpty
+        case .ints(let value):
+            value.isEmpty
+        case .doubles(let value):
+            value.isEmpty
+        case .dates(let value):
+            value.isEmpty
+        case .locations(let value):
+            value.isEmpty
+        case .assets(let value):
+            value.isEmpty
+        default:
+            false
         }
     }
 
     var strings: [String] {
         switch self {
-        case .string(let value): [value]
-        case .strings(let value): value
-        default: []
+        case .string(let value):
+            [value]
+        case .strings(let value):
+            value
+        default:
+            []
         }
     }
 
     var scalars: [Double] {
         switch self {
-        case .int(let value): [Double(value)]
-        case .double(let value): [value]
-        case .ints(let value): value.map(Double.init)
-        case .doubles(let value): value
-        default: []
+        case .int(let value):
+            [Double(value)]
+        case .double(let value):
+            [value]
+        case .ints(let value):
+            value.map(Double.init)
+        case .doubles(let value):
+            value
+        default:
+            []
         }
     }
 }

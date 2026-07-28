@@ -15,7 +15,9 @@ Every record carries a small envelope alongside your own fields:
 | `schema_version` | which version of the entity's fields decodes this record |
 | `uuid` | the record's logical identifier |
 | `deleted` | soft-delete flag |
-| `expires` | TTL cutoff |
+
+The `Schema` file also declares `expires`, which once held a per-entity TTL cutoff. Nothing
+writes or reads it any more; it stays declared because the rule above forbids taking it back.
 
 ## Exporting definitions
 

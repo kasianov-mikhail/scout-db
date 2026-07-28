@@ -7,36 +7,61 @@
 
 import Foundation
 
+/// The published shape of one entity: its fields, the constraints over them,
+/// and the aggregates kept for them.
+///
+/// A definition is versioned rather than replaced. Every record carries the
+/// version it was written under, `fields` keeps every field ever declared, and
+/// a read resolves the record against the fields active at its own version —
+/// so records written before a migration stay readable forever.
+///
 public struct EntityDefinition: Codable, Equatable, Sendable {
+    /// The record type this definition describes, unique within the database.
     public let entity: String
+
+    /// The version this definition publishes, stamped on every record it
+    /// writes and resolved per record on read.
     public let version: Int
+
+    /// Every field ever declared for the entity, closed ones included — ask
+    /// `fields(at:)` for the ones a given version actually carries.
     public let fields: [FieldDefinition]
-    private let index = FieldIndex()
+
+    /// The timestamp field, active at `version`, that orders paged reads and
+    /// buckets every view that is not a plain `lifetime` one.
     public var envelopeDate: String?
+
+    /// The fields whose values derive the record's id, turning a write into an
+    /// upsert — a record missing any of them is rejected.
     public var unique: [String]?
-    /// Claim-backed uniqueness constraints, one field tuple each.
-    ///
-    /// Unlike `unique`, they reject duplicates instead of deriving the record's
-    /// identity. Each key value is held by a claim record whose creation is a
+
+    /// Claim-backed uniqueness constraints, one field tuple each — unlike
+    /// `unique`, they reject duplicates instead of deriving the record's
+    /// identity, and every value is held by a claim record taken with a
     /// compare-and-swap, so two racing writers cannot both win.
-    ///
     public var uniqueKeys: [[String]]?
-    /// The key list published by versions that spelled claim-backed keys
-    /// separately from read-validated ones.
-    ///
-    /// Decoded and honored like `uniqueKeys`; never published anew.
-    ///
+
+    /// The key list published by versions that spelled claim-backed keys apart
+    /// from read-validated ones — decoded and honored like `uniqueKeys`, never
+    /// published anew.
     public var enforcedKeys: [[String]]?
+
+    /// Materialized aggregate views, each kept current on every write.
     public var views: [AggregateView]?
+
+    /// Names the key that seals `encrypted` fields and backs `hmac`
+    /// derivations; either one makes it mandatory.
     public var keyID: String?
-    public var ttl: Double?
+
     /// An audited entity appends a revision record on every update and delete;
     /// publish `EntityStore.revisionDefinition` before enabling it.
     public var audited: Bool?
 
+    private let index = FieldIndex()
+
     public init(
         entity: String, version: Int, fields: [FieldDefinition], envelopeDate: String? = nil, unique: [String]? = nil,
-        uniqueKeys: [[String]]? = nil, enforcedKeys: [[String]]? = nil, views: [AggregateView]? = nil, keyID: String? = nil, ttl: Double? = nil,
+        uniqueKeys: [[String]]? = nil, enforcedKeys: [[String]]? = nil, views: [AggregateView]? = nil, keyID: String? = nil,
         audited: Bool? = nil
     ) {
         self.entity = entity
@@ -48,20 +73,20 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
         self.enforcedKeys = enforcedKeys
         self.views = views
         self.keyID = keyID
-        self.ttl = ttl
         self.audited = audited
     }
 
     private enum CodingKeys: String, CodingKey {
-        case entity, version, fields, envelopeDate, unique, uniqueKeys, enforcedKeys, views, keyID, ttl, audited
+        case entity, version, fields, envelopeDate, unique, uniqueKeys, enforcedKeys, views, keyID, audited
     }
 
     public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.entity == rhs.entity && lhs.version == rhs.version && lhs.fields == rhs.fields && lhs.envelopeDate == rhs.envelopeDate
             && lhs.unique == rhs.unique && lhs.uniqueKeys == rhs.uniqueKeys && lhs.enforcedKeys == rhs.enforcedKeys && lhs.views == rhs.views
-            && lhs.keyID == rhs.keyID && lhs.ttl == rhs.ttl && lhs.audited == rhs.audited
+            && lhs.keyID == rhs.keyID && lhs.audited == rhs.audited
     }
 
+    /// The fields active at the given version, memoized per version.
     public func fields(at version: Int) -> [FieldDefinition] {
         index.entry(at: version, of: fields).active
     }
@@ -92,6 +117,8 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
         try validate()
     }
 
+    /// Checks that the definition holds together — slots, derivations, keys and
+    /// views — throwing `SchemaError.invalidDefinition` on the first problem.
     public func validate() throws {
         let names = Set(fields.map(\.name))
         for field in fields {
@@ -156,9 +183,6 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
             guard field(named: envelopeDate, at: version)?.type == .timestamp else {
                 throw SchemaError.invalidDefinition("Envelope date '\(envelopeDate)' is not an active timestamp field at version \(version)")
             }
-        }
-        if ttl != nil, envelopeDate == nil {
-            throw SchemaError.invalidDefinition("TTL requires an envelope date")
         }
         for key in unique ?? [] where !names.contains(key) {
             throw SchemaError.invalidDefinition("Unique key '\(key)' is not a field")

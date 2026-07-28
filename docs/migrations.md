@@ -56,7 +56,7 @@ records already at the latest version.
 | omitted | **closed** (`until` = new version) — old records still decode it |
 | new | gets the next free slot with `since` = new version |
 
-Settings (`envelopeDate`, `unique`, `uniqueKey`, `views`, `keyID`, `ttl`,
+Settings (`envelopeDate`, `unique`, `uniqueKey`, `views`, `keyID`,
 `audited`) are inherited unless you set them again.
 
 ## Renames

@@ -337,9 +337,12 @@ extension EntityStore {
 
     private static func beyond(_ record: EntityRecord, _ field: String, _ cursor: FieldCursor, descending: Bool) -> Bool {
         switch rank(record.values[field], cursor.value) {
-        case .orderedSame: record.uuid > cursor.uuid
-        case .orderedAscending: descending
-        case .orderedDescending: !descending
+        case .orderedSame:
+            record.uuid > cursor.uuid
+        case .orderedAscending:
+            descending
+        case .orderedDescending:
+            !descending
         }
     }
 

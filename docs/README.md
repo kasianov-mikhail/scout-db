@@ -8,7 +8,7 @@
 | 🔍 | [Filtering](filtering.md) | Chain filters, sorting, and pagination with the query builder. |
 | ⚙️ | [Operators](operators.md) | Reference for every comparison and aggregation operator ScoutDB supports. |
 | 📊 | [Aggregation](aggregation.md) | Declare `views` that maintain counters, sums, and histograms at write time so reads never scan raw records. |
-| 📎 | [Records](records.md) | Assets, entity references with cascading delete, an audit log, and soft-delete/TTL lifecycle. |
+| 📎 | [Records](records.md) | Assets, entity references with cascading delete, an audit log, and a soft-delete lifecycle. |
 | 🔐 | [Security](security.md) | Encrypt payload fields on the client and query them through hashed, filterable surrogates. |
 | 📡 | [Sync](sync.md) | Push notifications that say when to read, and live queries wired to SwiftUI. |
 | 🧰 | [Operations](operations.md) | Outbox transactions, advisory leases, request pacing, and per-call telemetry. |
