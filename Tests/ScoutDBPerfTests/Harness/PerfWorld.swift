@@ -44,10 +44,6 @@ struct PerfWorld: @unchecked Sendable {
         cache as? OfflineCache
     }
 
-    var replicaCache: ReplicaCache? {
-        cache as? ReplicaCache
-    }
-
     var migrator: Migrator {
         Migrator(database: database, registry: registry, keyProvider: PerfKeyProvider(), zoneID: PerfSchema.zoneID)
     }
@@ -91,9 +87,6 @@ final class PerfBench {
         let store = EntityStore(database: database, registry: registry, keyProvider: PerfKeyProvider(), zoneID: PerfSchema.zoneID)
 
         try await registry.preload()
-        if let replica = cache as? ReplicaCache {
-            _ = try await replica.refresh()
-        }
         wire.reset()
         app.reset()
 
@@ -106,7 +99,6 @@ final class PerfBench {
         switch stack {
         case .direct: nil
         case .offline: OfflineCache(backing: database)
-        case .replica: ReplicaCache(backing: database, zones: [PerfSchema.zoneID], readPolicy: .localFirst)
         }
     }
 

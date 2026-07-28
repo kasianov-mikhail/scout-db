@@ -1,15 +1,12 @@
 # 📴 Offline
 
-Two decorators sit between `EntityStore` and the real `CKDatabase`, and compose in either
-order: `OfflineCache` queues writes and replays cached reads when the network is down;
-`ReplicaCache` mirrors whole zones so reads can be answered locally on purpose, not just as a
-fallback. Both implement the same `CloudDatabase` protocol as the real database, so wrapping
-one is the only integration step:
+`OfflineCache` sits between `EntityStore` and the real `CKDatabase`: it queues writes and
+replays cached reads when the network is down. It implements the same `CloudDatabase`
+protocol as the real database, so wrapping it is the only integration step:
 
 ```swift
 let cache = OfflineCache(backing: cloudDatabase, storeURL: cacheFileURL)
-let replica = ReplicaCache(backing: cache, zoneID: zoneID)
-let store = EntityStore(database: replica, registry: registry)
+let store = EntityStore(database: cache, registry: registry)
 ```
 
 ## 📥 Offline reads and queued writes
@@ -102,29 +99,6 @@ snapshot loses offline coverage for that one query; an evicted baseline downgrad
 mergeable flush to a surfaced conflict rather than a silent correctness loss. Restarting the
 app from a persisted `storeURL` restores entries as oldest — usage history isn't persisted.
 
-## 🪞 Zone replicas
-
-`ReplicaCache` mirrors one or more zones and serves queries from the mirror directly, rather
-than only on failure. Every `refresh()` reads the zone whole, so its cost follows the zone's
-size rather than what changed since the last one — run it on the cadence the app can afford,
-and let the writes that pass through the replica keep the mirror current in between:
-
-```swift
-let replica = ReplicaCache(backing: cache, zoneID: zoneID, readPolicy: .localFirst)
-try await replica.refresh()   // scan the zone once, whole
-```
-
-| Read policy | Behavior |
-|---|---|
-| `.networkFirst` (default) | hit the mirror only when the network fails, same posture as `OfflineCache` |
-| `.localFirst` | serve replicated zones from the mirror immediately, once `refresh()` has scanned that zone whole |
-| `fields:` | mirror a whitelist of fields instead of whole records (build it with `store.replicaFields(projecting:)`); a partial replica only answers a query locally if the whitelist covers every field the query filters, sorts, or projects on, otherwise it falls through to the network |
-
-The local query path (`LocalQuery`/`PredicateEvaluator`) supports the comparison operators,
-compound predicates, distance queries, and the token-based full-text search the query builder
-generates — anything it doesn't recognize makes a *partial* replica refuse to answer locally
-(a full replica always answers, since there's nothing it could be missing).
-
 ## 📤 Outbox transactions and leases
 
 `store.transaction { draft in ... }` writes a durable envelope record before applying its
@@ -134,7 +108,7 @@ half-applied. A run of `draft.update(...)` steps is applied as one batch per ent
 transaction's patches cost the round trips of a single update rather than one update each.
 Committed envelopes stay in the zone until you erase them with
 `store.compactTransactions(olderThan:)` — run it past the horizon where a crashed writer
-could still repair, or every device pays for the whole write history when it mirrors the zone.
+could still repair, or every device pays for the whole write history when it reads the entity.
 `store.lease(entity:uuid:owner:for:)` is an advisory, compare-and-swap-based
 lock for coordinating exclusive access across processes; it throws `SchemaError.leaseHeld`
 if another owner already holds it.
@@ -157,13 +131,9 @@ latency-bound and the container is quiet.
 
 ## ⚠️ Limits
 
-- `OfflineCache` and `ReplicaCache` are best-effort local answers, not a replacement for the
-  server: writes still need a live network eventually to actually flush.
-- A replica mirrors the zones you name it, and aggregate grid records live in the default
-  zone (see [Aggregation](aggregation.md)) — so `aggregate`, `totals`, `series` and
-  `percentile` reach the server even against a complete mirror.
-- A partial replica's un-mirrored fields decode as `nil` — don't write a partial record back
-  whole, or you erase the fields it never mirrored.
+- `OfflineCache` is a best-effort local answer, not a replacement for the server: writes
+  still need a live network eventually to actually flush, and a query the cache has never
+  seen has nothing to replay.
 - `store.lease(...)` taken offline is decided against a cached record, so it says nothing about
   what another process holds; it settles on `flush()`, as a landed write or a surfaced conflict.
 - Conflict resolution only ever runs on `flush()` — a read never triggers it.

@@ -953,8 +953,4 @@ private final class GridQueries: CloudDatabase, @unchecked Sendable {
     func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
         try await backing.fetchRecords(ids: ids)
     }
-
-    func databaseChanges(since token: Data?) async throws -> (changed: [CKRecordZone.ID], deleted: [CKRecordZone.ID], token: Data?) {
-        try await backing.databaseChanges(since: token)
-    }
 }

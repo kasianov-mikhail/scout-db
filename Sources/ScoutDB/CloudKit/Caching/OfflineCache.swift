@@ -759,10 +759,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         enforceQuotasLocked()
         scheduleArchiveLocked()
     }
-
-    public func databaseChanges(since token: Data?) async throws -> (changed: [CKRecordZone.ID], deleted: [CKRecordZone.ID], token: Data?) {
-        try await backing.databaseChanges(since: token)
-    }
 }
 
 /// What a `ConflictResolver` decided about one conflicted queued write.
