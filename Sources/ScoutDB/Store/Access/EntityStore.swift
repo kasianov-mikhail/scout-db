@@ -138,12 +138,8 @@ public struct EntityStore: Sendable {
             return EntityRecord(entity: entity, uuid: uuid, schemaVersion: definition.version, values: resolved)
         }
 
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            if enforceReferences {
-                group.addTask { try await validateReferences(of: entityRecords, using: definition) }
-            }
-            group.addTask { try await validateUniqueKeys(of: entityRecords, using: definition) }
-            try await group.waitForAll()
+        if enforceReferences {
+            try await validateReferences(of: entityRecords, using: definition)
         }
         try await claimUniqueKeys(of: entityRecords, using: definition)
 

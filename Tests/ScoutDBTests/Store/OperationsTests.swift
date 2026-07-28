@@ -168,7 +168,7 @@ struct OperationsTests {
                     FieldDefinition(name: "code", type: .string, storage: .slot(.string, "s_00")),
                     FieldDefinition(name: "label", type: .string, storage: .slot(.string, "s_01")),
                 ],
-                enforcedKeys: [["code"]]))
+                uniqueKeys: [["code"]]))
         let counting = CountingFetches(backing: database)
         let racing = EntityStore(database: counting, registry: registry)
         try await racing.write(["code": .string("gold"), "label": .string("first")], entity: "badge", uuid: "b-1")
@@ -204,7 +204,7 @@ struct OperationsTests {
                     FieldDefinition(name: "code", type: .string, storage: .slot(.string, "s_00")),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                 ],
-                enforcedKeys: [["code"]],
+                uniqueKeys: [["code"]],
                 views: [AggregateView(name: "total", bucket: .lifetime, sum: "amount")],
                 audited: true))
         let counting = CountingFetches(backing: database)

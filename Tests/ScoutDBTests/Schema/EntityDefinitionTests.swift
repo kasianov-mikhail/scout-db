@@ -236,27 +236,47 @@ struct EntityDefinitionTests {
         #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
-    @Test("Publishing rejects a unique key with no slot-backed field, decoding tolerates it")
+    @Test("A unique key needs no slot-backed field, since its claims are reached by name")
     func slotlessUniqueKey() async throws {
         var definition = EntityDefinition(
             entity: "note", version: 1,
             fields: [FieldDefinition(name: "body", type: .string, storage: .payload)])
         definition.uniqueKeys = [["body"]]
         try definition.validate()
-        #expect(throws: SchemaError.self) { try definition.validateForPublish() }
+        try definition.validateForPublish()
 
         let database = InMemoryDatabase()
         let registry = SchemaRegistry(database: database)
-        await #expect(throws: SchemaError.self) { try await registry.publish(definition) }
-        await #expect(throws: SchemaError.self) { try await registry.register(definition) }
-
-        let descriptor = CKRecord(recordType: "SchemaDescriptor", recordID: CKRecord.ID(recordName: "note@1"))
-        descriptor["entity"] = "note"
-        descriptor["entity_version"] = Int64(1)
-        descriptor["status"] = "active"
-        descriptor["definition"] = try JSONEncoder().encode(definition)
-        database.records.append(descriptor)
+        try await registry.publish(definition)
         #expect(try await registry.definition(for: "note").uniqueKeys == [["body"]])
+
+        let store = EntityStore(database: database, registry: registry)
+        try await store.write(["body": .string("first")], entity: "note", uuid: "n-1")
+        await #expect(throws: SchemaError.duplicateKey(fields: ["body"])) {
+            try await store.write(["body": .string("first")], entity: "note", uuid: "n-2")
+        }
+    }
+
+    @Test("A definition that published enforcedKeys keeps them, and folds them in on update")
+    func legacyEnforcedKeys() async throws {
+        let database = InMemoryDatabase()
+        let registry = SchemaRegistry(database: database)
+        let definition = EntityDefinition(
+            entity: "badge", version: 1,
+            fields: [FieldDefinition(name: "code", type: .string, storage: .slot(.string, "s_00"))],
+            enforcedKeys: [["code"]])
+        try await registry.publish(definition)
+
+        let store = EntityStore(database: database, registry: registry)
+        try await store.write(["code": .string("gold")], entity: "badge", uuid: "b-1")
+        await #expect(throws: SchemaError.duplicateKey(fields: ["code"])) {
+            try await store.write(["code": .string("gold")], entity: "badge", uuid: "b-2")
+        }
+
+        try await store.schema("badge").field("code", .string).field("label", .string).update()
+        let next = try await registry.definition(for: "badge")
+        #expect(next.uniqueKeys == [["code"]])
+        #expect(next.enforcedKeys == nil)
     }
 }
 

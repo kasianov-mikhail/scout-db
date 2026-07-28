@@ -496,6 +496,8 @@ struct FluentTests {
             .uniqueKey(on: "username")
             .create()
 
+        #expect(try await registry.definition(for: "account").uniqueKeys == [["email"], ["username"]])
+
         try await store.write(["email": .string("a@x.io"), "username": .string("ann"), "plan": .string("free")], entity: "account", uuid: "u-1")
 
         await #expect(throws: SchemaError.duplicateKey(fields: ["email"])) {
@@ -530,8 +532,12 @@ struct FluentTests {
         try await store.schema("membership")
             .field("group_id", .string, .required)
             .field("member", .string, .required)
+            .field("slug", .string)
+            .uniqueKey(on: "slug")
             .uniqueKey(on: "group_id", "member")
             .create()
+
+        #expect(try await registry.definition(for: "membership").uniqueKeys == [["slug"], ["group_id", "member"]])
 
         try await store.write(["group_id": .string("g1"), "member": .string("m1")], entity: "membership", uuid: "m-1")
         try await store.write(["group_id": .string("g1"), "member": .string("m2")], entity: "membership", uuid: "m-2")
@@ -543,6 +549,29 @@ struct FluentTests {
         await #expect(throws: SchemaError.self) {
             try await store.schema("broken").field("name", .string).uniqueKey(on: "missing").create()
         }
+    }
+
+    @Test("A unique key is backed by a claim record")
+    func claimBackedUniqueKey() async throws {
+        try await store.schema("badge")
+            .field("code", .string, .required)
+            .field("label", .string)
+            .uniqueKey(on: "code")
+            .create()
+
+        let definition = try await registry.definition(for: "badge")
+        #expect(definition.uniqueKeys == [["code"]])
+        #expect(definition.enforcedKeys == nil)
+
+        try await store.write(["code": .string("gold"), "label": .string("first")], entity: "badge", uuid: "b-1")
+        #expect(database.records.filter { $0.recordType == "UniqueClaim" }.count == 1)
+
+        await #expect(throws: SchemaError.duplicateKey(fields: ["code"])) {
+            try await store.write(["code": .string("gold")], entity: "badge", uuid: "b-2")
+        }
+
+        try await store.delete(entity: "badge", uuid: "b-1")
+        try await store.write(["code": .string("gold")], entity: "badge", uuid: "b-2")
     }
 
     @Test("Schema update keeps slots, closes removed fields, allocates new ones")

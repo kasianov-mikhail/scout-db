@@ -39,7 +39,7 @@ enum PerfSchema {
                 FieldDefinition(name: "tags", type: .stringList, storage: .slot(.stringList, "ls_00")),
                 FieldDefinition(name: "avatar", type: .asset, storage: .slot(.asset, "a_00")),
                 FieldDefinition(name: "bio", type: .text, storage: .payload),
-            ], envelopeDate: "signup", enforcedKeys: [["email"]],
+            ], envelopeDate: "signup", uniqueKeys: [["email"]],
             views: [AggregateView(name: "by_country", groupBy: "country", bucket: .lifetime)])
     }
 

@@ -32,7 +32,6 @@ public struct SchemaBuilder {
     private var envelopeDate: String?
     private var unique: [String]?
     private var uniqueKeys: [[String]]?
-    private var enforcedKeys: [[String]]?
     private var views: [AggregateView]?
     private var keyID: String?
     private var audited: Bool?
@@ -116,32 +115,28 @@ public struct SchemaBuilder {
         return builder
     }
 
-    /// Adds an enforced uniqueness constraint over the named fields.
+    /// Adds a uniqueness constraint over the named fields.
+    ///
+    /// A key of several fields constrains the tuple, not each field: a
+    /// membership keyed on `group_id` and `member` admits a group twice and a
+    /// member twice, but the pair once.
     ///
     /// Unlike `unique(on:)`, which derives the record's identity, a unique key
     /// only rejects writes that would duplicate another live record's values —
     /// declare several for independent keys (an email and a username). Records
-    /// missing any of the key's fields are exempt. The check is client-side
-    /// and best-effort under concurrency, like the reference checks.
+    /// missing any of the key's fields are exempt, and tombstoning a record
+    /// frees its values.
+    ///
+    /// Every value is held by a claim record named after it, taken with a
+    /// compare-and-swap, so of two writers racing for one value exactly one
+    /// lands and the other fails with `duplicateKey`. The claim costs a keyed
+    /// fetch and a conditional save per write batch and is released when the
+    /// record is deleted or re-keyed. Existing data needs one
+    /// `Migrator.backfillClaims(entity:)` pass before the constraint holds.
     ///
     public func uniqueKey(on fields: String...) -> Self {
         var builder = self
         builder.uniqueKeys = (uniqueKeys ?? []) + [fields]
-        return builder
-    }
-
-    /// Adds a claim-backed uniqueness constraint over the named fields.
-    ///
-    /// Atomic where `uniqueKey(on:)` is best-effort: every key value is held by
-    /// a claim record whose creation is a compare-and-swap, so of two racing
-    /// writers exactly one wins and the other fails with `duplicateKey`. The
-    /// claim costs one extra write per created or re-keyed record and is
-    /// released on delete. Existing data needs one
-    /// `Migrator.backfillClaims(entity:)` pass before the constraint holds.
-    ///
-    public func enforcedKey(on fields: String...) -> Self {
-        var builder = self
-        builder.enforcedKeys = (enforcedKeys ?? []) + [fields]
         return builder
     }
 
@@ -218,8 +213,7 @@ public struct SchemaBuilder {
             fields: fields,
             envelopeDate: envelopeDate ?? previous?.envelopeDate,
             unique: unique ?? previous?.unique,
-            uniqueKeys: uniqueKeys ?? previous?.uniqueKeys,
-            enforcedKeys: enforcedKeys ?? previous?.enforcedKeys,
+            uniqueKeys: uniqueKeys ?? previous.flatMap { $0.claimedKeys.isEmpty ? nil : $0.claimedKeys },
             views: views ?? previous?.views,
             keyID: keyID ?? previous?.keyID,
             audited: audited ?? previous?.audited

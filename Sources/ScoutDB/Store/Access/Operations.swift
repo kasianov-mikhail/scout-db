@@ -71,7 +71,7 @@ extension EntityStore {
         guard uuids.count > 0 else { return }
         let definition = try await registry.definition(for: entity)
         let coder = EntityCoder(keyProvider: keyProvider)
-        let owned = (definition.enforcedKeys ?? []) + Self.exclusiveFields(of: definition).map { [$0.name] }
+        let owned = definition.claimedKeys + Self.exclusiveFields(of: definition).map { [$0.name] }
         var targets: [String] = []
         var seen: Set<String> = []
         for uuid in uuids where seen.insert(uuid).inserted {
@@ -163,10 +163,7 @@ extension EntityStore {
             touched.formUnion(Self.changedFields(from: claimed[rewrite.next.uuid] ?? rewrite.previous, to: rewrite.next).keys)
         }
         let next = rewrites.map(\.next)
-        if let keys = definition.uniqueKeys, keys.contains(where: { $0.contains { touched.contains($0) } }) {
-            try await validateUniqueKeys(of: next, using: definition)
-        }
-        let rekeyed = (definition.enforcedKeys ?? []).filter { $0.contains { touched.contains($0) } }
+        let rekeyed = definition.claimedKeys.filter { $0.contains { touched.contains($0) } }
         if !rekeyed.isEmpty {
             try await claimKeys(rekeyed, of: next, using: definition)
         }
@@ -403,7 +400,7 @@ extension EntityStore {
     ) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         let coder = EntityCoder(keyProvider: keyProvider)
-        let owned = (definition.enforcedKeys ?? []) + Self.exclusiveFields(of: definition).map { [$0.name] }
+        let owned = definition.claimedKeys + Self.exclusiveFields(of: definition).map { [$0.name] }
         var seen: Set<String> = []
         var applied = 0
         var unresolved: CKRecord?

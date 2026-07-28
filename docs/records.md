@@ -97,39 +97,43 @@ changing write semantics:
 ```swift
 try await store.schema("account")
     .field("email", .string, .required)
+    .field("username", .string)
     .uniqueKey(on: "email")
+    .uniqueKey(on: "username")
     .create()
 ```
 
-A duplicate throws `SchemaError.duplicateKey(fields:)`. Records missing a key field are
-exempt, and tombstoning a record frees its key. Like reference enforcement, this is a
-client-side pre-write check — two writers racing on the same key can still both win.
+Declare one per independent key, as above — an email and a username constrain separately. A
+duplicate throws `SchemaError.duplicateKey(fields:)`. Records missing a key field are
+exempt, and tombstoning a record frees its key.
 
-`enforcedKey(on:)` is the one that holds under a race:
+A key of several fields constrains the tuple rather than each field, so a membership admits
+a group twice and a member twice, but the pair once:
 
 ```swift
-try await store.schema("account")
-    .field("email", .string, .required)
-    .enforcedKey(on: "email")
+try await store.schema("membership")
+    .field("group_id", .string, .required)
+    .field("member", .string, .required)
+    .uniqueKey(on: "group_id", "member")
     .create()
 ```
 
-Each key value is held by its own claim record, and winning that claim is a
-compare-and-swap on the server, so of two writers racing on the same value exactly one
-lands and the other throws. Declaring it over existing data leaves the old values
-unclaimed until you run `Migrator.backfillClaims(entity:)` once — until that pass
-finishes, an old value can still be re-taken.
+The constraint holds under a race. Every value is held by its own claim record, named
+after the value so that all writers of that value contend for the same record, and winning
+it is a compare-and-swap on the server: of two writers racing for one value exactly one
+lands and the other throws. The claim is reached by name rather than by query, so the key
+needs no slot-backed field and never waits on the query index.
+
+That costs a keyed fetch and a conditional save per write batch, plus one claim record per
+value, released when the record is deleted or re-keyed. Declaring a key over existing data
+leaves the old values unclaimed until you run `Migrator.backfillClaims(entity:)` once;
+until that pass finishes, an old value can still be re-taken.
 
 | Declaration | Guarantee |
 |---|---|
 | `unique(on:)` | derives the record's identity, so a repeat write upserts rather than duplicates |
-| `uniqueKey(on:)` | advisory: validated by a read before the write, so a race can seat two |
-| `enforcedKey(on:)` | atomic: claim-backed compare-and-swap, so a race seats one |
+| `uniqueKey(on:)` | claim-backed compare-and-swap, so a race for one value seats one writer |
 | `enforceReferences: true` | advisory: the parent is checked before the write, and can be deleted right after |
-
-Reach for `enforcedKey(on:)` when a duplicate would be a correctness problem, and for
-`uniqueKey(on:)` when it would merely be untidy — the claim costs a fetch and a
-conditional save per write batch.
 
 ## Counters and set fields
 

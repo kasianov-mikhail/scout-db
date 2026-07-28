@@ -35,7 +35,7 @@ extension EntityStore {
     }
 
     func claimUniqueKeys(of records: [EntityRecord], using definition: EntityDefinition) async throws {
-        let groups = try keyGroups(definition.enforcedKeys ?? [], of: records) + exclusivityGroups(of: records, using: definition, fields: nil)
+        let groups = try keyGroups(definition.claimedKeys, of: records) + exclusivityGroups(of: records, using: definition, fields: nil)
         try await claim(groups, using: definition)
     }
 
@@ -174,7 +174,7 @@ extension EntityStore {
     }
 
     func releaseUniqueClaims(of records: [EntityRecord], using definition: EntityDefinition) async {
-        let keys = (definition.enforcedKeys ?? []) + Self.exclusiveFields(of: definition).map { [$0.name] }
+        let keys = definition.claimedKeys + Self.exclusiveFields(of: definition).map { [$0.name] }
         guard !keys.isEmpty, records.count > 0 else { return }
         var owners: [CKRecord.ID: String] = [:]
         for record in records {
@@ -203,48 +203,6 @@ extension EntityStore {
         let mine = claims.filter { $0["owner"] as? String == owners[$0.recordID] }.map(\.recordID)
         guard mine.count > 0 else { return }
         try? await database.delete(records: mine)
-    }
-
-    func validateUniqueKeys(of records: [EntityRecord], using definition: EntityDefinition) async throws {
-        for key in definition.uniqueKeys ?? [] {
-            var claims: [String: String] = [:]
-            for record in records {
-                guard let digest = Self.keyDigest(key, in: record.values) else { continue }
-                if let owner = claims[digest], owner != record.uuid {
-                    throw SchemaError.duplicateKey(fields: key)
-                }
-                claims[digest] = record.uuid
-            }
-            guard claims.count > 0 else { continue }
-            for holder in try await keyHolders(key, of: records, using: definition) {
-                guard let digest = Self.keyDigest(key, in: holder.values), let owner = claims[digest], owner != holder.uuid else { continue }
-                throw SchemaError.duplicateKey(fields: key)
-            }
-        }
-    }
-
-    private func keyHolders(_ key: [String], of records: [EntityRecord], using definition: EntityDefinition) async throws -> [EntityRecord] {
-        let probe = key.first { field in
-            guard case .slot? = definition.field(named: field, at: definition.version)?.storage else { return false }
-            return true
-        }
-        let values = probe.map { field in records.compactMap { $0.values[field] } } ?? []
-        guard let probe, Self.membership(of: values) != nil else {
-            return try await read(entity: definition.entity, fields: key)
-        }
-        let lists = values.chunked(into: 100).compactMap { Self.membership(of: $0) }
-        return try await withThrowingTaskGroup(of: [EntityRecord].self) { group in
-            for list in lists {
-                group.addTask {
-                    try await self.read(entity: definition.entity, filters: [Filter(field: probe, op: .in, value: list)], fields: key)
-                }
-            }
-            var holders: [EntityRecord] = []
-            for try await chunk in group {
-                holders += chunk
-            }
-            return holders
-        }
     }
 
     static func membership(of values: [RecordValue]) -> RecordValue? {
