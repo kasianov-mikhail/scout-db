@@ -482,21 +482,6 @@ struct OperationsTests {
         #expect(try await zoned.read(entity: "purchase", limit: 5).records.map(\.uuid) == ["p-zoned"])
     }
 
-    @Test("A database subscription registers one silent-push umbrella")
-    func databaseSubscription() async throws {
-        let id = try await store.subscribeToDatabase()
-        #expect(id == "scout-database")
-
-        let stored = try #require(database.storedSubscriptions.first as? CKDatabaseSubscription)
-        #expect(stored.subscriptionID == "scout-database")
-        #expect(stored.notificationInfo?.shouldSendContentAvailable == true)
-
-        _ = try await store.subscribeToDatabase()
-        #expect(database.storedSubscriptions.count == 1)
-        try await store.unsubscribe(id: id)
-        #expect(database.storedSubscriptions.isEmpty)
-    }
-
     @Test("A distance sort ranks nearest-first, missing locations last")
     func distanceSort() async throws {
         try await registry.publish(

@@ -6,26 +6,26 @@ read, and live queries that keep a SwiftUI view on the latest local state.
 
 ## 🔔 Push-triggered reads
 
-One silent push per database change, cheaper than a subscription per entity:
+A silent push per entity, narrowed server-side to the changes worth waking the app for:
 
 ```swift
-try await store.subscribeToDatabase()
+try await store.subscribe(entity: "purchase")
+try await store.subscribe(entity: "order", filters: [.init(field: "status", op: .equals, value: .string("paid"))])
 ```
 
-The push says only "something changed", so the handler re-reads what the screen cares about:
+Only filters the server can evaluate may narrow a subscription — `like`, `matches`, `isNull`
+and payload fields are rejected rather than silently ignored. Subscribe once per entity the
+screen depends on; the push then tells the handler what to re-read:
 
 ```swift
 func application(_ app: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any]) async
     -> UIBackgroundFetchResult
 {
+    guard let event = ChangeEvent(userInfo: userInfo) else { return .noData }
     let fresh = try? await store.query(Purchase.self).limit(100).all()
     return fresh == nil ? .noData : .newData
 }
 ```
-
-`subscribe(entity:filters:id:)` creates a per-entity subscription instead, if you'd rather
-filter server-side which changes wake the app; only server-evaluable filters are allowed
-there.
 
 ## 📨 Reading a push without a follow-up fetch
 
