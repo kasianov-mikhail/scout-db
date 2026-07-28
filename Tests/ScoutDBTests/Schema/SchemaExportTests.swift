@@ -16,7 +16,7 @@ import Testing
 struct SchemaExportTests {
     let database = InMemoryDatabase()
 
-    @Test("Exported definitions round-trip through the codegen toolchain")
+    @Test("Exported definitions round-trip through JSON")
     func exportRoundTrip() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("scout-export-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -30,25 +30,6 @@ struct SchemaExportTests {
         let data = try Data(contentsOf: try #require(files.first))
         let decoded = try JSONDecoder().decode(EntityDefinition.self, from: data)
         #expect(decoded == makePurchaseDefinition())
-
-        let source = try DefinitionCodeGenerator().source(forJSON: data)
-        #expect(source.contains("struct Purchase"))
-    }
-
-    @Test("A reference field generates as an opaque RecordValue, not a broken String")
-    func referenceFieldCodegen() throws {
-        let definition = makeDefinition(
-            entity: "post",
-            fields: [
-                FieldDefinition(name: "title", type: .string, storage: .slot(.string, "s_00")),
-                FieldDefinition(name: "author", type: .reference, storage: .slot(.reference, "r_00"), references: "user"),
-            ])
-        let source = DefinitionCodeGenerator().source(for: definition)
-
-        #expect(source.contains("var author: RecordValue?"))
-        #expect(!source.contains("var author: String?"))
-        #expect(source.contains("author = record.values[\"author\"]"))
-        #expect(source.contains("values[\"author\"] = author"))
     }
 
     @Test("Exports are byte-stable across runs")

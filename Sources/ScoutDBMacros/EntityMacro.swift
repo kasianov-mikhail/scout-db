@@ -10,8 +10,7 @@ import SwiftSyntax
 import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
 
-/// Derives `EntityRepresentable` from a struct's stored properties — the
-/// macro counterpart of `scoutdb-codegen`, for entities modeled Swift-first.
+/// Derives `EntityRepresentable` from a struct's stored properties.
 public struct EntityMacro: ExtensionMacro {
     public static func expansion(
         of node: AttributeSyntax,

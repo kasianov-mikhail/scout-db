@@ -7,7 +7,7 @@
 
 import Foundation
 
-/// A typed façade over one entity — the shape `scoutdb-codegen` generates.
+/// A typed façade over one entity — the shape `@Entity` derives.
 public protocol EntityRepresentable {
     static var entityName: String { get }
     /// The schema field behind a stored property's key path, nil for key paths

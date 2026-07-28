@@ -17,6 +17,18 @@ Every record carries a small envelope alongside your own fields:
 | `deleted` | soft-delete flag |
 | `expires` | TTL cutoff |
 
+## 📤 Exporting definitions
+
+The definitions the database holds can be written out as one `<entity>.entity.json` per
+entity — a snapshot of the published schema that lives next to your sources:
+
+```swift
+try await registry.exportDefinitions(to: directory)
+```
+
+Retired entities stay out of the export, and the JSON is pretty-printed with sorted keys, so
+it diffs cleanly under version control.
+
 ## 🧊 Freezing
 
 Validate before the first Production deploy:
