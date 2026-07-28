@@ -10,7 +10,6 @@ import Foundation
 
 struct EntityCoder {
     var keyProvider: (any EncryptionKeyProvider)?
-    var zoneID: CKRecordZone.ID?
 
     let jsonEncoder = JSONEncoder()
     let jsonDecoder = JSONDecoder()
@@ -112,7 +111,7 @@ struct EntityCoder {
         let values = entityRecord.values
 
         let record =
-            base ?? CKRecord(recordType: Entity.recordType, recordID: CKRecord.ID(recordName: entityRecord.uuid, zoneID: zoneID ?? .default))
+            base ?? CKRecord(recordType: Entity.recordType, recordID: CKRecord.ID(recordName: entityRecord.uuid))
         record["entity"] = entityRecord.entity
         record["schema_version"] = Int64(entityRecord.schemaVersion)
         record["uuid"] = entityRecord.uuid

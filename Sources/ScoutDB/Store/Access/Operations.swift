@@ -423,7 +423,7 @@ extension EntityStore {
 
         for branch in branches where unresolved == nil {
             let (query, included) = try liveQuery(branch, entity: entity, createdBy: creator, using: definition)
-            try await database.forEachPage(matching: query, inZone: zoneID) { page in
+            try await database.forEachPage(matching: query) { page in
                 guard unresolved == nil else { return }
                 let matched = try page.filter { record in
                     if let trustedWriters {
@@ -538,7 +538,7 @@ extension EntityStore {
     /// lags a write.
     ///
     public func fetch(uuid: String) async throws -> EntityRecord? {
-        let id = CKRecord.ID(recordName: uuid, zoneID: zoneID ?? .default)
+        let id = CKRecord.ID(recordName: uuid)
         guard let record = try await database.fetchRecord(id: id) else { return nil }
         guard let entity = record["entity"] as? String else { return nil }
         let definition = try await registry.definition(for: entity)
@@ -556,11 +556,10 @@ extension EntityStore {
             let records: [CKRecord]
         }
         let database = database
-        let zoneID = zoneID
         return try await withThrowingTaskGroup(of: Chunk.self) { group in
             for (index, chunk) in uuids.chunked(into: 100).enumerated() {
                 group.addTask {
-                    let ids = chunk.map { CKRecord.ID(recordName: $0, zoneID: zoneID ?? .default) }
+                    let ids = chunk.map { CKRecord.ID(recordName: $0) }
                     return Chunk(index: index, records: try await database.fetchRecords(ids: ids))
                 }
             }

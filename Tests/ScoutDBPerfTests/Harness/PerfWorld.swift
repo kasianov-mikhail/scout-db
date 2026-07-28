@@ -45,7 +45,7 @@ struct PerfWorld: @unchecked Sendable {
     }
 
     var migrator: Migrator {
-        Migrator(database: database, registry: registry, keyProvider: PerfKeyProvider(), zoneID: PerfSchema.zoneID)
+        Migrator(database: database, registry: registry, keyProvider: PerfKeyProvider())
     }
 
     /// A uuid no corpus record holds, unique per scenario run and iteration.
@@ -84,7 +84,7 @@ final class PerfBench {
         let cache = Self.cache(scenario.stack, over: observed)
         let database = ObservedDatabase(backing: cache ?? observed, observer: app)
         let registry = SchemaRegistry(database: database)
-        let store = EntityStore(database: database, registry: registry, keyProvider: PerfKeyProvider(), zoneID: PerfSchema.zoneID)
+        let store = EntityStore(database: database, registry: registry, keyProvider: PerfKeyProvider())
 
         try await registry.preload()
         wire.reset()
@@ -105,15 +105,12 @@ final class PerfBench {
     /// Puts a fresh database under the next scenario, seeded from the pristine
     /// records.
     ///
-    /// A new double rather than a cleaned one, because its change feed is
-    /// append-only and has no reset: reusing it would hand a sync scenario
-    /// every write the scenarios before it made, and its cost would depend on
-    /// its position in the sweep.
+    /// A new double rather than a cleaned one, so a scenario never inherits
+    /// the records the scenarios before it wrote.
     ///
     private func restore() {
         backing = InMemoryDatabase()
         backing.records = corpus.records.map(Self.clone)
-        backing.zones = [PerfSchema.zoneID]
         backing.pageLimit = Self.pageLimit
     }
 

@@ -26,7 +26,6 @@ enum PerfSchema {
     /// Every entity record lives in a custom zone, the way an app that syncs or
     /// shares has to arrange them; schema and grid bookkeeping stay in the
     /// default zone on their own.
-    static let zoneID = CKRecordZone.ID(zoneName: "perf")
     static let keyID = "perf-key"
 
     static let products = [

@@ -19,7 +19,7 @@ extension EntityStore {
         guard let stored = try await items(entity: entity, uuids: [uuid]).first else {
             throw SchemaError.notFound(uuid)
         }
-        let coder = EntityCoder(keyProvider: keyProvider, zoneID: zoneID)
+        let coder = EntityCoder(keyProvider: keyProvider)
         let rewrite = try coder.rewrite(stored, using: definition) { record in
             record.deleted = false
         }
@@ -45,7 +45,7 @@ extension EntityStore {
                 ServerFilter(field: "deleted", op: .equals, value: .int(1)),
                 ServerFilter(field: "modificationDate", op: .lessThan, value: .date(cutoff)),
             ])
-        let victims = try await database.allRecords(matching: query, inZone: zoneID).map(\.recordID)
+        let victims = try await database.allRecords(matching: query).map(\.recordID)
         for chunk in victims.chunked(into: 400) {
             try await database.modifyRecords(saving: [], deleting: chunk)
         }
@@ -59,7 +59,7 @@ extension EntityStore {
     ///
     func purge(entity: String, filters: [Filter]) async throws -> Int {
         let victims = try await read(entity: entity, filters: filters, fields: [])
-        let ids = victims.map { CKRecord.ID(recordName: $0.uuid, zoneID: zoneID ?? .default) }
+        let ids = victims.map { CKRecord.ID(recordName: $0.uuid) }
         for chunk in ids.chunked(into: 400) {
             try await database.modifyRecords(saving: [], deleting: chunk)
         }

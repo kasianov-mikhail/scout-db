@@ -569,18 +569,17 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         return false
     }
 
-    private func cacheKey(_ query: CKQuery, _ zoneID: CKRecordZone.ID?, _ desiredKeys: [CKRecord.FieldKey]?, _ limit: Int) -> String {
+    private func cacheKey(_ query: CKQuery, _ desiredKeys: [CKRecord.FieldKey]?, _ limit: Int) -> String {
         let sorts = (query.sortDescriptors ?? []).map { "\($0.key ?? "")\($0.ascending ? "+" : "-")" }.joined(separator: ",")
-        let zone = zoneID.map { "\($0.zoneName)@\($0.ownerName)" } ?? "*"
-        return "\(query.recordType)|\(zone)|\(query.predicate.predicateFormat)|\(sorts)|\(desiredKeys?.joined(separator: ",") ?? "*")|\(limit)"
+        return "\(query.recordType)|\(query.predicate.predicateFormat)|\(sorts)|\(desiredKeys?.joined(separator: ",") ?? "*")|\(limit)"
     }
 
-    public func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+    public func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        let key = cacheKey(query, zoneID, desiredKeys, resultsLimit)
+        let key = cacheKey(query, desiredKeys, resultsLimit)
         do {
-            let response = try await backing.records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+            let response = try await backing.records(matching: query, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
             if desiredKeys == nil || response.queryCursor == nil {
                 let page = response.matchResults.compactMap { try? $0.1.get() }.map { LocalQuery.project($0, keys: nil) }
                 lock.withLock {
@@ -687,10 +686,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
 
     public func subscriptions() async throws -> [CKSubscription] {
         try await backing.subscriptions()
-    }
-
-    public func save(zone: CKRecordZone) async throws {
-        try await backing.save(zone: zone)
     }
 
     public func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {

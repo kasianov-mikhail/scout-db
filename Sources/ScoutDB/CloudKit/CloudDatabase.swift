@@ -17,15 +17,15 @@ import CloudKit
 /// `offset` is the legacy local shape and re-evaluates on every page.
 public enum QueryCursor: @unchecked Sendable {
     case cloudKit(CKQueryOperation.Cursor)
-    case offset(query: CKQuery, zoneID: CKRecordZone.ID?, offset: Int)
-    case materialized(query: CKQuery, zoneID: CKRecordZone.ID?, remaining: [CKRecord.ID])
+    case offset(query: CKQuery, offset: Int)
+    case materialized(query: CKQuery, remaining: [CKRecord.ID])
 }
 
 extension QueryCursor {
-    package var localScan: (query: CKQuery, zoneID: CKRecordZone.ID?)? {
+    package var localScan: CKQuery? {
         switch self {
         case .cloudKit: return nil
-        case .offset(let query, let zoneID, _), .materialized(let query, let zoneID, _): return (query, zoneID)
+        case .offset(let query, _), .materialized(let query, _): return query
         }
     }
 }
@@ -36,8 +36,8 @@ extension QueryCursor {
 /// the same `CKQuery`.
 ///
 public protocol CloudDatabase: Sendable {
-    /// Runs a query, in one zone when `zoneID` is given, across all zones otherwise.
-    func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+    /// Runs a query against the database's records.
+    func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     )
     func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
@@ -51,7 +51,6 @@ public protocol CloudDatabase: Sendable {
     func save(subscription: CKSubscription) async throws
     func deleteSubscription(id: CKSubscription.ID) async throws
     func subscriptions() async throws -> [CKSubscription]
-    func save(zone: CKRecordZone) async throws
     /// The record behind an ID, or nil when the server has none.
     func fetchRecord(id: CKRecord.ID) async throws -> CKRecord?
     /// The records behind a set of IDs, in request order; an ID the server has
@@ -79,15 +78,9 @@ extension CloudDatabase {
         return records
     }
 
-    func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
-        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
-    ) {
-        try await records(matching: query, inZone: nil, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
-    }
-
-    func allRecords(matching query: CKQuery, inZone zoneID: CKRecordZone.ID? = nil, desiredKeys: [CKRecord.FieldKey]? = nil) async throws -> [CKRecord] {
+    func allRecords(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]? = nil) async throws -> [CKRecord] {
         var collected: [CKRecord] = []
-        try await forEachPage(matching: query, inZone: zoneID, desiredKeys: desiredKeys) { collected += $0 }
+        try await forEachPage(matching: query, desiredKeys: desiredKeys) { collected += $0 }
         return collected
     }
 
@@ -103,10 +96,10 @@ extension CloudDatabase {
     /// one that is safe to repeat.
     ///
     func forEachPage(
-        matching query: CKQuery, inZone zoneID: CKRecordZone.ID? = nil, desiredKeys: [CKRecord.FieldKey]? = nil,
+        matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]? = nil,
         _ body: ([CKRecord]) async throws -> Void
     ) async throws {
-        var (results, cursor) = try await records(matching: query, inZone: zoneID, desiredKeys: desiredKeys, resultsLimit: CKQueryOperation.maximumResults)
+        var (results, cursor) = try await records(matching: query, desiredKeys: desiredKeys, resultsLimit: CKQueryOperation.maximumResults)
         while true {
             try await body(try results.map { try $0.1.get() })
             guard let token = cursor else { return }
@@ -157,12 +150,12 @@ extension CloudDatabase {
 }
 
 extension CKDatabase: CloudDatabase {
-    public func records(matching query: CKQuery, inZone zoneID: CKRecordZone.ID?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+    public func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
         do {
             return try await throttled { database in
-                let (results, cursor) = try await database.records(matching: query, inZoneWith: zoneID, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+                let (results, cursor) = try await database.records(matching: query, inZoneWith: nil, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
                 return (results, cursor.map(QueryCursor.cloudKit))
             }
         } catch let error as CKError where error.code == .unknownItem {
@@ -261,13 +254,6 @@ extension CKDatabase: CloudDatabase {
                     return nil
                 }
             }
-        }
-    }
-
-    public func save(zone: CKRecordZone) async throws {
-        try await throttled { database in
-            let results = try await database.modifyRecordZones(saving: [zone], deleting: [])
-            _ = try results.saveResults[zone.zoneID]?.get()
         }
     }
 

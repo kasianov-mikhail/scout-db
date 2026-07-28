@@ -106,7 +106,7 @@ steps and marks it committed after — an interrupted process resumes and finish
 transaction on next launch (`store.repairTransactions(olderThan:)`) instead of leaving it
 half-applied. A run of `draft.update(...)` steps is applied as one batch per entity, so a
 transaction's patches cost the round trips of a single update rather than one update each.
-Committed envelopes stay in the zone until you erase them with
+Committed envelopes stay stored until you erase them with
 `store.compactTransactions(olderThan:)` — run it past the horizon where a crashed writer
 could still repair, or every device pays for the whole write history when it reads the entity.
 `store.lease(entity:uuid:owner:for:)` is an advisory, compare-and-swap-based

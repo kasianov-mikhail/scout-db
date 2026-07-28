@@ -84,12 +84,12 @@ extension EntityStore {
             return try await fetch(uuid: uuid)
         }
         let definition = try await registry.definition(for: entity)
-        let record = CKRecord(recordType: Entity.recordType, recordID: CKRecord.ID(recordName: uuid, zoneID: zoneID ?? .default))
+        let record = CKRecord(recordType: Entity.recordType, recordID: CKRecord.ID(recordName: uuid))
         for (key, value) in pushedFields {
             record[key] = value
         }
         record["uuid"] = record["uuid"] ?? uuid
-        let coder = EntityCoder(keyProvider: keyProvider, zoneID: zoneID)
+        let coder = EntityCoder(keyProvider: keyProvider)
         guard let decoded = try? coder.decode(record, using: definition) else {
             return try await fetch(uuid: uuid)
         }

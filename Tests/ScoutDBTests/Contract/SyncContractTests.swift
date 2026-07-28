@@ -12,26 +12,6 @@ import Testing
 
 @Suite("Contract: sync")
 struct SyncContractTests {
-    @Test("Zones isolate records of the same entity")
-    func zoneIsolation() async throws {
-        try await withContract { f in
-            let entity = try await f.publishOrder()
-            let siblingZone = CKRecordZone.ID(zoneName: f.zoneID.zoneName + "_b")
-            let sibling = EntityStore(database: f.database, registry: f.registry, zoneID: siblingZone)
-            try await sibling.ensureZone()
-
-            try await f.store.write(orderValues(product: "mine"), entity: entity, uuid: "z-a")
-            try await sibling.write(orderValues(product: "theirs"), entity: entity, uuid: "z-b")
-
-            try await eventually { try await f.store.read(entity: entity).map(\.uuid) == ["z-a"] }
-            try await eventually { try await sibling.read(entity: entity).map(\.uuid) == ["z-b"] }
-
-            if let database = f.database as? CKDatabase {
-                _ = try? await database.modifyRecordZones(saving: [], deleting: [siblingZone])
-            }
-        }
-    }
-
     @Test("Subscriptions save, list, and delete by id")
     func subscriptionLifecycle() async throws {
         try await withContract { f in
@@ -51,7 +31,7 @@ struct SyncContractTests {
             try await f.store.write(orderValues(product: "base"), entity: entity, uuid: "cas-1")
             try await eventually { try await f.store.read(entity: entity).count == 1 }
 
-            let id = CKRecord.ID(recordName: "cas-1", zoneID: f.zoneID)
+            let id = CKRecord.ID(recordName: "cas-1")
             let fresh = try #require(try await f.database.fetchRecord(id: id))
             let stale = try #require(try await f.database.fetchRecord(id: id))
 
