@@ -53,9 +53,6 @@ extension PerfScenarios {
                 _ = try await world.store.subscriptions()
                 try await world.store.unsubscribe(id: id)
             },
-            PerfScenario("Subscriptions", "one database subscription", sql: 1) { world, iteration in
-                _ = try await world.store.subscribeToDatabase(id: world.fresh("db", iteration))
-            },
         ]
     }
 
