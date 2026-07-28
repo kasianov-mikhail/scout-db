@@ -17,22 +17,14 @@ extension PerfScenarios {
                     return
                 }
             },
-            PerfScenario("Live queries", "a snapshot, a write, and the fold after it", sql: 3, cost: .result, iterations: 2) { world, iteration in
-                let stream = world.store.observe(entity: PerfSchema.order, filters: [.init(field: "status", op: .equals, value: .string("paid"))])
-                var iterator = stream.makeAsyncIterator()
-                _ = try await iterator.next()
-                try await world.store.write(world.newOrder(iteration), entity: PerfSchema.order, uuid: world.fresh("live", iteration))
-                _ = try await iterator.next()
-            },
-            PerfScenario("Live queries", "a re-query after one write", sql: 3, iterations: 2) { world, iteration in
+            PerfScenario("Live queries", "the first snapshot of a query", sql: 1, writes: false, iterations: 2) { world, _ in
                 let stream = world.store.query(PerfSchema.order)
                     .filter("product", .equals, .string(world.hotProduct))
                     .limit(50)
                     .observe()
-                var iterator = stream.makeAsyncIterator()
-                _ = try await iterator.next()
-                try await world.store.write(world.newOrder(iteration), entity: PerfSchema.order, uuid: world.fresh("lq", iteration))
-                _ = try await iterator.next()
+                for try await _ in stream {
+                    return
+                }
             },
         ]
     }
@@ -47,11 +39,20 @@ extension PerfScenarios {
                     entity: PerfSchema.order, filters: [.init(field: "status", op: .equals, value: .string("paid"))], id: world.fresh("prj", iteration),
                     projecting: ["product", "total"])
             },
-            PerfScenario("Subscriptions", "list, then drop one", sql: 3) { world, iteration in
-                let id = world.fresh("drop", iteration)
-                _ = try await world.store.subscribe(entity: PerfSchema.item, id: id)
+            PerfScenario("Subscriptions", "list the subscriptions", sql: 1, writes: false) { world, _ in
                 _ = try await world.store.subscriptions()
-                try await world.store.unsubscribe(id: id)
+            },
+            PerfScenario(
+                "Subscriptions", "unsubscribe", sql: 1,
+                setUp: { world in
+                    for iteration in 0..<world.repeats {
+                        let id = world.fresh("drop", iteration)
+                        _ = try await world.store.subscribe(entity: PerfSchema.item, id: id)
+                        world.stage.uuids.append(id)
+                    }
+                }
+            ) { world, iteration in
+                try await world.store.unsubscribe(id: world.stage.uuids[iteration])
             },
         ]
     }

@@ -35,6 +35,11 @@ struct PerfWorld: @unchecked Sendable {
     let cache: (any CloudDatabase)?
     /// Distinguishes the records one scenario run writes from every other run's.
     let runID: String
+    /// How many times the runner calls the body, so a `setUp` can arrange one
+    /// input per iteration.
+    let repeats: Int
+    /// What this scenario's `setUp` left for its body.
+    let stage: PerfStage
 
     var size: DatasetSize {
         corpus.size
@@ -52,6 +57,19 @@ struct PerfWorld: @unchecked Sendable {
     func fresh(_ prefix: String, _ iteration: Int) -> String {
         "\(prefix)-\(runID)-\(iteration)"
     }
+}
+
+/// What one scenario's `setUp` hands its body.
+///
+/// A body measures one operator, so whatever that operator has to be given —
+/// records to join, a lease to release, an entity to retire — is arranged
+/// before the tallies are zeroed and read back from here, one entry per
+/// iteration.
+///
+final class PerfStage: @unchecked Sendable {
+    var uuids: [String] = []
+    var entities: [String] = []
+    var records: [EntityRecord] = []
 }
 
 /// Holds one size's database across the whole sweep and hands each scenario a
@@ -92,7 +110,7 @@ final class PerfBench {
 
         return PerfWorld(
             corpus: corpus, backing: backing, database: database, registry: registry, store: store, app: app, wire: wire, cache: cache,
-            runID: "r\(runs)")
+            runID: "r\(runs)", repeats: scenario.repeats(on: corpus.size), stage: PerfStage())
     }
 
     private static func cache(_ stack: PerfScenario.Stack, over database: any CloudDatabase) -> (any CloudDatabase)? {

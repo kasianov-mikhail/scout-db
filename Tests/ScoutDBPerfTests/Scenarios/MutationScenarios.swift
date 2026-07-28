@@ -5,6 +5,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
 import Foundation
 import ScoutDB
 
@@ -31,18 +32,19 @@ extension PerfScenarios {
             PerfScenario("Unique keys", "write a customer, one fresh claim", sql: 1) { world, iteration in
                 try await world.store.write(newCustomer(world, iteration), entity: PerfSchema.customer, uuid: world.fresh("cus", iteration))
             },
-            PerfScenario("Unique keys", "batch of 50 customers, 50 claims", sql: 1, cost: .result, iterations: 2) { world, iteration in
-                let batch = (0..<50).map { index in
-                    EntityWrite(values: newCustomer(world, iteration &* 100 &+ index), uuid: world.fresh("cb\(index)", iteration))
+            PerfScenario(
+                "Unique keys", "rewrite, claim already held", sql: 1,
+                setUp: { world in
+                    for iteration in 0..<world.repeats {
+                        let uuid = world.fresh("keep", iteration)
+                        try await world.store.write(newCustomer(world, iteration), entity: PerfSchema.customer, uuid: uuid)
+                        world.stage.uuids.append(uuid)
+                    }
                 }
-                try await world.store.write(batch, entity: PerfSchema.customer)
-            },
-            PerfScenario("Unique keys", "rewrite, claim already held", sql: 2) { world, iteration in
-                let uuid = world.fresh("keep", iteration)
+            ) { world, iteration in
                 var values = newCustomer(world, iteration)
-                try await world.store.write(values, entity: PerfSchema.customer, uuid: uuid)
                 values["points"] = .double(1)
-                try await world.store.write(values, entity: PerfSchema.customer, uuid: uuid)
+                try await world.store.write(values, entity: PerfSchema.customer, uuid: world.stage.uuids[iteration])
             },
             PerfScenario("Unique keys", "write into a taken email", sql: 1) { world, iteration in
                 var values = newCustomer(world, iteration)
@@ -73,20 +75,28 @@ extension PerfScenarios {
                     draft.delete(entity: PerfSchema.item, uuid: world.item(iteration))
                 }
             },
-            PerfScenario("Transactions", "repair a pending envelope", sql: 4, iterations: 2) { world, iteration in
-                let steps = [TransactionStep(entity: PerfSchema.order, uuid: world.fresh("rep", iteration), values: world.newOrder(iteration))]
-                try await world.store.write(
-                    [
-                        "status": .string("pending"),
-                        "date": .date(world.corpus.now),
-                        "steps": .bytes(try JSONEncoder().encode(steps)),
-                    ], entity: EntityStore.transactionEntity, uuid: world.fresh("env", iteration))
+            PerfScenario(
+                "Transactions", "repair a pending envelope", sql: 3, iterations: 1,
+                setUp: { world in
+                    let steps = [TransactionStep(entity: PerfSchema.order, uuid: world.fresh("rep", 0), values: world.newOrder(0))]
+                    try await world.store.write(
+                        [
+                            "status": .string("pending"),
+                            "date": .date(world.corpus.now),
+                            "steps": .bytes(try JSONEncoder().encode(steps)),
+                        ], entity: EntityStore.transactionEntity, uuid: world.fresh("env", 0))
+                }
+            ) { world, _ in
                 _ = try await world.store.repairTransactions()
             },
-            PerfScenario("Transactions", "compact committed envelopes", sql: 2, cost: .elective, iterations: 2) { world, iteration in
-                try await world.store.transaction { draft in
-                    draft.write(world.newOrder(iteration), entity: PerfSchema.order, uuid: world.fresh("cmp", iteration))
+            PerfScenario(
+                "Transactions", "compact committed envelopes", sql: 1, cost: .elective, iterations: 1,
+                setUp: { world in
+                    try await world.store.transaction { draft in
+                        draft.write(world.newOrder(0), entity: PerfSchema.order, uuid: world.fresh("cmp", 0))
+                    }
                 }
+            ) { world, _ in
                 _ = try await world.store.compactTransactions(olderThan: Date().addingTimeInterval(60))
             },
         ]
@@ -97,12 +107,17 @@ extension PerfScenarios {
             PerfScenario("Leases", "take a lease", sql: 1) { world, iteration in
                 try await world.store.lease(entity: PerfSchema.order, uuid: world.order(iteration), owner: "worker-\(iteration)", for: 60)
             },
-            PerfScenario("Leases", "take, read and release", sql: 3) { world, iteration in
-                let uuid = world.order(iteration)
-                let owner = "worker-\(iteration)"
-                try await world.store.lease(entity: PerfSchema.order, uuid: uuid, owner: owner, for: 60)
-                _ = try await world.store.leaseHolder(entity: PerfSchema.order, uuid: uuid)
-                try await world.store.release(entity: PerfSchema.order, uuid: uuid, owner: owner)
+            PerfScenario(
+                "Leases", "release a lease", sql: 1,
+                setUp: { world in
+                    for iteration in 0..<world.repeats {
+                        let uuid = world.order(iteration)
+                        try await world.store.lease(entity: PerfSchema.order, uuid: uuid, owner: "worker-\(iteration)", for: 60)
+                        world.stage.uuids.append(uuid)
+                    }
+                }
+            ) { world, iteration in
+                try await world.store.release(entity: PerfSchema.order, uuid: world.stage.uuids[iteration], owner: "worker-\(iteration)")
             },
             PerfScenario("Leases", "read a free record's holder", sql: 1, writes: false) { world, iteration in
                 _ = try await world.store.leaseHolder(entity: PerfSchema.order, uuid: world.order(iteration))
@@ -117,18 +132,26 @@ extension PerfScenarios {
                     record.values["note"] = .string("note-\(iteration)")
                 }
             },
-            PerfScenario("Conflicts", "flush a queued write through a resolver", sql: 2, stack: .offline) { world, iteration in
-                guard let cache = world.offlineCache else { return }
-                let uuid = world.order(iteration)
-                cache.setConflictResolver(
-                    world.store.conflictResolver { queued, server, _ in
-                        var merged = server
-                        merged.values["note"] = queued.values["note"]
-                        return .save(merged)
-                    })
-                try await world.store.update(entity: PerfSchema.order, uuid: uuid) { record in
-                    record.values["note"] = .string("queued-\(iteration)")
+            PerfScenario(
+                "Conflicts", "flush a queued write through a resolver", sql: 1, stack: .offline, iterations: 1,
+                setUp: { world in
+                    guard let cache = world.offlineCache else { return }
+                    cache.setConflictResolver(
+                        world.store.conflictResolver { queued, server, _ in
+                            var merged = server
+                            merged.values["note"] = queued.values["note"]
+                            return .save(merged)
+                        })
+                    let uuid = world.order(0)
+                    world.backing.writeErrors = [CKError(.networkFailure)]
+                    var values = world.newOrder(0)
+                    values["note"] = .string("queued")
+                    try await world.store.write(values, entity: PerfSchema.order, uuid: uuid)
+                    guard let server = world.backing.records.first(where: { $0.recordID.recordName == uuid }) else { return }
+                    world.backing.writeErrors = [RecordConflictError(serverRecord: server.copy() as! CKRecord)]
                 }
+            ) { world, _ in
+                guard let cache = world.offlineCache else { return }
                 _ = try await cache.flush()
             },
         ]
