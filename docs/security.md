@@ -1,6 +1,14 @@
-# 🔐 Security
+# Security
 
-## 🔒 Field encryption
+## Table of Contents
+- [Field encryption](#field-encryption)
+- [Key rotation](#key-rotation)
+- [HMAC surrogates](#hmac-surrogates)
+- [Trusted writers](#trusted-writers)
+- [Public database grants](#public-database-grants)
+- [Limits](#limits)
+
+## Field encryption
 
 The public database is world-readable, so sensitive values are encrypted on the client
 before they leave the device. Mark a payload field `.encrypted`, name the key, and provide
@@ -19,7 +27,7 @@ let store = EntityStore(database: database, registry: registry, keyProvider: pro
 Values are sealed with AES-GCM. Readers without the key see ciphertext and simply get `nil`
 for the field; readers with the key decrypt transparently.
 
-## 🔁 Key rotation
+## Key rotation
 
 A new `keyID` alone only covers records written after it, so rotate the stored ones too:
 
@@ -34,7 +42,7 @@ safely — a record already sealed under the new key is decoded with it instead.
 readers for the duration: until the republished definition reaches them, rotated records fail
 to decrypt with the old key.
 
-## #️⃣ HMAC surrogates
+## HMAC surrogates
 
 An encrypted field cannot be filtered — the `hmac` derivation materializes a keyed hash of
 the value into a slot, so equality lookups still run server-side:
@@ -45,7 +53,7 @@ the value into a slot, so equality lookups still run server-side:
 
 The surrogate reveals nothing about the value, but matches deterministically.
 
-## 🛡️ Trusted writers
+## Trusted writers
 
 Anyone with an iCloud account can write to a public database. CloudKit stamps every record
 with its creator (`___createdBy`) server-side — it cannot be forged — so a reader can drop
@@ -58,7 +66,7 @@ let store = EntityStore(database: database, registry: registry, trustedWriters: 
 Grants cannot be narrowed after the fact, so this reader-side filter is the practical
 anti-vandalism tool for world-writable containers.
 
-## 🏗️ Public database grants
+## Public database grants
 
 The shipped `Schema` grants authenticated iCloud users (`_icloud`) `CREATE` and `WRITE` on
 `Entity`, `Aggregate`, `SchemaDescriptor`, and `UniqueClaim`, and `_world` `READ`.
@@ -70,7 +78,7 @@ records sync. `UniqueClaim` holds the claim records behind
 you configure roles by hand instead of importing `Schema`, grant `_icloud` `CREATE, WRITE` on
 all four record types.
 
-## ⚠️ Limits
+## Limits
 
 - Encrypted fields support exact-match lookups via the surrogate only — no ranges, no
   substring search.

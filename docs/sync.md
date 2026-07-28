@@ -1,10 +1,15 @@
-# 📡 Sync
+# Sync
 
 ScoutDB has no change feed: a device learns what other devices wrote by reading again. What
 the library gives you is the wiring around that read — push notifications that say *when* to
 read, and live queries that keep a SwiftUI view on the latest local state.
 
-## 🔔 Push-triggered reads
+## Table of Contents
+- [Push-triggered reads](#push-triggered-reads)
+- [Reading a push without a follow-up fetch](#reading-a-push-without-a-follow-up-fetch)
+- [Live queries in SwiftUI](#live-queries-in-swiftui)
+
+## Push-triggered reads
 
 A silent push per entity, narrowed server-side to the changes worth waking the app for:
 
@@ -29,7 +34,7 @@ func application(_ app: UIApplication, didReceiveRemoteNotification userInfo: [A
 }
 ```
 
-## 📨 Reading a push without a follow-up fetch
+## Reading a push without a follow-up fetch
 
 A subscription made with `projecting:` puts the named fields into the notification payload,
 and `record(fromPush:)` decodes them without going back to the server:
@@ -45,7 +50,7 @@ fields it left out as `nil` rather than as cleared. `ChangeEvent(userInfo:)` is 
 mapping underneath, when you want the kind and uuid without the record. A ScoutDB delete is a
 tombstone rewrite, so it arrives as an update; `.deleted` only appears for hard deletes.
 
-## 🔴 Live queries in SwiftUI
+## Live queries in SwiftUI
 
 `query(_:).live()` returns an observable model that re-runs the query whenever a local write
 touches its entity — no manual refresh:
@@ -83,13 +88,3 @@ the server: a `limit`, because a record leaving the top can admit one the change
 mentioned; a projection, an OR group, or a `createdBy` scope; a `near` filter or a distance
 sort, which have no client-side equivalent; and any mutation that cannot name what it touched,
 such as a compaction.
-
-## ⚖️ Trade-offs
-
-- Catching up costs a query, and its cost follows what the query returns rather than what
-  changed. Narrow the read — filters, `limit`, projections — rather than re-reading whole
-  entities on every push.
-- Pushes are best-effort. Re-read when a scene comes to the foreground too, or a dropped
-  notification leaves the screen stale until the next one arrives.
-- A per-entity subscription can only be filtered by predicates the server evaluates;
-  `like`, `matches`, `isNull` and payload fields are rejected rather than silently ignored.

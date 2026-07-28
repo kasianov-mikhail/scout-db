@@ -1,10 +1,17 @@
-# 🧩 The @Entity macro
+# The @Entity macro
 
 Every example so far writes and reads `[String: RecordValue]` dictionaries. `@Entity`
 generates the mapping between a Swift struct and its schema fields, so the store can write
 and query typed structs directly instead.
 
-## 🏷️ Declaring an entity type
+## Table of Contents
+- [Declaring an entity type](#declaring-an-entity-type)
+- [Using it with EntityStore](#using-it-with-entitystore)
+- [Opaque fields](#opaque-fields)
+- [Limitations](#limitations)
+- [Generating from a published schema](#generating-from-a-published-schema)
+
+## Declaring an entity type
 
 ```swift
 @Entity("purchase")
@@ -31,7 +38,7 @@ dictionary, and a `fieldName(for:)` lookup from key path to schema field name. T
 own field names are unrelated to the `.required`/`.payload` constraints you declare with
 `SchemaBuilder` — the macro only maps property ↔ field name, not storage or validation.
 
-## 🧵 Using it with EntityStore
+## Using it with EntityStore
 
 ```swift
 try await store.write(Purchase(productId: "sku-1", quantity: 2, price: 25))
@@ -50,7 +57,7 @@ try await store.update(Purchase.self, uuid: "sku-1") { purchase in
 generated `fieldName(for:)` — filters read the same as the untyped query builder, just
 key-path-safe instead of string-keyed.
 
-## 🎭 Opaque fields
+## Opaque fields
 
 A property typed exactly `RecordValue?` bypasses the usual `String`/`Int`/`Double`/etc.
 conversion and is stored/read raw — useful for a field whose type varies by schema version or
@@ -64,7 +71,7 @@ struct Event {
 }
 ```
 
-## 🚧 Limitations
+## Limitations
 
 - Structs only — classes and enums aren't supported.
 - At least one stored, optional property is required.
@@ -74,7 +81,7 @@ struct Event {
   `Double`, `Date`, `Data`, or an array of one of these) unless it's `RecordValue?`. Custom
   nested types aren't handled.
 
-## 🏭 Generating from a published schema
+## Generating from a published schema
 
 If you'd rather derive the same conformance from a *published* schema instead of a Swift
 declaration — useful for entities defined outside the app, e.g. by another team's service —

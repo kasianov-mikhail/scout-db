@@ -1,4 +1,4 @@
-# 🔄 Migrations
+# Migrations
 
 Every entity is described by a versioned `EntityDefinition` stored as a `SchemaDescriptor` record.
 Definitions are immutable: a change is always a new version, published as a new record. A
@@ -6,7 +6,14 @@ record stores the `schema_version` it was written with, and the definition descr
 version at once (`since`/`until` bounds on fields) — so any record ever written stays
 readable forever, and there is nothing to re-import.
 
-## 🛠️ Declaring migrations
+## Table of Contents
+- [Declaring migrations](#declaring-migrations)
+- [What update() does](#what-update-does)
+- [Renames](#renames)
+- [Backfill and rollback](#backfill-and-rollback)
+- [Invariants](#invariants)
+
+## Declaring migrations
 
 Declare each change as a `Migration` and run the list at startup:
 
@@ -38,7 +45,7 @@ try await store.migrate([CreatePurchase(), RetypePurchaseAmount()])
 Running the list twice is safe: republishing a version is an upsert, and backfills skip
 records already at the latest version.
 
-## 🧭 What update() does
+## What update() does
 
 `update()` publishes the next version, diffed against the current one:
 
@@ -52,7 +59,7 @@ records already at the latest version.
 Settings (`envelopeDate`, `unique`, `uniqueKey`, `enforcedKey`, `views`, `keyID`, `ttl`,
 `audited`) are inherited unless you set them again.
 
-## ✏️ Renames
+## Renames
 
 A rename is a close-plus-add from the builder's point of view. To keep the old values
 readable under the new name, publish the definition manually with the storage carried over:
@@ -76,7 +83,7 @@ try await migrator.rename(entity: "purchase", from: "user", to: "user_id")
 It rewrites every outdated record, carrying the value stored under the old name at that
 record's version into the new name at the current one. Repeating the run is safe.
 
-## ⏪ Backfill and rollback
+## Backfill and rollback
 
 Old records stay valid without any rewriting. To actively move them to the latest version:
 
@@ -101,7 +108,7 @@ Reverse migrations are the same operation pointed backwards: definitions describ
 version, so records can be re-encoded at an older version too. The only one-way door is data
 a forward migration actually erased.
 
-## 🔒 Invariants
+## Invariants
 
 1. `SchemaDescriptor` versions are immutable — a change is always a new `entity_version`.
 2. A slot is never reassigned while records of versions that used it still exist (the slot

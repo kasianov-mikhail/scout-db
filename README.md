@@ -23,6 +23,8 @@ schema freely — the CloudKit [schema](Schema) is uploaded once and never touch
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Usage](#usage)
+- [Testing without a container](#testing-without-a-container)
+- [Documentation](#documentation)
 - [License](#license)
 
 ## Features
@@ -52,16 +54,17 @@ dependencies: [
 ]
 ```
 
-Upload the [`Schema`](Schema) file to your CloudKit container once, via the
-[CloudKit Console](https://icloud.developer.apple.com/dashboard/): select your container,
-open **Schema**, and use **Import Schema** to upload the file to the Development environment;
-then deploy it to Production from the console when ready — this is the only schema upload the
-container will ever need.
+The physical CloudKit schema ships as the [`Schema`](Schema) file at the repository root.
+Upload it once per container through the
+[CloudKit Console](https://icloud.developer.apple.com/dashboard/): select your container, open
+**Schema**, and use **Import Schema** to upload the file to the Development environment.
 
-> See the [docs](docs) folder for guides on migrations, filtering, aggregation, sync,
-> offline support, and more.
+Deploy to Production from the CloudKit Console when ready. After that the file is frozen —
+every schema change in your app is a data change, not a re-import.
 
 ## Usage
+
+### Connect
 
 ```swift
 import CloudKit
@@ -70,25 +73,60 @@ import ScoutDB
 let database = CKContainer(identifier: "iCloud.com.example.app").publicCloudDatabase
 let registry = SchemaRegistry(database: database)
 let store = EntityStore(database: database, registry: registry)
+```
 
+### Declare an entity
+
+```swift
 try await store.schema("purchase")
     .field("product_id", .string, .required)
+    .field("quantity", .int, .minimum(0))
     .field("amount", .double)
     .field("date", .timestamp)
+    .field("comment", .string, .payload)
     .envelopeDate("date")
     .create()
+```
 
+Fields marked `.payload` skip server-side filtering — use it for everything you never filter on.
+
+### Write and query
+
+```swift
 try await store.write([
     "product_id": .string("sku-42"),
+    "quantity": .int(3),
     "amount": .double(29.97),
     "date": .date(.now),
 ], entity: "purchase")
 
 let recent = try await store.query("purchase")
-    .filter("amount" > 10)
+    .filter("quantity" > 1)
     .sort("date", .descending)
     .take(20)
 ```
+
+## Testing without a container
+
+The package ships a second library, `ScoutDBTesting`, whose `InMemoryDatabase` implements the
+same `CloudDatabase` protocol the real one does — so a test drives the whole store, schema
+publishing included, without a network or an iCloud account:
+
+```swift
+import ScoutDBTesting
+
+let database = InMemoryDatabase()
+let store = EntityStore(database: database, registry: SchemaRegistry(database: database))
+```
+
+`InMemoryContainer` stands in for `CloudContainer` when the code under test checks account
+status, and it can be made to report any `CKAccountStatus` you want to exercise.
+
+## Documentation
+
+The [docs](docs) folder covers the rest: the frozen physical schema, migrations, filtering,
+the operator reference, aggregation, records, the `@Entity` macro, sync, offline support, and
+security.
 
 ## License
 
