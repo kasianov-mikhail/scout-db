@@ -821,24 +821,6 @@ struct OperationsTests {
         }
     }
 
-    @Test("Reap tombstones expired records")
-    func reap() async throws {
-        try await registry.publish(
-            makeDefinition(
-                entity: "ping",
-                fields: [
-                    FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00"))
-                ], envelopeDate: "date", ttl: 3_600))
-
-        try await store.write(["date": .date(Date(timeIntervalSince1970: 1_000))], entity: "ping", uuid: "old")
-        try await store.write(["date": .date(Date(timeIntervalSince1970: 100_000))], entity: "ping", uuid: "new")
-
-        let reaped = try await store.reap(entity: "ping", asOf: Date(timeIntervalSince1970: 50_000))
-        #expect(reaped == 1)
-        let records = try await store.read(entity: "ping")
-        #expect(records.map(\.uuid) == ["new"])
-    }
-
     @Test("Projection fetches only the requested fields")
     func projection() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")

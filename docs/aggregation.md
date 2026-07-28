@@ -80,7 +80,7 @@ covering view it falls back to a client-side scan — materialize a view for lar
 </tr>
 <tr>
 <td>🔁 <strong>Deletes and updates rebalance the views.</strong></td>
-<td><code>delete</code>, <code>deleteAll</code>, <code>reap</code>, <code>update</code>, and <code>updateAll</code> reverse the removed record's contribution, so <code>count</code>, <code>sum</code>, <code>stats</code>, and <code>histogram</code> views stay accurate as records change. A <code>min</code>/<code>max</code> extremum is the exception: it cannot be un-applied, so its value is left as-is when a record leaves (the count still decrements) unless the view declares <code>exact</code>. Backfilling a <code>min</code>/<code>max</code> view also restores it.</td>
+<td><code>delete</code>, <code>deleteAll</code>, <code>update</code>, and <code>updateAll</code> reverse the removed record's contribution, so <code>count</code>, <code>sum</code>, <code>stats</code>, and <code>histogram</code> views stay accurate as records change. A <code>min</code>/<code>max</code> extremum is the exception: it cannot be un-applied, so its value is left as-is when a record leaves (the count still decrements) unless the view declares <code>exact</code>. Backfilling a <code>min</code>/<code>max</code> view also restores it.</td>
 </tr>
 </tbody>
 </table>

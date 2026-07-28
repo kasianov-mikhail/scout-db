@@ -88,7 +88,7 @@ enum PerfSchema {
     }
 
     /// Audited, so the history scenarios have a revision log to read, and short
-    /// lived, so the TTL sweep has something to reap.
+    /// lived, so writes stamp an `expires` envelope field.
     static var sessionDefinition: EntityDefinition {
         EntityDefinition(
             entity: session, version: 1,
