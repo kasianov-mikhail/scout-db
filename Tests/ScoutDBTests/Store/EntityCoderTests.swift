@@ -225,18 +225,6 @@ struct EntityCoderTests {
         #expect(first == second)
         #expect(first != other)
     }
-
-    @Test("TTL stamps an expires envelope field")
-    func expires() throws {
-        let definition = makeDefinition(
-            entity: "ping",
-            fields: [
-                FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00"))
-            ], envelopeDate: "date", ttl: 3_600)
-        let ping = EntityRecord(entity: "ping", uuid: "g-1", schemaVersion: 2, values: ["date": .date(Date(timeIntervalSince1970: 1_000))])
-        let record = try coder.encode(ping, using: definition)
-        #expect(record["expires"] == Date(timeIntervalSince1970: 4_600))
-    }
 }
 
 func makePurchase(uuid: String = "p-1") -> EntityRecord {

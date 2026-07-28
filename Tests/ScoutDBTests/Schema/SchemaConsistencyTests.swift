@@ -50,7 +50,7 @@ struct SchemaConsistencyTests {
     @Test("Entity carries the envelope the coder stamps")
     func itemEnvelope() {
         let names = Set(Self.fields(of: "Entity").map(\.name))
-        for field in ["entity", "schema_version", "uuid", "deleted", "expires", "payload"] {
+        for field in ["entity", "schema_version", "uuid", "deleted", "payload"] {
             #expect(names.contains(field), "Entity is missing '\(field)'")
         }
     }

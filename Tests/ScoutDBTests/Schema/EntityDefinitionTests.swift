@@ -262,9 +262,9 @@ struct EntityDefinitionTests {
 
 func makeDefinition(
     entity: String = "purchase", version: Int = 2, fields: [FieldDefinition], envelopeDate: String? = nil, unique: [String]? = nil,
-    views: [AggregateView]? = nil, keyID: String? = nil, ttl: Double? = nil
+    views: [AggregateView]? = nil, keyID: String? = nil
 ) -> EntityDefinition {
-    EntityDefinition(entity: entity, version: version, fields: fields, envelopeDate: envelopeDate, unique: unique, views: views, keyID: keyID, ttl: ttl)
+    EntityDefinition(entity: entity, version: version, fields: fields, envelopeDate: envelopeDate, unique: unique, views: views, keyID: keyID)
 }
 
 func makeSeatDefinition() -> EntityDefinition {

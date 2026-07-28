@@ -118,9 +118,6 @@ struct EntityCoder {
         record["schema_version"] = Int64(entityRecord.schemaVersion)
         record["uuid"] = entityRecord.uuid
         record["deleted"] = Int64(entityRecord.deleted ? 1 : 0)
-        if let ttl = definition.ttl, let dateField = definition.envelopeDate, case .date(let date)? = values[dateField] {
-            record["expires"] = date.addingTimeInterval(ttl)
-        }
 
         var payload: [String: RecordValue] = [:]
         for field in fields {
