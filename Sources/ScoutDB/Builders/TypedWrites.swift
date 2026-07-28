@@ -8,21 +8,10 @@
 import Foundation
 
 extension EntityStore {
-    /// Writes a typed value through its derived field map.
-    ///
-    /// The value's nil properties stay out of the write entirely, and fields
-    /// the type does not map are untouched — a typed write only speaks for
-    /// the fields it knows. Returns the stored uuid, which a `unique(on:)`
-    /// entity derives from the value itself.
-    ///
     @discardableResult public func write<T: EntityRepresentable>(_ item: T, uuid: String? = nil) async throws -> String {
         try await write(item.recordValues, entity: T.entityName, uuid: uuid)
     }
 
-    /// Writes a batch of typed values in one chunked save, under fresh uuids.
-    ///
-    /// Returns the stored uuid of every value, in batch order.
-    ///
     @discardableResult public func write<T: EntityRepresentable>(_ items: [T]) async throws -> [String] {
         try await write(items.map { EntityWrite(values: $0.recordValues) }, entity: T.entityName)
     }

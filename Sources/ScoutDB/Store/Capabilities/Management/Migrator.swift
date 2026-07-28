@@ -24,14 +24,6 @@ public struct Migrator: Sendable {
         try await backfill(entity: entity) { record, _ in try transform(&record) }
     }
 
-    /// Renames a field's data: rewrites every outdated record, carrying the value
-    /// stored under `from` at the record's version into `to` at the current one.
-    ///
-    /// Needed when the rename allocated a fresh slot for the new name — a rename
-    /// that reuses the old field's slot across disjoint version ranges migrates
-    /// through a plain `backfill` already. Repeating the run is safe: migrated
-    /// records leave the outdated set.
-    ///
     @discardableResult public func rename(entity: String, from: String, to: String) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         guard definition.field(named: to, at: definition.version) != nil else {
@@ -69,23 +61,6 @@ public struct Migrator: Sendable {
         return migrated
     }
 
-    /// Rebuilds one view's grid from the entity's live records.
-    ///
-    /// The pass for a view declared after data already exists — its grid only
-    /// counts contributions from the moment of declaration, and this recounts
-    /// the past. It drops the view's existing grid records first, so repeating
-    /// an interrupted run is safe and the same call repairs a drifted grid.
-    /// Quiesce writers for the duration: a write landing mid-rebuild can count
-    /// twice or not at all. Returns how many records contributed.
-    ///
-    /// Wins a claim for every enforced-key value the entity's live records hold.
-    ///
-    /// Run once after declaring `enforcedKey(on:)` over existing data: claims
-    /// exist only for records written after the declaration, so until this pass
-    /// completes an old value can be re-taken. A duplicate already present in
-    /// the data surfaces as `duplicateKey` — resolve it and run again; repeating
-    /// the run is safe. Returns how many records were processed.
-    ///
     @discardableResult public func backfillClaims(entity: String, batchSize: Int = 400) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         guard definition.enforcedKeys?.isEmpty == false || !EntityStore.exclusiveFields(of: definition).isEmpty else { return 0 }
@@ -142,15 +117,6 @@ public struct Migrator: Sendable {
         return counted
     }
 
-    /// Re-encrypts every live record of an entity under a new key and republishes
-    /// the definition with the new keyID.
-    ///
-    /// The migrator's provider must serve both keys. An interrupted run is safe to
-    /// repeat: a record already sealed under the new key fails to open with the old
-    /// one and is decoded — and re-sealed — with the new key instead. Quiesce other
-    /// readers for the duration; until the republished definition reaches them,
-    /// rotated records fail to decrypt with the old key.
-    ///
     @discardableResult public func rotateKey(entity: String, to newKeyID: String) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         guard let oldKeyID = definition.keyID, oldKeyID != newKeyID else {

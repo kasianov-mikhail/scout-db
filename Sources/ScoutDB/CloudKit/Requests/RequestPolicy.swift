@@ -10,15 +10,6 @@ import CloudKit
 let requestTimeout: Duration = .seconds(30)
 
 extension CKDatabase {
-    /// Sends one request under the store's pacing: a slot from the gate, the
-    /// backstop timeout, and a retry for the two errors that ask for one.
-    ///
-    /// The slot is taken per attempt and given back before a retry waits, so a
-    /// request sitting out a rate limit does not hold the gate closed behind
-    /// it. Waiting for a slot is outside the timeout — a queue is congestion,
-    /// not a stalled request, and reporting it as a timeout would send an
-    /// `OfflineCache` to its snapshots while the network is fine.
-    ///
     @discardableResult func throttled<R>(body: @Sendable @escaping (CKDatabase) async throws -> R) async throws -> R {
         try await withRateLimitRetry {
             await RequestGate.shared.enter()

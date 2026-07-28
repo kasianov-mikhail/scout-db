@@ -13,14 +13,6 @@ extension Notification.Name {
     public static let scoutDBEntityDidChange = Notification.Name("ScoutDBEntityDidChange")
 }
 
-/// The records a burst of mutations changed, gathered for the live pass that
-/// follows it.
-///
-/// Ticks coalesce, so a buffer rather than the stream's own backlog: two writes
-/// landing during one pass collapse into a single tick, and the second must not
-/// drop the first one's records. A mutation that cannot name what it changed
-/// clears the buffer to nil, which asks the next pass to read the query again.
-///
 final class ChangeBuffer: @unchecked Sendable {
     private let lock = NSLock()
     private var pending: [EntityRecord] = []
@@ -53,21 +45,12 @@ extension EntityStore {
         NotificationCenter.default.post(name: .scoutDBEntityDidChange, object: nil, userInfo: userInfo)
     }
 
-    /// The record as a live query sees it once its tombstone lands.
     static func tombstoned(_ record: EntityRecord) -> EntityRecord {
         var tombstone = record
         tombstone.deleted = true
         return tombstone
     }
 
-    /// Folds the records a mutation changed into a live query's last result,
-    /// or nil when the query's shape rules that out.
-    ///
-    /// A record is re-tested against every filter — the ones the server ran as
-    /// well as the ones it could not — and joins, updates, or leaves the result
-    /// accordingly. A `near` filter has no client-side matcher and a distance
-    /// sort no client-side order, so either sends the pass back to the server.
-    ///
     func splice(_ current: [EntityRecord], with changed: [EntityRecord], entity: String, filters: [Filter], sort: [Sort]) -> [EntityRecord]? {
         guard filters.allSatisfy({ $0.radius == nil }), sort.allSatisfy({ $0.origin == nil }) else { return nil }
         guard let matchers = try? Self.matchers(for: filters) else { return nil }
@@ -168,14 +151,6 @@ extension QueryBuilder {
     }
 }
 
-/// Yields the current result, then one fresh result per tick, running at most
-/// one pass at a time: ticks arriving during a pass collapse into the single
-/// pass that follows it.
-///
-/// A tick whose changes are known folds them into the last result through
-/// `splice` instead of running the pass again; anything else — no buffer, a
-/// change of unknown shape, a query `splice` declines — runs the pass.
-///
 func liveResults(
     ticks: AsyncStream<Void>, buffer: ChangeBuffer? = nil, splice: (@Sendable ([EntityRecord], [EntityRecord]) -> [EntityRecord]?)? = nil,
     pass: @escaping @Sendable () async throws -> [EntityRecord]

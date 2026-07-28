@@ -43,8 +43,6 @@ extension PerfScenarios {
         ]
     }
 
-    /// Publishes one throwaway entity per iteration for the bodies that need one
-    /// already on the registry.
     private static func stageEntities(_ world: PerfWorld, prefix: String) async throws {
         for iteration in 0..<world.repeats {
             let entity = world.fresh(prefix, iteration)

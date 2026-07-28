@@ -8,13 +8,6 @@
 import CloudKit
 import Foundation
 
-/// How long to wait before repeating a rate-limited request.
-///
-/// The server's own `retryAfterSeconds` wins whenever it sends one. Without it
-/// the wait doubles per attempt, and half of each window is randomized: clients
-/// that met the limit together would otherwise come back together and meet it
-/// again.
-///
 func retryDelay(attempt: Int, suggested: Double?, base: Double = 0.5, random: () -> Double = { Double.random(in: 0..<1) }) -> Double {
     if let suggested {
         return suggested

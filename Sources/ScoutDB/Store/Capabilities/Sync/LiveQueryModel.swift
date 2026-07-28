@@ -8,22 +8,6 @@
 import Foundation
 import Observation
 
-/// An observable live query result: hand it to a SwiftUI view, read `items`.
-///
-/// ```swift
-/// @State private var purchases = store.query(Purchase.self).live()
-/// // ...
-/// List(purchases.items, id: \.productId) { ... }
-/// ```
-///
-/// The model tracks the query for its whole life: the first value is the
-/// current result, and every relevant local mutation delivers a fresh one;
-/// edits made on another device arrive with the next pass the app runs. A burst of
-/// writes settles in one trailing pass rather than one per write, so `items`
-/// skips to the state the burst left behind. Updates land on the main actor,
-/// so views bind to `items` directly. A failed pass ends the tracking and
-/// surfaces in `error`.
-///
 @available(iOS 17.0, macOS 14.0, *)
 @MainActor @Observable public final class LiveQuery<Element: Sendable> {
     /// The query's current result; empty until the first pass lands.
@@ -52,8 +36,6 @@ import Observation
 
 @available(iOS 17.0, macOS 14.0, *)
 extension QueryBuilder {
-    /// The built query as an observable live model — filters, groups, sorts,
-    /// and limits included.
     @MainActor public func live() -> LiveQuery<EntityRecord> {
         LiveQuery(stream: observe())
     }
@@ -61,7 +43,6 @@ extension QueryBuilder {
 
 @available(iOS 17.0, macOS 14.0, *)
 extension TypedQueryBuilder where T: Sendable {
-    /// The typed query as an observable live model — SwiftUI binds to `items`.
     @MainActor public func live() -> LiveQuery<T> {
         LiveQuery(stream: observe())
     }

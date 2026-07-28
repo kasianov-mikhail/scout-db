@@ -94,14 +94,6 @@ extension EntityStore {
         return pending.count
     }
 
-    /// Drops the envelopes of transactions that committed before the cutoff.
-    ///
-    /// A committed envelope is spent bookkeeping — repair only ever replays
-    /// pending ones — but it stays in the zone forever, so a device syncing for
-    /// the first time pays for the whole write history rather than for the data.
-    /// Compact past the horizon where a crashed writer could still call
-    /// `repairTransactions`; pending envelopes are left alone at any age.
-    ///
     @discardableResult public func compactTransactions(olderThan cutoff: Date) async throws -> Int {
         try await purge(
             entity: Self.transactionEntity,

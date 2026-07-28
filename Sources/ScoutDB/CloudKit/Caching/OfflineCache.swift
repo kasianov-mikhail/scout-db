@@ -249,12 +249,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    /// Drops every queued write that targets the given record, without replaying it.
-    ///
-    /// Asset copies retained for the dropped saves are discarded with them.
-    /// Returns how many queue entries were removed. Offline reads stop seeing
-    /// the discarded edit and serve the snapshotted server copy again.
-    ///
     @discardableResult public func discardQueuedWrites(for id: CKRecord.ID) -> Int {
         lock.withLock {
             let before = pending.count
@@ -271,20 +265,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    /// Replays every queued write through the backing database.
-    ///
-    /// Every save replays under the if-unchanged policy. A record whose server
-    /// copy moved while the write sat in the queue is merged when the two edits
-    /// touched disjoint fields; overlapping edits surface in an
-    /// `OfflineFlushError` — never a blind overwrite. Returns how many writes
-    /// landed; a transport failure leaves the unreplayed writes queued for the
-    /// next attempt.
-    ///
-    /// Saves and deletions both replay in batches, and a re-attempted merge
-    /// rejoins the batch rather than going out on its own, so a long offline
-    /// stretch costs a request per batch and merge round — not one per record.
-    /// A batch the server calls too large is bisected until it fits.
-    ///
     @discardableResult public func flush() async throws -> Int {
         let snapshot = lock.withLock { pending }
         guard !snapshot.isEmpty else { return 0 }
@@ -485,12 +465,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    /// Sends the batch, halving it and retrying when the server calls it too big.
-    ///
-    /// A transport failure propagates — the flush stops and the queue keeps its
-    /// writes — while anything else is reported per item, so one poisoned record
-    /// does not fail the ones batched with it.
-    ///
     private func bisecting<Item, Outcome>(
         _ items: [Item], _ send: ([Item]) async throws -> [Outcome], failing: ([Item], any Error) -> [Outcome]
     ) async throws -> [Outcome] {

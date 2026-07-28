@@ -9,7 +9,6 @@ import CloudKit
 import Foundation
 
 struct GridAggregator {
-    /// One cell of one view, as a recompute asks for it.
     struct CellRange: Sendable {
         let view: AggregateView
         let group: String
@@ -19,8 +18,6 @@ struct GridAggregator {
 
     let database: any CloudDatabase
     let slots: SlotCache
-    /// Reads a cell's extremum back from the records behind it, for a view that
-    /// declared `exact`; nil where no store is there to read them.
     let recompute: (@Sendable (CellRange, EntityDefinition) async throws -> Double?)?
     let maxRetry = 3
     let maxBatch = 400
@@ -58,8 +55,6 @@ struct GridAggregator {
         try await apply(live, using: definition)
     }
 
-    /// Whether a view reads its cells back rather than folding a removal into
-    /// them — the `exact` extremum, which no counter can un-apply.
     private func recomputes(_ view: String, in definition: EntityDefinition) -> Bool {
         guard recompute != nil, let view = definition.view(named: view), view.exact == true, let metric = view.metric else { return false }
         return metric.kind != .sum
@@ -143,17 +138,8 @@ struct GridAggregator {
         var count: Int64 = 0
         var value: (kind: AggregateView.Metric, total: Double)?
         var squares: Double?
-        /// The extremum a removal took out of the cell, for the kinds a removal
-        /// cannot un-apply: the cell is at least as extreme as this already, so
-        /// an addition that does not beat it leaves the cell as it stands.
         var removed: (kind: AggregateView.Metric, total: Double)?
 
-        /// Whether the cell can be left alone.
-        ///
-        /// A delta that took an extremum out of a `recomputing` view never
-        /// qualifies: the cell has to be read back before anything can be said
-        /// about what it still holds, and that read happens in `apply`.
-        ///
         func isNoop(recomputing: Bool) -> Bool {
             guard count == 0, (squares ?? 0) == 0 else { return false }
             guard !recomputing || removed == nil else { return false }
@@ -236,13 +222,6 @@ struct GridAggregator {
         }
     }
 
-    /// Reads back the cells an `exact` view can no longer trust, and takes the
-    /// removal that emptied them out of the fold.
-    ///
-    /// A cell qualifies only when a removal took a value out and the cell still
-    /// stands at exactly that value — the record that left was holding the
-    /// extremum. Anything else the ordinary fold already handles.
-    ///
     private func recomputed(_ pending: inout [CKRecord.ID: Pending], using definition: EntityDefinition) async throws -> [CKRecord.ID: [Int: Double?]] {
         guard let recompute else { return [:] }
         var exact: [CKRecord.ID: [Int: Double?]] = [:]
@@ -367,12 +346,6 @@ enum Aggregate {
     static let cellCount = 64
     static let squareOffset = 32
 
-    /// How many cells of each half of a row can carry a value.
-    ///
-    /// The widest period a bucket addresses is a 31-day month, so a cell past
-    /// the 31st of either half never carries one and the schema declares none.
-    /// Histogram counts still span every cell.
-    ///
     static let valueCellCount = 31
 
     private static let countCells = (0..<cellCount).map { String(format: "c_%02d", $0) }
@@ -382,7 +355,6 @@ enum Aggregate {
     static func valueCell(_ index: Int) -> String { valueCells[index] }
     static func squareCell(_ index: Int) -> String { valueCells[index + squareOffset] }
 
-    /// The value cells of a cell range that the schema declares.
     static func valueKeys(_ cells: Range<Int>) -> [String] {
         cells.filter { $0 % squareOffset < valueCellCount }.map(valueCell)
     }

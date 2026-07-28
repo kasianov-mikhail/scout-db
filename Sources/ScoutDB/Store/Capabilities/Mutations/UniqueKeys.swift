@@ -197,8 +197,6 @@ extension EntityStore {
         await release(owners)
     }
 
-    /// Deletes the claims the owners still hold, leaving a claim another record
-    /// has since taken alone.
     private func release(_ owners: [CKRecord.ID: String]) async {
         guard owners.count > 0 else { return }
         guard let claims = try? await claimRecords(ids: owners.keys.sorted { $0.recordName < $1.recordName }) else { return }

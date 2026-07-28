@@ -8,16 +8,6 @@
 import Foundation
 
 extension EntityStore {
-    /// The extremum one cell of an `exact` view still holds, read back from the
-    /// records behind it.
-    ///
-    /// Runs when a removal took the cell's standing extremum out, which no
-    /// counter can un-apply. The read is narrowed to the cell — its group and
-    /// the period its index addresses — so it costs that hour, day or week of
-    /// one group; a `lifetime` bucket has no period to narrow by and rereads
-    /// the group whole. Nil where the cell has no records left, which clears
-    /// the value the way an empty cell should read.
-    ///
     func extremum(in range: GridAggregator.CellRange, using definition: EntityDefinition) async throws -> Double? {
         guard let metric = range.view.metric, metric.kind != .sum else { return nil }
         var filters: [Filter] = []
@@ -39,8 +29,6 @@ extension EntityStore {
         return metric.kind == .min ? scalars.min() : scalars.max()
     }
 
-    /// The half-open period a cell index addresses, or nil for a `lifetime`
-    /// bucket, whose single cell spans every record of its group.
     private static func window(of range: GridAggregator.CellRange) -> (from: Date, to: Date)? {
         let calendar = EntityCoder.calendar
         let unit: Calendar.Component

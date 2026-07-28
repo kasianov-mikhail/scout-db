@@ -68,15 +68,6 @@ extension EntityCoder {
     }
 }
 
-/// The staged files writes currently hold, counted so that a landed write
-/// retires only the files no other in-flight write still points a `CKAsset` at.
-///
-/// Two writes carrying identical bytes stage into one content-addressed file.
-/// The first to land marks it retired and drops its hold; the file goes when
-/// the last hold does. A write that never lands drops its hold without
-/// retiring the file, leaving the bytes for its retry — and for the sweep, if
-/// the retry never comes.
-///
 private final class StagedFiles: @unchecked Sendable {
     private let lock = NSLock()
     private var holds: [String: Int] = [:]
@@ -118,15 +109,6 @@ extension EntityStore {
         EntityCoder.stagingDirectory
     }
 
-    /// Deletes staged asset files older than `age` seconds; returns how many.
-    ///
-    /// A landed write retires the staged files no other in-flight write still
-    /// holds, so what accumulates are the orphans of interrupted writes —
-    /// staged but never uploaded — plus the copies retained for offline-queued
-    /// writes. Pick an `age` comfortably
-    /// longer than any realistic offline stretch, or a queued write could lose
-    /// its asset bytes before it flushes.
-    ///
     @discardableResult public static func sweepStagedAssets(olderThan age: TimeInterval = 86_400) -> Int {
         let manager = FileManager.default
         guard let files = try? manager.contentsOfDirectory(at: EntityCoder.stagingDirectory, includingPropertiesForKeys: [.contentModificationDateKey])

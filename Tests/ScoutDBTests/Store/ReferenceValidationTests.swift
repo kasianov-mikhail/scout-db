@@ -69,12 +69,6 @@ struct ReferenceValidationTests {
     }
 }
 
-/// Forwards to an in-memory database while recording how many record fetches
-/// ran and how many requests of any kind overlapped.
-///
-/// Every call parks briefly, so overlapping callers are visibly in flight
-/// together and a sequential caller never is.
-///
 final class CountingFetches: CloudDatabase, @unchecked Sendable {
     private let backing: InMemoryDatabase
     private let tally = Tally()

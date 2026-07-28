@@ -10,22 +10,12 @@ import CryptoKit
 import Foundation
 import ScoutDB
 
-/// The four entities every perf scenario runs over.
-///
-/// One small commerce domain, shaped so that each feature has something real to
-/// chew on: references and a cascade, aggregate views on a dated entity,
-/// claim-backed unique keys, a counter and a set field, a TTL, and an audited
-/// entity for the revision log.
-///
 enum PerfSchema {
     static let customer = "customer"
     static let order = "order"
     static let item = "item"
     static let session = "session"
 
-    /// Every entity record lives in a custom zone, the way an app that syncs or
-    /// shares has to arrange them; schema and grid bookkeeping stay in the
-    /// default zone on their own.
     static let keyID = "perf-key"
 
     static let products = [
@@ -87,8 +77,6 @@ enum PerfSchema {
             ], envelopeDate: "added")
     }
 
-    /// Audited, so the history scenarios have a revision log to read, and short
-    /// lived, so writes stamp an `expires` envelope field.
     static var sessionDefinition: EntityDefinition {
         EntityDefinition(
             entity: session, version: 1,
@@ -109,7 +97,6 @@ enum PerfSchema {
     }
 }
 
-/// The one key the encrypted session field is sealed with.
 struct PerfKeyProvider: EncryptionKeyProvider {
     func key(for keyID: String) throws -> SymmetricKey {
         SymmetricKey(data: Data(repeating: 7, count: 32))

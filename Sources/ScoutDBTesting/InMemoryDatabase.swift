@@ -19,16 +19,6 @@ import ScoutDB
 /// (`records`, `errors`, `writeErrors`, `pageLimit`) go through the same lock.
 ///
 public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
-    /// The stored records, in the order a query scans them, alongside an index
-    /// from record id to its place in that order.
-    ///
-    /// Query results follow the order records were written in, so the order is
-    /// kept as an array; every other access — a fetch, a conflict check, the
-    /// record behind a change-log entry — goes through the index instead of
-    /// scanning. A record leaving the table clears its slot rather than closing
-    /// the gap, which would move every record after it, and the slots are
-    /// compacted once the emptied ones outnumber the rest.
-    ///
     private struct RecordTable {
         private var slots: [CKRecord?] = []
         private var positions: [CKRecord.ID: Int] = [:]
@@ -189,11 +179,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         return state.unindexed.isEmpty ? records : records.filter { !state.unindexed.contains($0.recordID) }
     }
 
-    /// Throws the next injected error, if one is queued for the call.
-    ///
-    /// A write drains `writeErrors` first and falls back to `errors`; a read
-    /// takes only `errors`, so a test can aim a failure at the writes alone.
-    ///
     private func popErrorLocked(writing: Bool) throws {
         guard let error = writing ? state.writeErrors.popLast() ?? state.errors.popLast() : state.errors.popLast() else { return }
         throw error

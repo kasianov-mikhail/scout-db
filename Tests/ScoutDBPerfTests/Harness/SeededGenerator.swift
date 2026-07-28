@@ -7,11 +7,6 @@
 
 import Foundation
 
-/// A SplitMix64 generator, so every corpus is a pure function of its seed.
-///
-/// Request counts are only comparable between runs when the data they run over
-/// is identical, and `SystemRandomNumberGenerator` cannot promise that.
-///
 struct SeededGenerator: RandomNumberGenerator {
     private var state: UInt64
 
@@ -27,12 +22,10 @@ struct SeededGenerator: RandomNumberGenerator {
         return z ^ (z >> 31)
     }
 
-    /// A value in `0..<bound`, biased only as much as a modulo reduction is.
     mutating func index(below bound: Int) -> Int {
         Int(next() % UInt64(bound))
     }
 
-    /// A double in `0..<1`.
     mutating func unit() -> Double {
         Double(next() >> 11) * (1.0 / 9_007_199_254_740_992.0)
     }
@@ -41,8 +34,6 @@ struct SeededGenerator: RandomNumberGenerator {
         values[index(below: values.count)]
     }
 
-    /// An index into `count` buckets, skewed so the first buckets take most of
-    /// the draws — the shape of orders per customer, or events per device.
     mutating func skewed(below count: Int) -> Int {
         let biased = unit() * unit()
         return Swift.min(count - 1, Int(biased * Double(count)))

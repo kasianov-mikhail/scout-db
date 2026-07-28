@@ -944,8 +944,6 @@ struct AggregatesTests {
     }
 }
 
-/// Forwards to an in-memory database while recording every grid query — the
-/// predicate it carried, the fields it asked for, and how many rows it moved.
 private final class GridQueries: CloudDatabase, @unchecked Sendable {
     private let backing: InMemoryDatabase
     private let lock = NSLock()

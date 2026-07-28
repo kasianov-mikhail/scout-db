@@ -91,13 +91,6 @@ public struct AggregateView: Codable, Equatable, Sendable {
         return nil
     }
 
-    /// Whether the grid holds this metric of the field closely enough to answer
-    /// a fold from, rather than reading the records.
-    ///
-    /// A sum is exact by construction — a removal subtracts what it added. An
-    /// extremum is not: it answers only where ``exact`` recomputes the cell a
-    /// removal emptied of its standing value.
-    ///
     func answers(_ kind: Metric, of field: String) -> Bool {
         switch kind {
         case .sum: sum == field || stats == field

@@ -10,19 +10,6 @@ import Foundation
 import ScoutDB
 import ScoutDBTesting
 
-/// Everything one scenario runs against: the store, the corpus it was seeded
-/// from, and the two tallies around the stack.
-///
-/// The stack is the same shape for every feature — the in-memory double, a
-/// wire-side tally, an optional cache decorator, an app-side tally, the store:
-///
-/// ```
-/// InMemoryDatabase → ObservedDatabase(wire) → [cache] → ObservedDatabase(app) → EntityStore
-/// ```
-///
-/// Without a cache the two tallies agree; with one, the difference between them
-/// is what the cache saved.
-///
 struct PerfWorld: @unchecked Sendable {
     let corpus: Corpus
     let backing: InMemoryDatabase
@@ -31,14 +18,9 @@ struct PerfWorld: @unchecked Sendable {
     let store: EntityStore
     let app: PerfRecorder
     let wire: PerfRecorder
-    /// The cache decorator, when the scenario asked for one.
     let cache: (any CloudDatabase)?
-    /// Distinguishes the records one scenario run writes from every other run's.
     let runID: String
-    /// How many times the runner calls the body, so a `setUp` can arrange one
-    /// input per iteration.
     let repeats: Int
-    /// What this scenario's `setUp` left for its body.
     let stage: PerfStage
 
     var size: DatasetSize {
@@ -53,32 +35,17 @@ struct PerfWorld: @unchecked Sendable {
         Migrator(database: database, registry: registry, keyProvider: PerfKeyProvider())
     }
 
-    /// A uuid no corpus record holds, unique per scenario run and iteration.
     func fresh(_ prefix: String, _ iteration: Int) -> String {
         "\(prefix)-\(runID)-\(iteration)"
     }
 }
 
-/// What one scenario's `setUp` hands its body.
-///
-/// A body measures one operator, so whatever that operator has to be given —
-/// records to join, a lease to release, an entity to retire — is arranged
-/// before the tallies are zeroed and read back from here, one entry per
-/// iteration.
-///
 final class PerfStage: @unchecked Sendable {
     var uuids: [String] = []
     var entities: [String] = []
     var records: [EntityRecord] = []
 }
 
-/// Holds one size's database across the whole sweep and hands each scenario a
-/// clean world to run in.
-///
-/// Rebuilding the corpus per scenario would dominate the sweep, so the records
-/// are restored from the pristine snapshot instead — and only after a scenario
-/// that actually wrote something.
-///
 final class PerfBench {
     let corpus: Corpus
     private var backing = InMemoryDatabase()
@@ -120,32 +87,14 @@ final class PerfBench {
         }
     }
 
-    /// Puts a fresh database under the next scenario, seeded from the pristine
-    /// records.
-    ///
-    /// A new double rather than a cleaned one, so a scenario never inherits
-    /// the records the scenarios before it wrote.
-    ///
     private func restore() {
         backing = InMemoryDatabase()
         backing.records = corpus.records.map(Self.clone)
         backing.pageLimit = Self.pageLimit
     }
 
-    /// The cap CloudKit puts on a response page.
-    ///
-    /// Without one the double answers any read in a single call and every read
-    /// scenario would cost exactly one request — a number that says nothing
-    /// about what the same read costs against the server.
-    ///
     static let pageLimit = 200
 
-    /// Copies a record the way the store's own projection does.
-    ///
-    /// An injected change tag or modification date lives in an associated
-    /// object and does not survive `copy()`, so a plain copy would hand the
-    /// scenario records the CAS and the compaction sweep cannot recognize.
-    ///
     private static func clone(_ record: CKRecord) -> CKRecord {
         let copy = record.copy() as! CKRecord
         if let tag = record.recordVersionTag {

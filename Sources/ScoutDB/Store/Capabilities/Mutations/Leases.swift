@@ -15,14 +15,6 @@ extension EntityStore {
         public let until: Date
     }
 
-    /// Claims the record for `duration` on behalf of `owner`.
-    ///
-    /// A live lease held by someone else throws `leaseHeld`; an expired lease —
-    /// or the owner's own — is taken over, so renewing is just leasing again.
-    /// The claim saves under CAS, so two racers cannot both win. Leases are
-    /// advisory: they gate cooperating callers ("one editor at a time"), not the
-    /// store's own writes. Returns the granted lease.
-    ///
     @discardableResult public func lease(entity: String, uuid: String, owner: String, for duration: TimeInterval, maxRetry: Int = 3) async throws -> Lease {
         var attempt = 0
         var record = try await liveItem(entity: entity, uuid: uuid)
@@ -62,7 +54,6 @@ extension EntityStore {
         return Lease(owner: owner, until: until)
     }
 
-    /// The record behind the uuid, or `notFound` when it is missing or tombstoned.
     private func liveItem(entity: String, uuid: String) async throws -> CKRecord {
         guard let record = try await items(entity: entity, uuids: [uuid]).first(where: { !Self.isTombstone($0) }) else {
             throw SchemaError.notFound(uuid)

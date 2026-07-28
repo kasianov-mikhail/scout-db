@@ -44,14 +44,6 @@ extension EntityStore {
             }
     }
 
-    /// Drops the revisions written before the cutoff, of one entity or of every
-    /// audited one.
-    ///
-    /// The log only grows, and every entry is a stored record of its own, so an
-    /// audited entity's history soon outweighs its data. Trim it to the window
-    /// `history(entity:uuid:)` still has to answer — the dropped revisions are
-    /// gone for good.
-    ///
     @discardableResult public func compactRevisions(olderThan cutoff: Date, of entity: String? = nil) async throws -> Int {
         var filters = [Filter(field: "date", op: .lessThan, value: .date(cutoff))]
         if let entity {

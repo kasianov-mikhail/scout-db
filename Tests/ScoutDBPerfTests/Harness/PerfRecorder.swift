@@ -8,11 +8,6 @@
 import Foundation
 import ScoutDB
 
-/// Counts the database calls one scenario makes, by kind.
-///
-/// `ObservedDatabase` hands operations over synchronously on the calling task,
-/// and the parallel mode has eight of those at once, so the tally is locked.
-///
 final class PerfRecorder: DatabaseObserver, @unchecked Sendable {
     struct Tally: Sendable {
         var counts: [DatabaseOperation.Kind: Int] = [:]

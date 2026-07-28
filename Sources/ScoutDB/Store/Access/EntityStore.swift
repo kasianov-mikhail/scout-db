@@ -122,11 +122,6 @@ public struct EntityStore: Sendable {
         return try await write([entry], entity: entity)[0]
     }
 
-    /// Writes a batch of records of one entity in chunked saves, folding their
-    /// aggregate-view contributions into a single write per touched grid record.
-    ///
-    /// Returns the stored uuid of every record, in batch order.
-    ///
     @discardableResult public func write(_ batch: [EntityWrite], entity: String) async throws -> [String] {
         guard batch.count > 0 else { return [] }
         let definition = try await registry.definition(for: entity)
@@ -269,14 +264,6 @@ public struct EntityStore: Sendable {
         return maximum > 0 ? Swift.min(rows, maximum) : rows
     }
 
-    /// Whether one branch of a disjunction can serve its own top `limit` in the
-    /// query's order, so the union of the branches' pages holds the page the
-    /// whole disjunction would have produced.
-    ///
-    /// True when the clauses sort server-side, and when they rank client-side
-    /// over the branch's whole result — both leave a branch's page ordered.
-    /// A sort a single-branch read cannot honour at all is left to the union.
-    ///
     private func rankable(_ sort: [Sort], entity: String) async throws -> Bool {
         guard sort.count > 0 else { return true }
         let definition = try await registry.definition(for: entity)
@@ -352,14 +339,6 @@ public struct EntityStore: Sendable {
         return Array(ranked.prefix(limit))
     }
 
-    /// Walks a query's pages, decoding each one before the body sees it.
-    ///
-    /// The streaming half of ``read(entity:filters:sort:fields:limit:createdBy:)``,
-    /// for a pass that touches more records than it should hold: peak memory is
-    /// a page rather than the whole result. Records the body writes out of the
-    /// query may be skipped by the page after them, so a pass built on this has
-    /// to be safe to repeat.
-    ///
     func forEachPage(matching query: CKQuery, desiredKeys: [String]? = nil, using definition: EntityDefinition, _ body: ([EntityRecord]) async throws -> Void)
         async throws
     {
@@ -368,7 +347,6 @@ public struct EntityStore: Sendable {
         }
     }
 
-    /// Walks the entity's live records a page at a time.
     func forEachPage(entity: String, fields: [String]? = nil, _ body: ([EntityRecord]) async throws -> Void) async throws {
         let definition = try await registry.definition(for: entity)
         let (query, included) = try liveQuery([], entity: entity, using: definition)
@@ -388,12 +366,6 @@ public struct EntityStore: Sendable {
         return try coder.decode(record, using: definition)
     }
 
-    /// Whether the record came from a writer the store reads from.
-    ///
-    /// Every record a read serves passes through here, decoded or not — a
-    /// projection the store never decodes is scoped by the same trust the
-    /// decoded ones are.
-    ///
     func trusted(_ record: CKRecord) -> Bool {
         guard let trustedWriters else { return true }
         guard let creator = record.recordCreator else { return false }
