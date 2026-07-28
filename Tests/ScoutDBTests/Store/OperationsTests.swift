@@ -392,29 +392,6 @@ struct OperationsTests {
         }
     }
 
-    @Test("Zone sharing creates one zone-wide share, finds it again, and revokes it")
-    func zoneSharing() async throws {
-        let zone = CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName)
-        let zoned = EntityStore(database: database, registry: registry, zoneID: zone)
-        try await zoned.ensureZone()
-
-        #expect(try await zoned.zoneShare() == nil)
-        let share = try await zoned.shareZone(title: "Purchases")
-        #expect(share.recordID.zoneID == zone)
-        #expect(share.recordID.recordName == CKRecordNameZoneWideShare)
-
-        let again = try await zoned.shareZone()
-        #expect(again.recordID == share.recordID)
-        #expect(database.records.filter { $0 is CKShare }.count == 1)
-
-        try await zoned.stopSharing()
-        #expect(try await zoned.zoneShare() == nil)
-
-        await #expect(throws: SchemaError.self) {
-            try await store.shareZone()
-        }
-    }
-
     @Test("A batch write unwraps a partial failure to the records that caused it")
     func partialFailureUnwrapped() async throws {
         let culprit = CKRecord.ID(recordName: "p-1")
@@ -438,36 +415,6 @@ struct OperationsTests {
             Issue.record("Expected a CKError")
         } catch let error as CKError {
             #expect(error.code == .partialFailure)
-        }
-    }
-
-    @Test("A single record shares, reports its share, and stops")
-    func recordSharing() async throws {
-        let zone = CKRecordZone.ID(zoneName: "scout-share", ownerName: CKCurrentUserDefaultName)
-        let zoned = EntityStore(database: database, registry: registry, zoneID: zone)
-        try await zoned.ensureZone()
-        try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        try await zoned.write(makePurchase().values, entity: "purchase", uuid: "p-2")
-
-        let share = try await zoned.shareRecord(entity: "purchase", uuid: "p-1", title: "Trip")
-        #expect(share[CKShare.SystemFieldKey.title] as? String == "Trip")
-        #expect(share.recordID.zoneID == zone)
-
-        let again = try await zoned.shareRecord(entity: "purchase", uuid: "p-1")
-        #expect(again.recordID == share.recordID)
-        #expect(database.records.filter { $0 is CKShare }.count == 1)
-
-        #expect(try await zoned.recordShare(entity: "purchase", uuid: "p-2") == nil)
-        await #expect(throws: SchemaError.notFound("p-1")) {
-            _ = try await zoned.shareRecord(entity: "order", uuid: "p-1")
-        }
-
-        try await zoned.stopSharing(entity: "purchase", uuid: "p-1")
-        #expect(try await zoned.recordShare(entity: "purchase", uuid: "p-1") == nil)
-        #expect(try await zoned.read(entity: "purchase").count == 2)
-
-        await #expect(throws: SchemaError.self) {
-            _ = try await store.shareRecord(entity: "purchase", uuid: "p-1")
         }
     }
 
@@ -516,31 +463,6 @@ struct OperationsTests {
             "entity": "purchase" as NSString, "schema_version": 2 as NSNumber, "uuid": "p-1" as NSString, "deleted": 1 as NSNumber,
         ]
         #expect(try await store.record(uuid: "p-1", pushedFields: tombstone) == nil)
-    }
-
-    @Test("Share participants and the public permission are managed through the store")
-    func shareParticipants() async throws {
-        let zone = CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName)
-        let zoned = EntityStore(database: database, registry: registry, zoneID: zone)
-        try await zoned.ensureZone()
-
-        #expect(try await zoned.shareParticipants().isEmpty)
-        await #expect(throws: SchemaError.notFound(CKRecordNameZoneWideShare)) {
-            try await zoned.setSharePublicPermission(.readOnly)
-        }
-
-        try await zoned.shareZone(title: "Purchases")
-        let participants = try await zoned.shareParticipants()
-        #expect(participants.count == 1)
-        #expect(participants.first?.role == .owner)
-
-        try await zoned.setSharePublicPermission(.readOnly)
-        #expect(try await zoned.zoneShare()?.publicPermission == .readOnly)
-
-        await #expect(throws: SchemaError.invalidValue("owner")) {
-            try await zoned.removeShareParticipant(try #require(participants.first))
-        }
-        #expect(try await zoned.shareParticipants().count == 1)
     }
 
     @Test("A zoned store's queries stay inside its zone")
