@@ -38,11 +38,11 @@ enum PerfRunner {
             }
             return PerfResult(
                 feature: scenario.feature, scenario: scenario.name, size: bench.corpus.size, iterations: iterations, sql: scenario.sql,
-                cost: scenario.cost, app: world.app.snapshot, wire: world.wire.snapshot, failure: nil)
+                app: world.app.snapshot, wire: world.wire.snapshot, failure: nil)
         } catch {
             return PerfResult(
                 feature: scenario.feature, scenario: scenario.name, size: bench.corpus.size, iterations: iterations, sql: scenario.sql,
-                cost: scenario.cost, app: PerfRecorder.Tally(), wire: PerfRecorder.Tally(), failure: "\(error)")
+                app: PerfRecorder.Tally(), wire: PerfRecorder.Tally(), failure: "\(error)")
         }
     }
 }

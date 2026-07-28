@@ -13,15 +13,9 @@ struct PerfScenario: Sendable {
         case offline
     }
 
-    enum Cost: String, Sendable {
-        case result
-        case elective
-    }
-
     let feature: String
     let name: String
     let sql: Int
-    let cost: Cost?
     let stack: Stack
     let writes: Bool
     let iterations: Int?
@@ -29,13 +23,12 @@ struct PerfScenario: Sendable {
     let body: @Sendable (PerfWorld, Int) async throws -> Void
 
     init(
-        _ feature: String, _ name: String, sql: Int, cost: Cost? = nil, stack: Stack = .direct, writes: Bool = true, iterations: Int? = nil,
+        _ feature: String, _ name: String, sql: Int, stack: Stack = .direct, writes: Bool = true, iterations: Int? = nil,
         setUp: (@Sendable (PerfWorld) async throws -> Void)? = nil, body: @escaping @Sendable (PerfWorld, Int) async throws -> Void
     ) {
         self.feature = feature
         self.name = name
         self.sql = sql
-        self.cost = cost
         self.stack = stack
         self.writes = writes
         self.iterations = iterations
@@ -58,7 +51,6 @@ struct PerfResult: Sendable {
     let size: DatasetSize
     let iterations: Int
     let sql: Int
-    let cost: PerfScenario.Cost?
     let app: PerfRecorder.Tally
     let wire: PerfRecorder.Tally
     let failure: String?

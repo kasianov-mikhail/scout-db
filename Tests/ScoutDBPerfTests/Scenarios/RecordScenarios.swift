@@ -12,7 +12,7 @@ extension PerfScenarios {
     static var relations: [PerfScenario] {
         [
             PerfScenario(
-                "Relations", "join customers of 100 orders", sql: 1, cost: .result, writes: false,
+                "Relations", "join customers of 100 orders", sql: 1, writes: false,
                 setUp: { world in
                     world.stage.records = try await world.store.fetch(entity: PerfSchema.order, uuids: world.orders(100, from: 0))
                 }
@@ -20,20 +20,20 @@ extension PerfScenarios {
                 _ = try await world.store.join(entity: PerfSchema.order, records: world.stage.records, field: "customer")
             },
             PerfScenario(
-                "Relations", "join two hops, item to customer", sql: 1, cost: .result, writes: false,
+                "Relations", "join two hops, item to customer", sql: 1, writes: false,
                 setUp: { world in
                     world.stage.records = try await world.store.fetch(entity: PerfSchema.item, uuids: (0..<50).map { world.item($0) })
                 }
             ) { world, _ in
                 _ = try await world.store.join(entity: PerfSchema.item, records: world.stage.records, path: ["order", "customer"])
             },
-            PerfScenario("Relations", "children of one customer", sql: 1, cost: .result, writes: false) { world, iteration in
+            PerfScenario("Relations", "children of one customer", sql: 1, writes: false) { world, iteration in
                 _ = try await world.store.children(entity: PerfSchema.order, of: world.customer(iteration), via: "customer")
             },
-            PerfScenario("Relations", "delete one order, cascading", sql: 1, cost: .result) { world, iteration in
+            PerfScenario("Relations", "delete one order, cascading", sql: 1) { world, iteration in
                 try await world.store.delete(entity: PerfSchema.order, uuid: world.order(iteration), cascade: true)
             },
-            PerfScenario("Relations", "delete one customer, cascading", sql: 1, cost: .result, iterations: 2) { world, iteration in
+            PerfScenario("Relations", "delete one customer, cascading", sql: 1, iterations: 2) { world, iteration in
                 try await world.store.delete(entity: PerfSchema.customer, uuid: world.customer(iteration), cascade: true)
             },
         ]
@@ -62,7 +62,7 @@ extension PerfScenarios {
             ) { world, iteration in
                 _ = try await world.store.history(entity: PerfSchema.session, uuid: world.stage.uuids[iteration])
             },
-            PerfScenario("Revisions", "compact the revision log", sql: 1, cost: .elective, iterations: 2) { world, _ in
+            PerfScenario("Revisions", "compact the revision log", sql: 1, iterations: 2) { world, _ in
                 _ = try await world.store.compactRevisions(olderThan: Date().addingTimeInterval(60))
             },
         ]
@@ -73,14 +73,11 @@ extension PerfScenarios {
             PerfScenario("Lifecycle", "restore a tombstoned record", sql: 1) { world, iteration in
                 _ = try await world.store.restore(entity: PerfSchema.session, uuid: world.tombstoned(iteration))
             },
-            PerfScenario("Lifecycle", "compact tombstones", sql: 1, cost: .elective, iterations: 2) { world, _ in
+            PerfScenario("Lifecycle", "compact tombstones", sql: 1, iterations: 2) { world, _ in
                 _ = try await world.store.compact(entity: PerfSchema.session, olderThan: Date().addingTimeInterval(60))
             },
-            PerfScenario("Lifecycle", "reap the expired sessions", sql: 1, cost: .result, iterations: 2) { world, _ in
-                _ = try await world.store.reap(entity: PerfSchema.session, asOf: world.corpus.now)
-            },
             PerfScenario(
-                "Lifecycle", "drop an entity", sql: 1, cost: .result, iterations: 1,
+                "Lifecycle", "drop an entity", sql: 1, iterations: 1,
                 setUp: { world in
                     let entity = world.fresh("drp", 0)
                     try await world.registry.publish(

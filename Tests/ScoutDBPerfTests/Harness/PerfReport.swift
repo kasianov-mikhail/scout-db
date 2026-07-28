@@ -63,7 +63,6 @@ enum PerfReport {
         let feature: String
         let scenario: String
         let sql: Int
-        let cost: PerfScenario.Cost?
         let measured: [(size: DatasetSize, perOperation: Double)]
         let exponent: Double
         let base: Double
@@ -90,9 +89,7 @@ enum PerfReport {
 
     static let levels = [100_000, 1_000_000, 10_000_000]
 
-    static let leakingExponent = 0.3
-
-    static func projections(_ results: [PerfResult]) -> [Projection] {
+    private static func projections(_ results: [PerfResult]) -> [Projection] {
         var order: [String] = []
         var grouped: [String: [PerfResult]] = [:]
         for result in results where result.failure == nil {
@@ -113,7 +110,7 @@ enum PerfReport {
             }
             let base = measured.last ?? (size: last.size, perOperation: last.perOperation)
             return Projection(
-                feature: last.feature, scenario: last.scenario, sql: last.sql, cost: last.cost, measured: measured, exponent: exponent,
+                feature: last.feature, scenario: last.scenario, sql: last.sql, measured: measured, exponent: exponent,
                 base: base.perOperation, baseRecords: base.size.records)
         }
     }
@@ -131,12 +128,8 @@ enum PerfReport {
                 })
         }
         columns.append(Column(title: "over", width: 8) { $0.overhead.map { "\(number($0))×" } ?? "—" })
-        guard projected else {
-            columns.append(Column(title: "cost", width: 10) { $0.cost?.rawValue ?? "—" })
-            return columns
-        }
+        guard projected else { return columns }
         columns.append(Column(title: "k", width: 6) { String(format: "%.2f", $0.exponent) })
-        columns.append(Column(title: "cost", width: 10) { $0.cost?.rawValue ?? "—" })
         for level in levels {
             columns.append(Column(title: volume(level), width: 10) { number($0.requests(at: level)) })
         }
@@ -148,19 +141,9 @@ enum PerfReport {
         return columns
     }
 
-    private static func verdict(_ projections: [Projection]) -> [String] {
-        let growing = projections.filter { $0.exponent >= 0.15 }
-        let overhead = growing.filter { $0.cost == nil }
-        var lines = [
-            "\(projections.count) scenarios · \(projections.count - growing.count) hold flat at any volume · \(growing.count) grow with the database",
-            "of those, \(growing.filter { $0.cost == .result }.count) cost what they return, "
-                + "\(growing.filter { $0.cost == .elective }.count) are passes over the whole database, "
-                + "and \(overhead.count) are bounded work that should not have grown",
-        ]
-        for projection in overhead.sorted(by: { $0.exponent > $1.exponent }) {
-            lines.append("  ↳ \(projection.feature) · \(projection.scenario)")
-        }
-        return lines
+    private static func verdict(_ projections: [Projection]) -> String {
+        let growing = projections.filter { $0.exponent >= 0.15 }.count
+        return "\(projections.count) scenarios · \(projections.count - growing) hold flat at any volume · \(growing) grow with the database"
     }
 
     static func projectionTable(_ results: [PerfResult]) -> String {
@@ -186,7 +169,7 @@ enum PerfReport {
             lines.append(columns.map { pad($0.value(projection), $0.width) }.joined())
         }
         lines.append(String(repeating: "-", count: width(of: columns)))
-        lines += verdict(projections)
+        lines.append(verdict(projections))
         return lines.joined(separator: "\n")
     }
 
@@ -197,7 +180,7 @@ enum PerfReport {
         let fitted = sample.measured.count > 1
 
         if fitted {
-            lines += ["", "```", verdict(projections).joined(separator: "\n"), "```"]
+            lines += ["", "```", verdict(projections), "```"]
             if sample.measured.count < DatasetSize.allCases.count {
                 lines += [
                     "",
@@ -211,11 +194,10 @@ enum PerfReport {
 
         let columns = projectionColumns(sample: sample, projected: fitted)
         if fitted {
-            let grew = projections.filter { $0.exponent >= 0.15 && $0.cost == nil }.sorted { ($0.exponent, $0.base) > ($1.exponent, $1.base) }
+            let grew = projections.filter { $0.exponent >= 0.15 }.sorted { ($0.exponent, $0.base) > ($1.exponent, $1.base) }
             if grew.count > 0 {
                 lines += block(
-                    "Bounded work that grew", note: "work that claimed to cost the same whatever the database holds, and did not",
-                    columns: columns, rows: grew)
+                    "Scenarios that grew", note: "work whose cost per call rises with what the database holds", columns: columns, rows: grew)
             }
         }
         lines += block(
@@ -402,14 +384,12 @@ enum PerfReport {
         let measured: [String: Double]
         let exponent: Double
         let growth: String
-        let cost: String
         let projected: [String: Double]
 
         init(_ projection: Projection) {
             feature = projection.feature
             scenario = projection.scenario
             sql = projection.sql
-            cost = projection.cost?.rawValue ?? "bounded"
             measured = Dictionary(uniqueKeysWithValues: projection.measured.map { ("\($0.size.records)", rounded($0.perOperation)) })
             exponent = rounded(projection.exponent)
             growth = projection.growth

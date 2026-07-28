@@ -474,29 +474,6 @@ extension EntityStore {
         return removed
     }
 
-    @discardableResult public func reap(entity: String, asOf: Date) async throws -> Int {
-        let definition = try await registry.definition(for: entity)
-        let query = ckQuery(
-            Entity.recordType,
-            filters: [
-                ServerFilter(field: "entity", op: .equals, value: .string(entity)),
-                ServerFilter(field: "expires", op: .lessThan, value: .date(asOf)),
-                ServerFilter(field: "deleted", op: .equals, value: .int(0)),
-            ])
-        var reaped = 0
-        try await forEachPage(matching: query, using: definition) { page in
-            let expired = page.filter { !$0.deleted }
-            guard expired.count > 0 else { return }
-            let tombstones = try expired.sorted { $0.uuid < $1.uuid }
-                .map { try tombstone(entity: entity, uuid: $0.uuid, definition: definition, values: $0.values) }
-            try await database.write(records: tombstones)
-            try await settle(removed: expired, using: definition, auditing: false)
-            reaped += expired.count
-            noteChange(entity: entity, changed: expired.map { Self.tombstoned($0) })
-        }
-        return reaped
-    }
-
     public func fetch(entity: String, uuids: [String]) async throws -> [EntityRecord] {
         let definition = try await registry.definition(for: entity)
         let records = try await items(entity: entity, uuids: uuids)
