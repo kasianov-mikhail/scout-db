@@ -59,47 +59,6 @@ public enum PredicateEvaluator {
         return nil
     }
 
-    package static func supports(_ predicate: NSPredicate) -> Bool {
-        if let compound = predicate as? NSCompoundPredicate {
-            guard let subpredicates = compound.subpredicates as? [NSPredicate] else { return false }
-            switch compound.compoundPredicateType {
-            case .and, .or:
-                return subpredicates.allSatisfy(supports)
-            case .not:
-                return subpredicates.count == 1 && supports(subpredicates[0])
-            @unknown default:
-                return false
-            }
-        }
-        if let comparison = predicate as? NSComparisonPredicate {
-            switch comparison.leftExpression.expressionType {
-            case .function:
-                let arguments = comparison.leftExpression.arguments ?? []
-                guard comparison.leftExpression.function == "distanceToLocation:fromLocation:" else { return false }
-                guard arguments.count == 2, arguments[0].expressionType == .keyPath else { return false }
-                guard arguments[1].expressionType == .constantValue, comparison.rightExpression.expressionType == .constantValue else { return false }
-                guard arguments[1].constantValue is CLLocation, comparison.rightExpression.constantValue is NSNumber else { return false }
-                return comparison.predicateOperatorType == .lessThan
-            case .evaluatedObject:
-                guard comparison.rightExpression.expressionType == .constantValue else { return false }
-                return comparison.predicateOperatorType == .contains && comparison.rightExpression.constantValue is String
-            case .keyPath:
-                guard comparison.rightExpression.expressionType == .constantValue else { return false }
-                switch comparison.predicateOperatorType {
-                case .equalTo, .notEqualTo, .greaterThan, .greaterThanOrEqualTo, .lessThan, .lessThanOrEqualTo, .beginsWith, .contains:
-                    return true
-                case .in:
-                    return comparison.rightExpression.constantValue is [Any]
-                default:
-                    return false
-                }
-            default:
-                return false
-            }
-        }
-        return predicate == Self.truePredicate || predicate == Self.falsePredicate
-    }
-
     private static func evaluate(_ comparison: NSComparisonPredicate, record: CKRecord) -> Bool? {
         if comparison.leftExpression.expressionType == .function {
             return evaluateDistance(comparison, record: record)
