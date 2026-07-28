@@ -27,7 +27,7 @@ actor SlotCache {
     func keep(_ record: CKRecord) {
         records[record.recordID] = record.duplicate()
         touch(record.recordID)
-        OfflineCache.evict(&records, usage: &usage, limit: limit)
+        evict()
     }
 
     func forget(_ id: CKRecord.ID) {
@@ -38,5 +38,13 @@ actor SlotCache {
     private func touch(_ id: CKRecord.ID) {
         clock += 1
         usage[id] = clock
+    }
+
+    private func evict() {
+        guard records.count > limit + limit / 10 else { return }
+        for victim in records.keys.sorted(by: { usage[$0] ?? 0 < usage[$1] ?? 0 }).prefix(records.count - limit) {
+            records[victim] = nil
+            usage[victim] = nil
+        }
     }
 }

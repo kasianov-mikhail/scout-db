@@ -35,7 +35,7 @@ schema freely — the CloudKit [schema](Schema) is uploaded once and never touch
 | 🔍 | **Queries** | Filters, sorting, pagination, streaming, full-text search, geo radius, and batch update/delete through a query builder, plus counters, sums, extremes, deviation, and percentiles maintained on write so reads never scan raw records. |
 | 🔐 | **Security** | Client-side field encryption with key rotation, filterable hashed surrogates, and trusted-writer filtering for public databases. |
 | 📎 | **Records** | Assets up to 50 MB per field, entity references with cascading delete, an opt-in audit log, and soft delete/TTL lifecycle. |
-| 📡 | **Sync** | Push-triggered reads over per-entity subscriptions, projected push payloads that decode without a fetch, and live queries that keep SwiftUI on the latest result, plus a queued write cache with app-resolved conflicts, LRU-bounded. |
+| 📡 | **Sync** | Push-triggered reads over per-entity subscriptions, projected push payloads that decode without a fetch, and live queries that keep SwiftUI on the latest result. |
 | ⚙️ | **Reliability** | Unique-key upserts, optimistic concurrency, outbox transactions, and telemetry over every request ScoutDB makes. |
 
 ## Requirements
@@ -125,7 +125,7 @@ status, and it can be made to report any `CKAccountStatus` you want to exercise.
 ## Documentation
 
 The [docs](docs) folder covers the rest: the frozen physical schema, migrations, filtering,
-the operator reference, aggregation, records, the `@Entity` macro, sync, offline support, and
+the operator reference, aggregation, records, the `@Entity` macro, sync, operations, and
 security.
 
 ## License

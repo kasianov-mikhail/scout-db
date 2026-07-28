@@ -36,8 +36,7 @@ public protocol DatabaseObserver: Sendable {
 /// A `CloudDatabase` decorator that reports every call to an observer.
 ///
 /// Wrap any layer of the stack: around a `CKDatabase` it measures wire calls,
-/// around an `OfflineCache` it sees what the app experiences, queue-served
-/// writes included. Composes freely with the other decorators.
+/// around a decorator of yours it sees what the app experiences.
 ///
 public final class ObservedDatabase: CloudDatabase, @unchecked Sendable {
     private let backing: any CloudDatabase

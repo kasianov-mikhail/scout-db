@@ -131,29 +131,7 @@ extension PerfScenarios {
                 try await world.store.update(entity: PerfSchema.order, uuid: world.corpus.orders[0], maxRetry: 16) { record in
                     record.values["note"] = .string("note-\(iteration)")
                 }
-            },
-            PerfScenario(
-                "Conflicts", "flush a queued write through a resolver", sql: 1, stack: .offline, iterations: 1,
-                setUp: { world in
-                    guard let cache = world.offlineCache else { return }
-                    cache.setConflictResolver(
-                        world.store.conflictResolver { queued, server, _ in
-                            var merged = server
-                            merged.values["note"] = queued.values["note"]
-                            return .save(merged)
-                        })
-                    let uuid = world.order(0)
-                    world.backing.writeErrors = [CKError(.networkFailure)]
-                    var values = world.newOrder(0)
-                    values["note"] = .string("queued")
-                    try await world.store.write(values, entity: PerfSchema.order, uuid: uuid)
-                    guard let server = world.backing.records.first(where: { $0.recordID.recordName == uuid }) else { return }
-                    world.backing.writeErrors = [RecordConflictError(serverRecord: server.copy() as! CKRecord)]
-                }
-            ) { world, _ in
-                guard let cache = world.offlineCache else { return }
-                _ = try await cache.flush()
-            },
+            }
         ]
     }
 

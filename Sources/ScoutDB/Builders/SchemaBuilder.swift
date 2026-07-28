@@ -134,8 +134,7 @@ public struct SchemaBuilder {
     /// a claim record whose creation is a compare-and-swap, so of two racing
     /// writers exactly one wins and the other fails with `duplicateKey`. The
     /// claim costs one extra write per created or re-keyed record and is
-    /// released on delete. Writes of the entity fail offline — a claim cannot
-    /// be won without the server. Existing data needs one
+    /// released on delete. Existing data needs one
     /// `Migrator.backfillClaims(entity:)` pass before the constraint holds.
     ///
     public func enforcedKey(on fields: String...) -> Self {
