@@ -103,9 +103,12 @@ extension EntityStore {
 
     private static func referencedKeys(_ value: RecordValue?) -> [String] {
         switch value {
-        case .string(let key): [key]
-        case .strings(let keys): keys
-        default: []
+        case .string(let key):
+            [key]
+        case .strings(let keys):
+            keys
+        default:
+            []
         }
     }
 

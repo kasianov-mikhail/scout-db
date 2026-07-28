@@ -40,9 +40,12 @@ public struct ChangeEvent: Equatable, Sendable {
         self.subscriptionID = subscriptionID
         kind =
             switch reason {
-            case .recordCreated: .created
-            case .recordDeleted: .deleted
-            default: .updated
+            case .recordCreated:
+                .created
+            case .recordDeleted:
+                .deleted
+            default:
+                .updated
             }
     }
 }

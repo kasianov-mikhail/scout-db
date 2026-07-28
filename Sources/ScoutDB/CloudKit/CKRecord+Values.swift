@@ -60,39 +60,67 @@ extension RecordValue {
 
     var ckValue: any CKRecordValueProtocol {
         switch self {
-        case .string(let value): value
-        case .int(let value): value
-        case .double(let value): value
-        case .date(let value): value
-        case .bytes(let value): value
-        case .strings(let value): value
-        case .ints(let value): value
-        case .doubles(let value): value
-        case .dates(let value): value
-        case .locations(let value): value.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
-        case .assets(let value): value.map { CKAsset(fileURL: $0) }
-        case .location(let latitude, let longitude): CLLocation(latitude: latitude, longitude: longitude)
-        case .reference(let value): CKRecord.Reference(recordID: CKRecord.ID(recordName: value), action: .none)
-        case .asset(let value): CKAsset(fileURL: value)
+        case .string(let value):
+            value
+        case .int(let value):
+            value
+        case .double(let value):
+            value
+        case .date(let value):
+            value
+        case .bytes(let value):
+            value
+        case .strings(let value):
+            value
+        case .ints(let value):
+            value
+        case .doubles(let value):
+            value
+        case .dates(let value):
+            value
+        case .locations(let value):
+            value.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
+        case .assets(let value):
+            value.map { CKAsset(fileURL: $0) }
+        case .location(let latitude, let longitude):
+            CLLocation(latitude: latitude, longitude: longitude)
+        case .reference(let value):
+            CKRecord.Reference(recordID: CKRecord.ID(recordName: value), action: .none)
+        case .asset(let value):
+            CKAsset(fileURL: value)
         }
     }
 
     var predicateValue: CVarArg {
         switch self {
-        case .string(let value): value
-        case .int(let value): NSNumber(value: value)
-        case .double(let value): NSNumber(value: value)
-        case .date(let value): value as NSDate
-        case .bytes(let value): value as NSData
-        case .strings(let value): value as NSArray
-        case .ints(let value): value as NSArray
-        case .doubles(let value): value as NSArray
-        case .dates(let value): value as NSArray
-        case .locations(let value): value.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) } as NSArray
-        case .assets(let value): value.map { CKAsset(fileURL: $0) } as NSArray
-        case .location(let latitude, let longitude): CLLocation(latitude: latitude, longitude: longitude)
-        case .reference(let value): CKRecord.Reference(recordID: CKRecord.ID(recordName: value), action: .none)
-        case .asset(let value): value as NSURL
+        case .string(let value):
+            value
+        case .int(let value):
+            NSNumber(value: value)
+        case .double(let value):
+            NSNumber(value: value)
+        case .date(let value):
+            value as NSDate
+        case .bytes(let value):
+            value as NSData
+        case .strings(let value):
+            value as NSArray
+        case .ints(let value):
+            value as NSArray
+        case .doubles(let value):
+            value as NSArray
+        case .dates(let value):
+            value as NSArray
+        case .locations(let value):
+            value.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) } as NSArray
+        case .assets(let value):
+            value.map { CKAsset(fileURL: $0) } as NSArray
+        case .location(let latitude, let longitude):
+            CLLocation(latitude: latitude, longitude: longitude)
+        case .reference(let value):
+            CKRecord.Reference(recordID: CKRecord.ID(recordName: value), action: .none)
+        case .asset(let value):
+            value as NSURL
         }
     }
 }

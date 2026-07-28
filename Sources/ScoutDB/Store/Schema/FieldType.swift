@@ -13,40 +13,64 @@ public enum FieldType: String, Codable, Equatable, Sendable {
 
     var pool: Pool {
         switch self {
-        case .string: .string
-        case .text: .text
-        case .int: .int
-        case .double: .double
-        case .timestamp: .timestamp
-        case .bytes: .bytes
-        case .location: .location
-        case .reference: .reference
-        case .asset: .asset
-        case .stringList: .stringList
-        case .intList: .intList
-        case .doubleList: .doubleList
-        case .timestampList: .timestampList
-        case .locationList: .locationList
-        case .assetList: .assetList
+        case .string:
+            .string
+        case .text:
+            .text
+        case .int:
+            .int
+        case .double:
+            .double
+        case .timestamp:
+            .timestamp
+        case .bytes:
+            .bytes
+        case .location:
+            .location
+        case .reference:
+            .reference
+        case .asset:
+            .asset
+        case .stringList:
+            .stringList
+        case .intList:
+            .intList
+        case .doubleList:
+            .doubleList
+        case .timestampList:
+            .timestampList
+        case .locationList:
+            .locationList
+        case .assetList:
+            .assetList
         }
     }
 
     var isList: Bool {
         switch self {
-        case .stringList, .intList, .doubleList, .timestampList, .locationList, .assetList: true
-        default: false
+        case .stringList, .intList, .doubleList, .timestampList, .locationList, .assetList:
+            true
+        default:
+            false
         }
     }
 
     var emptyList: RecordValue? {
         switch self {
-        case .stringList: .strings([])
-        case .intList: .ints([])
-        case .doubleList: .doubles([])
-        case .timestampList: .dates([])
-        case .locationList: .locations([])
-        case .assetList: .assets([])
-        default: nil
+        case .stringList:
+            .strings([])
+        case .intList:
+            .ints([])
+        case .doubleList:
+            .doubles([])
+        case .timestampList:
+            .dates([])
+        case .locationList:
+            .locations([])
+        case .assetList:
+            .assets([])
+        default:
+            nil
         }
     }
 
