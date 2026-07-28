@@ -114,21 +114,48 @@ extension EntityStore {
         }
 
         EntityCoder.discardStagedAssets(in: applied.map(\.record))
-        let previous = applied.map(\.previous)
-        let next = applied.map(\.next)
+        try await settle(rewritten: applied, owning: owned, using: definition)
+        if applied.count > 0 {
+            noteChange(entity: entity, changed: applied.map(\.next))
+        }
+        if let unresolved {
+            throw RecordConflictError(serverRecord: unresolved)
+        }
+    }
+
+    /// Accounts for a rewritten batch: releases the claims it left behind, moves
+    /// it in the aggregate views, and records its revisions.
+    ///
+    /// The three touch records of their own and nothing the others read, so a
+    /// batch settles in one round of requests rather than three.
+    ///
+    func settle(rewritten: [EntityCoder.Rewrite], owning owned: [[String]], using definition: EntityDefinition) async throws {
+        let previous = rewritten.map(\.previous)
+        let next = rewritten.map(\.next)
         try await withThrowingTaskGroup(of: Void.self) { group in
-            if !owned.isEmpty, applied.count > 0 {
+            if !owned.isEmpty, rewritten.count > 0 {
                 group.addTask { await releaseStaleClaims(for: owned, of: Array(zip(previous, next)), using: definition) }
             }
             group.addTask { try await aggregator.rebalance(removing: previous, adding: next, using: definition) }
             group.addTask { try await recordRevisions(previous, using: definition) }
             try await group.waitForAll()
         }
-        if applied.count > 0 {
-            noteChange(entity: entity, changed: next)
-        }
-        if let unresolved {
-            throw RecordConflictError(serverRecord: unresolved)
+    }
+
+    /// Accounts for a tombstoned batch, the same way a rewritten one settles.
+    ///
+    /// A sweep that leaves no revision behind — a TTL reap, a cascade — passes
+    /// `auditing: false`, so the omission is stated rather than implied by which
+    /// calls a caller happens to make.
+    ///
+    func settle(removed: [EntityRecord], using definition: EntityDefinition, auditing: Bool = true) async throws {
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask { await releaseUniqueClaims(of: removed, using: definition) }
+            group.addTask { try await aggregator.remove(removed, using: definition) }
+            if auditing {
+                group.addTask { try await recordRevisions(removed, using: definition) }
+            }
+            try await group.waitForAll()
         }
     }
 
@@ -426,11 +453,9 @@ extension EntityStore {
             try await database.forEachPage(matching: query) { page in
                 guard unresolved == nil else { return }
                 let matched = try page.filter { record in
-                    if let trustedWriters {
-                        guard let creator = record.recordCreator, trustedWriters.contains(creator) else { return false }
-                    }
                     guard let uuid = record["uuid"] as? String, seen.insert(uuid).inserted else { return false }
-                    return included(try coder.decode(record, using: definition))
+                    guard let decoded = try decode(record, with: coder, using: definition) else { return false }
+                    return included(decoded)
                 }
                 guard matched.count > 0 else { return }
 
@@ -455,11 +480,7 @@ extension EntityStore {
                 }
 
                 guard settled.count > 0 else { return }
-                if !owned.isEmpty {
-                    await releaseStaleClaims(for: owned, of: Array(zip(settled.map(\.previous), settled.map(\.next))), using: definition)
-                }
-                try await aggregator.rebalance(removing: settled.map(\.previous), adding: settled.map(\.next), using: definition)
-                try await recordRevisions(settled.map(\.previous), using: definition)
+                try await settle(rewritten: settled, owning: owned, using: definition)
                 applied += settled.count
                 noteChange(entity: entity, changed: settled.map(\.next))
             }
@@ -491,9 +512,7 @@ extension EntityStore {
                 guard victims.count > 0 else { return }
                 let tombstones = try victims.map { try tombstone(entity: entity, uuid: $0.uuid, definition: definition, values: $0.values) }
                 try await database.write(records: tombstones)
-                await releaseUniqueClaims(of: victims, using: definition)
-                try await aggregator.remove(victims, using: definition)
-                try await recordRevisions(victims, using: definition)
+                try await settle(removed: victims, using: definition)
                 removed += victims.count
                 noteChange(entity: entity, changed: victims.map { Self.tombstoned($0) })
             }
@@ -517,8 +536,7 @@ extension EntityStore {
             let tombstones = try expired.sorted { $0.uuid < $1.uuid }
                 .map { try tombstone(entity: entity, uuid: $0.uuid, definition: definition, values: $0.values) }
             try await database.write(records: tombstones)
-            await releaseUniqueClaims(of: expired, using: definition)
-            try await aggregator.remove(expired, using: definition)
+            try await settle(removed: expired, using: definition, auditing: false)
             reaped += expired.count
             noteChange(entity: entity, changed: expired.map { Self.tombstoned($0) })
         }
@@ -551,23 +569,7 @@ extension EntityStore {
     }
 
     func items(entity: String, uuids: [String]) async throws -> [CKRecord] {
-        struct Chunk: @unchecked Sendable {
-            let index: Int
-            let records: [CKRecord]
-        }
-        let database = database
-        return try await withThrowingTaskGroup(of: Chunk.self) { group in
-            for (index, chunk) in uuids.chunked(into: 100).enumerated() {
-                group.addTask {
-                    let ids = chunk.map { CKRecord.ID(recordName: $0) }
-                    return Chunk(index: index, records: try await database.fetchRecords(ids: ids))
-                }
-            }
-            var chunks: [Int: [CKRecord]] = [:]
-            for try await chunk in group {
-                chunks[chunk.index] = chunk.records
-            }
-            return chunks.sorted { $0.key < $1.key }.flatMap(\.value).filter { $0["entity"] as? String == entity }
-        }
+        let ids = uuids.map { CKRecord.ID(recordName: $0) }
+        return try await database.fetchRecords(ids: ids, batchSize: 100).filter { $0["entity"] as? String == entity }
     }
 }

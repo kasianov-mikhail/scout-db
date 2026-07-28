@@ -21,11 +21,11 @@ actor SlotCache {
     func record(_ id: CKRecord.ID) -> CKRecord? {
         guard let record = records[id] else { return nil }
         touch(id)
-        return Self.duplicate(record)
+        return record.duplicate()
     }
 
     func keep(_ record: CKRecord) {
-        records[record.recordID] = Self.duplicate(record)
+        records[record.recordID] = record.duplicate()
         touch(record.recordID)
         OfflineCache.evict(&records, usage: &usage, limit: limit)
     }
@@ -38,13 +38,5 @@ actor SlotCache {
     private func touch(_ id: CKRecord.ID) {
         clock += 1
         usage[id] = clock
-    }
-
-    private static func duplicate(_ record: CKRecord) -> CKRecord {
-        let copy = record.copy() as! CKRecord
-        if let tag = record.recordVersionTag {
-            copy.overrideChangeTag(tag)
-        }
-        return copy
     }
 }

@@ -16,6 +16,8 @@ struct EntityCoder {
 
     static let envelopeKeys = ["entity", "schema_version", "uuid", "deleted"]
 
+    private static let patterns = PatternCache()
+
     static let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
@@ -66,7 +68,7 @@ struct EntityCoder {
             if let allowed = field.allowed, !value.strings.allSatisfy(allowed.contains) {
                 throw SchemaError.invalidValue(field.name)
             }
-            if let pattern = field.pattern, let regex = try? Regex(pattern), !value.strings.allSatisfy({ $0.wholeMatch(of: regex) != nil }) {
+            if let pattern = field.pattern, let regex = Self.patterns.regex(for: pattern), !value.strings.allSatisfy({ $0.wholeMatch(of: regex) != nil }) {
                 throw SchemaError.invalidValue(field.name)
             }
             for scalar in value.scalars {
@@ -224,6 +226,26 @@ struct EntityCoder {
     }
 }
 
+/// The compiled form of the schema's field patterns, kept across records.
+///
+/// A pattern is fixed by the definition while validation runs per record, and
+/// compiling one costs far more than matching it — a batch write would
+/// otherwise rebuild the same regex once per record it carries.
+///
+private final class PatternCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var compiled: [String: Regex<AnyRegexOutput>?] = [:]
+
+    func regex(for pattern: String) -> Regex<AnyRegexOutput>? {
+        lock.withLock {
+            if let known = compiled[pattern] { return known }
+            let regex = try? Regex(pattern)
+            compiled[pattern] = regex
+            return regex
+        }
+    }
+}
+
 extension String {
     var folded: String {
         folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
@@ -254,6 +276,17 @@ extension RecordValue {
         switch self {
         case .int(let value): Double(value)
         case .double(let value): value
+        default: nil
+        }
+    }
+
+    /// The scalar values a list holds, or nil when the value is not a list.
+    var members: [RecordValue]? {
+        switch self {
+        case .strings(let values): values.map(RecordValue.string)
+        case .ints(let values): values.map(RecordValue.int)
+        case .doubles(let values): values.map(RecordValue.double)
+        case .dates(let values): values.map(RecordValue.date)
         default: nil
         }
     }

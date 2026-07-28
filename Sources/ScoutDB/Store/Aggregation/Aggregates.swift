@@ -100,15 +100,10 @@ extension EntityStore {
             guard count != 0 || value != nil || squares != nil else { return nil }
             return AggregateRow(group: group, period: period, count: count, value: value, squares: squares)
         }
-        return Dictionary(grouping: rows) { "\($0.period.millisecondsSince1970)|\($0.group)" }.values.map { shards -> AggregateRow in
-            shards.dropFirst().reduce(shards[0]) { merged, shard in
-                let values = [merged.value, shard.value].compactMap { $0 }
-                let squares = [merged.squares, shard.squares].compactMap { $0 }
-                return AggregateRow(
-                    group: merged.group, period: merged.period, count: merged.count + shard.count,
-                    value: values.count > 0 ? (values.count == 2 ? (kind?.combine(values[0], values[1]) ?? values[0] + values[1]) : values[0]) : nil,
-                    squares: squares.count > 0 ? squares.reduce(0, +) : nil)
-            }
+        return Self.merging(rows, sharding: { "\($0.period.millisecondsSince1970)|\($0.group)" }) { merged, shard in
+            AggregateRow(
+                group: merged.group, period: merged.period, count: merged.count + shard.count,
+                value: Self.combined(merged.value, shard.value, kind), squares: Self.combined(merged.squares, shard.squares, nil))
         }.sorted { ($0.period, $0.group) < ($1.period, $1.group) }
     }
 
@@ -146,14 +141,23 @@ extension EntityStore {
                 points.append(AggregateSeriesPoint(group: group, date: Self.cellDate(bucket, period: period, index: index), count: count, value: value))
             }
         }
-        return Dictionary(grouping: points) { "\($0.date.millisecondsSince1970)|\($0.group)" }.values.map { shards -> AggregateSeriesPoint in
-            shards.dropFirst().reduce(shards[0]) { merged, shard in
-                let values = [merged.value, shard.value].compactMap { $0 }
-                return AggregateSeriesPoint(
-                    group: merged.group, date: merged.date, count: merged.count + shard.count,
-                    value: values.count > 0 ? (values.count == 2 ? (kind?.combine(values[0], values[1]) ?? values[0] + values[1]) : values[0]) : nil)
-            }
+        return Self.merging(points, sharding: { "\($0.date.millisecondsSince1970)|\($0.group)" }) { merged, shard in
+            AggregateSeriesPoint(
+                group: merged.group, date: merged.date, count: merged.count + shard.count, value: Self.combined(merged.value, shard.value, kind))
         }.sorted { ($0.date, $0.group) < ($1.date, $1.group) }
+    }
+
+    /// Folds the rows a grid shards across several records back into one row per key.
+    private static func merging<Row>(_ rows: [Row], sharding key: (Row) -> String, _ combine: (Row, Row) -> Row) -> [Row] {
+        Dictionary(grouping: rows, by: key).values.map { shards in shards.dropFirst().reduce(shards[0], combine) }
+    }
+
+    /// Folds two shards' metric values the view's metric way — plain addition
+    /// where the view has no metric of its own, as a count or a sum of squares.
+    private static func combined(_ lhs: Double?, _ rhs: Double?, _ kind: AggregateView.Metric?) -> Double? {
+        guard let lhs else { return rhs }
+        guard let rhs else { return lhs }
+        return kind?.combine(lhs, rhs) ?? lhs + rhs
     }
 
     private static func cellDate(_ bucket: AggregateView.Bucket, period: Date, index: Int) -> Date {
@@ -206,10 +210,9 @@ extension EntityStore {
 
         return Dictionary(grouping: rows, by: \.group).map { group, rows in
             let count = rows.reduce(0) { $0 + $1.count }
-            let values = rows.compactMap(\.value)
-            let value: Double? = values.count > 0 ? values.dropFirst().reduce(values[0]) { kind?.combine($0, $1) ?? $0 + $1 } : nil
-            let squares = rows.compactMap(\.squares)
-            return AggregateTotal(group: group, count: count, value: value, squares: squares.count > 0 ? squares.reduce(0, +) : nil)
+            let value = rows.reduce(Double?.none) { Self.combined($0, $1.value, kind) }
+            let squares = rows.reduce(Double?.none) { Self.combined($0, $1.squares, nil) }
+            return AggregateTotal(group: group, count: count, value: value, squares: squares)
         }.filter(having).sorted { $0.group < $1.group }
     }
 
@@ -462,13 +465,7 @@ extension EntityStore {
         }
 
         private static func elementCanonicals(of value: RecordValue) -> Set<String>? {
-            switch value {
-            case .strings(let values): Set(values)
-            case .ints(let values): Set(values.map { RecordValue.int($0).canonical })
-            case .doubles(let values): Set(values.map { RecordValue.double($0).canonical })
-            case .dates(let values): Set(values.map { RecordValue.date($0).canonical })
-            default: nil
-            }
+            value.members.map { Set($0.map(\.canonical)) }
         }
     }
 

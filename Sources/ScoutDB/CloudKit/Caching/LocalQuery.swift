@@ -74,24 +74,12 @@ package enum LocalQuery {
     /// outside the record's own coding and are carried over by hand.
     ///
     package static func project(_ record: CKRecord, keys: [CKRecord.FieldKey]?) -> CKRecord {
-        let projected: CKRecord
-        if let keys {
-            projected = CKRecord(recordType: record.recordType, recordID: record.recordID)
-            for key in record.allKeys() where keys.contains(key) {
-                projected[key] = record[key]
-            }
-        } else {
-            projected = record.copy() as! CKRecord
+        guard let keys else { return record.duplicate() }
+        let projected = CKRecord(recordType: record.recordType, recordID: record.recordID)
+        for key in record.allKeys() where keys.contains(key) {
+            projected[key] = record[key]
         }
-        if let tag = record.recordVersionTag {
-            projected.overrideChangeTag(tag)
-        }
-        if let date = record.recordModificationDate {
-            projected.overrideModificationDate(date)
-        }
-        if let creator = record.recordCreator {
-            projected.overrideCreator(creator)
-        }
+        record.carryOverrides(to: projected)
         return projected
     }
 }

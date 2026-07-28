@@ -200,9 +200,7 @@ public struct EntityStore: Sendable {
         let values = Dictionary(removed.map { ($0.uuid, $0.values) }, uniquingKeysWith: { first, _ in first })
         let tombstones = try targets.map { try tombstone(entity: entity, uuid: $0, definition: definition, values: values[$0] ?? [:]) }
         try await database.write(records: tombstones)
-        await releaseUniqueClaims(of: removed, using: definition)
-        try await aggregator.remove(removed, using: definition)
-        try await recordRevisions(removed, using: definition)
+        try await settle(removed: removed, using: definition)
         noteChange(entity: entity, changed: removed.map { Self.tombstoned($0) })
     }
 
@@ -244,10 +242,7 @@ public struct EntityStore: Sendable {
         if let creator {
             server.append(ServerFilter(field: "creatorUserRecordID", op: .equals, value: .reference(creator)))
         }
-        let matchers = try client.map { filter in
-            let base = try Self.matcher(for: filter)
-            return filter.negated ? { !base($0) } : base
-        }
+        let matchers = try Self.matchers(for: client)
         return (
             ckQuery(Entity.recordType, filters: server, sort: sort),
             { record in !record.deleted && matchers.allSatisfy { $0(record) } }
@@ -389,9 +384,19 @@ public struct EntityStore: Sendable {
     }
 
     func decode(_ record: CKRecord, with coder: EntityCoder, using definition: EntityDefinition) throws -> EntityRecord? {
-        if let trustedWriters {
-            guard let creator = record.recordCreator, trustedWriters.contains(creator) else { return nil }
-        }
+        guard trusted(record) else { return nil }
         return try coder.decode(record, using: definition)
+    }
+
+    /// Whether the record came from a writer the store reads from.
+    ///
+    /// Every record a read serves passes through here, decoded or not — a
+    /// projection the store never decodes is scoped by the same trust the
+    /// decoded ones are.
+    ///
+    func trusted(_ record: CKRecord) -> Bool {
+        guard let trustedWriters else { return true }
+        guard let creator = record.recordCreator else { return false }
+        return trustedWriters.contains(creator)
     }
 }

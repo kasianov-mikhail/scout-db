@@ -52,6 +52,12 @@ public protocol CloudDatabase: Sendable {
     func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord]
 }
 
+/// One batch's records, carried out of the task group that fetched it.
+private struct RecordBatch: @unchecked Sendable {
+    let index: Int
+    let records: [CKRecord]
+}
+
 extension CloudDatabase {
     static var maxBatchSize: Int { 400 }
 
@@ -65,6 +71,29 @@ extension CloudDatabase {
             }
         }
         return records
+    }
+
+    /// Fetches the IDs in concurrent batches of at most `batchSize`, in request
+    /// order.
+    ///
+    /// A fetch carries a bounded number of ids, so a longer list has to be split
+    /// — run as one wave rather than a batch per round trip, since the batches
+    /// are independent and the request gate paces them anyway.
+    ///
+    func fetchRecords(ids: [CKRecord.ID], batchSize: Int) async throws -> [CKRecord] {
+        guard ids.count > 0 else { return [] }
+        guard ids.count > batchSize else { return try await fetchRecords(ids: ids) }
+        let database = self
+        return try await withThrowingTaskGroup(of: RecordBatch.self) { group in
+            for (index, batch) in ids.chunked(into: batchSize).enumerated() {
+                group.addTask { RecordBatch(index: index, records: try await database.fetchRecords(ids: batch)) }
+            }
+            var batches: [Int: [CKRecord]] = [:]
+            for try await batch in group {
+                batches[batch.index] = batch.records
+            }
+            return batches.sorted { $0.key < $1.key }.flatMap(\.value)
+        }
     }
 
     func allRecords(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]? = nil) async throws -> [CKRecord] {
@@ -101,11 +130,9 @@ extension CloudDatabase {
     func write(record: CKRecord) async throws {
         do {
             _ = try await save(record)
-        } catch let error as CKError where error.code == .serverRecordChanged {
-            guard let server = error.userInfo[CKRecordChangedErrorServerRecordKey] as? CKRecord else {
-                throw error
-            }
-            throw RecordConflictError(serverRecord: server)
+        } catch {
+            guard let conflict = RecordConflictError(error) else { throw error }
+            throw conflict
         }
     }
 

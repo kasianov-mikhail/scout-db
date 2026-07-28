@@ -289,10 +289,9 @@ struct GridAggregator {
         guard cold.count > 0 else { return pending }
 
         var served: [CKRecord.ID: CKRecord] = [:]
-        for chunk in cold.map(\.id).sorted(by: { $0.recordName < $1.recordName }).chunked(into: maxBatch) {
-            for record in try await database.fetchRecords(ids: chunk) {
-                served[record.recordID] = record
-            }
+        let ids = cold.map(\.id).sorted { $0.recordName < $1.recordName }
+        for record in try await database.fetchRecords(ids: ids, batchSize: maxBatch) {
+            served[record.recordID] = record
         }
         for entry in cold {
             var record = served[entry.id]

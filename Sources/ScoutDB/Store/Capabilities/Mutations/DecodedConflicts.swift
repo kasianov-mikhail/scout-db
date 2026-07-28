@@ -67,10 +67,7 @@ private struct DecodedConflictResolver: ConflictResolver {
         case .surface:
             return .surface
         case .save(let resolved):
-            let base = server.copy() as! CKRecord
-            if let tag = server.recordVersionTag {
-                base.overrideChangeTag(tag)
-            }
+            let base = server.duplicate()
             guard
                 let rewrite = try? coder.rewrite(
                     base, using: definition,

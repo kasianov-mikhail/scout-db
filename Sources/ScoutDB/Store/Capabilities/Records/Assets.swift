@@ -14,9 +14,9 @@ extension EntityCoder {
 
     private static let stagedFiles = StagedFiles()
 
-    static var stagingDirectory: URL {
-        FileManager.default.temporaryDirectory.appendingPathComponent("ScoutDBAssets", isDirectory: true)
-    }
+    static let stagingDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("ScoutDBAssets", isDirectory: true)
+
+    private static let stagingPrefix = stagingDirectory.standardizedFileURL.path + "/"
 
     static func stage(_ data: Data, limit: Int = maxAssetSize) throws -> RecordValue {
         guard data.count <= limit else { throw SchemaError.invalidValue("asset") }
@@ -64,7 +64,7 @@ extension EntityCoder {
     }
 
     static func isStaged(_ url: URL) -> Bool {
-        url.standardizedFileURL.path.hasPrefix(stagingDirectory.standardizedFileURL.path + "/")
+        url.standardizedFileURL.path.hasPrefix(stagingPrefix)
     }
 }
 

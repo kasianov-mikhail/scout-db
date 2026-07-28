@@ -166,9 +166,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
         try lock.withLock {
-            if let error = state.errors.popLast() {
-                throw error
-            }
+            try popErrorLocked(writing: false)
             return pageLocked(query: query, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
         }
     }
@@ -177,9 +175,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
         try lock.withLock {
-            if let error = state.errors.popLast() {
-                throw error
-            }
+            try popErrorLocked(writing: false)
             guard let page = LocalQuery.resume(indexedLocked(), from: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit, pageLimit: state.pageLimit)
             else {
                 throw CKError(.invalidArguments)
@@ -193,6 +189,16 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         return state.unindexed.isEmpty ? records : records.filter { !state.unindexed.contains($0.recordID) }
     }
 
+    /// Throws the next injected error, if one is queued for the call.
+    ///
+    /// A write drains `writeErrors` first and falls back to `errors`; a read
+    /// takes only `errors`, so a test can aim a failure at the writes alone.
+    ///
+    private func popErrorLocked(writing: Bool) throws {
+        guard let error = writing ? state.writeErrors.popLast() ?? state.errors.popLast() : state.errors.popLast() else { return }
+        throw error
+    }
+
     private func pageLocked(query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
@@ -201,9 +207,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
 
     public func save(_ record: CKRecord) async throws -> CKRecord {
         try lock.withLock {
-            if let error = state.writeErrors.popLast() ?? state.errors.popLast() {
-                throw error
-            }
+            try popErrorLocked(writing: true)
             if let server = conflictingServerLocked(for: record) {
                 throw RecordConflictError(serverRecord: server)
             }
@@ -214,9 +218,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
 
     public func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {
         try lock.withLock {
-            if let error = state.writeErrors.popLast() ?? state.errors.popLast() {
-                throw error
-            }
+            try popErrorLocked(writing: true)
             records.forEach(upsertLocked)
             state.table.remove(recordIDs)
         }
@@ -278,9 +280,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
 
     public func save(subscription: CKSubscription) async throws {
         try lock.withLock {
-            if let error = state.writeErrors.popLast() ?? state.errors.popLast() {
-                throw error
-            }
+            try popErrorLocked(writing: true)
             state.subscriptions.removeAll { $0.subscriptionID == subscription.subscriptionID }
             state.subscriptions.append(subscription)
         }
@@ -288,36 +288,28 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
 
     public func deleteSubscription(id: CKSubscription.ID) async throws {
         try lock.withLock {
-            if let error = state.writeErrors.popLast() ?? state.errors.popLast() {
-                throw error
-            }
+            try popErrorLocked(writing: true)
             state.subscriptions.removeAll { $0.subscriptionID == id }
         }
     }
 
     public func subscriptions() async throws -> [CKSubscription] {
         try lock.withLock {
-            if let error = state.errors.popLast() {
-                throw error
-            }
+            try popErrorLocked(writing: false)
             return state.subscriptions
         }
     }
 
     public func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
         try lock.withLock {
-            if let error = state.errors.popLast() {
-                throw error
-            }
+            try popErrorLocked(writing: false)
             return state.table.record(id: id).map { project($0, keys: nil) }
         }
     }
 
     public func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
         try lock.withLock {
-            if let error = state.errors.popLast() {
-                throw error
-            }
+            try popErrorLocked(writing: false)
             return ids.compactMap { state.table.record(id: $0).map { project($0, keys: nil) } }
         }
     }
@@ -331,7 +323,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
             return url.standardizedFileURL.path.hasPrefix(prefix)
         }
         guard staged.count > 0 else { return record }
-        let stored = record.copy() as! CKRecord
+        let stored = record.duplicate()
         for key in staged {
             guard let url = (stored[key] as? CKAsset)?.fileURL else { continue }
             let copy = assetDirectory.appendingPathComponent(UUID().uuidString)

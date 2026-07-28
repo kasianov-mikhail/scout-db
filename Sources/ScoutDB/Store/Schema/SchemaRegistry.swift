@@ -11,20 +11,36 @@ import Foundation
 public actor SchemaRegistry {
     private let database: any CloudDatabase
     private var cache: [String: EntityDefinition] = [:]
+    private var loading: [String: Task<EntityDefinition, any Error>] = [:]
 
     /// Creates a registry backed by any `CloudDatabase` implementation.
     public init(database: any CloudDatabase) {
         self.database = database
     }
 
+    /// The entity's definition, read from the database once and kept.
+    ///
+    /// A miss is served by a task the entity's other callers join, so the
+    /// several branches of one disjunctive read cost a single descriptor query
+    /// between them rather than one apiece.
+    ///
     public func definition(for entity: String) async throws -> EntityDefinition {
         if let cached = cache[entity] {
             return cached
         }
-        let entries = try await database.allRecords(matching: metaQuery(entity: entity)).map(SchemaDescriptorEntry.init)
-        guard let definition = try latest(of: entries) else {
-            throw SchemaError.unknownEntity(entity)
+        if let inFlight = loading[entity] {
+            return try await inFlight.value
         }
+        let task = Task { () throws -> EntityDefinition in
+            let entries = try await database.allRecords(matching: metaQuery(entity: entity)).map(SchemaDescriptorEntry.init)
+            guard let definition = try latest(of: entries) else {
+                throw SchemaError.unknownEntity(entity)
+            }
+            return definition
+        }
+        loading[entity] = task
+        defer { loading[entity] = nil }
+        let definition = try await task.value
         cache[entity] = definition
         return definition
     }
