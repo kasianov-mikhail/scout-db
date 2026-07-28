@@ -14,8 +14,7 @@ import Foundation
 ///     .filter("quantity" > 2)
 ///     .filter("product_id", .equals, "sku-42")
 ///     .sort("date", .descending)
-///     .limit(20)
-///     .all()
+///     .take(20)
 /// ```
 ///
 public struct QueryBuilder: Sendable {
@@ -148,20 +147,37 @@ public struct QueryBuilder: Sendable {
         return builder
     }
 
-    /// Runs the query and returns every matching record.
+    /// Runs the query and returns at most `count` matching records.
     ///
-    /// A ``limit(_:)`` bounds the fetch server-side: the store stops following the
-    /// query cursor as soon as enough records are in hand.
-    public func all() async throws -> [EntityRecord] {
-        if groups.count > 0 {
-            return try await store.read(entity: entity, any: branches(), sort: sorts, fields: projection, limit: ceiling, createdBy: creator)
-        }
-        return try await store.read(entity: entity, filters: filters, sort: sorts, fields: projection, limit: ceiling, createdBy: creator)
+    /// The bound is what makes this the read every entity can afford: it holds
+    /// server-side, so the store stops following the query cursor as soon as
+    /// enough records are in hand, and the call costs what it returns however
+    /// much the entity grows. A ``limit(_:)`` already on the builder still
+    /// stands — the smaller of the two wins. To read past the bound, walk the
+    /// query with ``paginate(size:after:)``, ``page(size:after:)`` or
+    /// ``stream(pageSize:)``, which hand back a cursor instead of a tail the
+    /// caller cannot see.
+    ///
+    public func take(_ count: Int) async throws -> [EntityRecord] {
+        try await records(limit: Swift.min(count, ceiling ?? count))
     }
+
+    /// The query's records under a bound of the caller's choosing, including
+    /// none — the read a live pass runs, which has to see every record the
+    /// query matches before it can yield a result at all.
+    func records(limit: Int?) async throws -> [EntityRecord] {
+        if groups.count > 0 {
+            return try await store.read(entity: entity, any: branches(), sort: sorts, fields: projection, limit: limit, createdBy: creator)
+        }
+        return try await store.read(entity: entity, filters: filters, sort: sorts, fields: projection, limit: limit, createdBy: creator)
+    }
+
+    /// The bound a ``limit(_:)`` put on the builder, if any.
+    var bound: Int? { ceiling }
 
     /// Runs the query and returns the first matching record.
     public func first() async throws -> EntityRecord? {
-        try await limit(1).all().first
+        try await take(1).first
     }
 
     /// Runs the query and returns the number of matching records.
@@ -173,6 +189,9 @@ public struct QueryBuilder: Sendable {
     /// a threshold landing on a histogram bound — is answered from the view's
     /// grid without scanning records. A strict threshold over an integer field
     /// counts as the half-open one it equals, so `> 15` lands on a bound of 16.
+    /// A threshold on an integer field a view groups by is answered without a
+    /// histogram at all when the field's `minimum` and `maximum` bound it to a
+    /// domain the range can name value by value.
     /// Every other query scans, fetching only the envelope and the filtered
     /// fields rather than full payloads.
     ///

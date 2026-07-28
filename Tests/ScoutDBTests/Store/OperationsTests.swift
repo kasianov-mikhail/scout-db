@@ -709,7 +709,7 @@ struct OperationsTests {
                 $0.filter("quantity", .equals, 3)
                 $0.filter("quantity", .equals, 9)
             }
-            .all()
+            .take(100)
         #expect(Set(grouped.map(\.uuid)) == ["p-1", "p-3"])
     }
 

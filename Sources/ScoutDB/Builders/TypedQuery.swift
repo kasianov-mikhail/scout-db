@@ -93,9 +93,10 @@ public struct TypedQueryBuilder<T: EntityRepresentable> {
         TypedQueryBuilder(builder: builder.createdBy(user))
     }
 
-    /// Runs the query and decodes every matching record into the entity struct.
-    public func all() async throws -> [T] {
-        try await builder.all().map(T.init(record:))
+    /// Runs the query and decodes at most `count` matching records into the
+    /// entity struct.
+    public func take(_ count: Int) async throws -> [T] {
+        try await builder.take(count).map(T.init(record:))
     }
 
     /// Runs the query and decodes the first matching record.

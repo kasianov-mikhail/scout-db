@@ -18,11 +18,13 @@ extension EntityStore {
     ///
     /// A `sum` or `average` over a view that sums the folded field is answered
     /// from that view's grid, for the query shapes ``count()`` covers, without
-    /// reading records at all. `minimum` and `maximum` always scan: a deleted
-    /// record's extremum cannot be un-applied, so the grid holds it only
-    /// best-effort. Otherwise CloudKit runs no aggregates server-side, so the
-    /// rows travel — as single-slot projections, not full payloads. `sum` of no
-    /// rows is 0; the other folds return nil.
+    /// reading records at all. A `minimum` or `maximum` is answered the same way
+    /// only by a view that declares the extremum `exact`: without that, a
+    /// removal cannot un-apply the value it left standing, and the grid holds
+    /// the most extreme value the cell ever saw rather than the one it still
+    /// holds. Otherwise CloudKit runs no aggregates server-side, so the rows
+    /// travel — as single-slot projections, not full payloads. `sum` of no rows
+    /// is 0; the other folds return nil.
     ///
     /// A `createdBy` scope always scans: a view's grid folds every writer's
     /// records together and cannot be split back by creator.
@@ -40,13 +42,13 @@ extension EntityStore {
             throw SchemaError.invalidValue(field)
         }
         if creator == nil, let folded = try await gridFold(fold, of: field, entity: entity, any: branches) {
-            let total = folded.values.reduce(into: GridFold()) {
-                $0.count += $1.count; $0.total += $1.total
-            }
+            let count = folded.values.reduce(0) { $0 + $1.count }
+            let values = folded.values.compactMap(\.value)
             switch fold {
-            case .sum: return total.total
-            case .average: return total.count > 0 ? total.total / Double(total.count) : nil
-            case .minimum, .maximum: break
+            case .sum: return values.reduce(0, +)
+            case .average: return count > 0 ? values.reduce(0, +) / Double(count) : nil
+            case .minimum: return values.min()
+            case .maximum: return values.max()
             }
         }
         let scalars = try await read(entity: entity, any: branches, fields: [field], createdBy: creator).compactMap { $0.values[field]?.scalar }
@@ -83,9 +85,9 @@ extension EntityStore {
         }
         if creator == nil, let folded = try await gridFold(fold, of: field, by: group, entity: entity, any: branches) {
             switch fold {
-            case .sum: return folded.mapValues(\.total)
-            case .average: return folded.compactMapValues { $0.count > 0 ? $0.total / Double($0.count) : nil }
-            case .minimum, .maximum: break
+            case .sum: return folded.mapValues { $0.value ?? 0 }
+            case .average: return folded.compactMapValues { fold in fold.count > 0 ? fold.value.map { $0 / Double(fold.count) } : nil }
+            case .minimum, .maximum: return folded.compactMapValues(\.value)
             }
         }
         var buckets: [String: [Double]] = [:]
@@ -134,15 +136,19 @@ extension EntityStore {
     private func gridFold(_ fold: Fold, of field: String, by group: String? = nil, entity: String, any branches: [[Filter]]) async throws
         -> [String: GridFold]?
     {
+        let kind: AggregateView.Metric
         switch fold {
         case .sum:
-            break
+            kind = .sum
         case .average:
             guard try await alwaysPresent(field, entity: entity) else { return nil }
-        case .minimum, .maximum:
-            return nil
+            kind = .sum
+        case .minimum:
+            kind = .min
+        case .maximum:
+            kind = .max
         }
         if let group, try await alwaysPresent(group, entity: entity) == false { return nil }
-        return try await viewFold(of: field, by: group, entity: entity, any: branches)
+        return try await viewFold(of: field, folding: kind, by: group, entity: entity, any: branches)
     }
 }

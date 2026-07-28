@@ -22,7 +22,7 @@ func application(_ app: UIApplication, didReceiveRemoteNotification userInfo: [A
     -> UIBackgroundFetchResult
 {
     guard let event = ChangeEvent(userInfo: userInfo) else { return .noData }
-    let fresh = try? await store.query(Purchase.self).limit(100).all()
+    let fresh = try? await store.query(Purchase.self).take(100)
     return fresh == nil ? .noData : .newData
 }
 ```

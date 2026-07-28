@@ -87,8 +87,7 @@ try await store.write([
 let recent = try await store.query("purchase")
     .filter("amount" > 10)
     .sort("date", .descending)
-    .limit(20)
-    .all()
+    .take(20)
 ```
 
 ## License

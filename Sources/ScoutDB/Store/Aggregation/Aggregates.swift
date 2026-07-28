@@ -308,8 +308,10 @@ extension EntityStore {
     /// view), or OR branches of them differing only in the matched keys; an
     /// `envelopeDate` range whose bounds align with a view's cell resolution
     /// (hour cells for an hour view, day cells for day and weekday views); a
-    /// threshold on a histogram's field that lands exactly on a declared bound.
-    /// A strict threshold over an integer field counts as the half-open one it
+    /// threshold on a histogram's field that lands exactly on a declared bound;
+    /// a threshold on an integer field a view groups by, whose `minimum` and
+    /// `maximum` bound it to a domain the range can be named value by value. A
+    /// strict threshold over an integer field counts as the half-open one it
     /// equals — `> 15` is `>= 16` — so it lands on a bound of 16.
     ///
     package func viewCount(entity: String, filters: [Filter]) async throws -> Int? {
@@ -318,7 +320,8 @@ extension EntityStore {
 
     package func viewCount(entity: String, any branches: [[Filter]]) async throws -> Int? {
         let definition = try await registry.definition(for: entity)
-        guard definition.views?.isEmpty == false, let query = CountQuery(any: branches, envelopeDate: definition.envelopeDate) else { return nil }
+        guard definition.views?.isEmpty == false, let parsed = CountQuery(any: branches, envelopeDate: definition.envelopeDate) else { return nil }
+        let query = Self.keyed(parsed, in: definition) ?? parsed
 
         if query.numericField != nil {
             guard query.from == nil, query.to == nil, let (view, cells) = Self.histogramPlan(for: query, in: definition) else { return nil }
@@ -339,19 +342,25 @@ extension EntityStore {
 
     package struct GridFold: Equatable, Sendable {
         package var count = 0
-        package var total = 0.0
+        /// The cells' values folded by the view's own metric — added up for a
+        /// sum, kept extreme for a min or max — or nil where no cell held one.
+        package var value: Double?
     }
 
-    package func viewFold(of field: String?, by group: String?, entity: String, filters: [Filter]) async throws -> [String: GridFold]? {
-        try await viewFold(of: field, by: group, entity: entity, any: [filters])
+    package func viewFold(of field: String?, folding kind: AggregateView.Metric = .sum, by group: String?, entity: String, filters: [Filter])
+        async throws -> [String: GridFold]?
+    {
+        try await viewFold(of: field, folding: kind, by: group, entity: entity, any: [filters])
     }
 
-    package func viewFold(of field: String?, by group: String?, entity: String, any branches: [[Filter]]) async throws -> [String: GridFold]? {
+    package func viewFold(of field: String?, folding kind: AggregateView.Metric = .sum, by group: String?, entity: String, any branches: [[Filter]])
+        async throws -> [String: GridFold]?
+    {
         let definition = try await registry.definition(for: entity)
-        guard definition.views?.isEmpty == false, let query = CountQuery(any: branches, envelopeDate: definition.envelopeDate),
-            query.numericField == nil
-        else { return nil }
-        return try await gridFold(query, of: field, by: group, entity: entity, in: definition)
+        guard definition.views?.isEmpty == false, let parsed = CountQuery(any: branches, envelopeDate: definition.envelopeDate) else { return nil }
+        let query = Self.keyed(parsed, in: definition) ?? parsed
+        guard query.numericField == nil else { return nil }
+        return try await gridFold(query, of: field, folding: kind, by: group, entity: entity, in: definition)
     }
 
     package func alwaysPresent(_ field: String, entity: String) async throws -> Bool {
@@ -360,11 +369,12 @@ extension EntityStore {
         return target.alwaysPresent
     }
 
-    private func gridFold(_ query: CountQuery, of field: String?, by group: String?, entity: String, in definition: EntityDefinition) async throws
-        -> [String: GridFold]?
-    {
+    private func gridFold(
+        _ query: CountQuery, of field: String?, folding kind: AggregateView.Metric = .sum, by group: String?, entity: String,
+        in definition: EntityDefinition
+    ) async throws -> [String: GridFold]? {
         guard group == nil || query.groupField == nil || query.groupField == group else { return nil }
-        guard let view = Self.foldPlan(for: query, in: definition, summing: field, grouping: group) else { return nil }
+        guard let view = Self.foldPlan(for: query, in: definition, folding: field.map { (kind, $0) }, grouping: group) else { return nil }
         let covers = Self.cellFilter(view, from: query.from, to: query.to)
         let cells = 0..<Aggregate.squareOffset
         let records = try await gridRecords(
@@ -379,7 +389,9 @@ extension EntityStore {
                 let count = Int(record[Aggregate.countCell(index)] as? Int64 ?? 0)
                 guard count != 0 else { continue }
                 bucketed.count += count
-                bucketed.total += record[Aggregate.valueCell(index)] as? Double ?? 0
+                if let cell = record[Aggregate.valueCell(index)] as? Double {
+                    bucketed.value = bucketed.value.map { kind.combine($0, cell) } ?? cell
+                }
             }
             guard bucketed.count > 0 else { continue }
             folded[group == nil ? "" : key] = bucketed
@@ -472,13 +484,13 @@ extension EntityStore {
         }
     }
 
-    private static func foldPlan(for query: CountQuery, in definition: EntityDefinition, summing field: String?, grouping group: String?)
-        -> AggregateView?
-    {
+    private static func foldPlan(
+        for query: CountQuery, in definition: EntityDefinition, folding metric: (kind: AggregateView.Metric, field: String)?, grouping group: String?
+    ) -> AggregateView? {
         let ranged = query.from != nil || query.to != nil
         for view in definition.views ?? [] where view.histogram == nil && query.matchesGrouping(of: view) {
             guard group == nil || view.groupBy == group else { continue }
-            guard field == nil || view.sum == field || view.stats == field else { continue }
+            if let metric, !view.answers(metric.kind, of: metric.field) { continue }
             let bucket = view.bucket ?? .hour
             guard ranged else {
                 guard bucket == .lifetime else { continue }
@@ -491,6 +503,45 @@ extension EntityStore {
             return view
         }
         return nil
+    }
+
+    /// How many values a threshold may name before the read is left to scan.
+    ///
+    /// A named value is a group of its own in the grid, so the keys are also
+    /// the rows the fold pages through; a thousand of them is under three
+    /// pages, and a field grouped any wider than that is a grid the query has
+    /// no business reading whole.
+    ///
+    private static let namedDomain = 1_024.0
+
+    /// The query restated as the group keys its threshold picks out, or nil
+    /// when the field's values cannot be named.
+    ///
+    /// A view grouping by an integer field holds one cell per value, and the
+    /// field's `minimum` and `maximum` say which values there can be — so a
+    /// `quantity > 15` over a field bounded to 1...20 is the keys sixteen
+    /// through twenty, and its count is their cells added up. This is the route
+    /// for a threshold no histogram bound lands on; a field the schema leaves
+    /// unbounded, or bounds too widely to enumerate, scans as before.
+    ///
+    private static func keyed(_ query: CountQuery, in definition: EntityDefinition) -> CountQuery? {
+        guard query.groupField == nil, let name = query.numericField,
+            let field = definition.field(named: name, at: definition.version), field.type == .int, field.alwaysPresent, field.encrypted != true,
+            case .slot = field.storage, let minimum = field.minimum, let maximum = field.maximum,
+            (definition.views ?? []).contains(where: { $0.histogram == nil && $0.groupBy == name })
+        else { return nil }
+
+        let floor = Swift.max(minimum.rounded(.up), query.numericGTE?.rounded(.up) ?? -.greatestFiniteMagnitude)
+        let ceiling = Swift.min(maximum.rounded(.down), query.numericLT.map { $0.rounded(.up) - 1 } ?? .greatestFiniteMagnitude)
+        guard ceiling - floor < namedDomain, let first = Int64(exactly: floor), let last = Int64(exactly: ceiling) else { return nil }
+
+        var keyed = query
+        keyed.groupField = name
+        keyed.groupKeys = Set((first <= last ? Array(first...last) : []).map { RecordValue.int($0).canonical })
+        keyed.numericField = nil
+        keyed.numericGTE = nil
+        keyed.numericLT = nil
+        return keyed
     }
 
     private static func histogramPlan(for query: CountQuery, in definition: EntityDefinition) -> (view: AggregateView, cells: Range<Int>)? {

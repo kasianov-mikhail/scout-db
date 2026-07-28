@@ -284,13 +284,13 @@ extension ObservedDatabaseTests {
         #expect(exhausted <= 8)
 
         var scanned: [EntityRecord] = []
-        let partial = try await requests { scanned = try await store.query("purchase").exclude("product_id", .equals, "sku-0").limit(5).all() }
+        let partial = try await requests { scanned = try await store.query("purchase").exclude("product_id", .equals, "sku-0").take(5) }
         #expect(scanned.count == 5)
         #expect(scanned.allSatisfy { $0.values["product_id"] != .string("sku-0") })
         #expect(partial <= 3)
 
         var served: [EntityRecord] = []
-        let capped = try await requests { served = try await store.query("purchase").filter("product_id", .equals, "sku-1").limit(5).all() }
+        let capped = try await requests { served = try await store.query("purchase").filter("product_id", .equals, "sku-1").take(5) }
         #expect(served.count == 5)
         #expect(capped == 1)
     }
@@ -312,8 +312,7 @@ extension ObservedDatabaseTests {
                 $0.filter("quantity", .greaterThanOrEquals, .int(30))
             }
             .sort("quantity", .descending)
-            .limit(5)
-            .all()
+            .take(5)
 
         #expect(top.map { $0.values["quantity"] } == [39, 38, 37, 36, 35].map { RecordValue.int(Int64($0)) })
         let pages = recorder.operations.filter { $0.kind == .query || $0.kind == .continuation }
@@ -330,7 +329,7 @@ extension ObservedDatabaseTests {
         }
 
         recorder.reset()
-        let served = try await store.query("purchase").filter("product_id", .equals, "sku-1").limit(5).all()
+        let served = try await store.query("purchase").filter("product_id", .equals, "sku-1").take(5)
         #expect(served.count == 5)
 
         let first = try #require(recorder.operations.first { $0.kind == .query })

@@ -38,7 +38,7 @@ try await store.write(Purchase(productId: "sku-1", quantity: 2, price: 25))
 
 let big = try await store.query(Purchase.self)
     .filter(\.quantity > 5)
-    .all()
+    .take(100)
 // [Purchase]  — no manual decoding
 
 try await store.update(Purchase.self, uuid: "sku-1") { purchase in
