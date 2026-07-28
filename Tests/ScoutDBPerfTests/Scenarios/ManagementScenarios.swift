@@ -34,28 +34,6 @@ extension PerfScenarios {
         ]
     }
 
-    static var porting: [PerfScenario] {
-        [
-            PerfScenario("Porting", "export one entity", sql: 1, cost: .result, writes: false, iterations: 2) { world, _ in
-                _ = try await world.store.export(entity: PerfSchema.item)
-            },
-            PerfScenario("Porting", "import 100 records", sql: 1, cost: .result, iterations: 2) { world, iteration in
-                let records = (0..<100).map { index in
-                    EntityRecord(
-                        entity: PerfSchema.item, uuid: world.fresh("imp\(index)", iteration), schemaVersion: 1,
-                        values: [
-                            "order": .string(world.order(index)),
-                            "sku": .string(PerfSchema.products[index % PerfSchema.products.count]),
-                            "quantity": .int(1),
-                            "price": .double(1.99),
-                            "added": .date(world.corpus.now),
-                        ])
-                }
-                _ = try await world.store.importRecords(try JSONEncoder().encode(records), entity: PerfSchema.item)
-            },
-        ]
-    }
-
     static var sharing: [PerfScenario] {
         [
             PerfScenario("Sharing", "share the zone", sql: 1) { world, _ in

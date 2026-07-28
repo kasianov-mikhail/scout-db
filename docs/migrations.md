@@ -91,24 +91,6 @@ Reverse migrations are the same operation pointed backwards: definitions describ
 version, so records can be re-encoded at an older version too. The only one-way door is data
 a forward migration actually erased.
 
-## 📦 Dumps
-
-A whole entity as JSON, for backups, container-to-container transfer, or seeding a test
-database:
-
-```swift
-let count = try await store.export(entity: "purchase", to: scratchURL)   // a page at a time
-try await store.importRecords(try Data(contentsOf: scratchURL), entity: "purchase")
-```
-
-`export(entity:)` returns the same array as `Data` when the entity is small enough to hold;
-the file variant holds a page instead and appends, which is the one to reach for on an entity
-that does not fit in memory. Encrypted values are exported decrypted when the store has the
-key, and asset fields are inlined as bytes so the dump travels — treat it as plaintext.
-Import upserts by uuid and validates against the current schema, so a dump taken at an older
-version migrates on the way in. A failure part-way leaves a partial file, so write to a
-scratch URL and move it into place once the call returns.
-
 ## 🔒 Invariants
 
 1. `SchemaDescriptor` versions are immutable — a change is always a new `entity_version`.
