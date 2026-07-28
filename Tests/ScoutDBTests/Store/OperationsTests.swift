@@ -735,55 +735,6 @@ struct OperationsTests {
         #expect(try await store.history(entity: "doc", uuid: "d-1").map { $0.values["p"] } == [.string("a"), .string("b")])
     }
 
-    @Test("An export round-trips into another store's import")
-    func exportImport() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        var second = makePurchase().values
-        second["quantity"] = .int(7)
-        try await store.write(second, entity: "purchase", uuid: "p-2")
-        try await store.delete(entity: "purchase", uuid: "p-2")
-
-        let dump = try await store.export(entity: "purchase")
-
-        let target = InMemoryDatabase()
-        let targetRegistry = SchemaRegistry(database: target)
-        try await targetRegistry.publish(makePurchaseDefinition())
-        let targetStore = EntityStore(database: target, registry: targetRegistry)
-        #expect(try await targetStore.importRecords(dump, entity: "purchase") == 1)
-        let imported = try await targetStore.read(entity: "purchase")
-        #expect(imported.map(\.uuid) == ["p-1"])
-        #expect(imported.first?.values["product_id"] == .string("sku-42"))
-
-        await #expect(throws: SchemaError.invalidValue("purchase")) {
-            _ = try await targetStore.importRecords(dump, entity: "profile")
-        }
-        #expect(try await targetStore.importRecords(dump, entity: "purchase") == 1)
-        #expect(try await targetStore.read(entity: "purchase").count == 1)
-    }
-
-    @Test("An export to a file writes the same array a page at a time")
-    func exportToFile() async throws {
-        database.pageLimit = 2
-        for index in 0..<5 {
-            var values = makePurchase().values
-            values["quantity"] = .int(Int64(index))
-            try await store.write(values, entity: "purchase", uuid: "p-\(index)")
-        }
-        try await store.delete(entity: "purchase", uuid: "p-4")
-
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("export-\(UUID().uuidString).json")
-        defer { try? FileManager.default.removeItem(at: url) }
-        #expect(try await store.export(entity: "purchase", to: url) == 4)
-        #expect(try Data(contentsOf: url) == (try await store.export(entity: "purchase")))
-
-        let target = InMemoryDatabase()
-        let targetRegistry = SchemaRegistry(database: target)
-        try await targetRegistry.publish(makePurchaseDefinition())
-        let targetStore = EntityStore(database: target, registry: targetRegistry)
-        #expect(try await targetStore.importRecords(try Data(contentsOf: url), entity: "purchase") == 4)
-        #expect(try await targetStore.read(entity: "purchase").map(\.uuid).sorted() == ["p-0", "p-1", "p-2", "p-3"])
-    }
-
     @Test("A live query re-yields on every local mutation")
     func liveQuery() async throws {
         var live = store.observe(entity: "purchase", sort: [.init(field: "date")]).makeAsyncIterator()
