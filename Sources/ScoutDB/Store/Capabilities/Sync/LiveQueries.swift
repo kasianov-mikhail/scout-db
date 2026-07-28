@@ -132,13 +132,13 @@ extension EntityStore {
     /// trailing pass that follows it, so a write loop costs the pass in flight
     /// and one that picks up everything the loop changed — not one full,
     /// paged pass per write. Only mutations through this process's stores tick
-    /// the stream — remote edits arrive when a `SyncCoordinator` pass applies
-    /// them.
+    /// the stream; an edit made on another device is picked up by the next pass
+    /// the app runs, not by this one.
     ///
     /// A mutation that names the records it changed is folded into the last
     /// result rather than re-read, so the stream costs the query once and the
-    /// changes after it. A mutation that cannot — a compaction, a projected
-    /// sync pass — sends the next result back to the server.
+    /// changes after it. A mutation that cannot — a compaction, say — sends the
+    /// next result back to the server.
     ///
     public func observe(entity: String, filters: [Filter] = [], sort: [Sort] = []) -> AsyncThrowingStream<[EntityRecord], any Error> {
         let buffer = ChangeBuffer()

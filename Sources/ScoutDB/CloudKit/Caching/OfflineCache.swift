@@ -760,12 +760,6 @@ public final class OfflineCache: CloudDatabase, @unchecked Sendable {
         scheduleArchiveLocked()
     }
 
-    public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int?) async throws -> (
-        changed: [CKRecord], deleted: [CKRecord.ID], token: Data?
-    ) {
-        try await backing.zoneChanges(zoneID: zoneID, since: token, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
-    }
-
     public func databaseChanges(since token: Data?) async throws -> (changed: [CKRecordZone.ID], deleted: [CKRecordZone.ID], token: Data?) {
         try await backing.databaseChanges(since: token)
     }

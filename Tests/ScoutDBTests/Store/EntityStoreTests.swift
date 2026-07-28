@@ -294,26 +294,6 @@ struct EntityStoreTests {
         #expect(records.count == 0)
     }
 
-    @Test("Change feed returns an entity's records after the token with tombstones")
-    func changeFeed() async throws {
-        let store = EntityStore(database: database, registry: registry, zoneID: CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName))
-        try await registry.publish(
-            makeDefinition(entity: "receipt", fields: [FieldDefinition(name: "note", type: .string, storage: .slot(.string, "s_00"))]))
-        try await store.write(makePurchase(uuid: "p-1").values, entity: "purchase", uuid: "p-1")
-        try await store.write(makePurchase(uuid: "p-2").values, entity: "purchase", uuid: "p-2")
-        try await store.write(["note": .string("other")], entity: "receipt", uuid: "r-1")
-        try await store.delete(entity: "purchase", uuid: "p-1")
-
-        let all = try await store.changes(entity: "purchase")
-        #expect(all.records.map(\.uuid).sorted() == ["p-1", "p-2"])
-        #expect(all.records.first { $0.uuid == "p-1" }?.deleted == true)
-
-        try await store.write(makePurchase(uuid: "p-3").values, entity: "purchase", uuid: "p-3")
-        try await store.write(["note": .string("later")], entity: "receipt", uuid: "r-2")
-        let tail = try await store.changes(entity: "purchase", since: all.token)
-        #expect(tail.records.map(\.uuid) == ["p-3"])
-    }
-
     @Test("List fields support server-side contains filters")
     func tags() async throws {
         try await registry.publish(

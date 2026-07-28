@@ -74,9 +74,6 @@ extension PerfScenarios {
                     .filter("sku", .equals, .string(PerfSchema.products[iteration % PerfSchema.products.count]))
                     .delete()
             },
-            PerfScenario("Records", "changes(entity:since:)", sql: 1, cost: .result, writes: false, iterations: 2, setUp: stageFeed(200)) { world, _ in
-                _ = try await world.store.changes(entity: PerfSchema.item)
-            },
         ]
     }
 

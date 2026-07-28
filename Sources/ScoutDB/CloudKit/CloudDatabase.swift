@@ -62,15 +62,6 @@ public protocol CloudDatabase: Sendable {
     /// fetch skips the query index, which lags a just-written record.
     ///
     func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord]
-    /// One pass of a zone's change feed from an opaque continuation token;
-    /// `desiredKeys` trims every changed record to those fields (nil fetches
-    /// whole records). A `resultsLimit` stops the pass after roughly that many
-    /// changes with an intermediate token — the batched walk behind sync
-    /// progress; nil drains the feed in one pass. A drained feed answers a
-    /// limited pass with an empty batch.
-    func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int?) async throws -> (
-        changed: [CKRecord], deleted: [CKRecord.ID], token: Data?
-    )
     /// One pass of the database's zone-level change feed: which zones gained
     /// changes, which disappeared. The discovery step for accepted shares —
     /// run it on the shared database, then build a zone-scoped store per zone
@@ -92,16 +83,6 @@ extension CloudDatabase {
             }
         }
         return records
-    }
-
-    func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?) async throws -> (changed: [CKRecord], deleted: [CKRecord.ID], token: Data?) {
-        try await zoneChanges(zoneID: zoneID, since: token, desiredKeys: nil, resultsLimit: nil)
-    }
-
-    func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?) async throws -> (
-        changed: [CKRecord], deleted: [CKRecord.ID], token: Data?
-    ) {
-        try await zoneChanges(zoneID: zoneID, since: token, desiredKeys: desiredKeys, resultsLimit: nil)
     }
 
     func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
@@ -323,71 +304,6 @@ extension CKDatabase: CloudDatabase {
                     case .success((let token, _)):
                         let archived = try? NSKeyedArchiver.archivedData(withRootObject: token, requiringSecureCoding: true)
                         continuation.resume(returning: (collector.changed, collector.deleted, archived))
-                    case .failure(let error):
-                        continuation.resume(throwing: error)
-                    }
-                }
-                database.add(operation)
-            }
-        }
-    }
-
-    public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int?) async throws -> (
-        changed: [CKRecord], deleted: [CKRecord.ID], token: Data?
-    ) {
-        let previous = try token.map { data in
-            guard let unarchived = try NSKeyedUnarchiver.unarchivedObject(ofClass: CKServerChangeToken.self, from: data) else {
-                throw CKError(.invalidArguments)
-            }
-            return unarchived
-        }
-        return try await throttled { database in
-            let configuration = CKFetchRecordZoneChangesOperation.ZoneConfiguration()
-            configuration.previousServerChangeToken = previous
-            configuration.desiredKeys = desiredKeys
-            if let resultsLimit {
-                configuration.resultsLimit = resultsLimit
-            }
-
-            final class Collector: @unchecked Sendable {
-                var changed: [CKRecord] = []
-                var deleted: [CKRecord.ID] = []
-                var latest: CKServerChangeToken?
-                var failure: (any Error)?
-            }
-            let collector = Collector()
-
-            return try await withCheckedThrowingContinuation { continuation in
-                let operation = CKFetchRecordZoneChangesOperation(recordZoneIDs: [zoneID], configurationsByRecordZoneID: [zoneID: configuration])
-                operation.fetchAllChanges = resultsLimit == nil
-                operation.recordWasChangedBlock = { _, result in
-                    switch result {
-                    case .success(let record):
-                        collector.changed.append(record)
-                    case .failure(let error):
-                        if collector.failure == nil { collector.failure = error }
-                    }
-                }
-                operation.recordWithIDWasDeletedBlock = { id, _ in
-                    collector.deleted.append(id)
-                }
-                operation.recordZoneChangeTokensUpdatedBlock = { _, token, _ in
-                    collector.latest = token
-                }
-                operation.recordZoneFetchResultBlock = { _, result in
-                    if case .success((let token, _, _)) = result {
-                        collector.latest = token
-                    }
-                }
-                operation.fetchRecordZoneChangesResultBlock = { result in
-                    switch result {
-                    case .success:
-                        if let failure = collector.failure {
-                            continuation.resume(throwing: failure)
-                            return
-                        }
-                        let data = collector.latest.flatMap { try? NSKeyedArchiver.archivedData(withRootObject: $0, requiringSecureCoding: true) }
-                        continuation.resume(returning: (collector.changed, collector.deleted, data))
                     case .failure(let error):
                         continuation.resume(throwing: error)
                     }

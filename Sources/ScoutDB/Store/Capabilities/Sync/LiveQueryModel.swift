@@ -17,8 +17,8 @@ import Observation
 /// ```
 ///
 /// The model tracks the query for its whole life: the first value is the
-/// current result, and every relevant local mutation delivers a fresh one —
-/// remote edits arrive when a `SyncCoordinator` pass applies them. A burst of
+/// current result, and every relevant local mutation delivers a fresh one;
+/// edits made on another device arrive with the next pass the app runs. A burst of
 /// writes settles in one trailing pass rather than one per write, so `items`
 /// skips to the state the burst left behind. Updates land on the main actor,
 /// so views bind to `items` directly. A failed pass ends the tracking and

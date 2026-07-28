@@ -12,5 +12,5 @@
 | 📎 | [Records](records.md) | Assets, entity references with cascading delete, an audit log, and soft-delete/TTL lifecycle. |
 | 🔐 | [Security](security.md) | Encrypt payload fields on the client and query them through hashed, filterable surrogates. |
 | 🔗 | [Sharing](sharing.md) | Share a zone or single record with `CKShare` and accept invitations by URL. |
-| 📡 | [Sync](sync.md) | Walk the zone change feed in resumable batches, wired to push notifications and SwiftUI. |
+| 📡 | [Sync](sync.md) | Push notifications that say when to read, and live queries wired to SwiftUI. |
 | 📴 | [Offline](offline.md) | Queue writes and replay cached reads with `OfflineCache`, or mirror whole zones with `ReplicaCache`. |

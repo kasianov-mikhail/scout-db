@@ -47,8 +47,8 @@ extension EntityStore {
     /// Drops the revisions written before the cutoff, of one entity or of every
     /// audited one.
     ///
-    /// The log only grows, and every entry rides each zone sync, so an audited
-    /// entity's history soon outweighs its data. Trim it to the window
+    /// The log only grows, and every entry is a stored record of its own, so an
+    /// audited entity's history soon outweighs its data. Trim it to the window
     /// `history(entity:uuid:)` still has to answer — the dropped revisions are
     /// gone for good.
     ///

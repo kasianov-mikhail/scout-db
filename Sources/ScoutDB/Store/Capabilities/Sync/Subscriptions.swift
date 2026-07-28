@@ -49,10 +49,10 @@ extension EntityStore {
 
     /// Subscribes to every change in the database with a single silent push.
     ///
-    /// The natural companion of zone delta sync: one `CKDatabaseSubscription`
-    /// replaces a query subscription per entity — the push says "something
-    /// changed", and `SyncCoordinator.handlePush` pulls the delta. Saving under
-    /// an existing `id` replaces the subscription. Returns the id.
+    /// One `CKDatabaseSubscription` replaces a query subscription per entity —
+    /// the push says "something changed" without naming what, so the handler
+    /// re-reads what it cares about. Saving under an existing `id` replaces the
+    /// subscription. Returns the id.
     ///
     @discardableResult
     public func subscribeToDatabase(id: String = "scout-database") async throws -> String {

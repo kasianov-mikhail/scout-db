@@ -160,8 +160,7 @@ try await store.compact(entity: "purchase", olderThan: cutoff)
 try await store.drop(entity: "purchase")
 ```
 
-`compact` removes tombstones from the change feed for good — a record purged this way can no
-longer be restored. TTL is declared with `.ttl(_ seconds:)` on the schema; expired records
+`compact` erases tombstones for good — a record purged this way can no longer be restored. TTL is declared with `.ttl(_ seconds:)` on the schema; expired records
 are purged with:
 
 ```swift
@@ -184,9 +183,8 @@ let history = try await store.history(entity: "purchase", uuid: "p-1")
 // each element is the record's state right before an update or delete overwrote it
 ```
 
-The log only grows, and `_rev` records ride every zone sync like any other entity — a device
-syncing for the first time pays for the whole history. Trim it to the window you actually
-answer questions about:
+The log only grows, and `_rev` records are stored records like any other — a device building a
+replica pays for the whole history. Trim it to the window you actually answer questions about:
 
 ```swift
 try await store.compactRevisions(olderThan: .now.addingTimeInterval(-90 * 24 * 3_600))

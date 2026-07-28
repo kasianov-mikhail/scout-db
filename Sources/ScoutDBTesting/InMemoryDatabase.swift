@@ -97,7 +97,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         var table = RecordTable()
         var subscriptions: [CKSubscription] = []
         var zones: [CKRecordZone.ID] = []
-        var changeLog: [(sequence: Int64, id: CKRecord.ID, deleted: Bool)] = []
         var zoneLog: [(sequence: Int64, zone: CKRecordZone.ID)] = []
         var sequence: Int64 = 0
         var errors: [any Error] = []
@@ -232,7 +231,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
             state.table.remove(recordIDs)
             for id in recordIDs {
                 state.sequence += 1
-                state.changeLog.append((state.sequence, id, true))
                 state.zoneLog.append((state.sequence, id.zoneID))
             }
         }
@@ -338,31 +336,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    public func zoneChanges(zoneID: CKRecordZone.ID, since token: Data?, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int?) async throws -> (
-        changed: [CKRecord], deleted: [CKRecord.ID], token: Data?
-    ) {
-        try lock.withLock {
-            if let error = state.errors.popLast() {
-                throw error
-            }
-            let floor = token.flatMap { Int64(String(decoding: $0, as: UTF8.self)) } ?? 0
-            var latest: [CKRecord.ID: (sequence: Int64, deleted: Bool)] = [:]
-            for entry in state.changeLog where entry.sequence > floor && entry.id.zoneID == zoneID {
-                latest[entry.id] = (entry.sequence, entry.deleted)
-            }
-            var entries = latest.map { (id: $0.key, sequence: $0.value.sequence, deleted: $0.value.deleted) }.sorted { $0.sequence < $1.sequence }
-            var next = state.sequence
-            if let resultsLimit, entries.count > resultsLimit {
-                entries = Array(entries.prefix(resultsLimit))
-                next = entries.last?.sequence ?? state.sequence
-            }
-            let changed = entries.filter { !$0.deleted }
-                .compactMap { entry in state.table.record(id: entry.id).map { project($0, keys: desiredKeys) } }
-            let deleted = entries.filter(\.deleted).map(\.id).sorted { $0.recordName < $1.recordName }
-            return (changed.sorted { $0.recordID.recordName < $1.recordID.recordName }, deleted, Data("\(next)".utf8))
-        }
-    }
-
     public func save(zone: CKRecordZone) async throws {
         try lock.withLock {
             if let error = state.writeErrors.popLast() ?? state.errors.popLast() {
@@ -414,7 +387,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         record.overrideModificationDate(Date())
         record.overrideChangeTag(UUID().uuidString)
         state.sequence += 1
-        state.changeLog.append((state.sequence, record.recordID, false))
         state.zoneLog.append((state.sequence, record.recordID.zoneID))
     }
 

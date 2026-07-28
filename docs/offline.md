@@ -105,18 +105,20 @@ app from a persisted `storeURL` restores entries as oldest — usage history isn
 ## 🪞 Zone replicas
 
 `ReplicaCache` mirrors one or more zones and serves queries from the mirror directly, rather
-than only on failure:
+than only on failure. Every `refresh()` reads the zone whole, so its cost follows the zone's
+size rather than what changed since the last one — run it on the cadence the app can afford,
+and let the writes that pass through the replica keep the mirror current in between:
 
 ```swift
 let replica = ReplicaCache(backing: cache, zoneID: zoneID, readPolicy: .localFirst)
-try await replica.refresh()   // walk the zone feed to completion once
+try await replica.refresh()   // scan the zone once, whole
 ```
 
 | Read policy | Behavior |
 |---|---|
 | `.networkFirst` (default) | hit the mirror only when the network fails, same posture as `OfflineCache` |
-| `.localFirst` | serve replicated zones from the mirror immediately, once `refresh()` (or an ordinary `SyncCoordinator` pass) has drained that zone completely |
-| `fields:` | mirror a whitelist of fields instead of whole records (pair with the same `SyncProjection` used for [selective sync](sync.md#selective-sync)); a partial replica only answers a query locally if the whitelist covers every field the query filters, sorts, or projects on, otherwise it falls through to the network |
+| `.localFirst` | serve replicated zones from the mirror immediately, once `refresh()` has scanned that zone whole |
+| `fields:` | mirror a whitelist of fields instead of whole records (build it with `store.replicaFields(projecting:)`); a partial replica only answers a query locally if the whitelist covers every field the query filters, sorts, or projects on, otherwise it falls through to the network |
 
 The local query path (`LocalQuery`/`PredicateEvaluator`) supports the comparison operators,
 compound predicates, distance queries, and the token-based full-text search the query builder
@@ -132,7 +134,7 @@ half-applied. A run of `draft.update(...)` steps is applied as one batch per ent
 transaction's patches cost the round trips of a single update rather than one update each.
 Committed envelopes stay in the zone until you erase them with
 `store.compactTransactions(olderThan:)` — run it past the horizon where a crashed writer
-could still repair, or every device pays for the whole write history on its first sync.
+could still repair, or every device pays for the whole write history when it mirrors the zone.
 `store.lease(entity:uuid:owner:for:)` is an advisory, compare-and-swap-based
 lock for coordinating exclusive access across processes; it throws `SchemaError.leaseHeld`
 if another owner already holds it.
@@ -161,7 +163,7 @@ latency-bound and the container is quiet.
   zone (see [Aggregation](aggregation.md)) — so `aggregate`, `totals`, `series` and
   `percentile` reach the server even against a complete mirror.
 - A partial replica's un-mirrored fields decode as `nil` — don't write a partial record back
-  whole, same caveat as a projected sync delta.
+  whole, or you erase the fields it never mirrored.
 - `store.lease(...)` taken offline is decided against a cached record, so it says nothing about
   what another process holds; it settles on `flush()`, as a landed write or a surfaced conflict.
 - Conflict resolution only ever runs on `flush()` — a read never triggers it.
