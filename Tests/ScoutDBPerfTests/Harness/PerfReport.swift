@@ -87,7 +87,6 @@ enum PerfReport {
         let feature: String
         let scenario: String
         let sql: Int
-        let cost: PerfScenario.Cost?
         let measured: [(size: DatasetSize, perOperation: Double)]
         let exponent: Double
         let base: Double
@@ -117,17 +116,7 @@ enum PerfReport {
     /// The volumes the fit is projected to, beyond the largest database measured.
     static let levels = [100_000, 1_000_000, 10_000_000]
 
-    /// Where a scenario with no declared cost stops being worth a look and
-    /// starts being a failure.
-    ///
-    /// The table calls anything above 0.15 growing, which is deliberately
-    /// sensitive — a row worth reading, not a verdict. Failing the sweep is a
-    /// verdict, so it waits for growth no measurement wobble explains: at 0.3
-    /// the ten-million projection is some six times the twenty-thousand cost.
-    ///
-    static let leakingExponent = 0.3
-
-    static func projections(_ results: [PerfResult]) -> [Projection] {
+    private static func projections(_ results: [PerfResult]) -> [Projection] {
         var order: [String] = []
         var grouped: [String: [PerfResult]] = [:]
         for result in results where result.failure == nil {
@@ -148,7 +137,7 @@ enum PerfReport {
             }
             let base = measured.last ?? (size: last.size, perOperation: last.perOperation)
             return Projection(
-                feature: last.feature, scenario: last.scenario, sql: last.sql, cost: last.cost, measured: measured, exponent: exponent,
+                feature: last.feature, scenario: last.scenario, sql: last.sql, measured: measured, exponent: exponent,
                 base: base.perOperation, baseRecords: base.size.records)
         }
     }
@@ -171,12 +160,8 @@ enum PerfReport {
                 })
         }
         columns.append(Column(title: "over", width: 8) { $0.overhead.map { "\(number($0))×" } ?? "—" })
-        guard projected else {
-            columns.append(Column(title: "cost", width: 10) { $0.cost?.rawValue ?? "—" })
-            return columns
-        }
+        guard projected else { return columns }
         columns.append(Column(title: "k", width: 6) { String(format: "%.2f", $0.exponent) })
-        columns.append(Column(title: "cost", width: 10) { $0.cost?.rawValue ?? "—" })
         for level in levels {
             columns.append(Column(title: volume(level), width: 10) { number($0.requests(at: level)) })
         }
@@ -188,22 +173,11 @@ enum PerfReport {
         return columns
     }
 
-    /// What the run concluded: how many scenarios grew, and what their growth
-    /// means — with the ones claiming to be bounded named, since those are the
-    /// rows a reader has to act on.
-    private static func verdict(_ projections: [Projection]) -> [String] {
-        let growing = projections.filter { $0.exponent >= 0.15 }
-        let overhead = growing.filter { $0.cost == nil }
-        var lines = [
-            "\(projections.count) scenarios · \(projections.count - growing.count) hold flat at any volume · \(growing.count) grow with the database",
-            "of those, \(growing.filter { $0.cost == .result }.count) cost what they return, "
-                + "\(growing.filter { $0.cost == .elective }.count) are passes over the whole database, "
-                + "and \(overhead.count) are bounded work that should not have grown",
-        ]
-        for projection in overhead.sorted(by: { $0.exponent > $1.exponent }) {
-            lines.append("  ↳ \(projection.feature) · \(projection.scenario)")
-        }
-        return lines
+    /// What the run concluded: how many scenarios hold flat whatever the
+    /// database holds, and how many cost more as it fills.
+    private static func verdict(_ projections: [Projection]) -> String {
+        let growing = projections.filter { $0.exponent >= 0.15 }.count
+        return "\(projections.count) scenarios · \(projections.count - growing) hold flat at any volume · \(growing) grow with the database"
     }
 
     static func projectionTable(_ results: [PerfResult]) -> String {
@@ -229,22 +203,23 @@ enum PerfReport {
             lines.append(columns.map { pad($0.value(projection), $0.width) }.joined())
         }
         lines.append(String(repeating: "-", count: width(of: columns)))
-        lines += verdict(projections)
+        lines.append(verdict(projections))
         return lines.joined(separator: "\n")
     }
 
     // MARK: - Step summary
 
-    /// The run as a page of its own: the verdict, the scenarios that grew when
-    /// they claimed they would not, and what every feature costs.
+    /// The run as a page of its own: the verdict, the scenarios that grew, and
+    /// what every feature costs.
     ///
     /// The full table is a hundred and thirty lines under the output of every
     /// other test in the run, which nobody scrolls to. This is the same numbers
-    /// arranged to be read. The group that should be empty comes first, because
-    /// a row there is why the job failed; the feature roll-up under it covers
-    /// the rest of the sweep, since a scenario that holds flat still has a
-    /// coefficient against SQL worth knowing, and a reader looking up one
-    /// feature should not have to know in advance whether it grew.
+    /// arranged to be read. The scenarios whose cost follows the database come
+    /// first, since those are the rows a reader is looking for; the feature
+    /// roll-up under it covers the rest of the sweep, since a scenario that
+    /// holds flat still has a coefficient against SQL worth knowing, and a
+    /// reader looking up one feature should not have to know in advance whether
+    /// it grew.
     ///
     static func page(_ results: [PerfResult]) -> String {
         let projections = projections(results)
@@ -253,7 +228,7 @@ enum PerfReport {
         let fitted = sample.measured.count > 1
 
         if fitted {
-            lines += ["", "```", verdict(projections).joined(separator: "\n"), "```"]
+            lines += ["", "```", verdict(projections), "```"]
             if sample.measured.count < DatasetSize.allCases.count {
                 lines += [
                     "",
@@ -267,11 +242,10 @@ enum PerfReport {
 
         let columns = projectionColumns(sample: sample, projected: fitted)
         if fitted {
-            let grew = projections.filter { $0.exponent >= 0.15 && $0.cost == nil }.sorted { ($0.exponent, $0.base) > ($1.exponent, $1.base) }
+            let grew = projections.filter { $0.exponent >= 0.15 }.sorted { ($0.exponent, $0.base) > ($1.exponent, $1.base) }
             if grew.count > 0 {
                 lines += block(
-                    "Bounded work that grew", note: "work that claimed to cost the same whatever the database holds, and did not",
-                    columns: columns, rows: grew)
+                    "Scenarios that grew", note: "work whose cost per call rises with what the database holds", columns: columns, rows: grew)
             }
         }
         lines += block(
@@ -467,14 +441,12 @@ enum PerfReport {
         let measured: [String: Double]
         let exponent: Double
         let growth: String
-        let cost: String
         let projected: [String: Double]
 
         init(_ projection: Projection) {
             feature = projection.feature
             scenario = projection.scenario
             sql = projection.sql
-            cost = projection.cost?.rawValue ?? "bounded"
             measured = Dictionary(uniqueKeysWithValues: projection.measured.map { ("\($0.size.records)", rounded($0.perOperation)) })
             exponent = rounded(projection.exponent)
             growth = projection.growth

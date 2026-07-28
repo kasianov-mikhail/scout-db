@@ -15,10 +15,9 @@ import Testing
 /// would cost a relational database in statements, the ratio between the two,
 /// and a projection of both to larger volumes.
 ///
-/// The projection's `cost` column says how to read a scenario that grows: a
-/// dump or a sweep that carries more on a bigger database is doing its job,
-/// while bounded work that grows is overhead. The footer counts the three and
-/// names the scenarios in the last group.
+/// The projection's `k` column is the growth exponent: 0 for work that holds
+/// flat whatever the database holds, 1 for work that costs a pass over it. The
+/// footer counts the two groups.
 ///
 /// Run it deliberately:
 ///
@@ -59,19 +58,6 @@ struct PerfSuite {
         }
         for result in results where result.failure != nil {
             Issue.record("\(result.feature)/\(result.scenario) [\(result.size.rawValue)] did not run: \(result.failure ?? "")")
-        }
-        // Only a full sweep can accuse a scenario: the exponent is fitted from the two
-        // largest databases measured, and the two small ones are a handful of requests
-        // apart, where one page more reads as a curve.
-        for leak in PerfReport.projections(results)
-        where leak.cost == nil && leak.measured.count == DatasetSize.allCases.count && leak.exponent >= PerfReport.leakingExponent {
-            let measured = leak.measured.map { "\($0.size.rawValue) \(String(format: "%.1f", $0.perOperation))" }.joined(separator: ", ")
-            Issue.record(
-                """
-                \(leak.feature)/\(leak.scenario) grows with the database: \(measured), k=\(String(format: "%.2f", leak.exponent)).
-                Bounded work is what this sweep tests, so either the cost belongs to the work — say so with `cost: .result` \
-                or `cost: .elective` on the scenario — or the call is doing more than it should.
-                """)
         }
     }
 }

@@ -17,7 +17,7 @@ extension PerfScenarios {
             PerfScenario("Pagination", "one field page of 100 by total", sql: 1, writes: false) { world, _ in
                 _ = try await world.store.query(PerfSchema.order).sort("total", .descending).page(size: 100)
             },
-            PerfScenario("Pagination", "stream 500 records", sql: 5, cost: .result, writes: false, iterations: 2) { world, _ in
+            PerfScenario("Pagination", "stream 500 records", sql: 5, writes: false, iterations: 2) { world, _ in
                 var seen = 0
                 for try await _ in world.store.query(PerfSchema.order).stream(pageSize: 100) {
                     seen += 1

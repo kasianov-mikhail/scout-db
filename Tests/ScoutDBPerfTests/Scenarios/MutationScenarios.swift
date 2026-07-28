@@ -60,14 +60,14 @@ extension PerfScenarios {
 
     static var transactions: [PerfScenario] {
         [
-            PerfScenario("Transactions", "three writes in one transaction", sql: 1, cost: .result) { world, iteration in
+            PerfScenario("Transactions", "three writes in one transaction", sql: 1) { world, iteration in
                 try await world.store.transaction { draft in
                     for index in 0..<3 {
                         draft.write(world.newOrder(iteration, offset: index), entity: PerfSchema.order, uuid: world.fresh("tx\(index)", iteration))
                     }
                 }
             },
-            PerfScenario("Transactions", "a write, an update and a delete", sql: 3, cost: .result) { world, iteration in
+            PerfScenario("Transactions", "a write, an update and a delete", sql: 3) { world, iteration in
                 let uuid = world.fresh("mix", iteration)
                 try await world.store.transaction { draft in
                     draft.write(world.newOrder(iteration), entity: PerfSchema.order, uuid: uuid)
@@ -90,7 +90,7 @@ extension PerfScenarios {
                 _ = try await world.store.repairTransactions()
             },
             PerfScenario(
-                "Transactions", "compact committed envelopes", sql: 1, cost: .elective, iterations: 1,
+                "Transactions", "compact committed envelopes", sql: 1, iterations: 1,
                 setUp: { world in
                     try await world.store.transaction { draft in
                         draft.write(world.newOrder(0), entity: PerfSchema.order, uuid: world.fresh("cmp", 0))

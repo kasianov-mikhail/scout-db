@@ -20,27 +20,6 @@ struct PerfScenario: Sendable {
         case offline
     }
 
-    /// Why this scenario's cost may grow with the database — stated where it
-    /// would otherwise be read as a defect.
-    ///
-    /// The sweep measures requests per call; it cannot tell by itself whether a
-    /// call that costs more on a larger database is leaking or simply carrying
-    /// more. A scenario names the reason when there is one, and leaves it unset
-    /// when there is not: an unset cost is the claim that this work is bounded
-    /// whatever the database holds, and so the claim the sweep is really
-    /// testing. Growth there is overhead, and the row to look at first.
-    ///
-    enum Cost: String, Sendable {
-        /// The cost tracks what the call returns, is handed, or must touch — a
-        /// batch of writes, a page run, a feed of changes, a cascade's
-        /// children. A dump of every record cannot cost less than reading them.
-        case result
-        /// A pass over the whole database the caller opted into — a migration,
-        /// an integrity sweep, a log compaction — or a fallback a declared view
-        /// would have avoided.
-        case elective
-    }
-
     let feature: String
     let name: String
     /// What the same work costs a relational database, in statements.
@@ -63,8 +42,6 @@ struct PerfScenario: Sendable {
     ///   over `updated_at`. That is where the overhead comes from.
     ///
     let sql: Int
-    /// Why this scenario is allowed to grow, or nil when it is not; see ``Cost``.
-    let cost: Cost?
     let stack: Stack
     /// Whether the body changes the database, and so whether the corpus has to
     /// be restored before the next scenario.
@@ -81,13 +58,12 @@ struct PerfScenario: Sendable {
     let body: @Sendable (PerfWorld, Int) async throws -> Void
 
     init(
-        _ feature: String, _ name: String, sql: Int, cost: Cost? = nil, stack: Stack = .direct, writes: Bool = true, iterations: Int? = nil,
+        _ feature: String, _ name: String, sql: Int, stack: Stack = .direct, writes: Bool = true, iterations: Int? = nil,
         setUp: (@Sendable (PerfWorld) async throws -> Void)? = nil, body: @escaping @Sendable (PerfWorld, Int) async throws -> Void
     ) {
         self.feature = feature
         self.name = name
         self.sql = sql
-        self.cost = cost
         self.stack = stack
         self.writes = writes
         self.iterations = iterations
@@ -112,8 +88,6 @@ struct PerfResult: Sendable {
     let iterations: Int
     /// What the same operation costs a relational database, in statements.
     let sql: Int
-    /// Why this scenario is allowed to grow, or nil when it is not.
-    let cost: PerfScenario.Cost?
     let app: PerfRecorder.Tally
     let wire: PerfRecorder.Tally
     let failure: String?

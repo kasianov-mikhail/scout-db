@@ -13,7 +13,7 @@ extension PerfScenarios {
     static var migrations: [PerfScenario] {
         [
             PerfScenario(
-                "Migrations", "backfill a new version", sql: 1, cost: .elective, iterations: 1,
+                "Migrations", "backfill a new version", sql: 1, iterations: 1,
                 setUp: { world in
                     try await publishItemVersion(
                         world, field: FieldDefinition(name: "discount", type: .double, storage: .slot(.double, "d_01"), since: 2))
@@ -24,7 +24,7 @@ extension PerfScenarios {
                 }
             },
             PerfScenario(
-                "Migrations", "backfill against the previous record", sql: 1, cost: .elective, iterations: 1,
+                "Migrations", "backfill against the previous record", sql: 1, iterations: 1,
                 setUp: { world in
                     try await publishItemVersion(world, field: FieldDefinition(name: "was", type: .double, storage: .slot(.double, "d_01"), since: 2))
                 }
@@ -34,20 +34,20 @@ extension PerfScenarios {
                 }
             },
             PerfScenario(
-                "Migrations", "rename a field's data", sql: 1, cost: .elective, iterations: 1,
+                "Migrations", "rename a field's data", sql: 1, iterations: 1,
                 setUp: { world in
                     try await publishItemVersion(world, field: FieldDefinition(name: "code", type: .string, storage: .slot(.string, "s_02"), since: 2))
                 }
             ) { world, _ in
                 _ = try await world.migrator.rename(entity: PerfSchema.item, from: "sku", to: "code")
             },
-            PerfScenario("Migrations", "backfill the enforced-key claims", sql: 1, cost: .elective, iterations: 1) { world, _ in
+            PerfScenario("Migrations", "backfill the enforced-key claims", sql: 1, iterations: 1) { world, _ in
                 _ = try await world.migrator.backfillClaims(entity: PerfSchema.customer)
             },
-            PerfScenario("Migrations", "rebuild one view's grid", sql: 1, cost: .elective, iterations: 1) { world, _ in
+            PerfScenario("Migrations", "rebuild one view's grid", sql: 1, iterations: 1) { world, _ in
                 _ = try await world.migrator.backfill(view: "revenue", entity: PerfSchema.order)
             },
-            PerfScenario("Migrations", "rotate the encryption key", sql: 1, cost: .elective, iterations: 1) { world, _ in
+            PerfScenario("Migrations", "rotate the encryption key", sql: 1, iterations: 1) { world, _ in
                 _ = try await world.migrator.rotateKey(entity: PerfSchema.session, to: "perf-key-2")
             },
         ]
