@@ -1,4 +1,4 @@
-# ⚙️ Operators
+# Operators
 
 Query and aggregation operators ScoutDB supports. See the [README](../README.md) for
 the architecture this builds on.
@@ -8,7 +8,18 @@ let filter = EntityStore.Filter(field: "title", op: .endsWith, value: .string("W
 let notes = try await store.read(entity: "note", filters: [filter])
 ```
 
-## 🔢 Comparison
+## Table of Contents
+- [Comparison](#comparison)
+- [String matching](#string-matching)
+- [Collections and geo](#collections-and-geo)
+- [Existence](#existence)
+- [OR and ORDER BY](#or-and-order-by)
+- [Aggregation](#aggregation)
+- [Read and write shapes](#read-and-write-shapes)
+- [Derived transforms](#derived-transforms)
+- [Not supported](#not-supported)
+
+## Comparison
 
 | Operator | Notes |
 |---|---|
@@ -17,7 +28,7 @@ let notes = try await store.read(entity: "note", filters: [filter])
 | `in` / `notIn` | list membership |
 | `Filter.between(field, lower, upper)` | inclusive range |
 
-## 🔤 String matching
+## String matching
 
 | Operator | Notes |
 |---|---|
@@ -32,25 +43,25 @@ Case/diacritic-insensitive matching and substring search are shadow-field techni
 operator flags — declare a derived `fold`, `reversed`, or `ngrams` field once and the matching
 operators pick it up automatically.
 
-## 🌍 Collections and geo
+## Collections and geo
 
 - `contains` on a list field — membership: `tags CONTAINS "swift"`
 - `Filter.containsAll(field, values)` — every value present
 - `Filter.containsAny(field, values)` — at least one present, via `read(any:)`
 - `near` — radius match on a `location` field, in meters
 
-## ❓ Existence
+## Existence
 
 `isNull` / `isNotNull` — match records missing or carrying a value; work on payload fields too.
 
-## 🔀 OR and ORDER BY
+## OR and ORDER BY
 
 CloudKit only combines predicates with `AND`. `read(entity:any:)` emulates `OR` across branches;
 prefer a single `in` filter when branches only differ by value.
 
 `sort:` gives server-side `ORDER BY`.
 
-## 📊 Aggregation
+## Aggregation
 
 Declare `views` on the definition; every write updates counters so reads never scan raw records.
 
@@ -63,7 +74,7 @@ Declare `views` on the definition; every write updates counters so reads never s
 | `HAVING` | the `having:` closure of `totals(...)` |
 | `DISTINCT` | `distinct(entity:field:)` |
 
-## 🧵 Read and write shapes
+## Read and write shapes
 
 | Feature | API |
 |---|---|
@@ -74,7 +85,7 @@ Declare `views` on the definition; every write updates counters so reads never s
 | Batch delete | `deleteAll(entity:filters:)` |
 | Transactions | `transaction { $0.write(...) }`, repaired by `repairTransactions(olderThan:)`, trimmed by `compactTransactions(olderThan:)` |
 
-## 🪄 Derived transforms
+## Derived transforms
 
 | Transform | Does | Used for |
 |---|---|---|
@@ -85,7 +96,7 @@ Declare `views` on the definition; every write updates counters so reads never s
 | `hour` / `day` / `week` / `month` | bucket a timestamp | time grouping |
 | `hmac` | keyed hash | filterable surrogate for an encrypted field |
 
-## 🚫 Not supported
+## Not supported
 
 - Fully server-side substring, wildcard, or regex matching — verification is always client-side.
 - Single-query `OR` — it's a query per branch.
