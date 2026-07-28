@@ -15,11 +15,36 @@ let failures = try await store.query("log")
 | `take(_:)` | at most that many matching records |
 | `first()` | the first matching record, if any |
 | `count()` | the number of matches |
-| `paginate(size:after:)` | one page plus a cursor for the next |
+| `paginate(size:after:)` | one page ordered by the envelope date, plus a cursor for the next |
+| `page(size:after:)` | one page ordered by the query's own `sort` clause, plus a cursor |
 | `stream(pageSize:)` | an async sequence of pages |
 | `update(_:)` | applies a transform to every match |
 | `delete()` | deletes every match |
-| `explain()` | the query plan, for debugging |
+| `observe()` / `live()` | the result, re-delivered on every local mutation — see [Sync](sync.md) |
+| `explain()` | the query plan, one per OR branch, for debugging |
+
+Keyset pagination picks its order up front: `paginate(size:after:)` is ordered by the envelope
+date and throws rather than silently dropping a `sort` clause, while `page(size:after:)`
+requires exactly one `sort` on a slot-backed scalar field.
+
+The clauses in between are `filter`, `exclude`, `group`, `sort`, `nearest(_:latitude:longitude:)`
+for a nearest-first distance order, `fields` for a projection, `limit`, and `createdBy`.
+
+## ➕ Folds
+
+Numbers over the matching records, fetching only the folded field — no view required:
+
+```swift
+let revenue = try await store.query("purchase").filter("status", .equals, "paid").sum("amount")
+let peak    = try await store.query("purchase").maximum("amount")
+let perUser = try await store.query("purchase").sum("amount", by: "user_id")
+let perKind = try await store.query("purchase").count(by: "status")
+```
+
+`sum`, `minimum`, `maximum`, and `average` each take a `by:` grouping variant, as `count`
+does. These scan what the query selects — a declared view answers `count()`, and an `exact`
+`min`/`max` view answers `minimum()`/`maximum()`, from the grid instead. See
+[Aggregation](aggregation.md).
 
 ## 👤 Creator scope
 
@@ -100,6 +125,13 @@ once; the matching operators pick it up automatically:
 | `reversed` | server-side `endsWith`, as a prefix query |
 | `fold` | case/diacritic-insensitive matching |
 | `ngrams` | a substring prefilter, narrowed further client-side |
+
+The planner finds a shadow by its derivation, not its name, so the name above is yours to
+pick. `.shadow("title", .reversed)` is the shorthand when you don't care: it declares the same
+field as `title_reversed`, with the type the transform calls for.
+
+A shadow is recomputed on every write, so records written before you declared one carry it
+only after a `Migrator.backfill(entity:)` pass.
 
 ## 🎯 Existence and projections
 

@@ -74,6 +74,25 @@ struct Event {
   `Double`, `Date`, `Data`, or an array of one of these) unless it's `RecordValue?`. Custom
   nested types aren't handled.
 
+## 🏭 Generating from a published schema
+
 If you'd rather derive the same conformance from a *published* schema instead of a Swift
 declaration — useful for entities defined outside the app, e.g. by another team's service —
-see `scoutdb-codegen`, the code-generation counterpart to this macro.
+`scoutdb-codegen` is the code-generation counterpart to this macro. Export the definitions the
+database holds, then let the build plugin turn them into structs:
+
+```swift
+try await registry.exportDefinitions(to: sourcesDirectory)   // <entity>.entity.json per entity
+```
+
+Add the `CodegenPlugin` build-tool plugin to the target holding those files, and every
+`*.entity.json` in it compiles to a `struct` conforming to `EntityRepresentable` — the same
+conformance `@Entity` expands to, so queries and writes read identically. The exported JSON is
+pretty-printed with sorted keys, so it diffs cleanly under version control.
+
+```swift
+.target(name: "App", plugins: [.plugin(name: "CodegenPlugin", package: "scout-db")])
+```
+
+The generated struct's fields come from the definition's latest version, named in camelCase.
+Reach for the macro when the schema is authored in your app, and for codegen when it isn't.

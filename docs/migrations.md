@@ -49,8 +49,8 @@ records already at the latest version.
 | omitted | **closed** (`until` = new version) — old records still decode it |
 | new | gets the next free slot with `since` = new version |
 
-Settings (`envelopeDate`, `unique`, `views`, `keyID`, `ttl`) are inherited unless you set
-them again.
+Settings (`envelopeDate`, `unique`, `uniqueKey`, `enforcedKey`, `views`, `keyID`, `ttl`,
+`audited`) are inherited unless you set them again.
 
 ## ✏️ Renames
 
@@ -65,12 +65,22 @@ FieldDefinition(name: "user_id", type: .string, storage: .slot(.string, "s_00"),
 Same slot, disjoint version ranges — reads at version 2 see `user_id`, reads of version-1
 records see `user`, and a backfill carries the value across automatically.
 
+If the rename went through the builder instead and the new name landed in a fresh slot, the
+value does not carry itself — move it with a rename pass:
+
+```swift
+let migrator = Migrator(database: database, registry: registry)
+try await migrator.rename(entity: "purchase", from: "user", to: "user_id")
+```
+
+It rewrites every outdated record, carrying the value stored under the old name at that
+record's version into the new name at the current one. Repeating the run is safe.
+
 ## ⏪ Backfill and rollback
 
 Old records stay valid without any rewriting. To actively move them to the latest version:
 
 ```swift
-let migrator = Migrator(database: database, registry: registry)
 try await migrator.backfill(entity: "purchase") { record in
     if case .int(let cents)? = record.values["amount"] {
         record.values["amount"] = .double(Double(cents) / 100)

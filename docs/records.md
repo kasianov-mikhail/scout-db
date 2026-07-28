@@ -70,9 +70,15 @@ try await store.delete(entity: "order", uuid: "o-1", cascade: true)
 // scalar references to o-1 are deleted; list references are detached, not deleted
 ```
 
-Turn on `EntityStore.enforceReferences` to reject writes that would create a dangling
-reference, and to enforce `.exclusiveReference` uniqueness. Both checks are client-side —
-useful as a guardrail, not a server-side constraint.
+Construct the store with `enforceReferences: true` to reject writes that would create a
+dangling reference, and to enforce `.exclusiveReference` uniqueness:
+
+```swift
+let store = EntityStore(database: database, registry: registry, enforceReferences: true)
+```
+
+A write whose reference field names no live parent throws `SchemaError.brokenReference`. Both
+checks are client-side — useful as a guardrail, not a server-side constraint.
 
 ## 🔑 Unique keys
 
@@ -111,7 +117,7 @@ finishes, an old value can still be re-taken.
 | `unique(on:)` | derives the record's identity, so a repeat write upserts rather than duplicates |
 | `uniqueKey(on:)` | advisory: validated by a read before the write, so a race can seat two |
 | `enforcedKey(on:)` | atomic: claim-backed compare-and-swap, so a race seats one |
-| `EntityStore.enforceReferences` | advisory: the parent is checked before the write, and can be deleted right after |
+| `enforceReferences: true` | advisory: the parent is checked before the write, and can be deleted right after |
 
 Reach for `enforcedKey(on:)` when a duplicate would be a correctness problem, and for
 `uniqueKey(on:)` when it would merely be untidy — the claim costs a fetch and a
@@ -164,13 +170,18 @@ CloudKit's own change tag. Enable it per entity, then read history oldest-first:
 ```swift
 try await registry.publish(EntityStore.revisionDefinition)   // once, like the schema registry itself
 
-var definition = try await registry.definition(for: "purchase")
-definition.audited = true
-try await registry.publish(definition)
+try await store.schema("purchase")
+    .field("product_id", .string, .required)   // …and every other field the entity still has
+    .audited()
+    .update()
 
 let history = try await store.history(entity: "purchase", uuid: "p-1")
 // each element is the record's state right before an update or delete overwrote it
 ```
+
+`update()` publishes a whole version, so a field the call leaves out is closed — redeclare
+them all alongside `.audited()`. The flag itself carries to later versions that don't mention
+it, like the other settings.
 
 The log only grows, and `_rev` records are stored records like any other, so an audited
 entity's history soon outweighs its data. Trim it to the window you actually answer questions

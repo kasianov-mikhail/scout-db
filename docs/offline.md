@@ -129,6 +129,21 @@ await RequestPolicy.setMaxConcurrentRequests(4)   // eight by default
 Lower it when a long migration keeps meeting rate limits; raise it when the work is
 latency-bound and the container is quiet.
 
+## 📈 Telemetry
+
+`ObservedDatabase` is a `CloudDatabase` decorator that reports every settled call — kind,
+duration, record count, and the error if it threw — to an observer of yours:
+
+```swift
+let observed = ObservedDatabase(backing: cloudDatabase, observer: MyObserver())
+let store = EntityStore(database: observed, registry: registry)
+```
+
+It composes with the other decorators, and where you wrap decides what you measure: around a
+`CKDatabase` it sees wire calls, around an `OfflineCache` it sees what the app experiences,
+queue-served writes included. `record(_:)` is called synchronously on the calling task, so
+hand the operation off to a logger or a metrics pipeline rather than blocking in it.
+
 ## ⚠️ Limits
 
 - `OfflineCache` is a best-effort local answer, not a replacement for the server: writes
