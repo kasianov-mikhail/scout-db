@@ -223,32 +223,6 @@ extension ObservedDatabaseTests {
         #expect(continued == 1)
     }
 
-    @Test("An orphan sweep probes its parents by the page, not a hundred records at a time")
-    func orphanSweepProbesByPage() async throws {
-        try await registry.publish(
-            EntityDefinition(
-                entity: "author", version: 1,
-                fields: [FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))]))
-        try await registry.publish(
-            EntityDefinition(
-                entity: "book", version: 1,
-                fields: [
-                    FieldDefinition(name: "title", type: .string, storage: .slot(.string, "s_00")),
-                    FieldDefinition(name: "author_id", type: .string, storage: .slot(.string, "s_01"), references: "author"),
-                ]))
-        try await store.write((0..<250).map { EntityWrite(values: ["name": .string("a-\($0)")], uuid: "a-\($0)") }, entity: "author")
-        try await store.write(
-            (0..<250).map { EntityWrite(values: ["title": .string("t-\($0)"), "author_id": .string("a-\($0)")], uuid: "b-\($0)") }, entity: "book")
-        try await store.delete(entity: "author", uuid: "a-7")
-
-        recorder.reset()
-        let orphaned = try await store.orphans(entity: "book", field: "author_id")
-        #expect(orphaned.map(\.uuid) == ["b-7"])
-
-        #expect(recorder.operations.filter { $0.kind == .fetch }.isEmpty)
-        #expect(recorder.operations.filter { $0.kind == .query || $0.kind == .continuation }.count <= 4)
-    }
-
     @Test("A sweep writes each page as it lands rather than gathering the whole entity")
     func sweepsWritePerPage() async throws {
         backing.pageLimit = 2

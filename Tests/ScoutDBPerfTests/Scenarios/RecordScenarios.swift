@@ -30,9 +30,6 @@ extension PerfScenarios {
             PerfScenario("Relations", "children of one customer", sql: 1, cost: .result, writes: false) { world, iteration in
                 _ = try await world.store.children(entity: PerfSchema.order, of: world.customer(iteration), via: "customer")
             },
-            PerfScenario("Relations", "orphans of the item entity", sql: 1, cost: .elective, writes: false) { world, _ in
-                _ = try await world.store.orphans(entity: PerfSchema.item, field: "order")
-            },
             PerfScenario("Relations", "delete one order, cascading", sql: 1, cost: .result) { world, iteration in
                 try await world.store.delete(entity: PerfSchema.order, uuid: world.order(iteration), cascade: true)
             },

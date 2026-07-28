@@ -1171,7 +1171,7 @@ struct OperationsTests {
         #expect(records.map(\.uuid) == ["p-1"])
     }
 
-    @Test("Join resolves references, orphans find broken ones, cascade deletes children")
+    @Test("Join resolves references, and cascade deletes children")
     func relations() async throws {
         try await registry.publish(
             makeDefinition(
@@ -1195,43 +1195,9 @@ struct OperationsTests {
         let parents = try await store.join(entity: "book", records: books, field: "author_id")
         #expect(parents["a-1"]?.values["name"] == .string("Twain"))
 
-        let orphans = try await store.orphans(entity: "book", field: "author_id")
-        #expect(orphans.map(\.uuid) == ["b-2"])
-
         try await store.delete(entity: "author", uuid: "a-1", cascade: true)
         let remaining = try await store.read(entity: "book")
         #expect(remaining.map(\.uuid) == ["b-2"])
-    }
-
-    @Test("A tombstoned parent orphans its children, and a projection trims what comes back")
-    func orphansOfTombstonedParent() async throws {
-        try await registry.publish(
-            makeDefinition(
-                entity: "author",
-                fields: [
-                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
-                ]))
-        try await registry.publish(
-            makeDefinition(
-                entity: "book",
-                fields: [
-                    FieldDefinition(name: "title", type: .string, storage: .slot(.string, "s_00")),
-                    FieldDefinition(name: "author_id", type: .string, storage: .slot(.string, "s_01"), references: "author"),
-                ]))
-        try await store.write(["name": .string("Twain")], entity: "author", uuid: "a-1")
-        try await store.write(["title": .string("Tom"), "author_id": .string("a-1")], entity: "book", uuid: "b-1")
-
-        #expect(try await store.orphans(entity: "book", field: "author_id").isEmpty)
-
-        try await store.delete(entity: "author", uuid: "a-1")
-        let orphaned = try await store.orphans(entity: "book", field: "author_id")
-        #expect(orphaned.map(\.uuid) == ["b-1"])
-        #expect(orphaned.first?.values["title"] == .string("Tom"))
-
-        let projected = try await store.orphans(entity: "book", field: "author_id", fields: [])
-        #expect(projected.map(\.uuid) == ["b-1"])
-        #expect(projected.first?.values["title"] == nil)
-        #expect(projected.first?.values["author_id"] == .string("a-1"))
     }
 
     @Test("Cascade delete reaches entities not yet cached in the registry")
@@ -1258,7 +1224,7 @@ struct OperationsTests {
         #expect(try await store.read(entity: "book").isEmpty)
     }
 
-    @Test("List references join across parents, report orphans, and detach on cascade delete")
+    @Test("List references join across parents, and detach on cascade delete")
     func manyToMany() async throws {
         try await registry.publish(
             makeDefinition(
@@ -1283,9 +1249,6 @@ struct OperationsTests {
         let books = try await store.read(entity: "book")
         let parents = try await store.join(entity: "book", records: books, field: "author_ids")
         #expect(parents.keys.sorted() == ["a-1", "a-2"])
-
-        let orphans = try await store.orphans(entity: "book", field: "author_ids")
-        #expect(orphans.map(\.uuid) == ["b-3"])
 
         try await store.delete(entity: "author", uuid: "a-2", cascade: true)
         let remaining = try await store.read(entity: "book")
