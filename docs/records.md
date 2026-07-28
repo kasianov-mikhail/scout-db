@@ -145,7 +145,6 @@ The lifecycle API around them:
 | `compactTransactions(olderThan:)` | erase committed transaction envelopes |
 | `compactRevisions(olderThan:of:)` | trim the revision log to a window |
 | `drop(entity:)` | tombstone every record, retire the schema |
-| `reap(entity:asOf:)` | purge TTL-expired records |
 
 ```swift
 try await store.delete(entity: "purchase", uuid: "p-1")
@@ -154,12 +153,8 @@ try await store.compact(entity: "purchase", olderThan: cutoff)
 try await store.drop(entity: "purchase")
 ```
 
-`compact` erases tombstones for good — a record purged this way can no longer be restored. TTL is declared with `.ttl(_ seconds:)` on the schema; expired records
-are purged with:
-
-```swift
-try await store.reap(entity: "purchase", asOf: .now)
-```
+`compact` erases tombstones for good — a record purged this way can no longer be restored. TTL is declared with `.ttl(_ seconds:)` on the schema, which stamps an
+`expires` cutoff onto every record's envelope; no built-in sweep reads it.
 
 ## 📜 Revisions
 

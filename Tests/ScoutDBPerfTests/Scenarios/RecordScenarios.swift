@@ -76,9 +76,6 @@ extension PerfScenarios {
             PerfScenario("Lifecycle", "compact tombstones", sql: 1, cost: .elective, iterations: 2) { world, _ in
                 _ = try await world.store.compact(entity: PerfSchema.session, olderThan: Date().addingTimeInterval(60))
             },
-            PerfScenario("Lifecycle", "reap the expired sessions", sql: 1, cost: .result, iterations: 2) { world, _ in
-                _ = try await world.store.reap(entity: PerfSchema.session, asOf: world.corpus.now)
-            },
             PerfScenario(
                 "Lifecycle", "drop an entity", sql: 1, cost: .result, iterations: 1,
                 setUp: { world in
