@@ -32,7 +32,7 @@ let record = try await store.fetch(entity: "report", uuids: ["r-1"]).first!
 let bytes = try record.assetData(for: "dump")
 ```
 
-A write that never lands (queued offline, or abandoned mid-retry) can still leave a staged
+A write that never lands (abandoned mid-retry, or failed at the server) can still leave a staged
 file behind. Sweep those periodically:
 
 ```swift

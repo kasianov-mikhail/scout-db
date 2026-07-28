@@ -182,7 +182,7 @@ struct GridAggregator {
             }
             var retry: [CKRecord.ID: CKRecord] = [:]
             for chunk in Array(pending.values).chunked(into: maxBatch) {
-                for (id, result) in try await settleSaves(chunk.map(\.record)) {
+                for (id, result) in try await database.saveIfUnchanged(chunk.map(\.record)) {
                     switch result {
                     case .success(let saved):
                         await slots.keep(saved)
@@ -208,18 +208,6 @@ struct GridAggregator {
         }
         guard let stranded = pending.values.first else { return }
         throw RecordConflictError(serverRecord: stranded.record)
-    }
-
-    private func settleSaves(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
-        do {
-            return try await database.saveIfUnchanged(records)
-        } catch  where OfflineCache.isOffline(error) {
-            var settled: [(CKRecord.ID, Result<CKRecord, any Error>)] = []
-            for record in records {
-                settled.append((record.recordID, .success(try await database.save(record))))
-            }
-            return settled
-        }
     }
 
     private func recomputed(_ pending: inout [CKRecord.ID: Pending], using definition: EntityDefinition) async throws -> [CKRecord.ID: [Int: Double?]] {

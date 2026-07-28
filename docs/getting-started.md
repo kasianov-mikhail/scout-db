@@ -87,5 +87,5 @@ status, and it can be made to report any `CKAccountStatus` you want to exercise.
 | 📎 [Records](records.md) | assets, relations, revisions, soft delete, and TTL |
 | 🧩 [The @Entity macro](macros.md) | typed structs instead of value dictionaries |
 | 📡 [Sync](sync.md) | push-triggered reads, push payloads, and live queries |
-| 📴 [Offline](offline.md) | the queued write cache |
+| 🧰 [Operations](operations.md) | transactions, leases, request pacing, and telemetry |
 | 🔐 [Security](security.md) | field encryption and trusted writers |

@@ -145,18 +145,6 @@ struct GridWritesTests {
         #expect(slot["c_00"] as? Int64 == 7)
     }
 
-    @Test("A slot written offline joins the queue instead of failing the write")
-    func offlineSlotIsQueued() async throws {
-        let cache = OfflineCache(backing: backing)
-        let definition = paymentDefinition(views: [AggregateView(name: "revenue", bucket: .lifetime, sum: "amount")])
-        backing.writeErrors = [CKError(.networkUnavailable), CKError(.networkUnavailable)]
-
-        try await GridAggregator(database: cache).record(payments(["app"]), using: definition)
-
-        #expect(slots.isEmpty)
-        #expect(cache.pendingWrites == 1)
-    }
-
     @Test("A cached slot deleted on the server is written again from scratch")
     func vanishedSlotIsRebuilt() async throws {
         let definition = paymentDefinition(views: [AggregateView(name: "revenue", bucket: .lifetime, sum: "amount")])

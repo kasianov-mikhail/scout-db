@@ -18,17 +18,12 @@ struct PerfWorld: @unchecked Sendable {
     let store: EntityStore
     let app: PerfRecorder
     let wire: PerfRecorder
-    let cache: (any CloudDatabase)?
     let runID: String
     let repeats: Int
     let stage: PerfStage
 
     var size: DatasetSize {
         corpus.size
-    }
-
-    var offlineCache: OfflineCache? {
-        cache as? OfflineCache
     }
 
     var migrator: Migrator {
@@ -66,8 +61,7 @@ final class PerfBench {
         let wire = PerfRecorder()
         let app = PerfRecorder()
         let observed = ObservedDatabase(backing: backing, observer: wire)
-        let cache = Self.cache(scenario.stack, over: observed)
-        let database = ObservedDatabase(backing: cache ?? observed, observer: app)
+        let database = ObservedDatabase(backing: observed, observer: app)
         let registry = SchemaRegistry(database: database)
         let store = EntityStore(database: database, registry: registry, keyProvider: PerfKeyProvider())
 
@@ -76,15 +70,8 @@ final class PerfBench {
         app.reset()
 
         return PerfWorld(
-            corpus: corpus, backing: backing, database: database, registry: registry, store: store, app: app, wire: wire, cache: cache,
+            corpus: corpus, backing: backing, database: database, registry: registry, store: store, app: app, wire: wire,
             runID: "r\(runs)", repeats: scenario.repeats(on: corpus.size), stage: PerfStage())
-    }
-
-    private static func cache(_ stack: PerfScenario.Stack, over database: any CloudDatabase) -> (any CloudDatabase)? {
-        switch stack {
-        case .direct: nil
-        case .offline: OfflineCache(backing: database)
-        }
     }
 
     private func restore() {

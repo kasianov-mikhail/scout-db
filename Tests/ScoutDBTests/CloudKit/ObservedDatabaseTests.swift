@@ -156,21 +156,6 @@ struct ObservedDatabaseTests {
         #expect(failed.kind == .modify)
         #expect(failed.error?.contains("CKError") == true)
     }
-
-    @Test("The decorator composes around the offline cache")
-    func composesWithOfflineCache() async throws {
-        let recorder = Recorder()
-        let observed = ObservedDatabase(backing: OfflineCache(backing: backing), observer: recorder)
-        let registry = SchemaRegistry(database: observed)
-        let store = EntityStore(database: observed, registry: registry)
-        try await registry.publish(makePurchaseDefinition())
-        recorder.reset()
-
-        backing.writeErrors = [CKError(.networkFailure)]
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        let modify = try #require(recorder.operations.first { $0.kind == .modify })
-        #expect(modify.error == nil)
-    }
 }
 
 extension ObservedDatabaseTests {

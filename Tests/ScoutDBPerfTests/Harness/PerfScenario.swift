@@ -8,28 +8,21 @@
 import Foundation
 
 struct PerfScenario: Sendable {
-    enum Stack: Sendable {
-        case direct
-        case offline
-    }
-
     let feature: String
     let name: String
     let sql: Int
-    let stack: Stack
     let writes: Bool
     let iterations: Int?
     let setUp: (@Sendable (PerfWorld) async throws -> Void)?
     let body: @Sendable (PerfWorld, Int) async throws -> Void
 
     init(
-        _ feature: String, _ name: String, sql: Int, stack: Stack = .direct, writes: Bool = true, iterations: Int? = nil,
+        _ feature: String, _ name: String, sql: Int, writes: Bool = true, iterations: Int? = nil,
         setUp: (@Sendable (PerfWorld) async throws -> Void)? = nil, body: @escaping @Sendable (PerfWorld, Int) async throws -> Void
     ) {
         self.feature = feature
         self.name = name
         self.sql = sql
-        self.stack = stack
         self.writes = writes
         self.iterations = iterations
         self.setUp = setUp

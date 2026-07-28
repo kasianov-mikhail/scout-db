@@ -65,9 +65,7 @@ extension EntityStore {
     /// Each save is conditional on the record being unchanged on the server; a
     /// record that lost its race is re-transformed from the winning record and
     /// retried, like a single `update`. Exhausting `maxRetry` throws the
-    /// conflict after the records that did land are accounted for. A batch
-    /// saves as a batch, which an `OfflineCache` never queues — a single
-    /// `update` still lands offline.
+    /// conflict after the records that did land are accounted for.
     ///
     public func update(entity: String, uuids: [String], maxRetry: Int = 3, transform: (inout EntityRecord) throws -> Void) async throws {
         guard uuids.count > 0 else { return }

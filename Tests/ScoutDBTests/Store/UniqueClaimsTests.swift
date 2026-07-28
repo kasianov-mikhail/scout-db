@@ -180,18 +180,6 @@ struct UniqueClaimsTests {
         #expect(claims.first?["owner"] as? String == "b-2")
     }
 
-    @Test("An enforced write fails offline instead of queueing a false success")
-    func offlineWriteFails() async throws {
-        let cache = OfflineCache(backing: database)
-        let offlineStore = EntityStore(database: cache, registry: SchemaRegistry(database: cache))
-        try await offlineStore.write(["code": .string("gold")], entity: "badge", uuid: "b-1")
-        database.errors = [CKError(.networkUnavailable)]
-        await #expect(throws: CKError.self) {
-            try await offlineStore.write(["code": .string("silver")], entity: "badge", uuid: "b-2")
-        }
-        #expect(cache.pendingWrites == 0)
-    }
-
     @Test("Backfill claims existing records and surfaces genuine duplicates")
     func backfill() async throws {
         let database = InMemoryDatabase()
@@ -226,5 +214,68 @@ struct UniqueClaimsTests {
         #expect(try await store.deleteAll(entity: "badge") == 401)
         #expect(probe.deleteBatches.allSatisfy { $0 <= 400 })
         #expect(probe.deleteBatches.reduce(0, +) == 401)
+    }
+}
+
+final class BatchProbe: CloudDatabase, @unchecked Sendable {
+    let backing: InMemoryDatabase
+    private let lock = NSLock()
+    private var deletes: [Int] = []
+
+    init(backing: InMemoryDatabase) {
+        self.backing = backing
+    }
+
+    var deleteBatches: [Int] { lock.withLock { deletes } }
+
+    func reset() {
+        lock.withLock { deletes = [] }
+    }
+
+    func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
+        try await backing.saveIfUnchanged(records)
+    }
+
+    func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {
+        if recordIDs.count > 0 {
+            lock.withLock { deletes.append(recordIDs.count) }
+        }
+        try await backing.modifyRecords(saving: records, deleting: recordIDs)
+    }
+
+    func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
+    ) {
+        try await backing.records(matching: query, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+    }
+
+    func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
+        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
+    ) {
+        try await backing.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+    }
+
+    func save(_ record: CKRecord) async throws -> CKRecord {
+        try await backing.save(record)
+    }
+
+    func save(subscription: CKSubscription) async throws {
+        try await backing.save(subscription: subscription)
+    }
+
+    func deleteSubscription(id: CKSubscription.ID) async throws {
+        try await backing.deleteSubscription(id: id)
+    }
+
+    func subscriptions() async throws -> [CKSubscription] {
+        try await backing.subscriptions()
+    }
+
+    func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
+        try await backing.fetchRecord(id: id)
+    }
+
+    func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
+        try await backing.fetchRecords(ids: ids)
     }
 }
