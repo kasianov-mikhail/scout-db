@@ -123,12 +123,6 @@ extension EntityStore {
         }
     }
 
-    /// Accounts for a rewritten batch: releases the claims it left behind, moves
-    /// it in the aggregate views, and records its revisions.
-    ///
-    /// The three touch records of their own and nothing the others read, so a
-    /// batch settles in one round of requests rather than three.
-    ///
     func settle(rewritten: [EntityCoder.Rewrite], owning owned: [[String]], using definition: EntityDefinition) async throws {
         let previous = rewritten.map(\.previous)
         let next = rewritten.map(\.next)
@@ -142,12 +136,6 @@ extension EntityStore {
         }
     }
 
-    /// Accounts for a tombstoned batch, the same way a rewritten one settles.
-    ///
-    /// A sweep that leaves no revision behind — a TTL reap, a cascade — passes
-    /// `auditing: false`, so the omission is stated rather than implied by which
-    /// calls a caller happens to make.
-    ///
     func settle(removed: [EntityRecord], using definition: EntityDefinition, auditing: Bool = true) async throws {
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { await releaseUniqueClaims(of: removed, using: definition) }
@@ -159,13 +147,6 @@ extension EntityStore {
         }
     }
 
-    /// Saves the rewritten records conditionally and answers with the server
-    /// records that won a race.
-    ///
-    /// A lone record takes the plain save seam an `OfflineCache` queues, so a
-    /// single `update` still lands offline; a real batch takes the conditional
-    /// batch save, which is never queued.
-    ///
     private func save(_ records: [CKRecord]) async throws -> [CKRecord] {
         guard records.count > 1 else {
             do {
@@ -178,8 +159,6 @@ extension EntityStore {
         return try await database.writeIfUnchanged(records: records)
     }
 
-    /// Validates and claims the keys the batch moved since the state whose
-    /// claims are already ours — on a retry, the ones the merge actually moved.
     private func claimRewrites(_ rewrites: [EntityCoder.Rewrite], since claimed: [String: EntityRecord], using definition: EntityDefinition) async throws {
         var touched: Set<String> = []
         for rewrite in rewrites {
@@ -375,13 +354,6 @@ extension EntityStore {
         return descending ? order == .orderedDescending : order == .orderedAscending
     }
 
-    /// Breaks a keyset page's ties the way its cursor does.
-    ///
-    /// The cursor addresses a row by `(value, uuid)`, so rows sharing a value
-    /// have to reach the client in uuid order: served in any other order, a
-    /// page can end on a uuid past rows it never saw, and the next page — which
-    /// keeps only what sorts after the cursor — drops them for good.
-    ///
     private static let uuidSort = ServerSort(field: "uuid", ascending: true)
 
     private static func pageKey(_ record: EntityRecord, _ dateField: String) -> (Date, String) {
@@ -425,19 +397,6 @@ extension EntityStore {
         try await updateAll(entity: entity, any: [filters], maxRetry: maxRetry, createdBy: creator, transform: transform)
     }
 
-    /// Rewrites every record matching any of the OR branches; a record matching
-    /// several branches is transformed once.
-    ///
-    /// Each save is conditional on the record being unchanged on the server; a
-    /// record that lost its race is re-transformed from the winning record and
-    /// retried, like a single `update`. Exhausting `maxRetry` throws the conflict
-    /// after the records that did land are accounted for.
-    ///
-    /// A page that moves a unique, enforced or exclusive key validates and
-    /// claims it before saving, and releases the claims it left behind after —
-    /// the sweep holds the same constraints a single `update` does, and a value
-    /// another record already holds fails the page with `duplicateKey`.
-    ///
     @discardableResult public func updateAll(
         entity: String, any branches: [[Filter]], maxRetry: Int = 3, createdBy creator: String? = nil, transform: (inout EntityRecord) throws -> Void
     ) async throws -> Int {
@@ -496,11 +455,6 @@ extension EntityStore {
         try await deleteAll(entity: entity, any: [filters], createdBy: creator)
     }
 
-    /// Tombstones every record matching any of the OR branches.
-    ///
-    /// A `createdBy` scope is part of the match: only that user's records are
-    /// tombstoned, so a scoped delete cannot reach another user's rows.
-    ///
     @discardableResult public func deleteAll(entity: String, any branches: [[Filter]], createdBy creator: String? = nil) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         var seen: Set<String> = []

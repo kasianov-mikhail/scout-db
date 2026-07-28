@@ -52,7 +52,6 @@ public protocol CloudDatabase: Sendable {
     func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord]
 }
 
-/// One batch's records, carried out of the task group that fetched it.
 private struct RecordBatch: @unchecked Sendable {
     let index: Int
     let records: [CKRecord]
@@ -73,13 +72,6 @@ extension CloudDatabase {
         return records
     }
 
-    /// Fetches the IDs in concurrent batches of at most `batchSize`, in request
-    /// order.
-    ///
-    /// A fetch carries a bounded number of ids, so a longer list has to be split
-    /// — run as one wave rather than a batch per round trip, since the batches
-    /// are independent and the request gate paces them anyway.
-    ///
     func fetchRecords(ids: [CKRecord.ID], batchSize: Int) async throws -> [CKRecord] {
         guard ids.count > 0 else { return [] }
         guard ids.count > batchSize else { return try await fetchRecords(ids: ids) }
@@ -102,17 +94,6 @@ extension CloudDatabase {
         return collected
     }
 
-    /// Walks the query's pages, handing each one over as it lands.
-    ///
-    /// The shape for a pass over more records than the caller should hold at
-    /// once: `allRecords` gathers every page before the first is seen, so its
-    /// memory follows the whole result rather than a page of it.
-    ///
-    /// The cursor keeps its place in a result the body may be changing
-    /// underneath it, so a record the body's own writes take out of the query
-    /// can be skipped by the page that follows — a pass built on this has to be
-    /// one that is safe to repeat.
-    ///
     func forEachPage(
         matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]? = nil,
         _ body: ([CKRecord]) async throws -> Void

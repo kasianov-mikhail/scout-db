@@ -21,15 +21,6 @@ extension EntityDefinition {
 }
 
 extension SchemaRegistry {
-    /// Writes every active definition to `directory` as `<entity>.entity.json`.
-    ///
-    /// The round trip back into the toolchain: exported files feed
-    /// `scoutdb-codegen` and the build plugin, so a schema authored in code and
-    /// published to the database can be turned into typed structs elsewhere.
-    /// Preloads the active set first, so the export covers the database's
-    /// schema rather than just what this process has read. Returns the files
-    /// written, ordered by entity.
-    ///
     @discardableResult public func exportDefinitions(to directory: URL) async throws -> [URL] {
         try await preload()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

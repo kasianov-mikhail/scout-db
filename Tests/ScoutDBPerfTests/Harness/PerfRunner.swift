@@ -8,12 +8,6 @@
 import Foundation
 import ScoutDB
 
-/// Runs scenarios and counts what they cost.
-///
-/// One request at a time, start to finish: the number a scenario costs is a
-/// property of the operation, and issuing the repeats concurrently only adds
-/// whatever the lost CAS races happened to cost that run.
-///
 enum PerfRunner {
     static func sweep(_ scenarios: [PerfScenario], sizes: [DatasetSize] = DatasetSize.selected, onResult: (PerfResult) -> Void = { _ in }) async throws
         -> [PerfResult]

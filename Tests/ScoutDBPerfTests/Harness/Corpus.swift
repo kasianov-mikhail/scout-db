@@ -10,7 +10,6 @@ import Foundation
 import ScoutDB
 import ScoutDBTesting
 
-/// The three databases every feature is measured against.
 enum DatasetSize: String, CaseIterable, Sendable {
     case small
     case medium
@@ -48,13 +47,10 @@ enum DatasetSize: String, CaseIterable, Sendable {
         }
     }
 
-    /// Records the corpus holds, before the store's own bookkeeping.
     var records: Int {
         customers + orders + items + sessions
     }
 
-    /// How many times a scenario repeats; the biggest database repeats less so
-    /// a whole sweep stays a minute rather than an hour.
     var iterations: Int {
         switch self {
         case .small, .medium: 8
@@ -62,16 +58,10 @@ enum DatasetSize: String, CaseIterable, Sendable {
         }
     }
 
-    /// Sessions the corpus tombstones, so restore and compact have victims.
     var tombstones: Int {
         Swift.max(8, sessions / 20)
     }
 
-    /// The databases this run sweeps.
-    ///
-    /// `SCOUTDB_PERF_SIZES=small,medium` narrows the sweep while iterating on a
-    /// scenario; unset, every size runs.
-    ///
     static var selected: [DatasetSize] {
         guard let raw = ProcessInfo.processInfo.environment["SCOUTDB_PERF_SIZES"] else { return allCases }
         let names = Set(raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
@@ -80,7 +70,6 @@ enum DatasetSize: String, CaseIterable, Sendable {
     }
 }
 
-/// A generated database, kept as the raw records a fresh scenario is restored from.
 struct Corpus: @unchecked Sendable {
     let size: DatasetSize
     let records: [CKRecord]
@@ -88,16 +77,13 @@ struct Corpus: @unchecked Sendable {
     let orders: [String]
     let items: [String]
     let sessions: [String]
-    /// The tombstoned sessions, in the order they were deleted.
     let deleted: [String]
-    /// The instant the corpus is anchored to; every generated date precedes it.
     let now: Date
 
     static let epoch = Date(timeIntervalSince1970: 1_700_000_000)
     static let span: TimeInterval = 60 * 60 * 24 * 540
 }
 
-/// Builds each corpus once and hands the same one to every scenario.
 actor CorpusCache {
     static let shared = CorpusCache()
 

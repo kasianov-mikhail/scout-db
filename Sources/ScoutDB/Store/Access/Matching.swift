@@ -120,11 +120,6 @@ extension EntityStore {
         lhs == rhs ? .orderedSame : (lhs < rhs ? .orderedAscending : .orderedDescending)
     }
 
-    /// The client-side predicates for the filters, each inverted where negated.
-    ///
-    /// The one place a filter becomes a predicate, so a read and the live query
-    /// spliced onto it keep the same client-side semantics.
-    ///
     static func matchers(for filters: [Filter]) throws -> [(EntityRecord) -> Bool] {
         try filters.map { filter -> (EntityRecord) -> Bool in
             let base = try matcher(for: filter)

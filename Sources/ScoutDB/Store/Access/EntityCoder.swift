@@ -226,12 +226,6 @@ struct EntityCoder {
     }
 }
 
-/// The compiled form of the schema's field patterns, kept across records.
-///
-/// A pattern is fixed by the definition while validation runs per record, and
-/// compiling one costs far more than matching it — a batch write would
-/// otherwise rebuild the same regex once per record it carries.
-///
 private final class PatternCache: @unchecked Sendable {
     private let lock = NSLock()
     private var compiled: [String: Regex<AnyRegexOutput>?] = [:]
@@ -280,7 +274,6 @@ extension RecordValue {
         }
     }
 
-    /// The scalar values a list holds, or nil when the value is not a list.
     var members: [RecordValue]? {
         switch self {
         case .strings(let values): values.map(RecordValue.string)

@@ -92,14 +92,6 @@ public struct QueryBuilder: Sendable {
         return builder
     }
 
-    /// The filters and sorts a live pass can fold a landed change into, or nil
-    /// when the query's shape needs the pass run again.
-    ///
-    /// A limit can admit a record the change never mentioned once another
-    /// leaves the top of the result, a projection trims what the spliced record
-    /// would carry, an OR group spans branches a single filter list cannot
-    /// re-test, and a creator scope is not answerable from a record's values.
-    ///
     var spliceable: (filters: [EntityStore.Filter], sort: [EntityStore.Sort])? {
         guard groups.isEmpty, ceiling == nil, projection == nil, creator == nil else { return nil }
         return (filters, sorts)
@@ -162,9 +154,6 @@ public struct QueryBuilder: Sendable {
         try await records(limit: Swift.min(count, ceiling ?? count))
     }
 
-    /// The query's records under a bound of the caller's choosing, including
-    /// none — the read a live pass runs, which has to see every record the
-    /// query matches before it can yield a result at all.
     func records(limit: Int?) async throws -> [EntityRecord] {
         if groups.count > 0 {
             return try await store.read(entity: entity, any: branches(), sort: sorts, fields: projection, limit: limit, createdBy: creator)
@@ -172,7 +161,6 @@ public struct QueryBuilder: Sendable {
         return try await store.read(entity: entity, filters: filters, sort: sorts, fields: projection, limit: limit, createdBy: creator)
     }
 
-    /// The bound a ``limit(_:)`` put on the builder, if any.
     var bound: Int? { ceiling }
 
     /// Runs the query and returns the first matching record.
@@ -280,16 +268,10 @@ public struct QueryBuilder: Sendable {
         store.stream(entity: entity, any: branches(), fields: projection, pageSize: pageSize, createdBy: creator)
     }
 
-    /// Rewrites every matching record through the transform.
     @discardableResult public func update(_ transform: (inout EntityRecord) throws -> Void) async throws -> Int {
         try await store.updateAll(entity: entity, any: branches(), createdBy: creator, transform: transform)
     }
 
-    /// Tombstones every matching record.
-    ///
-    /// A ``createdBy(_:)`` scope narrows the delete as it narrows a read: only
-    /// that user's records are tombstoned.
-    ///
     @discardableResult public func delete() async throws -> Int {
         try await store.deleteAll(entity: entity, any: branches(), createdBy: creator)
     }

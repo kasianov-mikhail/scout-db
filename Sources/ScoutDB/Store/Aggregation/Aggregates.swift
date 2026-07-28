@@ -147,13 +147,10 @@ extension EntityStore {
         }.sorted { ($0.date, $0.group) < ($1.date, $1.group) }
     }
 
-    /// Folds the rows a grid shards across several records back into one row per key.
     private static func merging<Row>(_ rows: [Row], sharding key: (Row) -> String, _ combine: (Row, Row) -> Row) -> [Row] {
         Dictionary(grouping: rows, by: key).values.map { shards in shards.dropFirst().reduce(shards[0], combine) }
     }
 
-    /// Folds two shards' metric values the view's metric way — plain addition
-    /// where the view has no metric of its own, as a count or a sum of squares.
     private static func combined(_ lhs: Double?, _ rhs: Double?, _ kind: AggregateView.Metric?) -> Double? {
         guard let lhs else { return rhs }
         guard let rhs else { return lhs }
@@ -304,19 +301,6 @@ extension EntityStore {
         }
     }
 
-    /// The count a declared view answers without scanning records, or nil when
-    /// no view covers the query.
-    ///
-    /// Covered shapes: no filters, a `groupBy` equality or `in` list (lifetime
-    /// view), or OR branches of them differing only in the matched keys; an
-    /// `envelopeDate` range whose bounds align with a view's cell resolution
-    /// (hour cells for an hour view, day cells for day and weekday views); a
-    /// threshold on a histogram's field that lands exactly on a declared bound;
-    /// a threshold on an integer field a view groups by, whose `minimum` and
-    /// `maximum` bound it to a domain the range can be named value by value. A
-    /// strict threshold over an integer field counts as the half-open one it
-    /// equals — `> 15` is `>= 16` — so it lands on a bound of 16.
-    ///
     package func viewCount(entity: String, filters: [Filter]) async throws -> Int? {
         try await viewCount(entity: entity, any: [filters])
     }
@@ -345,8 +329,6 @@ extension EntityStore {
 
     package struct GridFold: Equatable, Sendable {
         package var count = 0
-        /// The cells' values folded by the view's own metric — added up for a
-        /// sum, kept extreme for a min or max — or nil where no cell held one.
         package var value: Double?
     }
 
@@ -502,25 +484,8 @@ extension EntityStore {
         return nil
     }
 
-    /// How many values a threshold may name before the read is left to scan.
-    ///
-    /// A named value is a group of its own in the grid, so the keys are also
-    /// the rows the fold pages through; a thousand of them is under three
-    /// pages, and a field grouped any wider than that is a grid the query has
-    /// no business reading whole.
-    ///
     private static let namedDomain = 1_024.0
 
-    /// The query restated as the group keys its threshold picks out, or nil
-    /// when the field's values cannot be named.
-    ///
-    /// A view grouping by an integer field holds one cell per value, and the
-    /// field's `minimum` and `maximum` say which values there can be — so a
-    /// `quantity > 15` over a field bounded to 1...20 is the keys sixteen
-    /// through twenty, and its count is their cells added up. This is the route
-    /// for a threshold no histogram bound lands on; a field the schema leaves
-    /// unbounded, or bounds too widely to enumerate, scans as before.
-    ///
     private static func keyed(_ query: CountQuery, in definition: EntityDefinition) -> CountQuery? {
         guard query.groupField == nil, let name = query.numericField,
             let field = definition.field(named: name, at: definition.version), field.type == .int, field.alwaysPresent, field.encrypted != true,
@@ -560,17 +525,6 @@ extension EntityStore {
         return nil
     }
 
-    /// Reads a view's grid records: the group the caller asked for, over the
-    /// period range it reads, projected to the cells it folds.
-    ///
-    /// A grid row is one group's period, so a query for a single group of a
-    /// high-cardinality view has no business paging through every other
-    /// group's rows — the server holds `group_key` indexed. Each row still
-    /// carries its own period and group key, which every fold keys on.
-    ///
-    /// `counts` and `values` are the cell ranges the caller reads; a fold that
-    /// reads no metric passes no `values` range at all.
-    ///
     private func gridRecords(
         entity: String, view: String, group: String? = nil, from: Date? = nil, to: Date? = nil, counts: Range<Int>, values: Range<Int>? = nil
     ) async throws -> [CKRecord] {

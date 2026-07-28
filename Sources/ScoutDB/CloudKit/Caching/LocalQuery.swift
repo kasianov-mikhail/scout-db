@@ -9,19 +9,7 @@ import CloudKit
 import CoreLocation
 import Foundation
 
-/// Server-shaped query execution against a local record set.
-///
-/// Filter, sort, page, project. The in-memory test double and the offline
-/// cache both answer queries through it, so the two stay behaviorally
-/// identical.
-///
 package enum LocalQuery {
-    /// The first page of matches, mirroring the server's paging.
-    ///
-    /// At most `resultsLimit` records per response (`maximumResults`, i.e. 0,
-    /// means "as many as fit under `pageLimit`") and a cursor whenever matches
-    /// remain beyond the page.
-    ///
     package static func page(
         _ records: [CKRecord], matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int, pageLimit: Int? = nil
     ) -> (matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?) {
@@ -37,12 +25,6 @@ package enum LocalQuery {
         return (page.map { ($0.recordID, .success($0)) }, cursor)
     }
 
-    /// Serves the next page of a local scan, or nil for a CloudKit cursor.
-    ///
-    /// A `materialized` cursor is answered from its carried id order — no
-    /// re-filtering and no re-sorting; an id whose record left the store is
-    /// skipped, and an updated record is served in its current state.
-    ///
     package static func resume(
         _ records: [CKRecord], from cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int, pageLimit: Int? = nil
     ) -> (matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?)? {
@@ -67,12 +49,6 @@ package enum LocalQuery {
         }
     }
 
-    /// A response copy of a stored record, trimmed to `keys` when given.
-    ///
-    /// The server returns a fresh record per fetch, so mutating a query
-    /// result never silently edits the store. The envelope overrides live
-    /// outside the record's own coding and are carried over by hand.
-    ///
     package static func project(_ record: CKRecord, keys: [CKRecord.FieldKey]?) -> CKRecord {
         guard let keys else { return record.duplicate() }
         let projected = CKRecord(recordType: record.recordType, recordID: record.recordID)

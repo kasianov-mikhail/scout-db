@@ -8,7 +8,6 @@
 import Foundation
 import ScoutDB
 
-/// Every scenario the sweep runs, in report order.
 enum PerfScenarios {
     static var all: [PerfScenario] {
         schema + queries + writes + pagination + aggregates + counters + uniqueKeys + transactions + leases + conflicts
@@ -18,8 +17,6 @@ enum PerfScenarios {
 }
 
 extension PerfWorld {
-    /// Corpus records, spread out so consecutive iterations do not land on
-    /// neighbours — the parallel mode would otherwise contend on one page.
     func order(_ index: Int) -> String {
         corpus.orders[(index &* 37) % corpus.orders.count]
     }
@@ -36,12 +33,10 @@ extension PerfWorld {
         corpus.sessions[(index &* 11) % (corpus.sessions.count - corpus.deleted.count)]
     }
 
-    /// One of the sessions the corpus tombstoned.
     func tombstoned(_ index: Int) -> String {
         corpus.deleted[index % corpus.deleted.count]
     }
 
-    /// The product the skew put the most orders behind.
     var hotProduct: String {
         PerfSchema.products[0]
     }
@@ -61,7 +56,6 @@ extension PerfWorld {
         ]
     }
 
-    /// A date range covering the corpus's last `days` days.
     func window(days: Int) -> (from: Date, to: Date) {
         (corpus.now.addingTimeInterval(-Double(days) * 86_400), corpus.now.addingTimeInterval(86_400))
     }

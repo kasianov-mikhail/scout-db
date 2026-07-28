@@ -8,21 +8,12 @@
 import Foundation
 import ScoutDB
 
-/// Prints the sweep as two tables and writes it as JSON.
-///
-/// Nothing here asserts: the numbers are the deliverable, and a budget that
-/// fails the build would have to be maintained for every scenario on every
-/// database. The JSON is what makes two runs — before and after an
-/// optimization — diffable.
-///
 enum PerfReport {
     private struct Column<Row>: Sendable {
         let title: String
         let width: Int
         let value: @Sendable (Row) -> String
     }
-
-    // MARK: - Measurements
 
     private static let columns: [Column<PerfResult>] = [
         Column(title: "feature", width: 14) { $0.feature },
@@ -44,12 +35,6 @@ enum PerfReport {
         Column(title: "err", width: 4) { $0.failure == nil ? "\($0.app.failures)" : "!" },
     ]
 
-    /// The table's opening, printed before the sweep starts.
-    ///
-    /// Rows stream out as each scenario settles rather than arriving as one
-    /// block at the end: a full sweep runs for minutes, and a silent terminal
-    /// gives no way to tell a slow scenario from a stuck one.
-    ///
     static func header(title: String) -> String {
         [
             "", title,
@@ -74,15 +59,6 @@ enum PerfReport {
         return lines.joined(separator: "\n")
     }
 
-    // MARK: - Projection
-
-    /// One scenario's cost fitted across the databases it ran on.
-    ///
-    /// The fit is a power law, `requests ≈ base · (N / N_base) ^ k`, taken from
-    /// the two largest databases the sweep covered — the smallest one saturates
-    /// at a single request for anything that scans, so a slope through it would
-    /// read flatter than the truth.
-    ///
     struct Projection: Sendable {
         let feature: String
         let scenario: String
@@ -98,8 +74,6 @@ enum PerfReport {
             return base * pow(Double(records) / Double(baseRecords), exponent)
         }
 
-        /// How many requests the call spends for each statement SQL would
-        /// spend, on the largest database measured.
         var overhead: Double? {
             sql > 0 ? base / Double(sql) : nil
         }
@@ -114,17 +88,8 @@ enum PerfReport {
         }
     }
 
-    /// The volumes the fit is projected to, beyond the largest database measured.
     static let levels = [100_000, 1_000_000, 10_000_000]
 
-    /// Where a scenario with no declared cost stops being worth a look and
-    /// starts being a failure.
-    ///
-    /// The table calls anything above 0.15 growing, which is deliberately
-    /// sensitive — a row worth reading, not a verdict. Failing the sweep is a
-    /// verdict, so it waits for growth no measurement wobble explains: at 0.3
-    /// the ten-million projection is some six times the twenty-thousand cost.
-    ///
     static let leakingExponent = 0.3
 
     static func projections(_ results: [PerfResult]) -> [Projection] {
@@ -153,11 +118,6 @@ enum PerfReport {
         }
     }
 
-    /// The projection table's columns, sized from the run's own sizes.
-    ///
-    /// `projected` drops the fit and everything downstream of it, for a run that
-    /// measured one database and so has no slope to project along.
-    ///
     private static func projectionColumns(sample: Projection, projected: Bool = true) -> [Column<Projection>] {
         var columns: [Column<Projection>] = [
             Column(title: "feature", width: 14) { $0.feature },
@@ -188,9 +148,6 @@ enum PerfReport {
         return columns
     }
 
-    /// What the run concluded: how many scenarios grew, and what their growth
-    /// means — with the ones claiming to be bounded named, since those are the
-    /// rows a reader has to act on.
     private static func verdict(_ projections: [Projection]) -> [String] {
         let growing = projections.filter { $0.exponent >= 0.15 }
         let overhead = growing.filter { $0.cost == nil }
@@ -233,19 +190,6 @@ enum PerfReport {
         return lines.joined(separator: "\n")
     }
 
-    // MARK: - Step summary
-
-    /// The run as a page of its own: the verdict, the scenarios that grew when
-    /// they claimed they would not, and what every feature costs.
-    ///
-    /// The full table is a hundred and thirty lines under the output of every
-    /// other test in the run, which nobody scrolls to. This is the same numbers
-    /// arranged to be read. The group that should be empty comes first, because
-    /// a row there is why the job failed; the feature roll-up under it covers
-    /// the rest of the sweep, since a scenario that holds flat still has a
-    /// coefficient against SQL worth knowing, and a reader looking up one
-    /// feature should not have to know in advance whether it grew.
-    ///
     static func page(_ results: [PerfResult]) -> String {
         let projections = projections(results)
         var lines = ["## ScoutDB — request cost by feature", "", summary(results)]
@@ -293,16 +237,12 @@ enum PerfReport {
         return lines.joined(separator: "\n")
     }
 
-    /// One feature's scenarios as a single line.
     private struct Feature: Sendable {
         let name: String
         let scenarios: Int
-        /// One call of each of the feature's scenarios, on the largest database
-        /// measured.
         let requests: Double
         let sql: Int
         let growing: Int
-        /// The scenario that spends the most requests per statement.
         let worst: Projection?
 
         var overhead: Double? {
@@ -348,8 +288,6 @@ enum PerfReport {
         return lines
     }
 
-    /// Appends the page wherever the run was told to leave it — on CI, the
-    /// job's step summary, which the workflow renders on the run's own page.
     static func write(_ page: String, to path: String) {
         let url = URL(fileURLWithPath: path)
         guard let data = (page + "\n").data(using: .utf8) else { return }
@@ -361,8 +299,6 @@ enum PerfReport {
         _ = try? handle.seekToEnd()
         try? handle.write(contentsOf: data)
     }
-
-    // MARK: - JSON
 
     static func write(_ results: [PerfResult], name: String) -> URL? {
         let encoder = JSONEncoder()
@@ -409,7 +345,6 @@ enum PerfReport {
         return String(format: "%.1f", value)
     }
 
-    /// A record count as a short label: 20k, 1M, 10M.
     private static func volume(_ records: Int) -> String {
         if records >= 1_000_000 { return "\(records / 1_000_000)M" }
         if records >= 1_000 { return "\(records / 1_000)k" }

@@ -9,11 +9,6 @@ import CloudKit
 import Foundation
 
 extension EntityStore {
-    /// Lifts a tombstone: the record returns to reads with the values the
-    /// tombstone kept, and rejoins its aggregate views.
-    ///
-    /// Restoring a live record is a no-op that returns it unchanged.
-    ///
     @discardableResult public func restore(entity: String, uuid: String) async throws -> EntityRecord {
         let definition = try await registry.definition(for: entity)
         guard let stored = try await items(entity: entity, uuids: [uuid]).first else {
@@ -31,12 +26,6 @@ extension EntityStore {
         return rewrite.next
     }
 
-    /// Physically deletes the entity's tombstones last modified before the cutoff.
-    ///
-    /// A purged delete can no longer be restored, and a device that has not read
-    /// since simply never learns of it — run a compact only past the horizon where
-    /// every device has caught up.
-    ///
     @discardableResult public func compact(entity: String, olderThan cutoff: Date) async throws -> Int {
         let query = ckQuery(
             Entity.recordType,
@@ -50,11 +39,6 @@ extension EntityStore {
         return victims.count
     }
 
-    /// Physically deletes the entity's live records matching the filters.
-    ///
-    /// The shape behind log compaction: a purged record leaves no tombstone, so
-    /// it stops being stored at all instead of shrinking to one.
-    ///
     func purge(entity: String, filters: [Filter]) async throws -> Int {
         let victims = try await read(entity: entity, filters: filters, fields: [])
         let ids = victims.map { CKRecord.ID(recordName: $0.uuid) }
@@ -62,12 +46,6 @@ extension EntityStore {
         return ids.count
     }
 
-    /// Tombstones every record of the entity, then retires its schema.
-    ///
-    /// Returns how many records were tombstoned. The tombstones stay behind so a
-    /// replica learns the records are gone; republishing the schema brings the
-    /// entity back, without its dropped records.
-    ///
     @discardableResult public func drop(entity: String) async throws -> Int {
         let removed = try await deleteAll(entity: entity)
         try await registry.retire(entity: entity)
