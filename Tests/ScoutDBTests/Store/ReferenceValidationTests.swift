@@ -175,8 +175,4 @@ final class CountingFetches: CloudDatabase, @unchecked Sendable {
     func save(zone: CKRecordZone) async throws {
         try await backing.save(zone: zone)
     }
-
-    func databaseChanges(since token: Data?) async throws -> (changed: [CKRecordZone.ID], deleted: [CKRecordZone.ID], token: Data?) {
-        try await backing.databaseChanges(since: token)
-    }
 }

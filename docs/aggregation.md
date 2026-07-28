@@ -19,10 +19,8 @@ One grid record covers one group and period; a million writes still read back as
 of grid records.
 
 Those records are bookkeeping, not entity data, so they live in the container's default
-zone even when the store keeps its records in a custom one. A `ReplicaCache` mirrors
-zones it is given, and the default zone is not one of them — so an aggregate read always
-goes to the server, however complete the mirror is. Cache the rows in your app if you
-read them on a hot path.
+zone even when the store keeps its records in a custom one. Cache the rows in your app if
+you read them on a hot path.
 
 ## 📐 Metrics
 

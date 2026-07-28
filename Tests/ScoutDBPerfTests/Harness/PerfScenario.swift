@@ -18,7 +18,6 @@ struct PerfScenario: Sendable {
     enum Stack: Sendable {
         case direct
         case offline
-        case replica
     }
 
     /// Why this scenario's cost may grow with the database — stated where it

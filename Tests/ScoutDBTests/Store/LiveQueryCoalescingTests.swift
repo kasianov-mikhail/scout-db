@@ -200,8 +200,4 @@ private final class GatedQueryDatabase: CloudDatabase, @unchecked Sendable {
     func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
         try await backing.fetchRecord(id: id)
     }
-
-    func databaseChanges(since token: Data?) async throws -> (changed: [CKRecordZone.ID], deleted: [CKRecordZone.ID], token: Data?) {
-        try await backing.databaseChanges(since: token)
-    }
 }

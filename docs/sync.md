@@ -2,8 +2,7 @@
 
 ScoutDB has no change feed: a device learns what other devices wrote by reading again. What
 the library gives you is the wiring around that read — push notifications that say *when* to
-read, live queries that keep a SwiftUI view on the latest local state, and replicas that
-answer the read without a round trip.
+read, and live queries that keep a SwiftUI view on the latest local state.
 
 ## 🔔 Push-triggered reads
 
@@ -78,12 +77,6 @@ the server: a `limit`, because a record leaving the top can admit one the change
 mentioned; a projection, an OR group, or a `createdBy` scope; a `near` filter or a distance
 sort, which have no client-side equivalent; and any mutation that cannot name what it touched,
 such as a compaction.
-
-## 🪞 Serving the catch-up read locally
-
-A `ReplicaCache` mirrors a zone whole and answers reads from the mirror; its `refresh()` is
-the catch-up read, done once for every query the app would otherwise send. See
-[Offline](offline.md) — and note the cost: a refresh reads the zone, not the difference.
 
 ## ⚖️ Trade-offs
 

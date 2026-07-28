@@ -97,8 +97,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         var table = RecordTable()
         var subscriptions: [CKSubscription] = []
         var zones: [CKRecordZone.ID] = []
-        var zoneLog: [(sequence: Int64, zone: CKRecordZone.ID)] = []
-        var sequence: Int64 = 0
         var errors: [any Error] = []
         var writeErrors: [any Error] = []
         var pageLimit: Int?
@@ -229,10 +227,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
             }
             records.forEach(upsertLocked)
             state.table.remove(recordIDs)
-            for id in recordIDs {
-                state.sequence += 1
-                state.zoneLog.append((state.sequence, id.zoneID))
-            }
         }
     }
 
@@ -344,20 +338,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
             if !state.zones.contains(zone.zoneID) {
                 state.zones.append(zone.zoneID)
             }
-            state.sequence += 1
-            state.zoneLog.append((state.sequence, zone.zoneID))
-        }
-    }
-
-    public func databaseChanges(since token: Data?) async throws -> (changed: [CKRecordZone.ID], deleted: [CKRecordZone.ID], token: Data?) {
-        try lock.withLock {
-            if let error = state.errors.popLast() {
-                throw error
-            }
-            let floor = token.flatMap { Int64(String(decoding: $0, as: UTF8.self)) } ?? 0
-            var seen: Set<CKRecordZone.ID> = []
-            let changed = state.zoneLog.filter { $0.sequence > floor }.map(\.zone).filter { seen.insert($0).inserted }
-            return (changed.sorted { $0.zoneName < $1.zoneName }, [], Data("\(state.sequence)".utf8))
         }
     }
 
@@ -386,8 +366,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         state.table.put(record)
         record.overrideModificationDate(Date())
         record.overrideChangeTag(UUID().uuidString)
-        state.sequence += 1
-        state.zoneLog.append((state.sequence, record.recordID.zoneID))
     }
 
     private func project(_ record: CKRecord, keys: [CKRecord.FieldKey]?) -> CKRecord {

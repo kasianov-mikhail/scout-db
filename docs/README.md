@@ -13,4 +13,4 @@
 | 🔐 | [Security](security.md) | Encrypt payload fields on the client and query them through hashed, filterable surrogates. |
 | 🔗 | [Sharing](sharing.md) | Share a zone or single record with `CKShare` and accept invitations by URL. |
 | 📡 | [Sync](sync.md) | Push notifications that say when to read, and live queries wired to SwiftUI. |
-| 📴 | [Offline](offline.md) | Queue writes and replay cached reads with `OfflineCache`, or mirror whole zones with `ReplicaCache`. |
+| 📴 | [Offline](offline.md) | Queue writes and replay cached reads with `OfflineCache`. |

@@ -73,5 +73,5 @@ let recent = try await store.query("purchase")
 | 🧩 [The @Entity macro](macros.md) | typed structs instead of value dictionaries |
 | 🔗 [Sharing](sharing.md) | zone-wide and single-record `CKShare`s |
 | 📡 [Sync](sync.md) | push-triggered reads, push payloads, and live queries |
-| 📴 [Offline](offline.md) | zone replicas and the queued write cache |
+| 📴 [Offline](offline.md) | the queued write cache |
 | 🔐 [Security](security.md) | field encryption and trusted writers |
