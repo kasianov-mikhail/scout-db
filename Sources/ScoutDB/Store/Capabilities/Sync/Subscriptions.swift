@@ -47,23 +47,6 @@ extension EntityStore {
         return subscription.subscriptionID
     }
 
-    /// Subscribes to every change in the database with a single silent push.
-    ///
-    /// One `CKDatabaseSubscription` replaces a query subscription per entity —
-    /// the push says "something changed" without naming what, so the handler
-    /// re-reads what it cares about. Saving under an existing `id` replaces the
-    /// subscription. Returns the id.
-    ///
-    @discardableResult
-    public func subscribeToDatabase(id: String = "scout-database") async throws -> String {
-        let subscription = CKDatabaseSubscription(subscriptionID: id)
-        let info = CKSubscription.NotificationInfo()
-        info.shouldSendContentAvailable = true
-        subscription.notificationInfo = info
-        try await database.save(subscription: subscription)
-        return id
-    }
-
     /// Removes a subscription created with `subscribe`.
     public func unsubscribe(id: String) async throws {
         try await database.deleteSubscription(id: id)
