@@ -15,7 +15,9 @@ try await store.subscribe(entity: "order", filters: [.init(field: "status", op: 
 
 Only filters the server can evaluate may narrow a subscription — `like`, `matches`, `isNull`
 and payload fields are rejected rather than silently ignored. Subscribe once per entity the
-screen depends on; the push then tells the handler what to re-read:
+screen depends on; saving under an existing `id:` replaces that subscription, and
+`unsubscribe(id:)` and `subscriptions()` manage what is registered. The push then tells the
+handler what to re-read:
 
 ```swift
 func application(_ app: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any]) async
@@ -62,6 +64,10 @@ struct PurchaseListView: View {
 (and tracking ends) if the underlying query throws. Only mutations through this process's
 stores tick the stream — a write made on another device shows up when something re-reads,
 which is what the push handler above is for.
+
+`live()` needs iOS 17 / macOS 14 for `@Observable`, above the package's own iOS 16 / macOS 13
+floor. Below it, consume `query(_:).observe()` — the `AsyncThrowingStream` of results the
+model wraps — directly.
 
 Changes that land while a pass is running coalesce into the single pass that follows it, so a
 loop of writes costs the pass in flight and one that picks up everything the burst changed,

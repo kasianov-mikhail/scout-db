@@ -59,6 +59,22 @@ let recent = try await store.query("purchase")
     .take(20)
 ```
 
+## 🧪 Testing without a container
+
+The package ships a second library, `ScoutDBTesting`, whose `InMemoryDatabase` implements the
+same `CloudDatabase` protocol the real one does — so a test drives the whole store, schema
+publishing included, without a network or an iCloud account:
+
+```swift
+import ScoutDBTesting
+
+let database = InMemoryDatabase()
+let store = EntityStore(database: database, registry: SchemaRegistry(database: database))
+```
+
+`InMemoryContainer` stands in for `CloudContainer` when the code under test checks account
+status, and it can be made to report any `CKAccountStatus` you want to exercise.
+
 ## 🧭 Where to go next
 
 | Doc | Covers |

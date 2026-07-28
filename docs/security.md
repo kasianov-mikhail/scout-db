@@ -17,8 +17,22 @@ let store = EntityStore(database: database, registry: registry, keyProvider: pro
 ```
 
 Values are sealed with AES-GCM. Readers without the key see ciphertext and simply get `nil`
-for the field; readers with the key decrypt transparently. Key rotation is a new definition
-version with a new `keyID`.
+for the field; readers with the key decrypt transparently.
+
+## 🔁 Key rotation
+
+A new `keyID` alone only covers records written after it, so rotate the stored ones too:
+
+```swift
+let migrator = Migrator(database: database, registry: registry, keyProvider: provider)
+try await migrator.rotateKey(entity: "account", to: "k2")
+```
+
+The pass re-encrypts every live record under the new key and republishes the definition with
+the new `keyID`. The migrator's provider must serve both keys. An interrupted run repeats
+safely — a record already sealed under the new key is decoded with it instead. Quiesce other
+readers for the duration: until the republished definition reaches them, rotated records fail
+to decrypt with the old key.
 
 ## #️⃣ HMAC surrogates
 
@@ -47,11 +61,14 @@ anti-vandalism tool for world-writable containers.
 ## 🏗️ Public database grants
 
 The shipped `Schema` grants authenticated iCloud users (`_icloud`) `CREATE` and `WRITE` on
-`Entity`, `Aggregate`, and `SchemaDescriptor`, and `_world` `READ`. `SchemaDescriptor` needs the `_icloud` grant just
-like the data types: a client publishes its entity definitions to `SchemaDescriptor` on first run, and
-that write runs under the caller's own account rather than an admin role. Without it, schema
-publishing is rejected and no records sync. If you configure roles by hand instead of
-importing `Schema`, grant `_icloud` `CREATE, WRITE` on all three record types.
+`Entity`, `Aggregate`, `SchemaDescriptor`, and `UniqueClaim`, and `_world` `READ`.
+`SchemaDescriptor` needs the `_icloud` grant just like the data types: a client publishes its
+entity definitions to `SchemaDescriptor` on first run, and that write runs under the caller's
+own account rather than an admin role. Without it, schema publishing is rejected and no
+records sync. `UniqueClaim` holds the claim records behind
+`enforcedKey(on:)`, so without its grant every write of an entity that declares one fails. If
+you configure roles by hand instead of importing `Schema`, grant `_icloud` `CREATE, WRITE` on
+all four record types.
 
 ## ⚠️ Limits
 
