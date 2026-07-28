@@ -31,7 +31,7 @@ struct UniqueClaimsTests {
                 FieldDefinition(name: "code", type: .string, storage: .slot(.string, "s_00")),
                 FieldDefinition(name: "label", type: .string, storage: .slot(.string, "s_01")),
             ],
-            enforcedKeys: enforced ? [["code"]] : nil)
+            uniqueKeys: enforced ? [["code"]] : nil)
     }
 
     private var claims: [CKRecord] {

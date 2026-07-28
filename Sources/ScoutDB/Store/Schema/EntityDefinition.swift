@@ -14,12 +14,18 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
     private let index = FieldIndex()
     public var envelopeDate: String?
     public var unique: [String]?
-    /// Enforced uniqueness constraints, one field tuple each — unlike `unique`,
-    /// they reject duplicates instead of deriving the record's identity.
+    /// Claim-backed uniqueness constraints, one field tuple each.
+    ///
+    /// Unlike `unique`, they reject duplicates instead of deriving the record's
+    /// identity. Each key value is held by a claim record whose creation is a
+    /// compare-and-swap, so two racing writers cannot both win.
+    ///
     public var uniqueKeys: [[String]]?
-    /// Claim-backed uniqueness constraints: each key value is held by a claim
-    /// record whose creation is a compare-and-swap, so two racing writers cannot
-    /// both win — unlike `uniqueKeys`, which validates by a separate read.
+    /// The key list published by versions that spelled claim-backed keys
+    /// separately from read-validated ones.
+    ///
+    /// Decoded and honored like `uniqueKeys`; never published anew.
+    ///
     public var enforcedKeys: [[String]]?
     public var views: [AggregateView]?
     public var keyID: String?
@@ -74,25 +80,16 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
         views?.first { $0.name == name }
     }
 
+    /// Every claim-backed key the entity declares, across both the current list
+    /// and the one older definitions published theirs under.
+    var claimedKeys: [[String]] {
+        (uniqueKeys ?? []) + (enforcedKeys ?? [])
+    }
+
     /// The publish-time validation: everything `validate()` checks, plus the
     /// shapes that are legal to read back but wasteful to ever publish anew.
-    ///
-    /// A `uniqueKeys` tuple with no slot-backed field gives the server nothing
-    /// to narrow on, so every write batch would scan the whole entity; it is
-    /// rejected here while already-published definitions keep decoding.
-    ///
     public func validateForPublish() throws {
         try validate()
-        for key in uniqueKeys ?? [] {
-            let backed = key.contains { name in
-                guard case .slot? = field(named: name, at: version)?.storage else { return false }
-                return true
-            }
-            guard backed else {
-                throw SchemaError.invalidDefinition(
-                    "Unique key '\(key.joined(separator: ", "))' has no slot-backed field, so every write would scan the whole entity")
-            }
-        }
     }
 
     public func validate() throws {
@@ -166,7 +163,7 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
         for key in unique ?? [] where !names.contains(key) {
             throw SchemaError.invalidDefinition("Unique key '\(key)' is not a field")
         }
-        for key in (uniqueKeys ?? []) + (enforcedKeys ?? []) {
+        for key in claimedKeys {
             guard !key.isEmpty else {
                 throw SchemaError.invalidDefinition("A unique key cannot be empty")
             }

@@ -77,7 +77,7 @@ struct ObservedDatabaseTests {
                     FieldDefinition(name: "serial", type: .string, storage: .slot(.string, "s_01")),
                     FieldDefinition(name: "badge", type: .string, storage: .slot(.string, "s_02"), references: "person", exclusive: true),
                     FieldDefinition(name: "locker", type: .string, storage: .slot(.string, "s_03"), references: "locker", exclusive: true),
-                ], enforcedKeys: [["row", "number"], ["serial"]]))
+                ], uniqueKeys: [["row", "number"], ["serial"]]))
 
         func calls(_ kind: DatabaseOperation.Kind, writing count: Int, from start: Int) async throws -> Int {
             recorder.reset()
@@ -104,7 +104,7 @@ struct ObservedDatabaseTests {
             EntityDefinition(
                 entity: "badge", version: 1,
                 fields: [FieldDefinition(name: "code", type: .string, storage: .slot(.string, "s_00"))],
-                enforcedKeys: [["code"]]))
+                uniqueKeys: [["code"]]))
 
         func adopting(_ count: Int, from start: Int) async throws -> Int {
             let codes = (start..<(start + count)).map { "c-\($0)" }

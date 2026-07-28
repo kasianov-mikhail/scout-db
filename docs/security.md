@@ -74,7 +74,7 @@ The shipped `Schema` grants authenticated iCloud users (`_icloud`) `CREATE` and 
 entity definitions to `SchemaDescriptor` on first run, and that write runs under the caller's
 own account rather than an admin role. Without it, schema publishing is rejected and no
 records sync. `UniqueClaim` holds the claim records behind
-`enforcedKey(on:)`, so without its grant every write of an entity that declares one fails. If
+`uniqueKey(on:)`, so without its grant every write of an entity that declares one fails. If
 you configure roles by hand instead of importing `Schema`, grant `_icloud` `CREATE, WRITE` on
 all four record types.
 
