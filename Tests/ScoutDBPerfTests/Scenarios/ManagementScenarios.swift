@@ -34,25 +34,6 @@ extension PerfScenarios {
         ]
     }
 
-    static var sharing: [PerfScenario] {
-        [
-            PerfScenario("Sharing", "share the zone", sql: 1) { world, _ in
-                _ = try await world.store.shareZone(title: "Perf")
-            },
-            PerfScenario("Sharing", "share one record", sql: 1) { world, iteration in
-                _ = try await world.store.shareRecord(entity: PerfSchema.order, uuid: world.order(iteration))
-            },
-            PerfScenario("Sharing", "read the zone share's participants", sql: 1) { world, _ in
-                _ = try await world.store.shareZone()
-                _ = try await world.store.shareParticipants()
-            },
-            PerfScenario("Sharing", "stop sharing the zone", sql: 1) { world, _ in
-                _ = try await world.store.shareZone()
-                try await world.store.stopSharing()
-            },
-        ]
-    }
-
     private static func publishItemVersion(_ world: PerfWorld, field: FieldDefinition) async throws {
         var fields = PerfSchema.itemDefinition.fields
         fields.append(field)

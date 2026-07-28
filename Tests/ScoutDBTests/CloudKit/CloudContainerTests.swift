@@ -42,49 +42,7 @@ struct CloudContainerTests {
         #expect(try await container.accountStatus() == .available)
     }
 
-    @Test("Invitations resolve identities through the container and save the share")
-    func inviteToShare() async throws {
-        let container = InMemoryContainer()
-        guard let database = container.privateDatabase as? InMemoryDatabase else {
-            Issue.record("Expected the in-memory double")
-            return
-        }
-        let registry = SchemaRegistry(database: database)
-        try await registry.publish(makePurchaseDefinition())
-        let zone = CKRecordZone.ID(zoneName: "scout", ownerName: CKCurrentUserDefaultName)
-        let store = EntityStore(database: database, registry: registry, zoneID: zone)
-        try await store.ensureZone()
-
-        await #expect(throws: SchemaError.notFound(CKRecordNameZoneWideShare)) {
-            try await store.inviteToShare(emails: ["ada@example.com"], via: container)
-        }
-
-        try await store.shareZone(title: "Scout")
-        let share = try await store.inviteToShare(emails: ["ada@example.com"], phoneNumbers: ["+1555"], via: container)
-
-        #expect(container.lookedUpParticipants.count == 2)
-        #expect(share.recordID.recordName == CKRecordNameZoneWideShare)
-        #expect(try await store.zoneShare() != nil)
-    }
-
-    @Test("Share metadata by URL rides the container, and a failed fetch never accepts")
-    func shareMetadataByURL() async throws {
-        let container = InMemoryContainer()
-        let url = URL(string: "https://www.icloud.com/share/abc")!
-
-        await #expect(throws: CKError.self) {
-            _ = try await container.shareMetadata(for: url)
-        }
-        #expect(container.requestedShareURLs == [url])
-
-        container.metadataErrors = [CKError(.networkFailure)]
-        await #expect(throws: CKError.self) {
-            _ = try await container.acceptShare(at: url)
-        }
-        #expect(container.requestedShareURLs.count == 2)
-    }
-
-    @Test("The three databases are distinct stores")
+    @Test("The databases are distinct stores")
     func distinctDatabases() async throws {
         let container = InMemoryContainer()
         let registry = SchemaRegistry(database: container.privateDatabase)
@@ -94,6 +52,5 @@ struct CloudContainerTests {
 
         #expect((container.privateDatabase as? InMemoryDatabase)?.records.isEmpty == false)
         #expect((container.publicDatabase as? InMemoryDatabase)?.records.isEmpty == true)
-        #expect((container.sharedDatabase as? InMemoryDatabase)?.records.isEmpty == true)
     }
 }
