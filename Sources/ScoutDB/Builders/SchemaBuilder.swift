@@ -35,7 +35,6 @@ public struct SchemaBuilder {
     private var enforcedKeys: [[String]]?
     private var views: [AggregateView]?
     private var keyID: String?
-    private var ttl: Double?
     private var audited: Bool?
 
     init(entity: String, registry: SchemaRegistry) {
@@ -100,7 +99,7 @@ public struct SchemaBuilder {
         return builder
     }
 
-    /// Names the timestamp field used for pagination, TTL, and views.
+    /// Names the timestamp field used for pagination and views.
     public func envelopeDate(_ field: String) -> Self {
         var builder = self
         builder.envelopeDate = field
@@ -154,13 +153,6 @@ public struct SchemaBuilder {
     public func keyID(_ keyID: String) -> Self {
         var builder = self
         builder.keyID = keyID
-        return builder
-    }
-
-    /// Stamps an expiry on every record, offset from the envelope date.
-    public func ttl(_ seconds: Double) -> Self {
-        var builder = self
-        builder.ttl = seconds
         return builder
     }
 
@@ -227,7 +219,6 @@ public struct SchemaBuilder {
             enforcedKeys: enforcedKeys ?? previous?.enforcedKeys,
             views: views ?? previous?.views,
             keyID: keyID ?? previous?.keyID,
-            ttl: ttl ?? previous?.ttl,
             audited: audited ?? previous?.audited
         )
         try await registry.publish(definition)

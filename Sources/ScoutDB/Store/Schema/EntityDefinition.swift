@@ -23,14 +23,13 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
     public var enforcedKeys: [[String]]?
     public var views: [AggregateView]?
     public var keyID: String?
-    public var ttl: Double?
     /// An audited entity appends a revision record on every update and delete;
     /// publish `EntityStore.revisionDefinition` before enabling it.
     public var audited: Bool?
 
     public init(
         entity: String, version: Int, fields: [FieldDefinition], envelopeDate: String? = nil, unique: [String]? = nil,
-        uniqueKeys: [[String]]? = nil, enforcedKeys: [[String]]? = nil, views: [AggregateView]? = nil, keyID: String? = nil, ttl: Double? = nil,
+        uniqueKeys: [[String]]? = nil, enforcedKeys: [[String]]? = nil, views: [AggregateView]? = nil, keyID: String? = nil,
         audited: Bool? = nil
     ) {
         self.entity = entity
@@ -42,18 +41,17 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
         self.enforcedKeys = enforcedKeys
         self.views = views
         self.keyID = keyID
-        self.ttl = ttl
         self.audited = audited
     }
 
     private enum CodingKeys: String, CodingKey {
-        case entity, version, fields, envelopeDate, unique, uniqueKeys, enforcedKeys, views, keyID, ttl, audited
+        case entity, version, fields, envelopeDate, unique, uniqueKeys, enforcedKeys, views, keyID, audited
     }
 
     public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.entity == rhs.entity && lhs.version == rhs.version && lhs.fields == rhs.fields && lhs.envelopeDate == rhs.envelopeDate
             && lhs.unique == rhs.unique && lhs.uniqueKeys == rhs.uniqueKeys && lhs.enforcedKeys == rhs.enforcedKeys && lhs.views == rhs.views
-            && lhs.keyID == rhs.keyID && lhs.ttl == rhs.ttl && lhs.audited == rhs.audited
+            && lhs.keyID == rhs.keyID && lhs.audited == rhs.audited
     }
 
     public func fields(at version: Int) -> [FieldDefinition] {
@@ -159,9 +157,6 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
             guard field(named: envelopeDate, at: version)?.type == .timestamp else {
                 throw SchemaError.invalidDefinition("Envelope date '\(envelopeDate)' is not an active timestamp field at version \(version)")
             }
-        }
-        if ttl != nil, envelopeDate == nil {
-            throw SchemaError.invalidDefinition("TTL requires an envelope date")
         }
         for key in unique ?? [] where !names.contains(key) {
             throw SchemaError.invalidDefinition("Unique key '\(key)' is not a field")
