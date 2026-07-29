@@ -330,7 +330,7 @@ public struct OrGroup {
 }
 
 extension EntityStore {
-    /// Opens a Fluent-style query on an entity.
+    /// Opens a chained query on an entity.
     public func query(_ entity: String) -> QueryBuilder {
         QueryBuilder(entity: entity, store: self)
     }

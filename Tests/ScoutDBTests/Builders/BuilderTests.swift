@@ -12,8 +12,8 @@ import Testing
 
 @testable import ScoutDB
 
-@Suite("Fluent interface")
-struct FluentTests {
+@Suite("Chained builders")
+struct BuilderTests {
     let database = InMemoryDatabase()
     let store: EntityStore
     let registry: SchemaRegistry
