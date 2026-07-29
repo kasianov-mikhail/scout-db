@@ -69,13 +69,13 @@ struct FluentTests {
         #expect(try await registry.definition(for: "ledger").audited == false)
     }
 
-    @Test("shadow() declares a derived field the query planner narrows on")
+    @Test("A derived field is one the query planner narrows on")
     func shadowFields() async throws {
         try await store.schema("contact")
             .field("email", .string, .required)
             .field("bio", .text)
-            .shadow("email", .reversed)
-            .shadow("bio", .ngrams)
+            .field("email_reversed", .string, .derived(from: "email", .reversed))
+            .field("bio_ngrams", .stringList, .derived(from: "bio", .ngrams))
             .create()
 
         let definition = try await registry.definition(for: "contact")
