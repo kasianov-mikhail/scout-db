@@ -8,8 +8,12 @@
 import CloudKit
 import Foundation
 
-/// The container seam above the database one: account state plus the
-/// databases, so app code and tests can share the same entry point.
+/// The container seam above the database one: account state plus the public
+/// database, so app code and tests can share the same entry point.
+///
+/// ScoutDB stores in the public database only — the schema, the grants it
+/// ships, and the security model all assume a world-readable, shared corpus,
+/// so the container hands out that database and no other.
 ///
 /// Every CloudKit call fails opaquely when no iCloud account is signed in —
 /// check `accountStatus()` (or `requireAccount()`) before the first store
@@ -23,7 +27,7 @@ public protocol CloudContainer: Sendable {
     /// Emits the fresh status after every account change.
     func accountStatusUpdates() -> AsyncStream<CKAccountStatus>
 
-    var privateDatabase: any CloudDatabase { get }
+    /// The database every store runs against.
     var publicDatabase: any CloudDatabase { get }
 }
 
@@ -53,10 +57,6 @@ public struct AccountUnavailableError: LocalizedError {
 }
 
 extension CKContainer: CloudContainer {
-    public var privateDatabase: any CloudDatabase {
-        privateCloudDatabase
-    }
-
     public var publicDatabase: any CloudDatabase {
         publicCloudDatabase
     }

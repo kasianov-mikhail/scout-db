@@ -9,9 +9,8 @@ import CloudKit
 import Foundation
 import ScoutDB
 
-/// The container double: in-memory databases and a settable account.
+/// The container double: an in-memory public database and a settable account.
 public final class InMemoryContainer: CloudContainer, @unchecked Sendable {
-    public let privateDatabase: any CloudDatabase
     public let publicDatabase: any CloudDatabase
 
     private let lock = NSLock()
@@ -20,7 +19,6 @@ public final class InMemoryContainer: CloudContainer, @unchecked Sendable {
 
     public init(status: CKAccountStatus = .available) {
         self.status = status
-        privateDatabase = InMemoryDatabase()
         publicDatabase = InMemoryDatabase()
     }
 

@@ -186,11 +186,11 @@ public struct QueryBuilder: Sendable {
     public func count() async throws -> Int {
         if creator == nil, let counted = try await store.viewCount(entity: entity, any: branches()) {
             return Swift.min(counted, ceiling ?? Int.max)
-        }
-        if groups.count > 0 {
+        } else if groups.count > 0 {
             return try await store.read(entity: entity, any: branches(), sort: sorts, fields: [], limit: ceiling, createdBy: creator).count
+        } else {
+            return try await store.read(entity: entity, filters: filters, sort: sorts, fields: [], limit: ceiling, createdBy: creator).count
         }
-        return try await store.read(entity: entity, filters: filters, sort: sorts, fields: [], limit: ceiling, createdBy: creator).count
     }
 
     /// Sums a numeric field across the matching records, fetching only that field.
@@ -242,6 +242,7 @@ public struct QueryBuilder: Sendable {
     ///
     /// Keyset pagination is ordered by the envelope date alone, so combining it
     /// with ``sort(_:_:)`` throws instead of silently ignoring the clause.
+    ///
     public func paginate(size: Int, after cursor: EntityCursor? = nil) async throws -> EntityPage {
         guard sorts.isEmpty else {
             throw SchemaError.invalidDefinition("Pagination is ordered by the envelope date and cannot honor sort clauses")

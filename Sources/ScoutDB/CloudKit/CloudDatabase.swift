@@ -24,6 +24,10 @@ public enum QueryCursor: @unchecked Sendable {
 /// in-memory implementation (see the `ScoutDBTesting` product) that evaluates
 /// the same `CKQuery`.
 ///
+/// Hand it the container's public database. That is the only scope ScoutDB
+/// supports: the shipped `Schema`, its grants, and the default zone every
+/// query and fetch names all describe the public one.
+///
 public protocol CloudDatabase: Sendable {
     /// Runs a query against the database's records.
     func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
