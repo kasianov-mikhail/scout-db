@@ -42,15 +42,14 @@ struct CloudContainerTests {
         #expect(try await container.accountStatus() == .available)
     }
 
-    @Test("The databases are distinct stores")
-    func distinctDatabases() async throws {
+    @Test("The public database backs the store")
+    func publicDatabase() async throws {
         let container = InMemoryContainer()
-        let registry = SchemaRegistry(database: container.privateDatabase)
+        let registry = SchemaRegistry(database: container.publicDatabase)
         try await registry.publish(makePurchaseDefinition())
-        let store = EntityStore(database: container.privateDatabase, registry: registry)
+        let store = EntityStore(database: container.publicDatabase, registry: registry)
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
 
-        #expect((container.privateDatabase as? InMemoryDatabase)?.records.isEmpty == false)
-        #expect((container.publicDatabase as? InMemoryDatabase)?.records.isEmpty == true)
+        #expect((container.publicDatabase as? InMemoryDatabase)?.records.isEmpty == false)
     }
 }

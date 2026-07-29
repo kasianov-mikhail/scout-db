@@ -75,6 +75,10 @@ let registry = SchemaRegistry(database: database)
 let store = EntityStore(database: database, registry: registry)
 ```
 
+ScoutDB runs against the public database only — the shipped `Schema`, its role grants, and
+the default zone every request names describe that scope. The private and shared databases
+are out of scope, so `CloudContainer` hands out `publicDatabase` and nothing else.
+
 ### Declare an entity
 
 ```swift

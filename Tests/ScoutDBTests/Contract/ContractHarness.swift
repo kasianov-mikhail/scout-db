@@ -22,7 +22,7 @@ enum ContractBackend {
 
     static func makeDatabase() -> any CloudDatabase {
         guard let containerID else { return InMemoryDatabase() }
-        return CKContainer(identifier: containerID).privateCloudDatabase
+        return CKContainer(identifier: containerID).publicCloudDatabase
     }
 }
 
