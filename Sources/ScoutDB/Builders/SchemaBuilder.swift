@@ -41,18 +41,44 @@ public struct SchemaBuilder {
         self.registry = registry
     }
 
-    /// A constraint applied to a single field declaration.
     public enum FieldConstraint: Sendable {
+        /// Rejects a write that leaves the field without a value, once the
+        /// default and the derivation have been applied.
         case required
+
+        /// Keeps the field out of the pools, in the record's payload blob:
+        /// unlimited in number, but beyond the server's filters and sorts.
         case payload
+
+        /// Seals the value under the definition's key before it leaves the
+        /// device; only a payload field can be encrypted.
         case encrypted
+
+        /// The closed set of strings every value of the field must come from.
         case allowed([String])
+
+        /// The value a write that omits the field gets instead.
         case defaultValue(RecordValue)
+
+        /// The inclusive lower bound every numeric scalar must clear.
         case minimum(Double)
+
+        /// The inclusive upper bound every numeric scalar must stay under.
         case maximum(Double)
+
+        /// Makes the field a shadow of another one, recomputed from its source
+        /// on every write rather than supplied by the caller.
         case derived(from: String, Derivation.Transform)
+
+        /// The entity whose uuids the field holds, making it a reference that
+        /// `join`, `children` and the reference checks can follow.
         case references(String)
+
+        /// A reference that only one record may hold per parent, claim-backed
+        /// the way a `uniqueKey(on:)` is.
         case exclusiveReference(String)
+
+        /// A regular expression every value of the field must match whole.
         case matches(String)
     }
 
