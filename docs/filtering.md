@@ -137,8 +137,7 @@ once; the matching operators pick it up automatically:
 | `ngrams` | a substring prefilter, narrowed further client-side |
 
 The planner finds a shadow by its derivation, not its name, so the name above is yours to
-pick. `.shadow("title", .reversed)` is the shorthand when you don't care: it declares the same
-field as `title_reversed`, with the type the transform calls for.
+pick.
 
 A shadow is recomputed on every write, so records written before you declared one carry it
 only after a `Migrator.backfill(entity:)` pass.

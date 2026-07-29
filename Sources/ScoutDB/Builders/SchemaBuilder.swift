@@ -73,34 +73,6 @@ public struct SchemaBuilder {
         return builder
     }
 
-    /// Declares a server-side shadow of the named field.
-    ///
-    /// The shadow is a derived field named `<source>_<transform>`, stored in a
-    /// slot and recomputed on every write, and the query planner picks it up
-    /// by its derivation automatically: a `reversed` shadow turns `endsWith`
-    /// into a server `beginsWith`, an `ngrams` shadow narrows `contains` and
-    /// `like` server-side before the exact client check, and a `lowercase` or
-    /// `fold` shadow serves normalized comparisons. Declare one for every
-    /// field the app will search — without it those operators fetch page
-    /// after page and filter client-side. Records written before the shadow
-    /// existed carry it only after a `Migrator.backfill(entity:)` pass.
-    ///
-    public func shadow(_ source: String, _ transform: Derivation.Transform) -> Self {
-        let type: FieldType =
-            switch transform {
-            case .ngrams:
-                .stringList
-            case .hour, .day, .week, .month:
-                .timestamp
-            default:
-                .string
-            }
-        var builder = self
-        builder.declarations.append(
-            Declaration(name: "\(source)_\(transform.rawValue)", type: type, constraints: [.derived(from: source, transform)]))
-        return builder
-    }
-
     /// Names the timestamp field used for pagination and views.
     public func envelopeDate(_ field: String) -> Self {
         var builder = self
