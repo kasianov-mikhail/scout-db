@@ -291,7 +291,7 @@ extension Storage {
 }
 
 extension EntityStore {
-    /// Opens a Fluent-style schema builder for an entity.
+    /// Opens a chained schema builder for an entity.
     public func schema(_ entity: String) -> SchemaBuilder {
         SchemaBuilder(entity: entity, registry: registry)
     }
