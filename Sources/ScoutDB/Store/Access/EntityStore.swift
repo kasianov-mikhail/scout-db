@@ -60,57 +60,32 @@ public struct EntityStore: Sendable {
         self.enforceReferences = enforceReferences
     }
 
-    public struct Filter: Equatable, Sendable {
-        public let field: String
-        public let op: Match
-        public let value: RecordValue
-        public var radius: Double?
-        /// A negated filter keeps the records its predicate does NOT match.
-        ///
-        /// It runs on the server as the complementary operator when the field
-        /// is always present — `required`, or carrying a default — and
-        /// otherwise client-side, where a record missing the field is kept.
-        ///
-        public var negated = false
+    struct Filter: Equatable, Sendable {
+        let field: String
+        let op: Match
+        let value: RecordValue
+        var radius: Double?
+        var negated = false
 
-        public init(field: String, op: Match, value: RecordValue, radius: Double? = nil, negated: Bool = false) {
+        init(field: String, op: Match, value: RecordValue, radius: Double? = nil, negated: Bool = false) {
             self.field = field
             self.op = op
             self.value = value
             self.radius = radius
             self.negated = negated
         }
-
-        public static func between(_ field: String, _ lower: RecordValue, _ upper: RecordValue) -> [Filter] {
-            [
-                Filter(field: field, op: .greaterThanOrEquals, value: lower),
-                Filter(field: field, op: .lessThan, value: upper),
-            ]
-        }
-
-        public static func containsAll(_ field: String, _ values: [String]) -> [Filter] {
-            values.map { Filter(field: field, op: .contains, value: .string($0)) }
-        }
-
-        public static func containsAny(_ field: String, _ values: [String]) -> [[Filter]] {
-            values.map { [Filter(field: field, op: .contains, value: .string($0))] }
-        }
     }
 
-    public struct Sort: Equatable, Sendable {
-        public let field: String
-        public var ascending = true
-        /// A `.location` origin turns the clause into a nearest-first distance
-        /// sort of a location field.
-        public var origin: RecordValue?
+    struct Sort: Equatable, Sendable {
+        let field: String
+        var ascending = true
+        var origin: RecordValue?
 
-        public init(field: String, ascending: Bool = true) {
+        init(field: String, ascending: Bool = true) {
             self.field = field
             self.ascending = ascending
         }
-
-        /// Sorts nearest-first by the location field's distance from the point.
-        public static func distance(from field: String, latitude: Double, longitude: Double) -> Sort {
+        static func distance(from field: String, latitude: Double, longitude: Double) -> Sort {
             var sort = Sort(field: field)
             sort.origin = .location(latitude: latitude, longitude: longitude)
             return sort
@@ -123,7 +98,9 @@ public struct EntityStore: Sendable {
     }
 
     @discardableResult public func write(_ batch: [EntityWrite], entity: String) async throws -> [String] {
-        guard batch.count > 0 else { return [] }
+        guard batch.count > 0 else {
+            return []
+        }
         let definition = try await registry.definition(for: entity)
         let coder = EntityCoder(keyProvider: keyProvider)
 
@@ -154,14 +131,15 @@ public struct EntityStore: Sendable {
         }
         EntityCoder.discardStagedAssets(in: encoded)
         try await aggregator.rebalance(removing: removedFromViews, adding: addedToViews, using: definition)
-        noteChange(entity: entity, changed: entityRecords)
         return entityRecords.map(\.uuid)
     }
 
     private func aggregationRebalance(_ records: [EntityRecord], stored: Set<String>, using definition: EntityDefinition) async throws -> (
         removing: [EntityRecord], adding: [EntityRecord]
     ) {
-        guard definition.views?.isEmpty == false else { return ([], []) }
+        guard definition.views?.isEmpty == false else {
+            return ([], [])
+        }
         var latest: [String: EntityRecord] = [:]
         for record in records { latest[record.uuid] = record }
         let live = try await liveRecords(entity: definition.entity, uuids: latest.keys.filter(stored.contains), using: definition)
@@ -169,7 +147,9 @@ public struct EntityStore: Sendable {
         var removing: [EntityRecord] = []
         var adding: [EntityRecord] = []
         for (uuid, record) in latest {
-            if let old = liveByUUID[uuid] { removing.append(old) }
+            if let old = liveByUUID[uuid] {
+                removing.append(old)
+            }
             adding.append(record)
         }
         return (removing, adding)
@@ -180,7 +160,9 @@ public struct EntityStore: Sendable {
     }
 
     func delete(entity: String, uuids: [String]) async throws {
-        guard uuids.count > 0 else { return }
+        guard uuids.count > 0 else {
+            return
+        }
         var targets: [String] = []
         var seen: Set<String> = []
         for uuid in uuids where seen.insert(uuid).inserted {
@@ -192,11 +174,12 @@ public struct EntityStore: Sendable {
         let tombstones = try targets.map { try tombstone(entity: entity, uuid: $0, definition: definition, values: values[$0] ?? [:]) }
         try await database.write(records: tombstones)
         try await settle(removed: removed, using: definition)
-        noteChange(entity: entity, changed: removed.map { Self.tombstoned($0) })
     }
 
-    func liveRecords(entity: String, uuids: [String], using definition: EntityDefinition) async throws -> [EntityRecord] {
-        guard definition.views?.isEmpty == false else { return [] }
+    fileprivate func liveRecords(entity: String, uuids: [String], using definition: EntityDefinition) async throws -> [EntityRecord] {
+        guard definition.views?.isEmpty == false else {
+            return []
+        }
         return try decode(try await items(entity: entity, uuids: uuids), using: definition).filter { !$0.deleted }
     }
 
@@ -205,7 +188,7 @@ public struct EntityStore: Sendable {
             .encode(EntityRecord(entity: entity, uuid: uuid, schemaVersion: definition.version, values: values, deleted: true), using: definition)
     }
 
-    public func read(
+    func read(
         entity: String, filters: [Filter] = [], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil, createdBy creator: String? = nil
     ) async throws -> [EntityRecord] {
         let definition = try await registry.definition(for: entity)
@@ -213,7 +196,9 @@ public struct EntityStore: Sendable {
             let projection = fields.map { $0 + sort.map(\.field) }
             let ranked = try await read(entity: entity, filters: filters, fields: projection, createdBy: creator)
                 .sorted { Self.ordered($0, $1, by: sort) }
-            guard let limit else { return ranked }
+            guard let limit else {
+                return ranked
+            }
             return Array(ranked.prefix(limit))
         }
         let (query, included) = try liveQuery(filters, entity: entity, sort: try serverSort(sort, using: definition), createdBy: creator, using: definition)
@@ -248,7 +233,9 @@ public struct EntityStore: Sendable {
         var (batch, token) = try await database.records(matching: query, desiredKeys: desiredKeys, resultsLimit: page)
         while true {
             collected += try decode(batch.map { try $0.1.get() }, using: definition).filter(included)
-            guard collected.count < limit, let cursor = token else { break }
+            guard collected.count < limit, let cursor = token else {
+                break
+            }
             page = page < Int.max / 2 ? Self.cappedPage(page * 2) : page
             (batch, token) = try await database.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: page)
         }
@@ -261,9 +248,13 @@ public struct EntityStore: Sendable {
     }
 
     private func rankable(_ sort: [Sort], entity: String) async throws -> Bool {
-        guard sort.count > 0 else { return true }
+        guard sort.count > 0 else {
+            return true
+        }
         let definition = try await registry.definition(for: entity)
-        if (try? clientRanked(sort, using: definition)) == true { return true }
+        if (try? clientRanked(sort, using: definition)) == true {
+            return true
+        }
         return (try? serverSort(sort, using: definition)) != nil
     }
 
@@ -272,7 +263,9 @@ public struct EntityStore: Sendable {
             guard let field = definition.field(named: clause.field, at: definition.version) else {
                 throw SchemaError.unknownField(clause.field)
             }
-            guard case .payload = field.storage else { return false }
+            guard case .payload = field.storage else {
+                return false
+            }
             return true
         }
     }
@@ -287,15 +280,20 @@ public struct EntityStore: Sendable {
             case .slot(_, let slot):
                 keys.append(slot)
             case .payload:
-                if !keys.contains("payload") { keys.append("payload") }
+                if !keys.contains("payload") {
+                    keys.append("payload")
+                }
             }
         }
         return keys
     }
 
-    public func read(
+    func read(
         entity: String, any branches: [[Filter]], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil, createdBy creator: String? = nil
     ) async throws -> [EntityRecord] {
+        if branches.count == 1 {
+            return try await read(entity: entity, filters: branches[0], sort: sort, fields: fields, limit: limit, createdBy: creator)
+        }
         let branchFields = fields.map { $0 + sort.map(\.field) }
         if let limit, sort.isEmpty {
             var seen: Set<String> = []
@@ -304,7 +302,9 @@ public struct EntityStore: Sendable {
                 let page: [EntityRecord] = try await read(entity: entity, filters: branch, fields: branchFields, limit: limit, createdBy: creator)
                 for record in page where seen.insert(record.uuid).inserted {
                     union.append(record)
-                    if union.count == limit { return union }
+                    if union.count == limit {
+                        return union
+                    }
                 }
             }
             return union
@@ -329,9 +329,13 @@ public struct EntityStore: Sendable {
         }
         var seen: Set<String> = []
         let union = results.filter { seen.insert($0.uuid).inserted }
-        guard sort.count > 0 else { return union }
+        guard sort.count > 0 else {
+            return union
+        }
         let ranked = union.sorted { Self.ordered($0, $1, by: sort) }
-        guard let limit else { return ranked }
+        guard let limit else {
+            return ranked
+        }
         return Array(ranked.prefix(limit))
     }
 
@@ -358,13 +362,19 @@ public struct EntityStore: Sendable {
     }
 
     func decode(_ record: CKRecord, with coder: EntityCoder, using definition: EntityDefinition) throws -> EntityRecord? {
-        guard trusted(record) else { return nil }
+        guard trusted(record) else {
+            return nil
+        }
         return try coder.decode(record, using: definition)
     }
 
-    func trusted(_ record: CKRecord) -> Bool {
-        guard let trustedWriters else { return true }
-        guard let creator = record.recordCreator else { return false }
+    fileprivate func trusted(_ record: CKRecord) -> Bool {
+        guard let trustedWriters else {
+            return true
+        }
+        guard let creator = record.recordCreator else {
+            return false
+        }
         return trustedWriters.contains(creator)
     }
 }

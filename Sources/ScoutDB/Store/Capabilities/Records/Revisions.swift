@@ -7,14 +7,10 @@
 
 import Foundation
 
-extension EntityStore {
-    public static let revisionEntity = "_rev"
-
-    /// The append-only revision log behind audited entities; publish it once,
-    /// like the transaction envelope.
-    public static var revisionDefinition: EntityDefinition {
+extension EntityDefinition {
+    static var revision: EntityDefinition {
         EntityDefinition(
-            entity: revisionEntity, version: 1,
+            entity: EntityStore.revisionEntity, version: 1,
             fields: [
                 FieldDefinition(name: "entity", type: .string, storage: .slot(.string, "s_00"), required: true),
                 FieldDefinition(name: "record_uuid", type: .string, storage: .slot(.string, "s_01"), required: true),
@@ -22,6 +18,10 @@ extension EntityStore {
                 FieldDefinition(name: "snapshot", type: .bytes, storage: .payload, required: true),
             ], envelopeDate: "date")
     }
+}
+
+extension EntityStore {
+    static let revisionEntity = "_rev"
 
     /// The audited record's previous states, oldest first — each one the record
     /// as it stood right before an update or delete overwrote it.
@@ -39,7 +39,9 @@ extension EntityStore {
                 return lDate == rDate ? lhs.uuid < rhs.uuid : lDate < rDate
             }
             .compactMap { revision in
-                guard case .bytes(let data)? = revision.values["snapshot"] else { return nil }
+                guard case .bytes(let data)? = revision.values["snapshot"] else {
+                    return nil
+                }
                 return try? JSONDecoder().decode(EntityRecord.self, from: data)
             }
     }
@@ -53,7 +55,9 @@ extension EntityStore {
     }
 
     func recordRevisions(_ previous: [EntityRecord], using definition: EntityDefinition) async throws {
-        guard definition.audited == true, previous.count > 0 else { return }
+        guard definition.audited == true, previous.count > 0 else {
+            return
+        }
         let encoder = JSONEncoder()
         let writes = try previous.map { record in
             EntityWrite(values: [

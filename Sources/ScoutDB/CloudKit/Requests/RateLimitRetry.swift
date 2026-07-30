@@ -26,7 +26,9 @@ func withRateLimitRetry<R>(
             return try await operation()
         } catch let error as CKError where [.requestRateLimited, .zoneBusy].contains(error.code) {
             attempt += 1
-            guard attempt < maxRetry else { throw error }
+            guard attempt < maxRetry else {
+                throw error
+            }
             try await sleep(retryDelay(attempt: attempt, suggested: error.retryAfterSeconds))
         }
     }

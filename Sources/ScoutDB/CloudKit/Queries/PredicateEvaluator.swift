@@ -9,19 +9,8 @@ import CloudKit
 import CoreLocation
 import Foundation
 
-/// In-memory execution of the NSPredicate trees the store builds — the stub
-/// counterpart of the CloudKit server running the query for real.
-///
-/// A record missing a compared field never matches, mirroring the server; the
-/// tri-state result lets `NOT (field IN ...)` stay false for missing fields too.
-/// A predicate shape this evaluator cannot express is unknown rather than false,
-/// so a caller that must not guess can route the query to the server instead.
-///
-public enum PredicateEvaluator {
-    private nonisolated(unsafe) static let truePredicate = NSPredicate(value: true)
-    private nonisolated(unsafe) static let falsePredicate = NSPredicate(value: false)
-
-    public static func evaluate(_ predicate: NSPredicate, record: CKRecord) -> Bool? {
+enum PredicateEvaluator {
+    static func evaluate(_ predicate: NSPredicate, record: CKRecord) -> Bool? {
         if let compound = predicate as? NSCompoundPredicate {
             let subpredicates = compound.subpredicates as? [NSPredicate] ?? []
             switch compound.compoundPredicateType {
@@ -60,8 +49,12 @@ public enum PredicateEvaluator {
         if let comparison = predicate as? NSComparisonPredicate {
             return evaluate(comparison, record: record)
         }
-        if predicate == Self.truePredicate { return true }
-        if predicate == Self.falsePredicate { return false }
+        if predicate == NSPredicate(value: true) {
+            return true
+        }
+        if predicate == NSPredicate(value: false) {
+            return false
+        }
         return nil
     }
 
@@ -72,8 +65,12 @@ public enum PredicateEvaluator {
         if comparison.leftExpression.expressionType == .evaluatedObject {
             return evaluateSearch(comparison, record: record)
         }
-        guard comparison.leftExpression.expressionType == .keyPath else { return nil }
-        guard comparison.rightExpression.expressionType == .constantValue else { return nil }
+        guard comparison.leftExpression.expressionType == .keyPath else {
+            return nil
+        }
+        guard comparison.rightExpression.expressionType == .constantValue else {
+            return nil
+        }
 
         let key = comparison.leftExpression.keyPath
         let target = comparison.rightExpression.constantValue
@@ -102,16 +99,22 @@ public enum PredicateEvaluator {
         case .lessThanOrEqualTo:
             return compare(value, target) != .orderedDescending
         case .beginsWith:
-            guard let text = value as? String, let prefix = target as? String else { return nil }
+            guard let text = value as? String, let prefix = target as? String else {
+                return nil
+            }
             return text.hasPrefix(prefix)
         case .in:
-            guard let options = target as? [Any] else { return nil }
+            guard let options = target as? [Any] else {
+                return nil
+            }
             return options.contains { compare(value, $0) == .orderedSame }
         case .contains:
             if let list = value as? [Any] {
                 return list.contains { compare($0, target) == .orderedSame }
             }
-            guard let text = value as? String, let needle = target as? String else { return nil }
+            guard let text = value as? String, let needle = target as? String else {
+                return nil
+            }
             return text.contains(needle)
         default:
             return nil
@@ -120,39 +123,50 @@ public enum PredicateEvaluator {
 
     private static func evaluateDistance(_ comparison: NSComparisonPredicate, record: CKRecord) -> Bool? {
         let arguments = comparison.leftExpression.arguments ?? []
-        guard arguments.count == 2, arguments[0].expressionType == .keyPath else { return nil }
-        guard arguments[1].expressionType == .constantValue, comparison.rightExpression.expressionType == .constantValue else { return nil }
-        guard let center = arguments[1].constantValue as? CLLocation else { return nil }
-        guard let radius = (comparison.rightExpression.constantValue as? NSNumber)?.doubleValue else { return nil }
-        guard let point = record[arguments[0].keyPath] as? CLLocation else { return nil }
+        guard arguments.count == 2, arguments[0].expressionType == .keyPath else {
+            return nil
+        }
+        guard arguments[1].expressionType == .constantValue, comparison.rightExpression.expressionType == .constantValue else {
+            return nil
+        }
+        guard let center = arguments[1].constantValue as? CLLocation else {
+            return nil
+        }
+        guard let radius = (comparison.rightExpression.constantValue as? NSNumber)?.doubleValue else {
+            return nil
+        }
+        guard let point = record[arguments[0].keyPath] as? CLLocation else {
+            return nil
+        }
         return point.distance(from: center) < radius
     }
 
     private static func evaluateSearch(_ comparison: NSComparisonPredicate, record: CKRecord) -> Bool? {
-        guard comparison.rightExpression.expressionType == .constantValue else { return nil }
-        guard let needle = (comparison.rightExpression.constantValue as? String)?.lowercased() else { return nil }
+        guard comparison.rightExpression.expressionType == .constantValue else {
+            return nil
+        }
+        guard let needle = (comparison.rightExpression.constantValue as? String)?.lowercased() else {
+            return nil
+        }
         var required = Set(needle.split { !$0.isLetter && !$0.isNumber })
-        guard !required.isEmpty else { return true }
+        guard !required.isEmpty else {
+            return true
+        }
         for key in record.allKeys() {
-            guard let text = record[key] as? String else { continue }
+            guard let text = record[key] as? String else {
+                continue
+            }
             for token in text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }) {
                 required.remove(token)
-                if required.isEmpty { return true }
+                if required.isEmpty {
+                    return true
+                }
             }
         }
         return false
     }
 
-    /// Orders two CloudKit field values the way a server-side query would.
-    ///
-    /// Every type a `CKRecord` can hold is ordered, including the reference,
-    /// location, asset and list types a filter reaches through a slot; a
-    /// reference and a bare record name compare as the same value, since the
-    /// store spells a relation either way. Values of unlike types order by
-    /// type and never compare equal, so the result stays a strict weak
-    /// ordering — `sorted(by:)` relies on that.
-    ///
-    public static func compare(_ lhs: Any?, _ rhs: Any?) -> ComparisonResult {
+    static func compare(_ lhs: Any?, _ rhs: Any?) -> ComparisonResult {
         switch (lhs, rhs) {
         case (nil, nil):
             return .orderedSame
@@ -231,7 +245,9 @@ public enum PredicateEvaluator {
     }
 
     private static func order(_ lhs: Data, _ rhs: Data) -> ComparisonResult {
-        guard let mismatch = zip(lhs, rhs).first(where: { $0 != $1 }) else { return order(lhs.count, rhs.count) }
+        guard let mismatch = zip(lhs, rhs).first(where: { $0 != $1 }) else {
+            return order(lhs.count, rhs.count)
+        }
         return order(mismatch.0, mismatch.1)
     }
 
@@ -243,7 +259,9 @@ public enum PredicateEvaluator {
     private static func order(_ lhs: [Any], _ rhs: [Any]) -> ComparisonResult {
         for (lhs, rhs) in zip(lhs, rhs) {
             let element = compare(lhs, rhs)
-            guard element == .orderedSame else { return element }
+            guard element == .orderedSame else {
+                return element
+            }
         }
         return order(lhs.count, rhs.count)
     }

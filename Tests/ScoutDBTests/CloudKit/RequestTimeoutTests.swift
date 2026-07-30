@@ -64,7 +64,9 @@ private actor Gate {
     private var waiters: [CheckedContinuation<Void, Never>] = []
 
     func wait() async {
-        guard !isOpen else { return }
+        guard !isOpen else {
+            return
+        }
         await withCheckedContinuation { waiters.append($0) }
     }
 

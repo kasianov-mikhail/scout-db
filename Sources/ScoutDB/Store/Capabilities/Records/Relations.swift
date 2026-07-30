@@ -77,12 +77,18 @@ extension EntityStore {
     func validateReferences(of records: [EntityRecord], using definition: EntityDefinition) async throws {
         var probes: [(field: String, parent: String, keys: Set<String>)] = []
         for field in definition.fields(at: definition.version) {
-            guard let parent = field.references else { continue }
+            guard let parent = field.references else {
+                continue
+            }
             let keys = Set(records.flatMap { Self.referencedKeys($0.values[field.name]) })
-            guard keys.count > 0 else { continue }
+            guard keys.count > 0 else {
+                continue
+            }
             probes.append((field.name, parent, keys))
         }
-        guard probes.count > 0 else { return }
+        guard probes.count > 0 else {
+            return
+        }
 
         let alive = try await withThrowingTaskGroup(of: (Int, Set<String>).self) { group in
             for (index, probe) in probes.enumerated() {
@@ -114,7 +120,11 @@ extension EntityStore {
 
     public func delete(entity: String, uuid: String, cascade: Bool) async throws {
         try await delete(entity: entity, uuid: uuid)
-        guard cascade else { return }
+
+        guard cascade else {
+            return
+        }
+
         try await registry.preload()
         try await cascadeDelete(entity: entity, uuids: [uuid])
     }
@@ -122,8 +132,10 @@ extension EntityStore {
     private func cascadeDelete(entity: String, uuids: [String]) async throws {
         var referring: [(child: EntityDefinition, fields: [FieldDefinition])] = []
         var detaching: [(entity: String, field: String)] = []
+
         for child in await registry.definitions() {
             var fields: [FieldDefinition] = []
+
             for field in child.fields(at: child.version) where field.references == entity {
                 if field.type.isList {
                     detaching.append((child.entity, field.name))
@@ -131,11 +143,15 @@ extension EntityStore {
                     fields.append(field)
                 }
             }
+
             if fields.count > 0 {
                 referring.append((child, fields))
             }
         }
-        guard referring.count + detaching.count > 0 else { return }
+
+        guard referring.count + detaching.count > 0 else {
+            return
+        }
 
         let probed = try await withThrowingTaskGroup(of: (Int, [EntityRecord]).self) { group in
             for (index, target) in referring.enumerated() {
@@ -155,30 +171,62 @@ extension EntityStore {
             try await group.waitForAll()
         }
         for (index, target) in referring.enumerated() {
-            guard let victims = probed[index], victims.count > 0 else { continue }
+            guard let victims = probed[index], victims.count > 0 else {
+                continue
+            }
             try await tombstone(victims, using: target.child)
         }
     }
 
     private func victims(of child: EntityDefinition, through fields: [FieldDefinition], referencing uuids: [String]) async throws -> [EntityRecord] {
         let branches = fields.flatMap { field in
-            uuids.chunked(into: 100).map { [Filter(field: field.name, op: .in, value: .strings($0))] }
+            uuids.chunked(into: 100).map {
+                [Filter(field: field.name, op: .in, value: .strings($0))]
+            }
         }
-        return try await read(entity: child.entity, any: branches).sorted { $0.uuid < $1.uuid }
+        return try await read(
+            entity: child.entity,
+            any: branches
+        )
+        .sorted { $0.uuid < $1.uuid }
     }
 
     private func tombstone(_ victims: [EntityRecord], using child: EntityDefinition) async throws {
-        let tombstones = try victims.map { try tombstone(entity: child.entity, uuid: $0.uuid, definition: child, values: $0.values) }
+        let tombstones = try victims.map {
+            try tombstone(
+                entity: child.entity,
+                uuid: $0.uuid,
+                definition: child,
+                values: $0.values
+            )
+        }
+
         try await database.write(records: tombstones)
-        try await settle(removed: victims, using: child, auditing: false)
-        noteChange(entity: child.entity, changed: victims.map { EntityStore.tombstoned($0) })
-        try await cascadeDelete(entity: child.entity, uuids: victims.map(\.uuid))
+
+        try await settle(
+            removed: victims,
+            using: child,
+            auditing: false
+        )
+
+        try await cascadeDelete(
+            entity: child.entity,
+            uuids: victims.map(\.uuid)
+        )
     }
 
     private func detach(entity: String, field: String, uuids: [String]) async throws {
         let dead = Set(uuids)
-        try await updateAll(entity: entity, any: Filter.containsAny(field, uuids)) { record in
-            guard case .strings(let keys)? = record.values[field] else { return }
+
+        try await updateAll(
+            entity: entity,
+            any: uuids.map {
+                [Filter(field: field, op: .contains, value: .string($0))]
+            }
+        ) { record in
+            guard case .strings(let keys)? = record.values[field] else {
+                return
+            }
             record.values[field] = .strings(keys.filter { !dead.contains($0) })
         }
     }

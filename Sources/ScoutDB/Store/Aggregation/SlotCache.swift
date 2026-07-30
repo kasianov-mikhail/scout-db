@@ -19,7 +19,9 @@ actor SlotCache {
     }
 
     func record(_ id: CKRecord.ID) -> CKRecord? {
-        guard let record = records[id] else { return nil }
+        guard let record = records[id] else {
+            return nil
+        }
         touch(id)
         return record.duplicate()
     }
@@ -41,7 +43,9 @@ actor SlotCache {
     }
 
     private func evict() {
-        guard records.count > limit + limit / 10 else { return }
+        guard records.count > limit + limit / 10 else {
+            return
+        }
         for victim in records.keys.sorted(by: { usage[$0] ?? 0 < usage[$1] ?? 0 }).prefix(records.count - limit) {
             records[victim] = nil
             usage[victim] = nil

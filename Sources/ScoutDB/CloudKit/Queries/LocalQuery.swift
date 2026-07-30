@@ -50,7 +50,9 @@ package enum LocalQuery {
     }
 
     package static func project(_ record: CKRecord, keys: [CKRecord.FieldKey]?) -> CKRecord {
-        guard let keys else { return record.duplicate() }
+        guard let keys else {
+            return record.duplicate()
+        }
         let projected = CKRecord(recordType: record.recordType, recordID: record.recordID)
         for key in record.allKeys() where keys.contains(key) {
             projected[key] = record[key]
@@ -62,10 +64,14 @@ package enum LocalQuery {
 
 extension [CKRecord] {
     package func sorted(by descriptors: [NSSortDescriptor]) -> [CKRecord] {
-        guard descriptors.count > 0 else { return self }
+        guard descriptors.count > 0 else {
+            return self
+        }
         return sorted { lhs, rhs in
             for descriptor in descriptors {
-                guard let key = descriptor.key else { continue }
+                guard let key = descriptor.key else {
+                    continue
+                }
                 let order: ComparisonResult
                 if let location = descriptor as? CKLocationSortDescriptor {
                     let near = (lhs[key] as? CLLocation)?.distance(from: location.relativeLocation) ?? .greatestFiniteMagnitude
@@ -74,7 +80,9 @@ extension [CKRecord] {
                 } else {
                     order = PredicateEvaluator.compare(lhs[key], rhs[key])
                 }
-                guard order != .orderedSame else { continue }
+                guard order != .orderedSame else {
+                    continue
+                }
                 return descriptor.ascending ? order == .orderedAscending : order == .orderedDescending
             }
             return false

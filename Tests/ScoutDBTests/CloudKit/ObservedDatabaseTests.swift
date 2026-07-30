@@ -161,8 +161,6 @@ struct ObservedDatabaseTests {
 extension ObservedDatabaseTests {
     @Test("A transaction's update steps cost the round trips of a single update")
     func transactionUpdatesBatch() async throws {
-        try await registry.publish(EntityStore.transactionDefinition)
-
         func calls(patching count: Int, from start: Int) async throws -> Int {
             for index in start..<(start + count) {
                 try await store.write(makePurchase().values, entity: "purchase", uuid: "p-\(index)")
@@ -218,7 +216,7 @@ extension ObservedDatabaseTests {
         }
 
         recorder.reset()
-        #expect(try await store.deleteAll(entity: "purchase") == 5)
+        #expect(try await store.deleteAll(entity: "purchase", any: [[]]) == 5)
         #expect(recorder.operations.filter { $0.kind == .modify }.count == 3)
         #expect(try await store.read(entity: "purchase").isEmpty)
     }
@@ -266,10 +264,7 @@ extension ObservedDatabaseTests {
 
         recorder.reset()
         let top = try await store.query("purchase")
-            .group {
-                $0.filter("product_id", .equals, "sku-a")
-                $0.filter("quantity", .greaterThanOrEquals, .int(30))
-            }
+            .filter("product_id" == "sku-a" || "quantity" >= 30)
             .sort("quantity", .descending)
             .take(5)
 

@@ -7,9 +7,10 @@
 
 import CloudKit
 import Foundation
-import ScoutDB
 import ScoutDBTesting
 import Testing
+
+@testable import ScoutDB
 
 enum ContractBackend {
     static var containerID: String? {
@@ -21,7 +22,9 @@ enum ContractBackend {
     }
 
     static func makeDatabase() -> any CloudDatabase {
-        guard let containerID else { return InMemoryDatabase() }
+        guard let containerID else {
+            return InMemoryDatabase()
+        }
         return CKContainer(identifier: containerID).publicCloudDatabase
     }
 }
@@ -32,10 +35,14 @@ func eventually(timeout: Duration = .seconds(90), _ body: () async throws -> Boo
     let deadline = ContinuousClock.now + (ContractBackend.isLive ? timeout : .seconds(1))
     while true {
         do {
-            if try await body() { return }
+            if try await body() {
+                return
+            }
         } catch let error as CKError where ContractBackend.isLive && error.code == .unknownItem {
         }
-        guard ContinuousClock.now < deadline else { throw ContractTimeoutError() }
+        guard ContinuousClock.now < deadline else {
+            throw ContractTimeoutError()
+        }
         try await Task.sleep(for: ContractBackend.isLive ? .seconds(2) : .milliseconds(10))
     }
 }

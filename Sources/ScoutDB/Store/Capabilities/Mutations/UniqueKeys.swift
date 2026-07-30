@@ -56,13 +56,17 @@ extension EntityStore {
         for key in keys {
             var owners: [String: String] = [:]
             for record in records {
-                guard let digest = Self.keyDigest(key, in: record.values) else { continue }
+                guard let digest = Self.keyDigest(key, in: record.values) else {
+                    continue
+                }
                 if let owner = owners[digest], owner != record.uuid {
                     throw SchemaError.duplicateKey(fields: key)
                 }
                 owners[digest] = record.uuid
             }
-            guard owners.count > 0 else { continue }
+            guard owners.count > 0 else {
+                continue
+            }
             groups.append(ClaimGroup(key: key, owners: owners) { _ in .duplicateKey(fields: key) })
         }
         return groups
@@ -75,14 +79,18 @@ extension EntityStore {
             var owners: [String: String] = [:]
             var values: [String: String] = [:]
             for record in records {
-                guard case .string(let value)? = record.values[field.name], let digest = Self.keyDigest(key, in: record.values) else { continue }
+                guard case .string(let value)? = record.values[field.name], let digest = Self.keyDigest(key, in: record.values) else {
+                    continue
+                }
                 if let owner = owners[digest], owner != record.uuid {
                     throw SchemaError.duplicateReference(field: field.name, key: value)
                 }
                 owners[digest] = record.uuid
                 values[digest] = value
             }
-            guard owners.count > 0 else { continue }
+            guard owners.count > 0 else {
+                continue
+            }
             let display = values
             groups.append(
                 ClaimGroup(key: key, owners: owners) { digest in
@@ -97,23 +105,33 @@ extension EntityStore {
         for (index, group) in groups.enumerated() {
             for (digest, owner) in group.owners {
                 let id = UniqueClaim.recordID(entity: definition.entity, digest: digest)
-                guard pending[id] == nil else { continue }
+                guard pending[id] == nil else {
+                    continue
+                }
                 pending[id] = PendingClaim(group: index, digest: digest, owner: owner)
             }
         }
-        guard pending.count > 0 else { return }
+        guard pending.count > 0 else {
+            return
+        }
         let ids = pending.keys.sorted { $0.recordName < $1.recordName }
         var contested: [ContestedClaim] = []
         var seen: Set<CKRecord.ID> = []
         for server in try await claimRecords(ids: ids) {
-            guard let claim = pending[server.recordID] else { continue }
+            guard let claim = pending[server.recordID] else {
+                continue
+            }
             seen.insert(server.recordID)
-            guard server["owner"] as? String != claim.owner else { continue }
+            guard server["owner"] as? String != claim.owner else {
+                continue
+            }
             contested.append(ContestedClaim(pending: claim, server: server))
         }
         var fresh: [CKRecord] = []
         for id in ids where !seen.contains(id) {
-            guard let claim = pending[id] else { continue }
+            guard let claim = pending[id] else {
+                continue
+            }
             let record = CKRecord(recordType: UniqueClaim.recordType, recordID: id)
             record["entity"] = definition.entity
             record["key"] = groups[claim.group].key.joined(separator: "|")
@@ -121,7 +139,9 @@ extension EntityStore {
             fresh.append(record)
         }
         for server in try await database.writeIfUnchanged(records: fresh) {
-            guard let claim = pending[server.recordID] else { continue }
+            guard let claim = pending[server.recordID] else {
+                continue
+            }
             contested.append(ContestedClaim(pending: claim, server: server))
         }
         try await adjudicate(contested, in: groups, using: definition)
@@ -130,13 +150,17 @@ extension EntityStore {
     private func adjudicate(_ contested: [ContestedClaim], in groups: [ClaimGroup], using definition: EntityDefinition) async throws {
         var round = contested.sorted { ($0.pending.group, $0.pending.digest) < ($1.pending.group, $1.pending.digest) }
         for _ in 0..<3 {
-            guard round.count > 0 else { return }
+            guard round.count > 0 else {
+                return
+            }
             let held = try await liveHolders(of: round, using: definition)
             var taking: [CKRecord] = []
             var attempted: [CKRecord.ID: ContestedClaim] = [:]
             for contest in round {
                 let holder = contest.server["owner"] as? String
-                if holder == contest.pending.owner { continue }
+                if holder == contest.pending.owner {
+                    continue
+                }
                 let group = groups[contest.pending.group]
                 if let holder, let record = held[holder], Self.keyDigest(group.key, in: record.values) == contest.pending.digest {
                     throw group.conflict(contest.pending.digest)
@@ -147,13 +171,17 @@ extension EntityStore {
             }
             var raced: [ContestedClaim] = []
             for server in try await database.writeIfUnchanged(records: taking) {
-                guard var contest = attempted[server.recordID] else { continue }
+                guard var contest = attempted[server.recordID] else {
+                    continue
+                }
                 contest.server = server
                 raced.append(contest)
             }
             round = raced
         }
-        guard let unresolved = round.first else { return }
+        guard let unresolved = round.first else {
+            return
+        }
         throw groups[unresolved.pending.group].conflict(unresolved.pending.digest)
     }
 
@@ -161,10 +189,14 @@ extension EntityStore {
         var uuids: [String] = []
         var seen: Set<String> = []
         for contest in contested {
-            guard let holder = contest.server["owner"] as? String, holder != contest.pending.owner, seen.insert(holder).inserted else { continue }
+            guard let holder = contest.server["owner"] as? String, holder != contest.pending.owner, seen.insert(holder).inserted else {
+                continue
+            }
             uuids.append(holder)
         }
-        guard uuids.count > 0 else { return [:] }
+        guard uuids.count > 0 else {
+            return [:]
+        }
         let records = try decode(try await items(entity: definition.entity, uuids: uuids), using: definition)
         return Dictionary(records.filter { !$0.deleted }.map { ($0.uuid, $0) }, uniquingKeysWith: { first, _ in first })
     }
@@ -175,11 +207,15 @@ extension EntityStore {
 
     func releaseUniqueClaims(of records: [EntityRecord], using definition: EntityDefinition) async {
         let keys = definition.claimedKeys + Self.exclusiveFields(of: definition).map { [$0.name] }
-        guard !keys.isEmpty, records.count > 0 else { return }
+        guard !keys.isEmpty, records.count > 0 else {
+            return
+        }
         var owners: [CKRecord.ID: String] = [:]
         for record in records {
             for key in keys {
-                guard let digest = Self.keyDigest(key, in: record.values) else { continue }
+                guard let digest = Self.keyDigest(key, in: record.values) else {
+                    continue
+                }
                 owners[UniqueClaim.recordID(entity: definition.entity, digest: digest)] = record.uuid
             }
         }
@@ -190,7 +226,9 @@ extension EntityStore {
         var owners: [CKRecord.ID: String] = [:]
         for (previous, next) in rewritten {
             for key in keys {
-                guard let old = Self.keyDigest(key, in: previous.values), old != Self.keyDigest(key, in: next.values) else { continue }
+                guard let old = Self.keyDigest(key, in: previous.values), old != Self.keyDigest(key, in: next.values) else {
+                    continue
+                }
                 owners[UniqueClaim.recordID(entity: definition.entity, digest: old)] = previous.uuid
             }
         }
@@ -198,10 +236,16 @@ extension EntityStore {
     }
 
     private func release(_ owners: [CKRecord.ID: String]) async {
-        guard owners.count > 0 else { return }
-        guard let claims = try? await claimRecords(ids: owners.keys.sorted { $0.recordName < $1.recordName }) else { return }
+        guard owners.count > 0 else {
+            return
+        }
+        guard let claims = try? await claimRecords(ids: owners.keys.sorted { $0.recordName < $1.recordName }) else {
+            return
+        }
         let mine = claims.filter { $0["owner"] as? String == owners[$0.recordID] }.map(\.recordID)
-        guard mine.count > 0 else { return }
+        guard mine.count > 0 else {
+            return
+        }
         try? await database.delete(records: mine)
     }
 
@@ -209,25 +253,33 @@ extension EntityStore {
         switch values.first {
         case .string:
             let members = values.compactMap { value -> String? in
-                guard case .string(let member) = value else { return nil }
+                guard case .string(let member) = value else {
+                    return nil
+                }
                 return member
             }
             return members.count == values.count ? .strings(members) : nil
         case .int:
             let members = values.compactMap { value -> Int64? in
-                guard case .int(let member) = value else { return nil }
+                guard case .int(let member) = value else {
+                    return nil
+                }
                 return member
             }
             return members.count == values.count ? .ints(members) : nil
         case .double:
             let members = values.compactMap { value -> Double? in
-                guard case .double(let member) = value else { return nil }
+                guard case .double(let member) = value else {
+                    return nil
+                }
                 return member
             }
             return members.count == values.count ? .doubles(members) : nil
         case .date:
             let members = values.compactMap { value -> Date? in
-                guard case .date(let member) = value else { return nil }
+                guard case .date(let member) = value else {
+                    return nil
+                }
                 return member
             }
             return members.count == values.count ? .dates(members) : nil
@@ -239,7 +291,9 @@ extension EntityStore {
     private static func keyDigest(_ key: [String], in values: [String: RecordValue]) -> String? {
         var parts: [String] = []
         for field in key {
-            guard let value = values[field] else { return nil }
+            guard let value = values[field] else {
+                return nil
+            }
             parts.append("\(field)=\(value.canonical)")
         }
         return parts.joined(separator: "|")

@@ -17,7 +17,9 @@ struct StaticKeyProvider: EncryptionKeyProvider {
     let keys: [String: SymmetricKey]
 
     func key(for keyID: String) throws -> SymmetricKey {
-        guard let key = keys[keyID] else { throw SchemaError.missingKey(keyID) }
+        guard let key = keys[keyID] else {
+            throw SchemaError.missingKey(keyID)
+        }
         return key
     }
 }
@@ -32,17 +34,6 @@ struct EntityStoreTests {
         registry = SchemaRegistry(database: database)
         store = EntityStore(database: database, registry: registry)
         try await registry.publish(makePurchaseDefinition())
-    }
-
-    @Test("Registered definition serves the store without touching SchemaDescriptor")
-    func register() async throws {
-        let registry = SchemaRegistry(database: InMemoryDatabase())
-        try await registry.register(makePurchaseDefinition())
-
-        let local = EntityStore(database: database, registry: registry)
-        try await local.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-
-        #expect(try await local.read(entity: "purchase").count == 1)
     }
 
     @Test("Write persists a single Entity record")
@@ -166,8 +157,8 @@ struct EntityStoreTests {
             values["date"] = .date(Date(timeIntervalSince1970: TimeInterval(seconds)))
             try await store.write(values, entity: "purchase", uuid: "p-\(index)")
         }
-        let range = EntityStore.Filter.between("date", .date(Date(timeIntervalSince1970: 1_500)), .date(Date(timeIntervalSince1970: 3_000)))
-        let records = try await store.read(entity: "purchase", filters: range)
+        let range = FilterExpression.between("date", .date(Date(timeIntervalSince1970: 1_500)), .date(Date(timeIntervalSince1970: 3_000)))
+        let records = try await store.query("purchase").filter(range).take(100)
         #expect(records.map(\.uuid) == ["p-1"])
     }
 
@@ -183,10 +174,10 @@ struct EntityStoreTests {
         try await store.write(["tags": .strings(["swift", "server"])], entity: "post", uuid: "n-2")
         try await store.write(["tags": .strings(["android"])], entity: "post", uuid: "n-3")
 
-        let both = try await store.read(entity: "post", filters: EntityStore.Filter.containsAll("tags", ["swift", "ios"]))
+        let both = try await store.query("post").filter(.containsAll("tags", ["swift", "ios"])).take(100)
         #expect(both.map(\.uuid) == ["n-1"])
 
-        let either = try await store.read(entity: "post", any: EntityStore.Filter.containsAny("tags", ["ios", "server"]))
+        let either = try await store.query("post").filter(.containsAny("tags", ["ios", "server"])).take(100)
         #expect(Set(either.map(\.uuid)) == ["n-1", "n-2"])
     }
 
@@ -327,6 +318,11 @@ struct EntityStoreTests {
         let filter = EntityStore.Filter(field: "place", op: .near, value: center, radius: 5_000)
         let records = try await store.read(entity: "store_visit", filters: [filter])
         #expect(records.map(\.uuid) == ["v-1"])
+
+        let queried = try await store.query("store_visit")
+            .filter("place", near: GeoPoint(latitude: 55.75, longitude: 37.62), within: 5_000)
+            .take(100)
+        #expect(queried.map(\.uuid) == ["v-1"])
     }
 
     @Test("Aggregate views count writes into grid cells")
@@ -469,7 +465,7 @@ struct EntityStoreTests {
 
         try await secure.write(["email": .string("alice@example.com"), "status": .string("new")], entity: "account", uuid: "a-1")
 
-        try await store.updateAll(entity: "account") { $0.values["status"] = .string("active") }
+        try await store.updateAll(entity: "account", any: [[]]) { $0.values["status"] = .string("active") }
 
         let reread = try #require(try await secure.read(entity: "account").first { $0.uuid == "a-1" })
         #expect(reread.values["status"] == .string("active"))

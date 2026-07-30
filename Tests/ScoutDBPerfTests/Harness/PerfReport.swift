@@ -6,7 +6,8 @@
 // https://opensource.org/licenses/MIT.
 
 import Foundation
-import ScoutDB
+
+@testable import ScoutDB
 
 enum PerfReport {
     private struct Column<Row>: Sendable {
@@ -47,7 +48,9 @@ enum PerfReport {
 
     static func row(_ result: PerfResult, after previous: PerfResult?) -> String {
         let line = columns.map { pad($0.value(result), $0.width) }.joined()
-        guard let previous, previous.feature != result.feature || previous.size != result.size else { return line }
+        guard let previous, previous.feature != result.feature || previous.size != result.size else {
+            return line
+        }
         return "\n" + line
     }
 
@@ -69,7 +72,9 @@ enum PerfReport {
         let baseRecords: Int
 
         func requests(at records: Int) -> Double {
-            guard base > 0, baseRecords > 0 else { return base }
+            guard base > 0, baseRecords > 0 else {
+                return base
+            }
             return base * pow(Double(records) / Double(baseRecords), exponent)
         }
 
@@ -94,11 +99,15 @@ enum PerfReport {
         var grouped: [String: [PerfResult]] = [:]
         for result in results where result.failure == nil {
             let key = "\(result.feature)\u{1}\(result.scenario)"
-            if grouped[key] == nil { order.append(key) }
+            if grouped[key] == nil {
+                order.append(key)
+            }
             grouped[key, default: []].append(result)
         }
         return order.compactMap { key in
-            guard let rows = grouped[key], let last = rows.last else { return nil }
+            guard let rows = grouped[key], let last = rows.last else {
+                return nil
+            }
             let measured = rows.sorted { $0.size.records < $1.size.records }.map { (size: $0.size, perOperation: $0.perOperation) }
             var exponent = 0.0
             if measured.count > 1 {
@@ -128,14 +137,18 @@ enum PerfReport {
                 })
         }
         columns.append(Column(title: "over", width: 8) { $0.overhead.map { "\(number($0))×" } ?? "—" })
-        guard projected else { return columns }
+        guard projected else {
+            return columns
+        }
         columns.append(Column(title: "k", width: 6) { String(format: "%.2f", $0.exponent) })
         for level in levels {
             columns.append(Column(title: volume(level), width: 10) { number($0.requests(at: level)) })
         }
         columns.append(
             Column(title: "over@\(volume(levels[levels.count - 1]))", width: 12) { projection in
-                guard projection.sql > 0 else { return "—" }
+                guard projection.sql > 0 else {
+                    return "—"
+                }
                 return "\(number(projection.requests(at: levels[levels.count - 1]) / Double(projection.sql)))×"
             })
         return columns
@@ -176,7 +189,9 @@ enum PerfReport {
     static func page(_ results: [PerfResult]) -> String {
         let projections = projections(results)
         var lines = ["## ScoutDB — request cost by feature", "", summary(results)]
-        guard let sample = projections.first else { return lines.joined(separator: "\n") }
+        guard let sample = projections.first else {
+            return lines.joined(separator: "\n")
+        }
         let fitted = sample.measured.count > 1
 
         if fitted {
@@ -211,7 +226,9 @@ enum PerfReport {
         ]
         var feature: String?
         for projection in projections {
-            if let feature, feature != projection.feature { lines.append("") }
+            if let feature, feature != projection.feature {
+                lines.append("")
+            }
             feature = projection.feature
             lines.append(columns.map { pad($0.value(projection), $0.width) }.joined())
         }
@@ -247,7 +264,9 @@ enum PerfReport {
         var order: [String] = []
         var grouped: [String: [Projection]] = [:]
         for projection in projections {
-            if grouped[projection.feature] == nil { order.append(projection.feature) }
+            if grouped[projection.feature] == nil {
+                order.append(projection.feature)
+            }
             grouped[projection.feature, default: []].append(projection)
         }
         return order.map { name in
@@ -272,7 +291,9 @@ enum PerfReport {
 
     static func write(_ page: String, to path: String) {
         let url = URL(fileURLWithPath: path)
-        guard let data = (page + "\n").data(using: .utf8) else { return }
+        guard let data = (page + "\n").data(using: .utf8) else {
+            return
+        }
         guard let handle = try? FileHandle(forWritingTo: url) else {
             try? data.write(to: url)
             return
@@ -286,10 +307,14 @@ enum PerfReport {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let dump = Dump(rows: results.map(Row.init), projections: projections(results).map(ProjectionRow.init))
-        guard let data = try? encoder.encode(dump) else { return nil }
+        guard let data = try? encoder.encode(dump) else {
+            return nil
+        }
         let url = destination(name: name)
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        guard (try? data.write(to: url)) != nil else { return nil }
+        guard (try? data.write(to: url)) != nil else {
+            return nil
+        }
         return url
     }
 
@@ -322,14 +347,22 @@ enum PerfReport {
     }
 
     private static func number(_ value: Double) -> String {
-        if value >= 1_000 { return String(format: "%.0f", value) }
-        if value == value.rounded() { return String(format: "%.0f", value) }
+        if value >= 1_000 {
+            return String(format: "%.0f", value)
+        }
+        if value == value.rounded() {
+            return String(format: "%.0f", value)
+        }
         return String(format: "%.1f", value)
     }
 
     private static func volume(_ records: Int) -> String {
-        if records >= 1_000_000 { return "\(records / 1_000_000)M" }
-        if records >= 1_000 { return "\(records / 1_000)k" }
+        if records >= 1_000_000 {
+            return "\(records / 1_000_000)M"
+        }
+        if records >= 1_000 {
+            return "\(records / 1_000)k"
+        }
         return "\(records)"
     }
 

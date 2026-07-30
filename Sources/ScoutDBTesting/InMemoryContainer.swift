@@ -15,7 +15,6 @@ public final class InMemoryContainer: CloudContainer, @unchecked Sendable {
 
     private let lock = NSLock()
     private var status: CKAccountStatus
-    private var observers: [UUID: AsyncStream<CKAccountStatus>.Continuation] = [:]
 
     public init(status: CKAccountStatus = .available) {
         self.status = status
@@ -26,26 +25,8 @@ public final class InMemoryContainer: CloudContainer, @unchecked Sendable {
         lock.withLock { status }
     }
 
-    /// Simulates a sign-in, sign-out, or account switch: every updates stream
-    /// sees the new status.
+    /// Simulates a sign-in, sign-out, or account switch.
     public func setAccountStatus(_ status: CKAccountStatus) {
-        let continuations = lock.withLock {
-            self.status = status
-            return Array(observers.values)
-        }
-        for continuation in continuations {
-            continuation.yield(status)
-        }
-    }
-
-    public func accountStatusUpdates() -> AsyncStream<CKAccountStatus> {
-        AsyncStream { continuation in
-            let id = UUID()
-            lock.withLock { observers[id] = continuation }
-            continuation.onTermination = { [weak self] _ in
-                guard let self else { return }
-                self.lock.withLock { _ = self.observers.removeValue(forKey: id) }
-            }
-        }
+        lock.withLock { self.status = status }
     }
 }

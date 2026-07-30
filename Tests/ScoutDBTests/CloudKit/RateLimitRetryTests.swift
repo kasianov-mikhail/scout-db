@@ -18,7 +18,9 @@ struct RateLimitRetryTests {
         var calls = 0
         let result = try await withRateLimitRetry {
             calls += 1
-            guard calls == 3 else { throw CKError(.requestRateLimited, userInfo: [CKErrorRetryAfterKey: 0.01]) }
+            guard calls == 3 else {
+                throw CKError(.requestRateLimited, userInfo: [CKErrorRetryAfterKey: 0.01])
+            }
             return "ok"
         }
         #expect(result == "ok")

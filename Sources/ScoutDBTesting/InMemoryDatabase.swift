@@ -26,7 +26,9 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         private var dense: [CKRecord]?
 
         mutating func all() -> [CKRecord] {
-            if let dense { return dense }
+            if let dense {
+                return dense
+            }
             let records = slots.compactMap { $0 }
             dense = records
             return records
@@ -61,18 +63,24 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         mutating func remove(_ ids: some Sequence<CKRecord.ID>) {
             var removed = false
             for id in ids {
-                guard let position = positions.removeValue(forKey: id) else { continue }
+                guard let position = positions.removeValue(forKey: id) else {
+                    continue
+                }
                 slots[position] = nil
                 emptied += 1
                 removed = true
             }
-            guard removed else { return }
+            guard removed else {
+                return
+            }
             dense = nil
             compact()
         }
 
         private mutating func compact() {
-            guard emptied > 64, emptied * 2 >= slots.count else { return }
+            guard emptied > 64, emptied * 2 >= slots.count else {
+                return
+            }
             let records = slots.compactMap { $0 }
             positions.removeAll(keepingCapacity: true)
             for (position, record) in records.enumerated() {
@@ -166,8 +174,9 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     ) {
         try lock.withLock {
             try popErrorLocked(writing: false)
-            guard let page = LocalQuery.resume(indexedLocked(), from: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit, pageLimit: state.pageLimit)
-            else {
+            let resumed = LocalQuery.resume(
+                indexedLocked(), from: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit, pageLimit: state.pageLimit)
+            guard let page = resumed else {
                 throw CKError(.invalidArguments)
             }
             return page
@@ -180,7 +189,9 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     }
 
     private func popErrorLocked(writing: Bool) throws {
-        guard let error = writing ? state.writeErrors.popLast() ?? state.errors.popLast() : state.errors.popLast() else { return }
+        guard let error = writing ? state.writeErrors.popLast() ?? state.errors.popLast() : state.errors.popLast() else {
+            return
+        }
         throw error
     }
 
@@ -213,9 +224,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         try lock.withLock {
             var queued: [CKRecord.ID: any Error] = [:]
             let batch = Set(records.map(\.recordID))
-            while let next = (state.writeErrors.last ?? state.errors.last) as? RecordConflictError, batch.contains(next.serverRecord.recordID),
-                queued[next.serverRecord.recordID] == nil
-            {
+            while let next = pendingConflictLocked(in: batch, queued: queued) {
                 if state.writeErrors.isEmpty {
                     state.errors.removeLast()
                 } else {
@@ -246,20 +255,42 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     }
 
     private static func conflict(with server: CKRecord, raw: Bool) -> any Error {
-        guard raw else { return RecordConflictError(serverRecord: server) }
+        guard raw else {
+            return RecordConflictError(serverRecord: server)
+        }
         return CKError(.serverRecordChanged, userInfo: [CKRecordChangedErrorServerRecordKey: server])
     }
 
     private static func isTransport(_ error: any Error) -> Bool {
-        if error is URLError { return true }
-        guard let error = error as? CKError else { return false }
+        if error is URLError {
+            return true
+        }
+        guard let error = error as? CKError else {
+            return false
+        }
         return [.networkUnavailable, .networkFailure, .serviceUnavailable].contains(error.code)
     }
 
+    private func pendingConflictLocked(in batch: Set<CKRecord.ID>, queued: [CKRecord.ID: any Error]) -> RecordConflictError? {
+        guard let next = (state.writeErrors.last ?? state.errors.last) as? RecordConflictError else {
+            return nil
+        }
+        guard batch.contains(next.serverRecord.recordID), queued[next.serverRecord.recordID] == nil else {
+            return nil
+        }
+        return next
+    }
+
     private func conflictingServerLocked(for record: CKRecord) -> CKRecord? {
-        guard let stored = state.table.record(id: record.recordID), stored.recordType == record.recordType,
-            stored.recordVersionTag != record.recordVersionTag
-        else { return nil }
+        guard let stored = state.table.record(id: record.recordID) else {
+            return nil
+        }
+        guard stored.recordType == record.recordType else {
+            return nil
+        }
+        guard stored.recordVersionTag != record.recordVersionTag else {
+            return nil
+        }
         return project(stored, keys: nil)
     }
 
@@ -304,16 +335,24 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     private func retainingAssets(of record: CKRecord) -> CKRecord {
         let prefix = EntityStore.assetStagingDirectory.standardizedFileURL.path + "/"
         let staged = record.allKeys().filter { key in
-            guard let url = (record[key] as? CKAsset)?.fileURL else { return false }
+            guard let url = (record[key] as? CKAsset)?.fileURL else {
+                return false
+            }
             return url.standardizedFileURL.path.hasPrefix(prefix)
         }
-        guard staged.count > 0 else { return record }
+        guard staged.count > 0 else {
+            return record
+        }
         let stored = record.duplicate()
         for key in staged {
-            guard let url = (stored[key] as? CKAsset)?.fileURL else { continue }
+            guard let url = (stored[key] as? CKAsset)?.fileURL else {
+                continue
+            }
             let copy = assetDirectory.appendingPathComponent(UUID().uuidString)
             try? FileManager.default.createDirectory(at: assetDirectory, withIntermediateDirectories: true)
-            guard (try? FileManager.default.copyItem(at: url, to: copy)) != nil else { continue }
+            guard (try? FileManager.default.copyItem(at: url, to: copy)) != nil else {
+                continue
+            }
             stored[key] = CKAsset(fileURL: copy)
         }
         return stored

@@ -7,7 +7,8 @@
 
 import CloudKit
 import Foundation
-import ScoutDB
+
+@testable import ScoutDB
 
 extension PerfScenarios {
     static var migrations: [PerfScenario] {

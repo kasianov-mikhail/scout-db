@@ -23,7 +23,7 @@ struct BuilderTests {
         store = EntityStore(database: database, registry: registry)
         try await store.schema("purchase")
             .field("product_id", .string, .required)
-            .field("quantity", .int, .minimum(0))
+            .field("quantity", .int, .min(0))
             .field("amount", .double)
             .field("date", .timestamp)
             .field("comment", .string, .payload)
@@ -104,8 +104,152 @@ struct BuilderTests {
         #expect(definition.fields.first { $0.name == "quantity" }?.storage == .slot(.int, "i_00"))
         #expect(definition.fields.first { $0.name == "amount" }?.storage == .slot(.double, "d_00"))
         #expect(definition.fields.first { $0.name == "comment" }?.storage == .payload)
-        #expect(definition.fields.first { $0.name == "quantity" }?.minimum == 0)
+        #expect(definition.fields.first { $0.name == "quantity" }?.min == 0)
         #expect(definition.envelopeDate == "date")
+    }
+
+    @Test("Creation grids every groupable field, and the days when dated")
+    func implicitGrid() async throws {
+        let definition = try await registry.definition(for: "purchase")
+        let views = try #require(definition.views)
+        #expect(Set(views.map(\.name)) == ["by_product_id", "by_quantity", "by_amount", "by_day"])
+        #expect(views.first { $0.name == "by_product_id" }?.bucket == .lifetime)
+        #expect(views.first { $0.name == "by_day" }?.groupBy == nil)
+
+        let counted = try await GridQuery(store, entity: "purchase", view: "by_product_id").rows()
+        #expect(counted.map(\.count).reduce(0, +) == 3)
+        #expect(try await store.query("purchase").filter("product_id", .equals, "sku-1").count() == 1)
+    }
+
+    @Test("An entity without an envelope date grids its fields alone")
+    func implicitGridWithoutDates() async throws {
+        try await store.schema("label")
+            .field("slug", .string, .required)
+            .field("caption", .text)
+            .field("aliases", .stringList)
+            .field("icon", .asset)
+            .create()
+
+        let views = try #require(try await registry.definition(for: "label").views)
+        #expect(views.map(\.name) == ["by_slug"])
+    }
+
+    @Test("A declared metric keeps the grid from counting its field twice")
+    func declaredViewWins() async throws {
+        try await store.schema("shipment")
+            .field("carrier", .string, .required)
+            .field("weight", .double)
+            .field("sent", .timestamp)
+            .envelopeDate("sent")
+            .sum("weight", by: "carrier")
+            .create()
+
+        let views = try #require(try await registry.definition(for: "shipment").views)
+        #expect(views.filter { $0.groupBy == "carrier" }.count == 1)
+        #expect(views.first { $0.groupBy == "carrier" }?.sum == "weight")
+        #expect(Set(views.compactMap(\.groupBy)) == ["carrier", "weight"])
+    }
+
+    @Test("An ungrouped field is left out of the grid")
+    func ungroupedField() async throws {
+        try await store.schema("event")
+            .field("session", .string, .required, .ungrouped)
+            .field("kind", .string, .required)
+            .create()
+
+        #expect(try await registry.definition(for: "event").views?.compactMap(\.groupBy) == ["kind"])
+    }
+
+    @Test("An update inherits the grid instead of building its own")
+    func updateKeepsTheGrid() async throws {
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .create()
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .field("assignee", .string)
+            .update()
+
+        let updated = try await registry.definition(for: "ticket")
+        #expect(updated.version == 2)
+        #expect(updated.views?.map(\.name) == ["by_queue"])
+    }
+
+    @Test("An update names the fields its new version leaves uncounted")
+    func updateReportsMissingViews() async throws {
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .create()
+
+        let missing = try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .field("assignee", .string)
+            .field("notes", .string, .payload)
+            .update()
+
+        #expect(missing == ["assignee"])
+    }
+
+    @Test("An update that adds no groupable field suggests nothing")
+    func updateWithoutNewFieldsSuggestsNothing() async throws {
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .create()
+
+        let missing = try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .update()
+
+        #expect(missing.isEmpty)
+    }
+
+    @Test("An aggregate declared on an update joins the grid instead of replacing it")
+    func declaredViewJoinsTheGrid() async throws {
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .create()
+
+        let missing = try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .field("assignee", .string)
+            .count(by: "assignee")
+            .update()
+
+        #expect(missing.isEmpty)
+        let updated = try await registry.definition(for: "ticket")
+        #expect(updated.views?.compactMap(\.groupBy) == ["queue", "assignee"])
+    }
+
+    @Test("An aggregate of the same shape replaces the one the grid built")
+    func declaredViewOverridesTheGrid() async throws {
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .field("weight", .double)
+            .create()
+
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .field("weight", .double)
+            .sum("weight", by: "queue")
+            .update()
+
+        let updated = try #require(try await registry.definition(for: "ticket").views)
+        #expect(Set(updated.compactMap(\.groupBy)) == ["queue", "weight"])
+        #expect(updated.first { $0.groupBy == "queue" }?.sum == "weight")
+    }
+
+    @Test("An aggregate over a field the version closes lapses with it")
+    func closedFieldDropsItsAggregate() async throws {
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .field("weight", .double)
+            .create()
+
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .update()
+
+        #expect(try await registry.definition(for: "ticket").views?.compactMap(\.groupBy) == ["queue"])
     }
 
     @Test("Query builder filters, sorts, and limits")
@@ -131,20 +275,47 @@ struct BuilderTests {
         #expect(record?.uuid == "p-2")
     }
 
-    @Test("OR groups distribute over the base filters")
+    @Test("Equalities over one field fold into a single in-list branch")
+    func disjunctionFolds() async throws {
+        let plans = try await store.query("purchase")
+            .filter("product_id" == "sku-0" || "product_id" == "sku-1" || "product_id" == "sku-2")
+            .explain()
+
+        #expect(plans.count == 1)
+        #expect(plans[0].server.contains { $0.contains("sku-0") && $0.contains("sku-1") && $0.contains("sku-2") })
+    }
+
+    @Test("A conjunction inside a disjunction multiplies the alternatives out")
+    func conjunctionDistributes() async throws {
+        let plans = try await store.query("purchase")
+            .filter(("quantity" > 1 || "quantity" < 0) && ("amount" > 5 || "amount" < 1))
+            .explain()
+
+        #expect(plans.count == 4)
+    }
+
+    @Test("An expression narrows the same way a plain filter does")
+    func expressionNarrows() async throws {
+        let records = try await store.query("purchase")
+            .filter("quantity" > 0)
+            .filter("product_id" == "sku-0" || ("quantity" > 1 && "amount" < 25))
+            .sort("date")
+            .take(100)
+
+        #expect(records.map(\.uuid) == ["p-0", "p-2"])
+    }
+
+    @Test("A disjunction distributes over the base filters")
     func orGroup() async throws {
         let records = try await store.query("purchase")
             .filter("quantity" > 0)
-            .group {
-                $0.filter("product_id", .equals, "sku-0")
-                $0.filter("product_id", .equals, "sku-2")
-            }
+            .filter("product_id" == "sku-0" || "product_id" == "sku-2")
             .sort("date")
             .take(100)
         #expect(records.map(\.uuid) == ["p-0", "p-2"])
     }
 
-    @Test("Explain reports one plan per OR branch instead of dropping the groups")
+    @Test("Explain reports one plan per alternative")
     func explainGroups() async throws {
         let flat = try await store.query("purchase").filter("quantity" > 0).explain()
         #expect(flat.count == 1)
@@ -152,20 +323,14 @@ struct BuilderTests {
 
         let grouped = try await store.query("purchase")
             .filter("quantity" > 0)
-            .group {
-                $0.filter("product_id", .equals, "sku-0")
-                $0.filter("product_id", .equals, "sku-2")
-            }
+            .filter("product_id" == "sku-0" || "product_id" == "sku-2")
             .explain()
         #expect(grouped.count == 1)
         #expect(grouped[0].server.contains { $0.contains("sku-0") && $0.contains("sku-2") })
 
         let fanned = try await store.query("purchase")
             .filter("quantity" > 0)
-            .group {
-                $0.filter("product_id", .equals, "sku-0")
-                $0.filter("quantity", .equals, .int(2))
-            }
+            .filter("product_id" == "sku-0" || "quantity" == 2)
             .explain()
         #expect(fanned.count == 2)
         #expect(!Set(fanned[0].server).intersection(fanned[1].server).isEmpty)
@@ -198,7 +363,7 @@ struct BuilderTests {
 
         await #expect(throws: SchemaError.invalidValue("product_id")) {
             _ = try await store.query("purchase")
-                .exclude(.init(field: "product_id", op: .near, value: .location(latitude: 0, longitude: 0), radius: 10))
+                .exclude(FilterExpression(EntityStore.Filter(field: "product_id", op: .near, value: .location(latitude: 0, longitude: 0), radius: 10)))
                 .take(100)
         }
     }
@@ -237,39 +402,28 @@ struct BuilderTests {
     @Test("A compound alternative requires all of its filters at once")
     func compoundAlternative() async throws {
         let records = try await store.query("purchase")
-            .group {
-                $0.filter("product_id", .equals, "sku-1")
-                $0.all("quantity" > 1, "quantity" < 3)
-            }
+            .filter("product_id" == "sku-1" || ("quantity" > 1 && "quantity" < 3))
             .sort("date")
             .take(100)
         #expect(records.map(\.uuid) == ["p-1", "p-2"])
 
         let count = try await store.query("purchase")
-            .group {
-                $0.all("quantity" > 1, "amount" < 25)
-            }
+            .filter("quantity" > 1 && "amount" < 25)
             .count()
         #expect(count == 1)
     }
 
-    @Test("Builder update and delete honor OR groups")
+    @Test("Builder update and delete honor a disjunction")
     func groupMutation() async throws {
         try await store.query("purchase")
-            .group {
-                $0.filter("product_id", .equals, "sku-0")
-                $0.filter("product_id", .equals, "sku-2")
-            }
+            .filter("product_id" == "sku-0" || "product_id" == "sku-2")
             .update { record in
                 record.values["quantity"] = .int(9)
             }
         #expect(try await store.query("purchase").filter("quantity", .equals, 9).count() == 2)
 
         try await store.query("purchase")
-            .group {
-                $0.filter("product_id", .equals, "sku-0")
-                $0.filter("product_id", .equals, "sku-2")
-            }
+            .filter("product_id" == "sku-0" || "product_id" == "sku-2")
             .delete()
         let remaining = try await store.query("purchase").take(100)
         #expect(remaining.map(\.uuid) == ["p-1"])
@@ -279,17 +433,14 @@ struct BuilderTests {
     func folds() async throws {
         #expect(try await store.query("purchase").sum("quantity") == 6)
         #expect(try await store.query("purchase").filter("quantity" > 1).sum("amount") == 50)
-        #expect(try await store.query("purchase").minimum("quantity") == 1)
-        #expect(try await store.query("purchase").maximum("amount") == 30)
+        #expect(try await store.query("purchase").min("quantity") == 1)
+        #expect(try await store.query("purchase").max("amount") == 30)
         #expect(try await store.query("purchase").average("quantity") == 2)
         #expect(try await store.query("purchase").filter("quantity" > 9).average("quantity") == nil)
         #expect(try await store.query("purchase").filter("quantity" > 9).sum("quantity") == 0)
 
         let grouped = try await store.query("purchase")
-            .group {
-                $0.filter("product_id", .equals, "sku-0")
-                $0.filter("product_id", .equals, "sku-2")
-            }
+            .filter("product_id" == "sku-0" || "product_id" == "sku-2")
             .sum("quantity")
         #expect(grouped == 5)
 
@@ -310,7 +461,7 @@ struct BuilderTests {
 
         #expect(try await store.query("purchase").sum("quantity", by: "product_id") == ["sku-0": 8, "sku-1": 1, "sku-2": 2])
         #expect(try await store.query("purchase").count(by: "product_id") == ["sku-0": 2, "sku-1": 1, "sku-2": 1])
-        #expect(try await store.query("purchase").maximum("amount", by: "product_id") == ["sku-0": 50, "sku-1": 10, "sku-2": 20])
+        #expect(try await store.query("purchase").max("amount", by: "product_id") == ["sku-0": 50, "sku-1": 10, "sku-2": 20])
         #expect(try await store.query("purchase").filter("quantity" > 1).average("amount", by: "product_id") == ["sku-0": 40, "sku-2": 20])
 
         await #expect(throws: SchemaError.invalidValue("product_id")) {
@@ -321,13 +472,10 @@ struct BuilderTests {
         }
     }
 
-    @Test("Pagination and streaming honor OR groups")
+    @Test("Pagination and streaming honor a disjunction")
     func groupPagination() async throws {
         func query() -> QueryBuilder {
-            store.query("purchase").group {
-                $0.filter("product_id", .equals, "sku-0")
-                $0.filter("product_id", .equals, "sku-2")
-            }
+            store.query("purchase").filter("product_id" == "sku-0" || "product_id" == "sku-2")
         }
 
         let first = try await query().paginate(size: 1)
@@ -354,10 +502,7 @@ struct BuilderTests {
 
         func grouped() -> QueryBuilder {
             store.query("purchase")
-                .group {
-                    $0.filter("product_id", .equals, "sku-0")
-                    $0.filter("product_id", .equals, "sku-1")
-                }
+                .filter("product_id" == "sku-0" || "product_id" == "sku-1")
                 .sort("quantity", .descending)
         }
         let top = try await grouped().page(size: 1)
@@ -377,15 +522,14 @@ struct BuilderTests {
         }
     }
 
-    @Test("A record matching several OR branches is transformed once")
+    @Test("A record matching several alternatives is transformed once")
     func overlappingBranches() async throws {
         try await store.query("purchase")
-            .group {
-                $0.filter("quantity" > 1)
-                $0.filter("product_id", .equals, "sku-0")
-            }
+            .filter("quantity" > 1 || "product_id" == "sku-0")
             .update { record in
-                guard case .int(let quantity)? = record.values["quantity"] else { return }
+                guard case .int(let quantity)? = record.values["quantity"] else {
+                    return
+                }
                 record.values["quantity"] = .int(quantity + 1)
             }
         let records = try await store.query("purchase").sort("date").take(100)
@@ -473,13 +617,6 @@ struct BuilderTests {
             streamed.append(purchase)
         }
         #expect(Set(streamed.compactMap(\.productId)) == ["sku-0", "sku-2"])
-
-        var updates = try store.query(TypedPurchase.self).filter(\.quantity > 2).observe().makeAsyncIterator()
-        #expect(try await updates.next()?.count == 1)
-        try await store.write(
-            ["product_id": .string("sku-9"), "quantity": .int(5), "date": .date(Date(timeIntervalSince1970: 9_000))],
-            entity: "purchase", uuid: "p-9")
-        #expect(try await updates.next()?.count == 2)
 
         database.records.first { $0.recordID.recordName == "p-0" }?.overrideCreator("user-a")
         let mine = try await store.query(TypedPurchase.self).createdBy("user-a").take(100)

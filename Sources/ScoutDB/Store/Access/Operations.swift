@@ -53,22 +53,10 @@ extension EntityStore {
         try await update(entity: entity, uuids: [uuid], maxRetry: maxRetry, transform: transform)
     }
 
-    /// Patches a batch of records of one entity, each through the same transform.
-    ///
-    /// The batch reads its records, saves them, and settles their claims,
-    /// aggregate views and revisions once, so a run of records costs a fixed
-    /// number of round trips instead of one update's worth each. The transform
-    /// sees one record at a time and can branch on its uuid; a uuid without a
-    /// live record throws `SchemaError.notFound`, and a repeated uuid is
-    /// patched once.
-    ///
-    /// Each save is conditional on the record being unchanged on the server; a
-    /// record that lost its race is re-transformed from the winning record and
-    /// retried, like a single `update`. Exhausting `maxRetry` throws the
-    /// conflict after the records that did land are accounted for.
-    ///
-    public func update(entity: String, uuids: [String], maxRetry: Int = 3, transform: (inout EntityRecord) throws -> Void) async throws {
-        guard uuids.count > 0 else { return }
+    func update(entity: String, uuids: [String], maxRetry: Int = 3, transform: (inout EntityRecord) throws -> Void) async throws {
+        guard uuids.count > 0 else {
+            return
+        }
         let definition = try await registry.definition(for: entity)
         let coder = EntityCoder(keyProvider: keyProvider)
         let owned = definition.claimedKeys + Self.exclusiveFields(of: definition).map { [$0.name] }
@@ -106,7 +94,9 @@ extension EntityStore {
                 break
             }
             pending = try pending.compactMap { rewrite in
-                guard let winner = losers[rewrite.record.recordID] else { return nil }
+                guard let winner = losers[rewrite.record.recordID] else {
+                    return nil
+                }
                 return try remerge(rewrite, onto: winner, with: coder, using: definition, transform: transform)
             }
         }
@@ -114,7 +104,6 @@ extension EntityStore {
         EntityCoder.discardStagedAssets(in: applied.map(\.record))
         try await settle(rewritten: applied, owning: owned, using: definition)
         if applied.count > 0 {
-            noteChange(entity: entity, changed: applied.map(\.next))
         }
         if let unresolved {
             throw RecordConflictError(serverRecord: unresolved)
@@ -201,23 +190,13 @@ extension EntityStore {
         return changes
     }
 
-    public func read(
+    func read(
         entity: String, filters: [Filter] = [], fields: [String]? = nil, limit: Int, after cursor: EntityCursor? = nil, createdBy creator: String? = nil
     ) async throws -> EntityPage {
         try await read(entity: entity, any: [filters], fields: fields, limit: limit, after: cursor, createdBy: creator)
     }
 
-    /// Reads one keyset page of the records matching any of the OR branches.
-    ///
-    /// Every branch reads its own page from the shared cursor concurrently; the
-    /// union's first `limit` rows in key order are exactly the page a single scan
-    /// over the disjunction would produce, since a row the union keeps is in its
-    /// own branch's top `limit` too.
-    ///
-    /// `fields` trims every record to those values, as on an unpaged read; the
-    /// envelope date the cursor is built from is always carried.
-    ///
-    public func read(
+    func read(
         entity: String, any branches: [[Filter]], fields: [String]? = nil, limit: Int, after cursor: EntityCursor? = nil, createdBy creator: String? = nil
     ) async throws -> EntityPage {
         let definition = try await registry.definition(for: entity)
@@ -256,19 +235,18 @@ extension EntityStore {
         let keys = try fields.map { try desiredKeys($0 + pageFilters.map(\.field) + [dateField], using: definition) }
 
         let collected = try await boundedRecords(matching: query, desiredKeys: keys, limit: limit, using: definition) { record in
-            guard included(record) else { return false }
-            guard let cursor else { return true }
+            guard included(record) else {
+                return false
+            }
+            guard let cursor else {
+                return true
+            }
             return Self.pageKey(record, dateField) > (cursor.date, cursor.uuid)
         }
         return Array(collected.sorted { Self.pageKey($0, dateField) < Self.pageKey($1, dateField) }.prefix(limit))
     }
 
-    /// Reads one keyset page ordered by any slot-backed scalar field, ascending
-    /// or descending, with ties broken by uuid.
-    ///
-    /// Records missing the field are skipped — a keyset cursor cannot address them.
-    ///
-    public func read(
+    func read(
         entity: String, filters: [Filter] = [], fields: [String]? = nil, orderedBy field: String, descending: Bool = false, limit: Int,
         after cursor: FieldCursor? = nil, createdBy creator: String? = nil
     ) async throws -> FieldPage {
@@ -276,20 +254,18 @@ extension EntityStore {
             entity: entity, any: [filters], fields: fields, orderedBy: field, descending: descending, limit: limit, after: cursor, createdBy: creator)
     }
 
-    /// Reads one field-ordered keyset page of the records matching any of the
-    /// OR branches; the same page-merge argument as the envelope-date variant.
-    ///
-    /// `fields` trims every record to those values; the ordering field the
-    /// cursor is built from is always carried.
-    ///
-    public func read(
+    func read(
         entity: String, any branches: [[Filter]], fields: [String]? = nil, orderedBy field: String, descending: Bool = false, limit: Int,
         after cursor: FieldCursor? = nil, createdBy creator: String? = nil
     ) async throws -> FieldPage {
         let definition = try await registry.definition(for: entity)
-        guard let target = definition.field(named: field, at: definition.version), [.string, .int, .double, .timestamp].contains(target.type),
-            case .slot = target.storage
-        else {
+        guard let target = definition.field(named: field, at: definition.version) else {
+            throw SchemaError.invalidValue(field)
+        }
+        guard [.string, .int, .double, .timestamp].contains(target.type) else {
+            throw SchemaError.invalidValue(field)
+        }
+        guard case .slot = target.storage else {
             throw SchemaError.invalidValue(field)
         }
         let pages = try await withThrowingTaskGroup(of: [EntityRecord].self) { group in
@@ -328,8 +304,12 @@ extension EntityStore {
         let keys = try fields.map { try desiredKeys($0 + pageFilters.map(\.field) + [field], using: definition) }
 
         let collected = try await boundedRecords(matching: query, desiredKeys: keys, limit: limit, using: definition) { record in
-            guard included(record), record.values[field] != nil else { return false }
-            guard let cursor else { return true }
+            guard included(record), record.values[field] != nil else {
+                return false
+            }
+            guard let cursor else {
+                return true
+            }
             return Self.beyond(record, field, cursor, descending: descending)
         }
         return Array(collected.sorted { Self.ordered($0, $1, by: field, descending: descending) }.prefix(limit))
@@ -348,25 +328,22 @@ extension EntityStore {
 
     private static func ordered(_ lhs: EntityRecord, _ rhs: EntityRecord, by field: String, descending: Bool) -> Bool {
         let order = rank(lhs.values[field], rhs.values[field])
-        guard order != .orderedSame else { return lhs.uuid < rhs.uuid }
+        guard order != .orderedSame else {
+            return lhs.uuid < rhs.uuid
+        }
         return descending ? order == .orderedDescending : order == .orderedAscending
     }
 
     private static let uuidSort = ServerSort(field: "uuid", ascending: true)
 
     private static func pageKey(_ record: EntityRecord, _ dateField: String) -> (Date, String) {
-        guard case .date(let date)? = record.values[dateField] else { return (.distantPast, record.uuid) }
+        guard case .date(let date)? = record.values[dateField] else {
+            return (.distantPast, record.uuid)
+        }
         return (date, record.uuid)
     }
 
-    public func stream(entity: String, filters: [Filter] = [], fields: [String]? = nil, pageSize: Int = 100, createdBy creator: String? = nil)
-        -> AsyncThrowingStream<EntityRecord, any Error>
-    {
-        stream(entity: entity, any: [filters], fields: fields, pageSize: pageSize, createdBy: creator)
-    }
-
-    /// Streams every record matching any of the OR branches, page by page.
-    public func stream(entity: String, any branches: [[Filter]], fields: [String]? = nil, pageSize: Int = 100, createdBy creator: String? = nil)
+    func stream(entity: String, any branches: [[Filter]], fields: [String]? = nil, pageSize: Int = 100, createdBy creator: String? = nil)
         -> AsyncThrowingStream<EntityRecord, any Error>
     {
         AsyncThrowingStream { continuation in
@@ -389,13 +366,7 @@ extension EntityStore {
         }
     }
 
-    @discardableResult public func updateAll(
-        entity: String, filters: [Filter] = [], maxRetry: Int = 3, createdBy creator: String? = nil, transform: (inout EntityRecord) throws -> Void
-    ) async throws -> Int {
-        try await updateAll(entity: entity, any: [filters], maxRetry: maxRetry, createdBy: creator, transform: transform)
-    }
-
-    @discardableResult public func updateAll(
+    @discardableResult func updateAll(
         entity: String, any branches: [[Filter]], maxRetry: Int = 3, createdBy creator: String? = nil, transform: (inout EntityRecord) throws -> Void
     ) async throws -> Int {
         let definition = try await registry.definition(for: entity)
@@ -408,13 +379,21 @@ extension EntityStore {
         for branch in branches where unresolved == nil {
             let (query, included) = try liveQuery(branch, entity: entity, createdBy: creator, using: definition)
             try await database.forEachPage(matching: query) { page in
-                guard unresolved == nil else { return }
+                guard unresolved == nil else {
+                    return
+                }
                 let matched = try page.filter { record in
-                    guard let uuid = record["uuid"] as? String, seen.insert(uuid).inserted else { return false }
-                    guard let decoded = try decode(record, with: coder, using: definition) else { return false }
+                    guard let uuid = record["uuid"] as? String, seen.insert(uuid).inserted else {
+                        return false
+                    }
+                    guard let decoded = try decode(record, with: coder, using: definition) else {
+                        return false
+                    }
                     return included(decoded)
                 }
-                guard matched.count > 0 else { return }
+                guard matched.count > 0 else {
+                    return
+                }
 
                 var pending = try matched.map { try coder.rewrite($0, using: definition, transform: transform) }
                 var settled: [EntityCoder.Rewrite] = []
@@ -436,10 +415,11 @@ extension EntityStore {
                     pending = try conflicts.map { try coder.rewrite($0, using: definition, transform: transform) }
                 }
 
-                guard settled.count > 0 else { return }
+                guard settled.count > 0 else {
+                    return
+                }
                 try await settle(rewritten: settled, owning: owned, using: definition)
                 applied += settled.count
-                noteChange(entity: entity, changed: settled.map(\.next))
             }
         }
 
@@ -449,11 +429,7 @@ extension EntityStore {
         return applied
     }
 
-    @discardableResult public func deleteAll(entity: String, filters: [Filter] = [], createdBy creator: String? = nil) async throws -> Int {
-        try await deleteAll(entity: entity, any: [filters], createdBy: creator)
-    }
-
-    @discardableResult public func deleteAll(entity: String, any branches: [[Filter]], createdBy creator: String? = nil) async throws -> Int {
+    @discardableResult func deleteAll(entity: String, any branches: [[Filter]], createdBy creator: String? = nil) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         var seen: Set<String> = []
         var removed = 0
@@ -461,12 +437,13 @@ extension EntityStore {
             let (query, included) = try liveQuery(branch, entity: entity, createdBy: creator, using: definition)
             try await forEachPage(matching: query, using: definition) { page in
                 let victims = page.filter { included($0) && seen.insert($0.uuid).inserted }
-                guard victims.count > 0 else { return }
+                guard victims.count > 0 else {
+                    return
+                }
                 let tombstones = try victims.map { try tombstone(entity: entity, uuid: $0.uuid, definition: definition, values: $0.values) }
                 try await database.write(records: tombstones)
                 try await settle(removed: victims, using: definition)
                 removed += victims.count
-                noteChange(entity: entity, changed: victims.map { Self.tombstoned($0) })
             }
         }
         return removed
@@ -486,14 +463,18 @@ extension EntityStore {
     ///
     public func fetch(uuid: String) async throws -> EntityRecord? {
         let id = CKRecord.ID(recordName: uuid)
-        guard let record = try await database.fetchRecord(id: id) else { return nil }
-        guard let entity = record["entity"] as? String else { return nil }
+        guard let record = try await database.fetchRecord(id: id) else {
+            return nil
+        }
+        guard let entity = record["entity"] as? String else {
+            return nil
+        }
         let definition = try await registry.definition(for: entity)
         let decoded = try decode([record], using: definition)
         return decoded.first { !$0.deleted }
     }
 
-    static func isTombstone(_ record: CKRecord) -> Bool {
+    fileprivate static func isTombstone(_ record: CKRecord) -> Bool {
         (record["deleted"] as? Int64 ?? 0) > 0
     }
 

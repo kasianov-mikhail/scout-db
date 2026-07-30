@@ -14,17 +14,17 @@ import Testing
 struct SchemaConsistencyTests {
     static let schema = try! String(contentsOf: schemaURL(), encoding: .utf8)
 
-    @Test("Every pool declares exactly its capacity, contiguously", arguments: Pool.allCases)
-    func poolCapacity(pool: Pool) throws {
-        let slots = Self.fields(of: "Entity").filter { $0.name.hasPrefix("\(pool.rawValue)_") }
+    @Test("Every pool declares exactly its capacity, contiguously", arguments: FieldType.allCases)
+    func poolCapacity(pool: FieldType) throws {
+        let slots = Self.fields(of: "Entity").filter { $0.name.hasPrefix("\(pool.slotPrefix)_") }
         #expect(slots.count == pool.capacity)
 
-        let indices = slots.compactMap { Int($0.name.dropFirst(pool.rawValue.count + 1)) }.sorted()
+        let indices = slots.compactMap { Int($0.name.dropFirst(pool.slotPrefix.count + 1)) }.sorted()
         #expect(indices == Array(0..<pool.capacity))
     }
 
-    @Test("Pool slots carry the modifiers the store relies on", arguments: Pool.allCases)
-    func poolModifiers(pool: Pool) throws {
+    @Test("Pool slots carry the modifiers the store relies on", arguments: FieldType.allCases)
+    func poolModifiers(pool: FieldType) throws {
         let expected =
             switch pool {
             case .string: "STRING QUERYABLE SORTABLE"
@@ -43,7 +43,7 @@ struct SchemaConsistencyTests {
             case .locationList: "LIST<LOCATION> QUERYABLE"
             case .assetList: "LIST<ASSET>"
             }
-        let slots = Self.fields(of: "Entity").filter { $0.name.hasPrefix("\(pool.rawValue)_") }
+        let slots = Self.fields(of: "Entity").filter { $0.name.hasPrefix("\(pool.slotPrefix)_") }
         #expect(slots.allSatisfy { $0.spec == expected })
     }
 
@@ -82,14 +82,22 @@ struct SchemaConsistencyTests {
     }
 
     private static func fields(of recordType: String) -> [(name: String, spec: String)] {
-        guard let start = schema.range(of: "RECORD TYPE \(recordType) (") else { return [] }
-        guard let end = schema.range(of: ");", range: start.upperBound..<schema.endIndex) else { return [] }
+        guard let start = schema.range(of: "RECORD TYPE \(recordType) (") else {
+            return []
+        }
+        guard let end = schema.range(of: ");", range: start.upperBound..<schema.endIndex) else {
+            return []
+        }
 
         return schema[start.upperBound..<end.lowerBound].split(separator: "\n").compactMap { line in
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard trimmed.hasSuffix(","), !trimmed.hasPrefix("GRANT") else { return nil }
+            guard trimmed.hasSuffix(","), !trimmed.hasPrefix("GRANT") else {
+                return nil
+            }
             let parts = trimmed.dropLast().split(separator: " ", maxSplits: 1)
-            guard parts.count == 2 else { return nil }
+            guard parts.count == 2 else {
+                return nil
+            }
             return (String(parts[0]), parts[1].trimmingCharacters(in: .whitespaces))
         }
     }

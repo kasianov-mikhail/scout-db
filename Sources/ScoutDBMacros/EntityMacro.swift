@@ -75,12 +75,19 @@ public struct EntityMacro: ExtensionMacro {
     private static func storedFields(of declaration: StructDeclSyntax) throws -> [Field] {
         var fields: [Field] = []
         for member in declaration.memberBlock.members {
-            guard let variable = member.decl.as(VariableDeclSyntax.self),
-                !variable.modifiers.contains(where: { $0.name.tokenKind == .keyword(.static) }),
-                !hasAttribute(variable, named: "Transient")
-            else { continue }
+            guard let variable = member.decl.as(VariableDeclSyntax.self) else {
+                continue
+            }
+            guard !variable.modifiers.contains(where: { $0.name.tokenKind == .keyword(.static) }) else {
+                continue
+            }
+            guard !hasAttribute(variable, named: "Transient") else {
+                continue
+            }
             for binding in variable.bindings {
-                guard isStored(binding), let name = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.text else { continue }
+                guard isStored(binding), let name = binding.pattern.as(IdentifierPatternSyntax.self)?.identifier.text else {
+                    continue
+                }
                 guard let annotation = binding.typeAnnotation else {
                     throw EntityMacroError("@Entity property '\(name)' needs an explicit type annotation")
                 }
@@ -99,7 +106,9 @@ public struct EntityMacro: ExtensionMacro {
     }
 
     private static func isStored(_ binding: PatternBindingSyntax) -> Bool {
-        guard let accessorBlock = binding.accessorBlock else { return true }
+        guard let accessorBlock = binding.accessorBlock else {
+            return true
+        }
         guard case .accessors(let accessors) = accessorBlock.accessors else {
             return false
         }
@@ -127,9 +136,12 @@ public struct EntityMacro: ExtensionMacro {
 
     private static func fieldOverride(of variable: VariableDeclSyntax) -> String? {
         for attribute in variable.attributes {
-            guard let attribute = attribute.as(AttributeSyntax.self),
-                attribute.attributeName.as(IdentifierTypeSyntax.self)?.name.text == "Field"
-            else { continue }
+            guard let attribute = attribute.as(AttributeSyntax.self) else {
+                continue
+            }
+            guard attribute.attributeName.as(IdentifierTypeSyntax.self)?.name.text == "Field" else {
+                continue
+            }
             return stringLiteral(of: attribute)
         }
         return nil
@@ -140,10 +152,15 @@ public struct EntityMacro: ExtensionMacro {
     }
 
     private static func stringLiteral(of attribute: AttributeSyntax) -> String? {
-        guard case .argumentList(let arguments) = attribute.arguments,
-            let literal = arguments.first?.expression.as(StringLiteralExprSyntax.self),
-            let segment = literal.segments.first?.as(StringSegmentSyntax.self)
-        else { return nil }
+        guard case .argumentList(let arguments) = attribute.arguments else {
+            return nil
+        }
+        guard let literal = arguments.first?.expression.as(StringLiteralExprSyntax.self) else {
+            return nil
+        }
+        guard let segment = literal.segments.first?.as(StringSegmentSyntax.self) else {
+            return nil
+        }
         return segment.content.text
     }
 
@@ -151,7 +168,9 @@ public struct EntityMacro: ExtensionMacro {
         var result = ""
         for character in name {
             if character.isUppercase {
-                if !result.isEmpty { result.append("_") }
+                if !result.isEmpty {
+                    result.append("_")
+                }
                 result.append(character.lowercased())
             } else {
                 result.append(character)

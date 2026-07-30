@@ -8,7 +8,8 @@
 import CloudKit
 import CryptoKit
 import Foundation
-import ScoutDB
+
+@testable import ScoutDB
 
 enum PerfSchema {
     static let customer = "customer"
@@ -50,7 +51,7 @@ enum PerfSchema {
                 FieldDefinition(name: "customer", type: .string, storage: .slot(.string, "s_00"), required: true, references: customer),
                 FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_01"), required: true, allowed: products),
                 FieldDefinition(name: "status", type: .string, storage: .slot(.string, "s_02"), required: true, allowed: statuses),
-                FieldDefinition(name: "quantity", type: .int, storage: .slot(.int, "i_00"), required: true, minimum: 1, maximum: 20),
+                FieldDefinition(name: "quantity", type: .int, storage: .slot(.int, "i_00"), required: true, min: 1, max: 20),
                 FieldDefinition(name: "total", type: .double, storage: .slot(.double, "d_00"), required: true),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00"), required: true),
                 FieldDefinition(name: "note", type: .string, storage: .payload),
@@ -90,10 +91,7 @@ enum PerfSchema {
     }
 
     static var definitions: [EntityDefinition] {
-        [
-            customerDefinition, orderDefinition, itemDefinition, sessionDefinition,
-            EntityStore.transactionDefinition, EntityStore.revisionDefinition,
-        ]
+        [customerDefinition, orderDefinition, itemDefinition, sessionDefinition]
     }
 }
 

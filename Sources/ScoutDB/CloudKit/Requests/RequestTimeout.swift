@@ -54,14 +54,18 @@ private actor ResultRelay<T: Sendable> {
     private var continuation: CheckedContinuation<T, any Error>?
 
     func finish(with result: Result<T, any Error>) {
-        guard self.result == nil else { return }
+        guard self.result == nil else {
+            return
+        }
         self.result = result
         continuation?.resume(with: result)
         continuation = nil
     }
 
     func value() async throws -> T {
-        if let result { return try result.get() }
+        if let result {
+            return try result.get()
+        }
         return try await withCheckedThrowingContinuation { continuation = $0 }
     }
 }

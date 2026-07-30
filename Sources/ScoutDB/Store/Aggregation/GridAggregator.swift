@@ -49,14 +49,18 @@ struct GridAggregator {
         var live: [GridSlot: [Int: CellDelta]] = [:]
         for (slot, cells) in merged {
             let settled = cells.filter { !$0.value.isNoop(recomputing: recomputes(slot.view, in: definition)) }
-            guard settled.count > 0 else { continue }
+            guard settled.count > 0 else {
+                continue
+            }
             live[slot] = settled
         }
         try await apply(live, using: definition)
     }
 
     private func recomputes(_ view: String, in definition: EntityDefinition) -> Bool {
-        guard recompute != nil, let view = definition.view(named: view), view.exact == true, let metric = view.metric else { return false }
+        guard recompute != nil, let view = definition.view(named: view), view.exact == true, let metric = view.metric else {
+            return false
+        }
         return metric.kind != .sum
     }
 
@@ -90,7 +94,9 @@ struct GridAggregator {
                 let shard = view.shards.map { Self.shard(of: entityRecord.uuid, among: $0) }
 
                 if let histogram = view.histogram {
-                    guard let date = envelope, let value = entityRecord.values[histogram.field]?.scalar else { continue }
+                    guard let date = envelope, let value = entityRecord.values[histogram.field]?.scalar else {
+                        continue
+                    }
                     let slot = GridSlot(
                         entity: entityRecord.entity, view: view.name, group: group, day: EntityCoder.periodStart(of: .day, for: date), shard: shard)
                     let index = histogram.bounds.firstIndex { value < $0 } ?? histogram.bounds.count
@@ -99,7 +105,9 @@ struct GridAggregator {
                 }
 
                 let bucket = view.bucket ?? .hour
-                guard let date = envelope ?? (bucket == .lifetime ? Date(timeIntervalSince1970: 0) : nil) else { continue }
+                guard let date = envelope ?? (bucket == .lifetime ? Date(timeIntervalSince1970: 0) : nil) else {
+                    continue
+                }
                 let (period, index) = Self.bucket(bucket, for: date)
                 let slot = GridSlot(entity: entityRecord.entity, view: view.name, group: group, day: period, shard: shard)
                 var delta = deltas[slot, default: [:]][index, default: CellDelta()]
@@ -141,16 +149,26 @@ struct GridAggregator {
         var removed: (kind: AggregateView.Metric, total: Double)?
 
         func isNoop(recomputing: Bool) -> Bool {
-            guard count == 0, (squares ?? 0) == 0 else { return false }
-            guard !recomputing || removed == nil else { return false }
-            guard let (kind, total) = value else { return true }
-            guard kind != .sum else { return total == 0 }
-            guard let removed else { return false }
+            guard count == 0, (squares ?? 0) == 0 else {
+                return false
+            }
+            guard !recomputing || removed == nil else {
+                return false
+            }
+            guard let (kind, total) = value else {
+                return true
+            }
+            guard kind != .sum else {
+                return total == 0
+            }
+            guard let removed else {
+                return false
+            }
             return kind.combine(removed.total, total) == removed.total
         }
     }
 
-    static func bucket(_ bucket: AggregateView.Bucket, for date: Date) -> (period: Date, index: Int) {
+    static func bucket(_ bucket: AggregateBucket, for date: Date) -> (period: Date, index: Int) {
         let calendar = EntityCoder.calendar
         return switch bucket {
         case .hour:
@@ -171,7 +189,9 @@ struct GridAggregator {
     }
 
     private func apply(_ deltas: [GridSlot: [Int: CellDelta]], using definition: EntityDefinition) async throws {
-        guard deltas.count > 0 else { return }
+        guard deltas.count > 0 else {
+            return
+        }
         var pending = try await open(deltas)
         let exact = try await recomputed(&pending, using: definition)
 
@@ -187,7 +207,9 @@ struct GridAggregator {
                     case .success(let saved):
                         await slots.keep(saved)
                     case .failure(let error):
-                        guard let slot = pending[id]?.slot else { throw error }
+                        guard let slot = pending[id]?.slot else {
+                            throw error
+                        }
                         if let conflict = RecordConflictError(error) {
                             await slots.keep(conflict.serverRecord)
                             retry[id] = conflict.serverRecord
@@ -200,21 +222,29 @@ struct GridAggregator {
                     }
                 }
             }
-            guard retry.count > 0 else { return }
+            guard retry.count > 0 else {
+                return
+            }
             pending = pending.filter { retry[$0.key] != nil }
             for (id, record) in retry {
                 pending[id]?.record = record
             }
         }
-        guard let stranded = pending.values.first else { return }
+        guard let stranded = pending.values.first else {
+            return
+        }
         throw RecordConflictError(serverRecord: stranded.record)
     }
 
     private func recomputed(_ pending: inout [CKRecord.ID: Pending], using definition: EntityDefinition) async throws -> [CKRecord.ID: [Int: Double?]] {
-        guard let recompute else { return [:] }
+        guard let recompute else {
+            return [:]
+        }
         var exact: [CKRecord.ID: [Int: Double?]] = [:]
         for (id, entry) in pending {
-            guard let view = definition.view(named: entry.slot.view), view.exact == true, let metric = view.metric, metric.kind != .sum else { continue }
+            guard let view = definition.view(named: entry.slot.view), view.exact == true, let metric = view.metric, metric.kind != .sum else {
+                continue
+            }
             var settled: [Int: Double?] = [:]
             for (index, delta) in entry.cells {
                 guard let removed = delta.removed, let stored = entry.record[Aggregate.valueCell(index)] as? Double, stored == removed.total else {
@@ -225,14 +255,18 @@ struct GridAggregator {
                 pending[id]?.cells[index]?.value = nil
                 pending[id]?.cells[index]?.removed = nil
             }
-            guard settled.count > 0 else { continue }
+            guard settled.count > 0 else {
+                continue
+            }
             exact[id] = settled
         }
         return exact
     }
 
     private static func settle(_ cells: [Int: Double?]?, into record: CKRecord) {
-        guard let cells else { return }
+        guard let cells else {
+            return
+        }
         for (index, value) in cells {
             if let value {
                 record[Aggregate.valueCell(index)] = value
@@ -253,7 +287,9 @@ struct GridAggregator {
                 cold.append((id, slot, cells))
             }
         }
-        guard cold.count > 0 else { return pending }
+        guard cold.count > 0 else {
+            return pending
+        }
 
         var served: [CKRecord.ID: CKRecord] = [:]
         let ids = cold.map(\.id).sorted { $0.recordName < $1.recordName }

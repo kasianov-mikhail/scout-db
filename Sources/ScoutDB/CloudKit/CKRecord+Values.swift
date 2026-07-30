@@ -33,7 +33,9 @@ extension RecordValue {
         case let value as CKRecord.Reference:
             self = .reference(value.recordID.recordName)
         case let value as CKAsset:
-            guard let url = value.fileURL else { return nil }
+            guard let url = value.fileURL else {
+                return nil
+            }
             self = .asset(url)
         case let value as [String]:
             self = .strings(value)
@@ -58,7 +60,7 @@ extension RecordValue {
         }
     }
 
-    var ckValue: any CKRecordValueProtocol {
+    fileprivate var ckValue: any CKRecordValueProtocol {
         switch self {
         case .string(let value):
             value
@@ -130,47 +132,31 @@ private nonisolated(unsafe) var creatorKey: UInt8 = 0
 private nonisolated(unsafe) var changeTagKey: UInt8 = 0
 
 extension CKRecord {
-    /// The record's modification date, honoring a testing override.
-    public var recordModificationDate: Date? {
+    var recordModificationDate: Date? {
         objc_getAssociatedObject(self, &modificationDateKey) as? Date ?? modificationDate
     }
 
-    /// The record's creator identifier, honoring a testing override.
-    public var recordCreator: String? {
+    var recordCreator: String? {
         objc_getAssociatedObject(self, &creatorKey) as? String ?? creatorUserRecordID?.recordName
     }
 
-    /// The record's change tag, honoring a testing override.
-    ///
-    /// Unlike the real `recordChangeTag`, an injected tag does not survive
-    /// `copy()` or archiving — code that duplicates a record and relies on its
-    /// version must carry the tag over by hand.
-    ///
-    public var recordVersionTag: String? {
+    package var recordVersionTag: String? {
         objc_getAssociatedObject(self, &changeTagKey) as? String ?? recordChangeTag
     }
 
-    /// Injects a modification date underneath the read-only system field.
-    public func overrideModificationDate(_ date: Date) {
+    package func overrideModificationDate(_ date: Date) {
         objc_setAssociatedObject(self, &modificationDateKey, date, .OBJC_ASSOCIATION_RETAIN)
     }
 
-    /// Injects a creator identifier underneath the read-only system field.
-    public func overrideCreator(_ name: String) {
+    func overrideCreator(_ name: String) {
         objc_setAssociatedObject(self, &creatorKey, name, .OBJC_ASSOCIATION_RETAIN)
     }
 
-    /// Injects a change tag underneath the read-only system field.
-    public func overrideChangeTag(_ tag: String) {
+    package func overrideChangeTag(_ tag: String) {
         objc_setAssociatedObject(self, &changeTagKey, tag, .OBJC_ASSOCIATION_RETAIN)
     }
 
-    /// Carries the record's injected system fields onto a record built from it.
-    ///
-    /// The seam every duplicate goes through, so a new overridable system field
-    /// is carried everywhere at once rather than at the copies that remembered.
-    ///
-    public func carryOverrides(to other: CKRecord) {
+    func carryOverrides(to other: CKRecord) {
         if let tag = recordVersionTag {
             other.overrideChangeTag(tag)
         }
@@ -182,8 +168,7 @@ extension CKRecord {
         }
     }
 
-    /// A copy of the record that keeps the system fields `copy()` drops.
-    public func duplicate() -> CKRecord {
+    package func duplicate() -> CKRecord {
         let copy = self.copy() as! CKRecord
         carryOverrides(to: copy)
         return copy

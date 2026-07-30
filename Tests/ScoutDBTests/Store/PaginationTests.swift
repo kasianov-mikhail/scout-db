@@ -183,7 +183,7 @@ struct PaginationTests {
         database.pageLimit = 2
 
         var uuids: [String] = []
-        for try await record in store.stream(entity: "purchase", pageSize: 3) {
+        for try await record in store.stream(entity: "purchase", any: [[]], pageSize: 3) {
             uuids.append(record.uuid)
         }
         #expect(uuids == ["p-0", "p-1", "p-2", "p-3", "p-4"])

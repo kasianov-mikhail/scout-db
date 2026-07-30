@@ -7,8 +7,9 @@
 
 import CloudKit
 import Foundation
-import ScoutDB
 import Testing
+
+@testable import ScoutDB
 
 @Suite("Contract: sync")
 struct SyncContractTests {
@@ -16,7 +17,7 @@ struct SyncContractTests {
     func subscriptionLifecycle() async throws {
         try await withContract { f in
             let entity = try await f.publishOrder()
-            let id = try await f.store.subscribe(entity: entity, id: "contract-sub-\(entity)")
+            let id = try await f.store.query(entity).subscribe(id: "contract-sub-\(entity)")
 
             try await eventually { try await f.store.subscriptions().contains { $0.subscriptionID == id } }
             try await f.store.unsubscribe(id: id)
@@ -44,7 +45,9 @@ struct SyncContractTests {
             let results = try await f.database.saveIfUnchanged([stale])
             #expect(
                 results.contains { _, result in
-                    guard case .failure(let error) = result else { return false }
+                    guard case .failure(let error) = result else {
+                        return false
+                    }
                     return error is RecordConflictError || (error as? CKError)?.code == .serverRecordChanged
                 })
         }

@@ -7,8 +7,9 @@
 
 import CloudKit
 import Foundation
-import ScoutDB
 import ScoutDBTesting
+
+@testable import ScoutDB
 
 enum DatasetSize: String, CaseIterable, Sendable {
     case small
@@ -63,7 +64,9 @@ enum DatasetSize: String, CaseIterable, Sendable {
     }
 
     static var selected: [DatasetSize] {
-        guard let raw = ProcessInfo.processInfo.environment["SCOUTDB_PERF_SIZES"] else { return allCases }
+        guard let raw = ProcessInfo.processInfo.environment["SCOUTDB_PERF_SIZES"] else {
+            return allCases
+        }
         let names = Set(raw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
         let picked = allCases.filter { names.contains($0.rawValue) }
         return picked.isEmpty ? allCases : picked
@@ -90,7 +93,9 @@ actor CorpusCache {
     private var built: [DatasetSize: Corpus] = [:]
 
     func corpus(for size: DatasetSize) async throws -> Corpus {
-        if let corpus = built[size] { return corpus }
+        if let corpus = built[size] {
+            return corpus
+        }
         let corpus = try await CorpusBuilder.build(size)
         built[size] = corpus
         return corpus

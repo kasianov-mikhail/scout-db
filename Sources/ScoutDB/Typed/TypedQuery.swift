@@ -24,11 +24,11 @@ public struct TypedFilter<T: EntityRepresentable> {
     let op: EntityStore.Match
     let value: RecordValue
 
-    func filter() throws -> EntityStore.Filter {
+    func filter() throws -> FilterExpression {
         guard let field = T.fieldName(for: keyPath) else {
             throw SchemaError.unknownField(String(describing: keyPath))
         }
-        return EntityStore.Filter(field: field, op: op, value: value)
+        return FilterExpression(EntityStore.Filter(field: field, op: op, value: value))
     }
 }
 
@@ -149,24 +149,6 @@ extension TypedQueryBuilder where T: Sendable {
     /// decoded results; the first element is the current result.
     ///
     /// Mutations landing while a pass runs coalesce into one trailing pass; see
-    /// ``EntityStore/observe(entity:filters:sort:)``.
-    ///
-    public func observe() -> AsyncThrowingStream<[T], any Error> {
-        let base = builder.observe()
-        return AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    for try await records in base {
-                        continuation.yield(records.map(T.init(record:)))
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
-        }
-    }
 }
 
 /// One keyset page of decoded values in envelope-date order.

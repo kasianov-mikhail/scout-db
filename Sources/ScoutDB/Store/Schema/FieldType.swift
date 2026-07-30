@@ -7,43 +7,96 @@
 
 import Foundation
 
-public enum FieldType: String, Codable, Equatable, Sendable {
-    case string, text, int, double, timestamp, bytes, location, reference, asset
-    case stringList, intList, doubleList, timestampList, locationList, assetList
+public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
+    case string
+    case text
+    case int
+    case double
+    case timestamp
+    case bytes
+    case location
+    case reference
+    case asset
 
-    var pool: Pool {
+    case stringList
+    case intList
+    case doubleList
+    case timestampList
+    case locationList
+    case assetList
+
+    var slotPrefix: String {
         switch self {
         case .string:
-            .string
+            "s"
         case .text:
-            .text
+            "x"
         case .int:
-            .int
+            "i"
         case .double:
-            .double
+            "d"
         case .timestamp:
-            .timestamp
+            "t"
         case .bytes:
-            .bytes
+            "b"
         case .location:
-            .location
+            "g"
         case .reference:
-            .reference
+            "r"
         case .asset:
-            .asset
+            "a"
         case .stringList:
-            .stringList
+            "ls"
         case .intList:
-            .intList
+            "li"
         case .doubleList:
-            .doubleList
+            "ld"
         case .timestampList:
-            .timestampList
+            "lt"
         case .locationList:
-            .locationList
+            "lg"
         case .assetList:
-            .assetList
+            "la"
         }
+    }
+
+    var capacity: Int { 16 }
+
+    var isQueryable: Bool {
+        switch self {
+        case .asset, .assetList:
+            false
+        default:
+            true
+        }
+    }
+
+    var isSortable: Bool {
+        switch self {
+        case .string, .text, .int, .double, .timestamp:
+            true
+        default:
+            false
+        }
+    }
+
+    func slotName(_ index: Int) -> String {
+        "\(slotPrefix)_\(String(format: "%02d", index))"
+    }
+
+    func slotIndex(_ slot: String) -> Int? {
+        guard slot.hasPrefix("\(slotPrefix)_"), let index = Int(slot.dropFirst(slotPrefix.count + 1)), index >= 0 else {
+            return nil
+        }
+        return index
+    }
+
+    static func type(forSlot slot: String) -> FieldType? {
+        guard let separator = slot.firstIndex(of: "_") else {
+            return nil
+        }
+        let prefix = String(slot[..<separator])
+        return allCases.first { $0.slotPrefix == prefix }
     }
 
     var isList: Bool {

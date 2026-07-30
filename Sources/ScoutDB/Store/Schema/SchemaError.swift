@@ -20,7 +20,6 @@ public enum SchemaError: Error, Equatable {
     case brokenReference(field: String, key: String)
     case duplicateReference(field: String, key: String)
     case duplicateKey(fields: [String])
-    case leaseHeld(owner: String, until: Date)
 }
 
 extension SchemaError: LocalizedError {
@@ -50,8 +49,6 @@ extension SchemaError: LocalizedError {
             "Exclusive field '\(field)' already references '\(key)'"
         case .duplicateKey(let fields):
             "Duplicate value for unique key (\(fields.joined(separator: ", ")))"
-        case .leaseHeld(let owner, let until):
-            "Leased by '\(owner)' until \(until)"
         }
     }
 }

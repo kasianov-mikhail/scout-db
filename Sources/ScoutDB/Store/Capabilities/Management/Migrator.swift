@@ -54,7 +54,9 @@ public struct Migrator: Sendable {
                     try transform(&entityRecord, previous)
                 }
             }
-            guard rewritten.count > 0 else { return }
+            guard rewritten.count > 0 else {
+                return
+            }
             try await database.write(records: rewritten.map(\.record))
             migrated += rewritten.count
         }
@@ -63,7 +65,9 @@ public struct Migrator: Sendable {
 
     @discardableResult public func backfillClaims(entity: String, batchSize: Int = 400) async throws -> Int {
         let definition = try await registry.definition(for: entity)
-        guard !definition.claimedKeys.isEmpty || !EntityStore.exclusiveFields(of: definition).isEmpty else { return 0 }
+        guard !definition.claimedKeys.isEmpty || !EntityStore.exclusiveFields(of: definition).isEmpty else {
+            return 0
+        }
         let store = EntityStore(database: database, registry: registry, keyProvider: keyProvider)
         let fields = definition.claimedKeys.flatMap { $0 } + EntityStore.exclusiveFields(of: definition).map(\.name)
         var claimed = 0
@@ -145,7 +149,9 @@ public struct Migrator: Sendable {
                 next.values = try coder.resolve(next.values, at: next.schemaVersion, using: rotated)
                 return try coder.encode(next, using: rotated, into: record)
             }
-            guard rewritten.count > 0 else { return }
+            guard rewritten.count > 0 else {
+                return
+            }
             try await database.write(records: rewritten)
             sealed += rewritten.count
         }
@@ -156,7 +162,9 @@ public struct Migrator: Sendable {
     private func rekey(_ decoded: EntityRecord, using definition: EntityDefinition) -> [String: RecordValue] {
         var predecessors: [String: FieldDefinition] = [:]
         for field in definition.fields(at: decoded.schemaVersion) {
-            guard case .slot(_, let slot) = field.storage, predecessors[slot] == nil else { continue }
+            guard case .slot(_, let slot) = field.storage, predecessors[slot] == nil else {
+                continue
+            }
             predecessors[slot] = field
         }
         var values: [String: RecordValue] = [:]

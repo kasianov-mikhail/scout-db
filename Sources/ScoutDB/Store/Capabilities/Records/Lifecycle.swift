@@ -18,11 +18,12 @@ extension EntityStore {
         let rewrite = try coder.rewrite(stored, using: definition) { record in
             record.deleted = false
         }
-        guard rewrite.previous.deleted else { return rewrite.previous }
+        guard rewrite.previous.deleted else {
+            return rewrite.previous
+        }
         try await claimUniqueKeys(of: [rewrite.next], using: definition)
         try await database.write(record: rewrite.record)
         try await aggregator.record([rewrite.next], using: definition)
-        noteChange(entity: entity, changed: [rewrite.next])
         return rewrite.next
     }
 
@@ -47,7 +48,7 @@ extension EntityStore {
     }
 
     @discardableResult public func drop(entity: String) async throws -> Int {
-        let removed = try await deleteAll(entity: entity)
+        let removed = try await deleteAll(entity: entity, any: [[]])
         try await registry.retire(entity: entity)
         return removed
     }
