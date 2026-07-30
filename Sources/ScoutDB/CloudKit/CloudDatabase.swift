@@ -11,12 +11,12 @@ import CloudKit
 ///
 /// `CKQueryOperation.Cursor` has no public initializer, so a protocol that
 /// traffics in it directly forces every test double into single-page reads.
-/// Real CloudKit pages carry the opaque cursor. Local scans mint
-/// `materialized` — the query plus the already-matched, already-ordered ids
-/// still to serve, so a continuation never re-evaluates the query.
+/// Real CloudKit pages carry the opaque cursor; a double mints `local`,
+/// carrying whatever token continues its own scan. ScoutDB hands either one
+/// back to the database that minted it and never reads inside.
 public enum QueryCursor: @unchecked Sendable {
     case cloudKit(CKQueryOperation.Cursor)
-    case materialized(query: CKQuery, remaining: [CKRecord.ID])
+    case local(any Sendable)
 }
 
 /// One page of a query: the matched records in order, and the cursor that

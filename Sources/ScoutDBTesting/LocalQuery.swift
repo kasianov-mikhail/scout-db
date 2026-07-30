@@ -11,6 +11,13 @@ import Foundation
 import ScoutDB
 
 enum LocalQuery {
+    /// What a scan has left to serve: the already-matched, already-ordered ids
+    /// still to come, so a continuation never re-evaluates the query.
+    struct Scan: @unchecked Sendable {
+        let query: CKQuery
+        let remaining: [CKRecord.ID]
+    }
+
     static func page(
         _ records: [CKRecord], matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int, pageLimit: Int? = nil
     ) -> QueryPage {
@@ -29,7 +36,7 @@ enum LocalQuery {
 
         let cursor: QueryCursor? =
             end < matched.count
-            ? .materialized(query: query, remaining: matched.dropFirst(end).map(\.recordID))
+            ? .local(Scan(query: query, remaining: matched.dropFirst(end).map(\.recordID)))
             : nil
 
         return (page.map { ($0.recordID, .success($0)) }, cursor)
@@ -38,30 +45,29 @@ enum LocalQuery {
     static func resume(
         _ records: [CKRecord], from cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int, pageLimit: Int? = nil
     ) -> QueryPage? {
-        switch cursor {
-        case .cloudKit:
+        guard case .local(let token) = cursor, let scan = token as? Scan else {
             return nil
-
-        case .materialized(let query, let remaining):
-            let capacity = Swift.min(resultsLimit > 0 ? resultsLimit : Int.max, pageLimit ?? Int.max)
-            let byID = Dictionary(records.map { ($0.recordID, $0) }, uniquingKeysWith: { first, _ in first })
-
-            var served: [(CKRecord.ID, Result<CKRecord, any Error>)] = []
-            var index = 0
-
-            while index < remaining.count, served.count < capacity {
-                if let record = byID[remaining[index]] {
-                    let projected = project(record, keys: desiredKeys)
-                    served.append((projected.recordID, .success(projected)))
-                }
-                index += 1
-            }
-
-            let rest = remaining.dropFirst(index)
-            let cursor: QueryCursor? = rest.isEmpty ? nil : .materialized(query: query, remaining: Array(rest))
-
-            return (served, cursor)
         }
+
+        let remaining = scan.remaining
+        let capacity = Swift.min(resultsLimit > 0 ? resultsLimit : Int.max, pageLimit ?? Int.max)
+        let byID = Dictionary(records.map { ($0.recordID, $0) }, uniquingKeysWith: { first, _ in first })
+
+        var served: [(CKRecord.ID, Result<CKRecord, any Error>)] = []
+        var index = 0
+
+        while index < remaining.count, served.count < capacity {
+            if let record = byID[remaining[index]] {
+                let projected = project(record, keys: desiredKeys)
+                served.append((projected.recordID, .success(projected)))
+            }
+            index += 1
+        }
+
+        let rest = remaining.dropFirst(index)
+        let next: QueryCursor? = rest.isEmpty ? nil : .local(Scan(query: scan.query, remaining: Array(rest)))
+
+        return (served, next)
     }
 
     static func project(_ record: CKRecord, keys: [CKRecord.FieldKey]?) -> CKRecord {
@@ -74,7 +80,7 @@ enum LocalQuery {
             projected[key] = record[key]
         }
 
-        record.carryOverrides(to: projected)
+        projected.overrides = record.overrides
         return projected
     }
 }
