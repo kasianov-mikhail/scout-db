@@ -6,7 +6,8 @@
 // https://opensource.org/licenses/MIT.
 
 import Foundation
-import ScoutDB
+
+@testable import ScoutDB
 
 extension PerfScenarios {
     static var schema: [PerfScenario] {

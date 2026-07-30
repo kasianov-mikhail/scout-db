@@ -62,7 +62,7 @@ private struct RecordBatch: @unchecked Sendable {
 }
 
 extension CloudDatabase {
-    static var maxBatchSize: Int { 400 }
+    fileprivate static var maxBatchSize: Int { 400 }
 
     /// Fetches the IDs one at a time; a conformance that can fetch a batch in
     /// one request overrides this.
@@ -77,8 +77,12 @@ extension CloudDatabase {
     }
 
     func fetchRecords(ids: [CKRecord.ID], batchSize: Int) async throws -> [CKRecord] {
-        guard ids.count > 0 else { return [] }
-        guard ids.count > batchSize else { return try await fetchRecords(ids: ids) }
+        guard ids.count > 0 else {
+            return []
+        }
+        guard ids.count > batchSize else {
+            return try await fetchRecords(ids: ids)
+        }
         let database = self
         return try await withThrowingTaskGroup(of: RecordBatch.self) { group in
             for (index, batch) in ids.chunked(into: batchSize).enumerated() {
@@ -105,7 +109,9 @@ extension CloudDatabase {
         var (results, cursor) = try await records(matching: query, desiredKeys: desiredKeys, resultsLimit: CKQueryOperation.maximumResults)
         while true {
             try await body(try results.map { try $0.1.get() })
-            guard let token = cursor else { return }
+            guard let token = cursor else {
+                return
+            }
             let page = try await records(continuingMatchFrom: token, desiredKeys: desiredKeys, resultsLimit: CKQueryOperation.maximumResults)
             results = page.matchResults
             cursor = page.queryCursor
@@ -116,7 +122,9 @@ extension CloudDatabase {
         do {
             _ = try await save(record)
         } catch {
-            guard let conflict = RecordConflictError(error) else { throw error }
+            guard let conflict = RecordConflictError(error) else {
+                throw error
+            }
             throw conflict
         }
     }
@@ -141,8 +149,12 @@ extension CloudDatabase {
         var conflicts: [CKRecord] = []
         for chunk in records.chunked(into: Self.maxBatchSize) {
             for (_, result) in try await saveIfUnchanged(chunk) {
-                guard case .failure(let error) = result else { continue }
-                guard let conflict = RecordConflictError(error) else { throw error }
+                guard case .failure(let error) = result else {
+                    continue
+                }
+                guard let conflict = RecordConflictError(error) else {
+                    throw error
+                }
                 conflicts.append(conflict.serverRecord)
             }
         }
@@ -167,7 +179,9 @@ extension CKDatabase: CloudDatabase {
     public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        guard case .cloudKit(let cursor) = cursor else { throw CKError(.invalidArguments) }
+        guard case .cloudKit(let cursor) = cursor else {
+            throw CKError(.invalidArguments)
+        }
         return try await throttled { database in
             let (results, next): (matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?) =
                 try await withCheckedThrowingContinuation { continuation in
@@ -188,9 +202,10 @@ extension CKDatabase: CloudDatabase {
                 }
                 return try result.get()
             } catch let error as CKError where error.code == .partialFailure {
-                guard let perItem = error.userInfo[CKPartialErrorsByItemIDKey] as? [CKRecord.ID: any Error],
-                    let cause = perItem[record.recordID]
-                else {
+                guard let perItem = error.userInfo[CKPartialErrorsByItemIDKey] as? [CKRecord.ID: any Error] else {
+                    throw error
+                }
+                guard let cause = perItem[record.recordID] else {
                     throw error
                 }
                 throw cause
@@ -244,11 +259,15 @@ extension CKDatabase: CloudDatabase {
     }
 
     public func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
-        guard ids.count > 0 else { return [] }
+        guard ids.count > 0 else {
+            return []
+        }
         return try await throttled { database in
             let results = try await database.records(for: ids)
             return try ids.compactMap { id in
-                guard let result = results[id] else { return nil }
+                guard let result = results[id] else {
+                    return nil
+                }
                 do {
                     return try result.get()
                 } catch let error as CKError where error.code == .unknownItem {
@@ -284,9 +303,13 @@ public struct PartialWriteError: LocalizedError {
     public let reasons: [CKRecord.ID: any Error]
 
     init?(_ error: CKError) {
-        guard error.code == .partialFailure, let partial = error.userInfo[CKPartialErrorsByItemIDKey] as? [CKRecord.ID: any Error] else { return nil }
+        guard error.code == .partialFailure, let partial = error.userInfo[CKPartialErrorsByItemIDKey] as? [CKRecord.ID: any Error] else {
+            return nil
+        }
         let causes = partial.filter { ($0.value as? CKError)?.code != .batchRequestFailed }
-        guard causes.count > 0 else { return nil }
+        guard causes.count > 0 else {
+            return nil
+        }
         reasons = causes
     }
 
@@ -312,13 +335,15 @@ public struct RecordConflictError: LocalizedError {
     public init?(_ error: any Error) {
         if let conflict = error as? RecordConflictError {
             self = conflict
-        } else if let error = error as? CKError, error.code == .serverRecordChanged,
-            let server = error.userInfo[CKRecordChangedErrorServerRecordKey] as? CKRecord
-        {
-            self.init(serverRecord: server)
-        } else {
+            return
+        }
+        guard let error = error as? CKError, error.code == .serverRecordChanged else {
             return nil
         }
+        guard let server = error.userInfo[CKRecordChangedErrorServerRecordKey] as? CKRecord else {
+            return nil
+        }
+        self.init(serverRecord: server)
     }
 
     public let errorDescription: String? = "The record was changed on the server"

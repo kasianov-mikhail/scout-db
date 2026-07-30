@@ -61,7 +61,7 @@ public struct AggregateTotal: AggregateStatistics, Equatable, Sendable {
     public var squares: Double?
 }
 
-package struct GridQuery {
+struct GridQuery {
     let store: EntityStore
     let entity: String
     let view: String
@@ -69,7 +69,7 @@ package struct GridQuery {
     var from: Date?
     var to: Date?
 
-    package init(_ store: EntityStore, entity: String, view: String, group: String? = nil, from: Date? = nil, to: Date? = nil) {
+    init(_ store: EntityStore, entity: String, view: String, group: String? = nil, from: Date? = nil, to: Date? = nil) {
         self.store = store
         self.entity = entity
         self.view = view
@@ -150,7 +150,7 @@ package struct GridQuery {
         .sorted { ($0.period, $0.group) < ($1.period, $1.group) }
     }
 
-    package func series() async throws -> [AggregateSeriesPoint] {
+    func series() async throws -> [AggregateSeriesPoint] {
         let definition = try await store.registry.definition(for: entity)
 
         guard let declared = definition.view(named: view) else {
@@ -209,7 +209,7 @@ package struct GridQuery {
         .sorted { ($0.date, $0.group) < ($1.date, $1.group) }
     }
 
-    package func totals(having: (AggregateTotal) -> Bool = { _ in true }) async throws -> [AggregateTotal] {
+    func totals(having: (AggregateTotal) -> Bool = { _ in true }) async throws -> [AggregateTotal] {
         let kind = try await store.registry
             .definition(for: entity)
             .view(named: view)?
@@ -238,7 +238,7 @@ package struct GridQuery {
         .filter(having).sorted { $0.group < $1.group }
     }
 
-    package func percentile(_ p: Double) async throws -> Double? {
+    func percentile(_ p: Double) async throws -> Double? {
         let definition = try await store.registry.definition(for: entity)
 
         guard let declared = definition.view(named: view), let histogram = declared.histogram else {
@@ -386,7 +386,7 @@ extension EntityStore {
         return folded.keys.sorted().compactMap(parse)
     }
 
-    package func distinct(entity: String, field: String, filters: [Filter] = []) async throws -> [RecordValue] {
+    func distinct(entity: String, field: String, filters: [Filter] = []) async throws -> [RecordValue] {
         if let gridded = try await griddedDistinct(of: field, entity: entity, filters: filters) {
             return gridded
         }
@@ -466,8 +466,8 @@ extension EntityStore {
     }
 
     struct GridFold: Equatable, Sendable {
-        package var count = 0
-        package var value: Double?
+        var count = 0
+        var value: Double?
     }
 
     func viewFold(of field: String?, folding kind: AggregateView.Metric = .sum, by group: String?, entity: String, filters: [Filter])

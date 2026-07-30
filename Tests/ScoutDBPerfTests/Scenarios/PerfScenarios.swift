@@ -6,7 +6,8 @@
 // https://opensource.org/licenses/MIT.
 
 import Foundation
-import ScoutDB
+
+@testable import ScoutDB
 
 enum PerfScenarios {
     static var all: [PerfScenario] {

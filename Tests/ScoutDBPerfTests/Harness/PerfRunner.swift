@@ -6,7 +6,8 @@
 // https://opensource.org/licenses/MIT.
 
 import Foundation
-import ScoutDB
+
+@testable import ScoutDB
 
 enum PerfRunner {
     static func sweep(_ scenarios: [PerfScenario], sizes: [DatasetSize] = DatasetSize.selected, onResult: (PerfResult) -> Void = { _ in }) async throws

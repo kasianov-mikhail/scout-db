@@ -102,7 +102,7 @@ struct OperationsTests {
         let server = try #require(database.records.first { $0["uuid"] as? String == "p-1" })
         database.writeErrors = [RecordConflictError(serverRecord: server)]
 
-        let updated = try await store.updateAll(entity: "purchase") { record in
+        let updated = try await store.updateAll(entity: "purchase", any: [[]]) { record in
             record.values["quantity"] = .int(9)
         }
 
@@ -119,7 +119,7 @@ struct OperationsTests {
         database.writeErrors = (0..<3).map { _ in RecordConflictError(serverRecord: server.copy() as! CKRecord) }
 
         await #expect(throws: RecordConflictError.self) {
-            try await store.updateAll(entity: "purchase") { record in
+            try await store.updateAll(entity: "purchase", any: [[]]) { record in
                 record.values["quantity"] = .int(9)
             }
         }
@@ -152,7 +152,9 @@ struct OperationsTests {
         var reruns = 0
         try await store.update(entity: "purchase", uuid: "p-1") { record in
             reruns += 1
-            guard case .int(let quantity)? = record.values["quantity"] else { return }
+            guard case .int(let quantity)? = record.values["quantity"] else {
+                return
+            }
             record.values["quantity"] = .int(quantity + 1)
         }
         #expect(reruns == 2)
@@ -196,7 +198,6 @@ struct OperationsTests {
 
     @Test("The independent tails of an update run in one round")
     func updateTailsRunConcurrently() async throws {
-        try await registry.publish(EntityStore.revisionDefinition)
         try await registry.publish(
             EntityDefinition(
                 entity: "badge", version: 1,
@@ -330,7 +331,7 @@ struct OperationsTests {
 
     @Test("Subscriptions register a server predicate and can be removed")
     func changeSubscriptions() async throws {
-        let id = try await store.subscribe(entity: "purchase", filters: [.init(field: "quantity", op: .greaterThan, value: .int(1))])
+        let id = try await store.query("purchase").filter("quantity" > 1).subscribe()
         #expect(id == "scout-purchase")
 
         let stored = try #require(database.storedSubscriptions.first as? CKQuerySubscription)
@@ -467,47 +468,13 @@ struct OperationsTests {
         }
     }
 
-    @Test("Increment adds atomically, counts from zero, and survives a race")
-    func increment() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-
-        #expect(try await store.increment(entity: "purchase", uuid: "p-1", field: "quantity") == 4)
-        #expect(try await store.increment(entity: "purchase", uuid: "p-1", field: "quantity", by: -2) == 2)
-        #expect(try await store.increment(entity: "purchase", uuid: "p-1", field: "total", by: 1) == 30.97)
-
-        var sparse = makePurchase().values
-        sparse["quantity"] = nil
-        try await store.write(sparse, entity: "purchase", uuid: "p-2")
-        #expect(try await store.increment(entity: "purchase", uuid: "p-2", field: "quantity", by: 5) == 5)
-
-        let server = try #require(database.records.first { $0["uuid"] as? String == "p-1" })
-        database.writeErrors = [RecordConflictError(serverRecord: server.copy() as! CKRecord)]
-        #expect(try await store.increment(entity: "purchase", uuid: "p-1", field: "quantity") == 3)
-
-        await #expect(throws: SchemaError.invalidValue("quantity")) {
-            try await store.increment(entity: "purchase", uuid: "p-1", field: "quantity", by: 0.5)
-        }
-        await #expect(throws: SchemaError.invalidValue("product_id")) {
-            try await store.increment(entity: "purchase", uuid: "p-1", field: "product_id")
-        }
-        await #expect(throws: SchemaError.notFound("ghost")) {
-            try await store.increment(entity: "purchase", uuid: "ghost", field: "quantity")
-        }
-    }
-
     @Test("Mutations treat a tombstoned record as absent, but restore still lifts it")
     func mutationsSkipTombstones() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "t-1")
         try await store.delete(entity: "purchase", uuid: "t-1")
 
         await #expect(throws: SchemaError.notFound("t-1")) {
-            try await store.increment(entity: "purchase", uuid: "t-1", field: "quantity")
-        }
-        await #expect(throws: SchemaError.notFound("t-1")) {
-            _ = try await store.lease(entity: "purchase", uuid: "t-1", owner: "me", for: 60)
-        }
-        await #expect(throws: SchemaError.notFound("t-1")) {
-            _ = try await store.leaseHolder(entity: "purchase", uuid: "t-1")
+            try await store.update(entity: "purchase", uuid: "t-1") { $0.values["quantity"] = .int(1) }
         }
 
         _ = try await store.restore(entity: "purchase", uuid: "t-1")
@@ -538,7 +505,6 @@ struct OperationsTests {
 
     @Test("An audited entity appends a revision on every update and delete")
     func revisionLog() async throws {
-        try await registry.publish(EntityStore.revisionDefinition)
         var audited = makePurchaseDefinition()
         audited.audited = true
         try await registry.publish(audited)
@@ -547,7 +513,7 @@ struct OperationsTests {
         try await store.update(entity: "purchase", uuid: "p-1") { record in
             record.values["quantity"] = .int(9)
         }
-        try await store.updateAll(entity: "purchase") { record in
+        try await store.updateAll(entity: "purchase", any: [[]]) { record in
             record.values["quantity"] = .int(11)
         }
         try await store.delete(entity: "purchase", uuid: "p-1")
@@ -566,7 +532,6 @@ struct OperationsTests {
 
     @Test("Compaction trims the revision log to a window, by entity or across all")
     func compactRevisions() async throws {
-        try await registry.publish(EntityStore.revisionDefinition)
         var audited = makePurchaseDefinition()
         audited.audited = true
         try await registry.publish(audited)
@@ -589,8 +554,6 @@ struct OperationsTests {
 
     @Test("Revisions sharing a millisecond order deterministically by revision id")
     func revisionTieBreak() async throws {
-        try await registry.publish(EntityStore.revisionDefinition)
-
         let date = Date(timeIntervalSince1970: 1_000)
         func revision(uuid: String, tag: String) throws -> EntityWrite {
             let snapshot = try JSONEncoder().encode(EntityRecord(entity: "doc", uuid: "d-1", schemaVersion: 1, values: ["p": .string(tag)]))
@@ -601,90 +564,6 @@ struct OperationsTests {
 
         #expect(try await store.history(entity: "doc", uuid: "d-1").map { $0.values["p"] } == [.string("a"), .string("b")])
         #expect(try await store.history(entity: "doc", uuid: "d-1").map { $0.values["p"] } == [.string("a"), .string("b")])
-    }
-
-    @Test("A live query re-yields on every local mutation")
-    func liveQuery() async throws {
-        var live = store.observe(entity: "purchase", sort: [.init(field: "date")]).makeAsyncIterator()
-        #expect(try await live.next() == [])
-
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        #expect(try await live.next()?.map(\.uuid) == ["p-1"])
-
-        try await store.update(entity: "purchase", uuid: "p-1") { record in
-            record.values["quantity"] = .int(9)
-        }
-        #expect(try await live.next()?.first?.values["quantity"] == .int(9))
-
-        try await store.delete(entity: "purchase", uuid: "p-1")
-        #expect(try await live.next() == [])
-
-        var filtered = store.query("purchase").filter("quantity" > 5).observe().makeAsyncIterator()
-        #expect(try await filtered.next() == [])
-        var big = makePurchase().values
-        big["quantity"] = .int(9)
-        try await store.write(big, entity: "purchase", uuid: "p-2")
-        #expect(try await filtered.next()?.map(\.uuid) == ["p-2"])
-    }
-
-    @Test("List insert and remove are set operations that survive a race")
-    func atomicLists() async throws {
-        try await registry.publish(
-            makeDefinition(
-                entity: "profile",
-                fields: [
-                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
-                    FieldDefinition(name: "tags", type: .stringList, storage: .slot(.stringList, "ls_00")),
-                ]))
-        try await store.write(["name": .string("Ada")], entity: "profile", uuid: "u-1")
-
-        #expect(try await store.insert(["swift", "db"], into: "tags", entity: "profile", uuid: "u-1") == ["swift", "db"])
-        #expect(try await store.insert(["db", "ck"], into: "tags", entity: "profile", uuid: "u-1") == ["swift", "db", "ck"])
-        #expect(try await store.remove(["db", "ghost"], from: "tags", entity: "profile", uuid: "u-1") == ["swift", "ck"])
-
-        let server = try #require(database.records.first { $0["uuid"] as? String == "u-1" })
-        database.writeErrors = [RecordConflictError(serverRecord: server.copy() as! CKRecord)]
-        #expect(try await store.insert(["new"], into: "tags", entity: "profile", uuid: "u-1") == ["swift", "ck", "new"])
-
-        await #expect(throws: SchemaError.invalidValue("name")) {
-            try await store.insert(["x"], into: "name", entity: "profile", uuid: "u-1")
-        }
-        await #expect(throws: SchemaError.unknownField("ghost")) {
-            try await store.remove(["x"], from: "ghost", entity: "profile", uuid: "u-1")
-        }
-    }
-
-    @Test("A lease admits one holder, renews, expires, and releases")
-    func recordLeases() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-
-        let granted = try await store.lease(entity: "purchase", uuid: "p-1", owner: "alice", for: 60)
-        #expect(try await store.leaseHolder(entity: "purchase", uuid: "p-1") == granted)
-
-        await #expect(throws: SchemaError.self) {
-            try await store.lease(entity: "purchase", uuid: "p-1", owner: "bob", for: 60)
-        }
-        _ = try await store.lease(entity: "purchase", uuid: "p-1", owner: "alice", for: 120)
-
-        try await store.release(entity: "purchase", uuid: "p-1", owner: "bob")
-        #expect(try await store.leaseHolder(entity: "purchase", uuid: "p-1") != nil)
-        try await store.release(entity: "purchase", uuid: "p-1", owner: "alice")
-        #expect(try await store.leaseHolder(entity: "purchase", uuid: "p-1") == nil)
-
-        _ = try await store.lease(entity: "purchase", uuid: "p-1", owner: "alice", for: -1)
-        #expect(try await store.leaseHolder(entity: "purchase", uuid: "p-1") == nil)
-        _ = try await store.lease(entity: "purchase", uuid: "p-1", owner: "bob", for: 60)
-        #expect(try await store.leaseHolder(entity: "purchase", uuid: "p-1")?.owner == "bob")
-
-        try await store.update(entity: "purchase", uuid: "p-1") { record in
-            record.values["quantity"] = .int(9)
-        }
-        #expect(try await store.read(entity: "purchase").first?.values["quantity"] == .int(9))
-        #expect(try await store.leaseHolder(entity: "purchase", uuid: "p-1")?.owner == "bob")
-
-        await #expect(throws: SchemaError.notFound("ghost")) {
-            try await store.lease(entity: "purchase", uuid: "ghost", owner: "alice", for: 60)
-        }
     }
 
     @Test("Reads scope to a creator, the public-database pattern")
@@ -705,10 +584,7 @@ struct OperationsTests {
         #expect(try await store.query("purchase").createdBy("user-a").filter("quantity" > 5).count() == 1)
         let grouped = try await store.query("purchase")
             .createdBy("user-a")
-            .group {
-                $0.filter("quantity", .equals, 3)
-                $0.filter("quantity", .equals, 9)
-            }
+            .filter("quantity" == 3 || "quantity" == 9)
             .take(100)
         #expect(Set(grouped.map(\.uuid)) == ["p-1", "p-3"])
     }
@@ -726,8 +602,8 @@ struct OperationsTests {
         let mine = store.query("purchase").createdBy("user-a")
 
         #expect(try await mine.sum("quantity") == 12)
-        #expect(try await mine.minimum("quantity") == 3)
-        #expect(try await mine.maximum("quantity") == 9)
+        #expect(try await mine.min("quantity") == 3)
+        #expect(try await mine.max("quantity") == 9)
         #expect(try await mine.average("quantity") == 6)
         #expect(try await mine.sum("quantity", by: "product_id") == ["sku-42": 12])
         #expect(try await mine.count(by: "product_id") == ["sku-42": 2])
@@ -884,7 +760,7 @@ struct OperationsTests {
         }
 
         var uuids: [String] = []
-        for try await record in store.stream(entity: "purchase", pageSize: 2) {
+        for try await record in store.stream(entity: "purchase", any: [[]], pageSize: 2) {
             uuids.append(record.uuid)
         }
         #expect(uuids == ["p-0", "p-1", "p-2", "p-3", "p-4"])
@@ -896,7 +772,7 @@ struct OperationsTests {
             try await store.write(makePurchase().values, entity: "purchase", uuid: "p-\(index)")
         }
         let filter = EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-42"))
-        let updated = try await store.updateAll(entity: "purchase", filters: [filter]) { record in
+        let updated = try await store.updateAll(entity: "purchase", any: [[filter]]) { record in
             record.values["quantity"] = .int(99)
         }
         #expect(updated == 3)
@@ -957,14 +833,13 @@ struct OperationsTests {
         try await store.write(other, entity: "purchase", uuid: "p-2")
 
         let filter = EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-42"))
-        let deleted = try await store.deleteAll(entity: "purchase", filters: [filter])
+        let deleted = try await store.deleteAll(entity: "purchase", any: [[filter]])
         #expect(deleted == 1)
         #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-2"])
     }
 
     @Test("Transaction applies every step and commits")
     func transaction() async throws {
-        try await registry.publish(EntityStore.transactionDefinition)
         let txn = try await store.transaction { draft in
             draft.write(makePurchase(uuid: "p-1").values, entity: "purchase", uuid: "p-1")
             draft.write(makePurchase(uuid: "p-2").values, entity: "purchase", uuid: "p-2")
@@ -978,7 +853,6 @@ struct OperationsTests {
 
     @Test("A transaction mixes writes and deletes in order")
     func transactionDeletes() async throws {
-        try await registry.publish(EntityStore.transactionDefinition)
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
 
         try await store.transaction { draft in
@@ -998,7 +872,6 @@ struct OperationsTests {
 
     @Test("Interleaved entities and grouped deletes land the same records")
     func transactionBatching() async throws {
-        try await registry.publish(EntityStore.transactionDefinition)
         try await registry.publish(makeSeatDefinition())
 
         try await store.transaction { draft in
@@ -1027,7 +900,6 @@ struct OperationsTests {
 
     @Test("A transaction patches existing records with update steps")
     func transactionUpdates() async throws {
-        try await registry.publish(EntityStore.transactionDefinition)
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
 
         try await store.transaction { draft in
@@ -1050,7 +922,6 @@ struct OperationsTests {
 
     @Test("A run of update steps lands as one batch, the last patch of a record winning")
     func transactionUpdateBatching() async throws {
-        try await registry.publish(EntityStore.transactionDefinition)
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
 
@@ -1080,7 +951,6 @@ struct OperationsTests {
 
     @Test("Compaction drops committed transaction envelopes and leaves pending ones")
     func compactTransactions() async throws {
-        try await registry.publish(EntityStore.transactionDefinition)
         try await store.transaction { draft in
             draft.write(makePurchase().values, entity: "purchase", uuid: "p-1")
         }
@@ -1105,7 +975,6 @@ struct OperationsTests {
 
     @Test("Repair completes an interrupted transaction")
     func repair() async throws {
-        try await registry.publish(EntityStore.transactionDefinition)
         let steps = try JSONEncoder().encode([TransactionStep(entity: "purchase", uuid: "p-9", values: makePurchase().values)])
         try await store.write(
             ["status": .string("pending"), "date": .date(Date(timeIntervalSince1970: 1_000)), "steps": .bytes(steps)], entity: EntityStore.transactionEntity,

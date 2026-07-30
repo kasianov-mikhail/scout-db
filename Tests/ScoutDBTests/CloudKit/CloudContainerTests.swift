@@ -27,21 +27,6 @@ struct CloudContainerTests {
         }
     }
 
-    @Test("Account changes reach every updates stream")
-    func accountUpdates() async throws {
-        let container = InMemoryContainer(status: .available)
-        var first = container.accountStatusUpdates().makeAsyncIterator()
-        var second = container.accountStatusUpdates().makeAsyncIterator()
-
-        container.setAccountStatus(.noAccount)
-        #expect(await first.next() == .noAccount)
-        #expect(await second.next() == .noAccount)
-
-        container.setAccountStatus(.available)
-        #expect(await first.next() == .available)
-        #expect(try await container.accountStatus() == .available)
-    }
-
     @Test("The public database backs the store")
     func publicDatabase() async throws {
         let container = InMemoryContainer()

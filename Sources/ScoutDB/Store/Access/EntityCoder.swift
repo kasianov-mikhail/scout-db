@@ -50,21 +50,29 @@ struct EntityCoder {
         for _ in 0...derivations.count {
             var changed = false
             for field in derivations {
-                guard let derived = field.derived else { continue }
+                guard let derived = field.derived else {
+                    continue
+                }
                 let value = try derive(derived, from: resolved[derived.source], keyID: definition.keyID)
                 if value != resolved[field.name] {
                     resolved[field.name] = value
                     changed = true
                 }
             }
-            if !changed { break }
+            if !changed {
+                break
+            }
         }
         for field in fields {
             guard let value = resolved[field.name] else {
-                if field.required == true { throw SchemaError.missingField(field.name) }
+                if field.required == true {
+                    throw SchemaError.missingField(field.name)
+                }
                 continue
             }
-            guard field.type.matches(value) else { throw SchemaError.typeMismatch(field.name) }
+            guard field.type.matches(value) else {
+                throw SchemaError.typeMismatch(field.name)
+            }
             if let allowed = field.allowed, !value.strings.allSatisfy(allowed.contains) {
                 throw SchemaError.invalidValue(field.name)
             }
@@ -72,8 +80,12 @@ struct EntityCoder {
                 throw SchemaError.invalidValue(field.name)
             }
             for scalar in value.scalars {
-                if let minimum = field.minimum, scalar < minimum { throw SchemaError.invalidValue(field.name) }
-                if let maximum = field.maximum, scalar > maximum { throw SchemaError.invalidValue(field.name) }
+                if let min = field.min, scalar < min {
+                    throw SchemaError.invalidValue(field.name)
+                }
+                if let max = field.max, scalar > max {
+                    throw SchemaError.invalidValue(field.name)
+                }
             }
         }
         let known = definition.fieldsByName(at: version)
@@ -84,9 +96,13 @@ struct EntityCoder {
     }
 
     func naturalUUID(for values: [String: RecordValue], using definition: EntityDefinition) throws -> String? {
-        guard let unique = definition.unique else { return nil }
+        guard let unique = definition.unique else {
+            return nil
+        }
         let key = try unique.map { name in
-            guard let value = values[name] else { throw SchemaError.missingField(name) }
+            guard let value = values[name] else {
+                throw SchemaError.missingField(name)
+            }
             return "\(name)=\(value.canonical)"
         }
         return contentDigest(of: key)
@@ -106,6 +122,13 @@ struct EntityCoder {
         return Rewrite(previous: previous, next: next, record: try encode(next, using: definition, into: record, basePayload: payload))
     }
 
+    private func decodedPayload(of record: CKRecord?) -> [String: RecordValue]? {
+        guard let data = record?["payload"] as? Data else {
+            return nil
+        }
+        return try? jsonDecoder.decode([String: RecordValue].self, from: data)
+    }
+
     func encode(_ entityRecord: EntityRecord, using definition: EntityDefinition, into base: CKRecord? = nil, basePayload: [String: RecordValue]? = nil)
         throws -> CKRecord
     {
@@ -122,7 +145,9 @@ struct EntityCoder {
         var payload: [String: RecordValue] = [:]
         for field in fields {
             guard let value = values[field.name] else {
-                if case .slot(_, let slot) = field.storage { record[slot] = nil }
+                if case .slot(_, let slot) = field.storage {
+                    record[slot] = nil
+                }
                 continue
             }
             switch field.storage {
@@ -132,9 +157,7 @@ struct EntityCoder {
                 payload[field.name] = field.encrypted == true ? try seal(value, keyID: definition.keyID) : value
             }
         }
-        if keyProvider == nil, let base,
-            let existing = basePayload ?? (base["payload"] as? Data).flatMap({ try? jsonDecoder.decode([String: RecordValue].self, from: $0) })
-        {
+        if keyProvider == nil, let existing = basePayload ?? decodedPayload(of: base) {
             for field in fields where field.encrypted == true && payload[field.name] == nil {
                 payload[field.name] = existing[field.name]
             }
@@ -147,7 +170,9 @@ struct EntityCoder {
         try decodeWithPayload(record, using: definition).record
     }
 
-    func decodeWithPayload(_ record: CKRecord, using definition: EntityDefinition) throws -> (record: EntityRecord, payload: [String: RecordValue]) {
+    fileprivate func decodeWithPayload(_ record: CKRecord, using definition: EntityDefinition) throws -> (
+        record: EntityRecord, payload: [String: RecordValue]
+    ) {
         guard let version = record["schema_version"] as? Int64, let uuid = record["uuid"] as? String else {
             throw SchemaError.staleSchema(entity: definition.entity, version: 0)
         }
@@ -183,7 +208,9 @@ struct EntityCoder {
     }
 
     static func trigrams(of text: String) -> [String] {
-        guard text.count >= 3 else { return text.isEmpty ? [] : [text] }
+        guard text.count >= 3 else {
+            return text.isEmpty ? [] : [text]
+        }
         var seen: Set<String> = []
         var trigrams: [String] = []
         var start = text.startIndex
@@ -229,7 +256,9 @@ private final class PatternCache: @unchecked Sendable {
 
     func regex(for pattern: String) -> Regex<AnyRegexOutput>? {
         lock.withLock {
-            if let known = compiled[pattern] { return known }
+            if let known = compiled[pattern] {
+                return known
+            }
             let regex = try? Regex(pattern)
             compiled[pattern] = regex
             return regex
@@ -303,7 +332,7 @@ extension RecordValue {
         }
     }
 
-    var isEmptyList: Bool {
+    fileprivate var isEmptyList: Bool {
         switch self {
         case .strings(let value):
             value.isEmpty

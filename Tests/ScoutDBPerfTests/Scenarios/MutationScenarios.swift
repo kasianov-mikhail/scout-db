@@ -7,26 +7,10 @@
 
 import CloudKit
 import Foundation
-import ScoutDB
+
+@testable import ScoutDB
 
 extension PerfScenarios {
-    static var counters: [PerfScenario] {
-        [
-            PerfScenario("Counters", "increment a customer's points", sql: 1) { world, iteration in
-                try await world.store.increment(entity: PerfSchema.customer, uuid: world.customer(iteration), field: "points", by: 10)
-            },
-            PerfScenario("Counters", "increment one hot record", sql: 1) { world, _ in
-                try await world.store.increment(entity: PerfSchema.customer, uuid: world.corpus.customers[0], field: "points")
-            },
-            PerfScenario("Counters", "insert two tags", sql: 1) { world, iteration in
-                _ = try await world.store.insert(["vip", "beta"], into: "tags", entity: PerfSchema.customer, uuid: world.customer(iteration))
-            },
-            PerfScenario("Counters", "remove a tag", sql: 1) { world, iteration in
-                _ = try await world.store.remove(["photo"], from: "tags", entity: PerfSchema.customer, uuid: world.customer(iteration))
-            },
-        ]
-    }
-
     static var uniqueKeys: [PerfScenario] {
         [
             PerfScenario("Unique keys", "write a customer, one fresh claim", sql: 1) { world, iteration in
@@ -98,29 +82,6 @@ extension PerfScenarios {
                 }
             ) { world, _ in
                 _ = try await world.store.compactTransactions(olderThan: Date().addingTimeInterval(60))
-            },
-        ]
-    }
-
-    static var leases: [PerfScenario] {
-        [
-            PerfScenario("Leases", "take a lease", sql: 1) { world, iteration in
-                try await world.store.lease(entity: PerfSchema.order, uuid: world.order(iteration), owner: "worker-\(iteration)", for: 60)
-            },
-            PerfScenario(
-                "Leases", "release a lease", sql: 1,
-                setUp: { world in
-                    for iteration in 0..<world.repeats {
-                        let uuid = world.order(iteration)
-                        try await world.store.lease(entity: PerfSchema.order, uuid: uuid, owner: "worker-\(iteration)", for: 60)
-                        world.stage.uuids.append(uuid)
-                    }
-                }
-            ) { world, iteration in
-                try await world.store.release(entity: PerfSchema.order, uuid: world.stage.uuids[iteration], owner: "worker-\(iteration)")
-            },
-            PerfScenario("Leases", "read a free record's holder", sql: 1, writes: false) { world, iteration in
-                _ = try await world.store.leaseHolder(entity: PerfSchema.order, uuid: world.order(iteration))
             },
         ]
     }

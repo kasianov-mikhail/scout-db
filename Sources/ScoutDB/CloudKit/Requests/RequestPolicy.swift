@@ -28,7 +28,7 @@ extension CKDatabase {
 }
 
 extension CKOperation.Configuration {
-    static var scoutDB: CKOperation.Configuration {
+    fileprivate static var scoutDB: CKOperation.Configuration {
         let configuration = CKOperation.Configuration()
         configuration.timeoutIntervalForRequest = 10
         configuration.timeoutIntervalForResource = 10

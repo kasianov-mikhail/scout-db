@@ -231,7 +231,7 @@ struct EntityDefinitionTests {
     func boundWrongType() {
         let definition = makeDefinition(
             fields: [
-                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"), minimum: 0)
+                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"), min: 0)
             ])
         #expect(throws: SchemaError.self) { try definition.validate() }
     }
@@ -243,7 +243,7 @@ struct EntityDefinitionTests {
             fields: [FieldDefinition(name: "body", type: .string, storage: .payload)])
         definition.uniqueKeys = [["body"]]
         try definition.validate()
-        try definition.validateForPublish()
+        try definition.validate()
 
         let database = InMemoryDatabase()
         let registry = SchemaRegistry(database: database)

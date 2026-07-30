@@ -211,7 +211,7 @@ struct UniqueClaimsTests {
         try await store.write((0..<401).map { EntityWrite(values: ["code": .string("c-\($0)")], uuid: "b-\($0)") }, entity: "badge")
         probe.reset()
 
-        #expect(try await store.deleteAll(entity: "badge") == 401)
+        #expect(try await store.deleteAll(entity: "badge", any: [[]]) == 401)
         #expect(probe.deleteBatches.allSatisfy { $0 <= 400 })
         #expect(probe.deleteBatches.reduce(0, +) == 401)
     }

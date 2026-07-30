@@ -7,8 +7,9 @@
 
 import CloudKit
 import Foundation
-import ScoutDB
 import ScoutDBTesting
+
+@testable import ScoutDB
 
 struct PerfWorld: @unchecked Sendable {
     let corpus: Corpus

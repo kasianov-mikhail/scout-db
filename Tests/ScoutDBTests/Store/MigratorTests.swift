@@ -81,7 +81,9 @@ struct MigratorTests {
 
         try await registry.publish(makeRetypeDefinition(version: 2))
         try await migrator.backfill(entity: "payment") { record in
-            guard case .int(let cents)? = record.values["amount"] else { return }
+            guard case .int(let cents)? = record.values["amount"] else {
+                return
+            }
             record.values["amount"] = .double(Double(cents) / 100)
         }
 
@@ -119,7 +121,7 @@ struct MigratorTests {
 
         var stale = try await registry.definition(for: "account")
         stale.keyID = "k1"
-        try await registry.register(stale)
+        try await registry.publish(stale)
         #expect(try await rotating.rotateKey(entity: "account", to: "k2") == 1)
         #expect(try await store.read(entity: "account").first?.values["email"] == .string("alice@example.com"))
 
@@ -161,20 +163,20 @@ struct MigratorTests {
 
         definition.views? += [AggregateView(name: "by_product", groupBy: "product", bucket: .lifetime, sum: "amount")]
         try await registry.publish(definition)
-        #expect(try await store.totals(entity: "sale", view: "by_product").isEmpty)
+        #expect(try await GridQuery(store, entity: "sale", view: "by_product").totals().isEmpty)
 
         #expect(try await migrator.backfill(view: "by_product", entity: "sale") == 3)
-        var totals = try await store.totals(entity: "sale", view: "by_product")
+        var totals = try await GridQuery(store, entity: "sale", view: "by_product").totals()
         #expect(totals.first { $0.group == "app" }?.count == 2)
         #expect(totals.first { $0.group == "app" }?.value == 15)
         #expect(totals.first { $0.group == "book" }?.count == 1)
-        #expect(try await store.totals(entity: "sale", view: "all_time").map(\.count) == [3])
+        #expect(try await GridQuery(store, entity: "sale", view: "all_time").totals().map(\.count) == [3])
 
         #expect(try await migrator.backfill(view: "by_product", entity: "sale") == 3)
-        totals = try await store.totals(entity: "sale", view: "by_product")
+        totals = try await GridQuery(store, entity: "sale", view: "by_product").totals()
         #expect(totals.first { $0.group == "app" }?.count == 2)
         #expect(totals.first { $0.group == "app" }?.value == 15)
-        #expect(try await store.totals(entity: "sale", view: "all_time").map(\.count) == [3])
+        #expect(try await GridQuery(store, entity: "sale", view: "all_time").totals().map(\.count) == [3])
 
         await #expect(throws: SchemaError.unknownField("ghost")) {
             try await migrator.backfill(view: "ghost", entity: "sale")

@@ -19,7 +19,9 @@ extension EntityCoder {
     private static let stagingPrefix = stagingDirectory.standardizedFileURL.path + "/"
 
     static func stage(_ data: Data, limit: Int = maxAssetSize) throws -> RecordValue {
-        guard data.count <= limit else { throw SchemaError.invalidValue("asset") }
+        guard data.count <= limit else {
+            throw SchemaError.invalidValue("asset")
+        }
 
         let digest = SHA256.hash(data: data).hexString
         try FileManager.default.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
@@ -38,8 +40,12 @@ extension EntityCoder {
     }
 
     static func validateAssetSize(at url: URL, limit: Int = maxAssetSize) throws {
-        guard let size = try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int else { return }
-        guard size <= limit else { throw SchemaError.invalidValue("asset") }
+        guard let size = try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int else {
+            return
+        }
+        guard size <= limit else {
+            throw SchemaError.invalidValue("asset")
+        }
     }
 
     static func discardStagedAssets(in records: [CKRecord]) {
@@ -50,20 +56,22 @@ extension EntityCoder {
         forEachStagedAsset(in: records) { stagedFiles.release($0, retiring: false) }
     }
 
-    static func forgetStagedFile(_ url: URL) {
+    fileprivate static func forgetStagedFile(_ url: URL) {
         stagedFiles.forget(url)
     }
 
     private static func forEachStagedAsset(in records: [CKRecord], _ body: (URL) -> Void) {
         for record in records {
             for key in record.allKeys() {
-                guard let asset = record[key] as? CKAsset, let url = asset.fileURL, isStaged(url) else { continue }
+                guard let asset = record[key] as? CKAsset, let url = asset.fileURL, isStaged(url) else {
+                    continue
+                }
                 body(url)
             }
         }
     }
 
-    static func isStaged(_ url: URL) -> Bool {
+    fileprivate static func isStaged(_ url: URL) -> Bool {
         url.standardizedFileURL.path.hasPrefix(stagingPrefix)
     }
 }
@@ -73,7 +81,7 @@ private final class StagedFiles: @unchecked Sendable {
     private var holds: [String: Int] = [:]
     private var retired: Set<String> = []
 
-    func retain(_ url: URL) {
+    fileprivate func retain(_ url: URL) {
         lock.withLock { holds[url.standardizedFileURL.path, default: 0] += 1 }
     }
 
@@ -89,7 +97,9 @@ private final class StagedFiles: @unchecked Sendable {
                 return
             }
             holds[path] = nil
-            guard retired.remove(path) != nil else { return }
+            guard retired.remove(path) != nil else {
+                return
+            }
             try? FileManager.default.removeItem(at: url)
         }
     }
@@ -111,8 +121,10 @@ extension EntityStore {
 
     @discardableResult public static func sweepStagedAssets(olderThan age: TimeInterval = 86_400) -> Int {
         let manager = FileManager.default
-        guard let files = try? manager.contentsOfDirectory(at: EntityCoder.stagingDirectory, includingPropertiesForKeys: [.contentModificationDateKey])
-        else { return 0 }
+        let staged = try? manager.contentsOfDirectory(at: EntityCoder.stagingDirectory, includingPropertiesForKeys: [.contentModificationDateKey])
+        guard let files = staged else {
+            return 0
+        }
         let cutoff = Date(timeIntervalSinceNow: -age)
         var removed = 0
         for file in files {
@@ -130,7 +142,9 @@ extension EntityStore {
 
 extension EntityRecord {
     public func assetData(for field: String) throws -> Data? {
-        guard case .asset(let url)? = values[field] else { return nil }
+        guard case .asset(let url)? = values[field] else {
+            return nil
+        }
         return try Data(contentsOf: url)
     }
 }

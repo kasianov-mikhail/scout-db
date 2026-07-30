@@ -116,7 +116,7 @@ struct BuilderTests {
         #expect(views.first { $0.name == "by_product_id" }?.bucket == .lifetime)
         #expect(views.first { $0.name == "by_day" }?.groupBy == nil)
 
-        let counted = try await store.aggregate(entity: "purchase", view: "by_product_id")
+        let counted = try await GridQuery(store, entity: "purchase", view: "by_product_id").rows()
         #expect(counted.map(\.count).reduce(0, +) == 3)
         #expect(try await store.query("purchase").filter("product_id", .equals, "sku-1").count() == 1)
     }
@@ -527,7 +527,9 @@ struct BuilderTests {
         try await store.query("purchase")
             .filter("quantity" > 1 || "product_id" == "sku-0")
             .update { record in
-                guard case .int(let quantity)? = record.values["quantity"] else { return }
+                guard case .int(let quantity)? = record.values["quantity"] else {
+                    return
+                }
                 record.values["quantity"] = .int(quantity + 1)
             }
         let records = try await store.query("purchase").sort("date").take(100)
@@ -615,13 +617,6 @@ struct BuilderTests {
             streamed.append(purchase)
         }
         #expect(Set(streamed.compactMap(\.productId)) == ["sku-0", "sku-2"])
-
-        var updates = try store.query(TypedPurchase.self).filter(\.quantity > 2).observe().makeAsyncIterator()
-        #expect(try await updates.next()?.count == 1)
-        try await store.write(
-            ["product_id": .string("sku-9"), "quantity": .int(5), "date": .date(Date(timeIntervalSince1970: 9_000))],
-            entity: "purchase", uuid: "p-9")
-        #expect(try await updates.next()?.count == 2)
 
         database.records.first { $0.recordID.recordName == "p-0" }?.overrideCreator("user-a")
         let mine = try await store.query(TypedPurchase.self).createdBy("user-a").take(100)

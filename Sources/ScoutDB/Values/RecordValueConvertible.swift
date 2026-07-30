@@ -15,7 +15,9 @@ public protocol RecordValueConvertible {
 
 extension String: RecordValueConvertible {
     public init?(recordValue: RecordValue) {
-        guard case .string(let value) = recordValue else { return nil }
+        guard case .string(let value) = recordValue else {
+            return nil
+        }
         self = value
     }
 
@@ -24,7 +26,9 @@ extension String: RecordValueConvertible {
 
 extension Int: RecordValueConvertible {
     public init?(recordValue: RecordValue) {
-        guard case .int(let value) = recordValue else { return nil }
+        guard case .int(let value) = recordValue else {
+            return nil
+        }
         self = Int(value)
     }
 
@@ -33,7 +37,9 @@ extension Int: RecordValueConvertible {
 
 extension Int64: RecordValueConvertible {
     public init?(recordValue: RecordValue) {
-        guard case .int(let value) = recordValue else { return nil }
+        guard case .int(let value) = recordValue else {
+            return nil
+        }
         self = value
     }
 
@@ -42,7 +48,9 @@ extension Int64: RecordValueConvertible {
 
 extension Double: RecordValueConvertible {
     public init?(recordValue: RecordValue) {
-        guard case .double(let value) = recordValue else { return nil }
+        guard case .double(let value) = recordValue else {
+            return nil
+        }
         self = value
     }
 
@@ -51,7 +59,9 @@ extension Double: RecordValueConvertible {
 
 extension Date: RecordValueConvertible {
     public init?(recordValue: RecordValue) {
-        guard case .date(let value) = recordValue else { return nil }
+        guard case .date(let value) = recordValue else {
+            return nil
+        }
         self = value
     }
 
@@ -60,7 +70,9 @@ extension Date: RecordValueConvertible {
 
 extension Data: RecordValueConvertible {
     public init?(recordValue: RecordValue) {
-        guard case .bytes(let value) = recordValue else { return nil }
+        guard case .bytes(let value) = recordValue else {
+            return nil
+        }
         self = value
     }
 
@@ -77,7 +89,9 @@ extension String: RecordListElement {
     public static func list(_ elements: [String]) -> RecordValue { .strings(elements) }
 
     public static func members(of value: RecordValue) -> [RecordValue]? {
-        guard case .strings(let values) = value else { return nil }
+        guard case .strings(let values) = value else {
+            return nil
+        }
         return values.map(RecordValue.string)
     }
 }
@@ -86,7 +100,9 @@ extension Int64: RecordListElement {
     public static func list(_ elements: [Int64]) -> RecordValue { .ints(elements) }
 
     public static func members(of value: RecordValue) -> [RecordValue]? {
-        guard case .ints(let values) = value else { return nil }
+        guard case .ints(let values) = value else {
+            return nil
+        }
         return values.map(RecordValue.int)
     }
 }
@@ -95,7 +111,9 @@ extension Int: RecordListElement {
     public static func list(_ elements: [Int]) -> RecordValue { .ints(elements.map(Int64.init)) }
 
     public static func members(of value: RecordValue) -> [RecordValue]? {
-        guard case .ints(let values) = value else { return nil }
+        guard case .ints(let values) = value else {
+            return nil
+        }
         return values.map(RecordValue.int)
     }
 }
@@ -104,7 +122,9 @@ extension Double: RecordListElement {
     public static func list(_ elements: [Double]) -> RecordValue { .doubles(elements) }
 
     public static func members(of value: RecordValue) -> [RecordValue]? {
-        guard case .doubles(let values) = value else { return nil }
+        guard case .doubles(let values) = value else {
+            return nil
+        }
         return values.map(RecordValue.double)
     }
 }
@@ -113,17 +133,23 @@ extension Date: RecordListElement {
     public static func list(_ elements: [Date]) -> RecordValue { .dates(elements) }
 
     public static func members(of value: RecordValue) -> [RecordValue]? {
-        guard case .dates(let values) = value else { return nil }
+        guard case .dates(let values) = value else {
+            return nil
+        }
         return values.map(RecordValue.date)
     }
 }
 
 extension Array: RecordValueConvertible where Element: RecordListElement {
     public init?(recordValue: RecordValue) {
-        guard let members = Element.members(of: recordValue) else { return nil }
+        guard let members = Element.members(of: recordValue) else {
+            return nil
+        }
         var elements: [Element] = []
         for member in members {
-            guard let element = Element(recordValue: member) else { return nil }
+            guard let element = Element(recordValue: member) else {
+                return nil
+            }
             elements.append(element)
         }
         self = elements

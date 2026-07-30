@@ -10,7 +10,7 @@ import Foundation
 
 extension EntityStore {
     @discardableResult
-    package func subscribe(entity: String, filters: [Filter] = [], id: String? = nil, projecting fields: [String]? = nil) async throws -> String {
+    func subscribe(entity: String, filters: [Filter] = [], id: String? = nil, projecting fields: [String]? = nil) async throws -> String {
         let definition = try await registry.definition(for: entity)
         let (server, client) = try split(filters, entity: entity, using: definition)
         guard client.isEmpty else {

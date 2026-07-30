@@ -7,8 +7,9 @@
 
 import CloudKit
 import Foundation
-import ScoutDB
 import Testing
+
+@testable import ScoutDB
 
 @Suite("Contract: store")
 struct StoreContractTests {
@@ -91,7 +92,7 @@ struct StoreContractTests {
             let above = try await f.store.read(entity: entity, filters: [.init(field: "quantity", op: .greaterThan, value: .int(4))])
             #expect(Set(above.map(\.uuid)) == ["q-1", "q-2"])
 
-            let middle = try await f.store.read(entity: entity, filters: EntityStore.Filter.between("quantity", .int(2), .int(9)))
+            let middle = try await f.store.query(entity).filter(.between("quantity", .int(2), .int(9))).take(100)
             #expect(middle.map(\.uuid) == ["q-1"])
         }
     }
@@ -195,8 +196,8 @@ struct StoreContractTests {
             }
             try await eventually { try await f.store.read(entity: entity).count == 3 }
 
-            #expect(try await f.store.aggregate(.sum, of: "total", entity: entity) == 20)
-            #expect(try await f.store.aggregate(.maximum, of: "total", entity: entity) == 10)
+            #expect(try await f.store.query(entity).sum("total") == 20)
+            #expect(try await f.store.query(entity).max("total") == 10)
         }
     }
 
@@ -209,20 +210,7 @@ struct StoreContractTests {
             }
             try await eventually { try await f.store.read(entity: entity).count == 3 }
 
-            #expect(try await f.store.counts(by: "product", entity: entity) == ["a": 2, "b": 1])
-        }
-    }
-
-    @Test("Atomic increments accumulate across calls")
-    func increment() async throws {
-        try await withContract { f in
-            let entity = try await f.publishOrder()
-            try await f.store.write(orderValues(total: 0), entity: entity, uuid: "i-1")
-            try await eventually { try await f.store.read(entity: entity).count == 1 }
-
-            try await f.store.increment(entity: entity, uuid: "i-1", field: "total", by: 2)
-            let value = try await f.store.increment(entity: entity, uuid: "i-1", field: "total", by: 3)
-            #expect(value == 5)
+            #expect(try await f.store.query(entity).count(by: "product") == ["a": 2, "b": 1])
         }
     }
 
@@ -234,7 +222,7 @@ struct StoreContractTests {
             try await f.store.write(orderValues(total: 3), entity: entity, uuid: "v-2")
 
             try await eventually {
-                let totals = try await f.store.totals(entity: entity, view: "revenue")
+                let totals = try await GridQuery(f.store, entity: entity, view: "revenue").totals()
                 return totals.first?.count == 2 && totals.first?.value == 5
             }
         }

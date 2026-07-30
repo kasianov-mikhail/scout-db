@@ -17,15 +17,11 @@ import Foundation
 ///
 /// Every CloudKit call fails opaquely when no iCloud account is signed in —
 /// check `accountStatus()` (or `requireAccount()`) before the first store
-/// operation, and watch `accountStatusUpdates()` to react when the user signs
-/// in, out, or switches accounts mid-flight.
+/// operation.
 ///
 public protocol CloudContainer: Sendable {
     /// The current iCloud account state.
     func accountStatus() async throws -> CKAccountStatus
-
-    /// Emits the fresh status after every account change.
-    func accountStatusUpdates() -> AsyncStream<CKAccountStatus>
 
     /// The database every store runs against.
     var publicDatabase: any CloudDatabase { get }
@@ -59,44 +55,5 @@ public struct AccountUnavailableError: LocalizedError {
 extension CKContainer: CloudContainer {
     public var publicDatabase: any CloudDatabase {
         publicCloudDatabase
-    }
-
-    public func accountStatusUpdates() -> AsyncStream<CKAccountStatus> {
-        AsyncStream { continuation in
-            final class Token: @unchecked Sendable {
-                let value: NSObjectProtocol
-
-                init(_ value: NSObjectProtocol) {
-                    self.value = value
-                }
-            }
-            final class Serial: @unchecked Sendable {
-                private let lock = NSLock()
-                private var tail = Task<Void, Never> {}
-
-                func enqueue(_ work: @escaping @Sendable () async -> Void) {
-                    lock.lock()
-                    defer { lock.unlock() }
-                    let previous = tail
-                    tail = Task {
-                        await previous.value
-                        await work()
-                    }
-                }
-            }
-            let serial = Serial()
-            let token = Token(
-                NotificationCenter.default.addObserver(forName: .CKAccountChanged, object: nil, queue: nil) { [weak self] _ in
-                    guard let self else { return }
-                    serial.enqueue {
-                        if let status = try? await self.accountStatus() {
-                            continuation.yield(status)
-                        }
-                    }
-                })
-            continuation.onTermination = { _ in
-                NotificationCenter.default.removeObserver(token.value)
-            }
-        }
     }
 }

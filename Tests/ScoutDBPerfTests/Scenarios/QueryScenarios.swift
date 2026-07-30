@@ -6,7 +6,8 @@
 // https://opensource.org/licenses/MIT.
 
 import Foundation
-import ScoutDB
+
+@testable import ScoutDB
 
 extension PerfScenarios {
     static var queries: [PerfScenario] {
@@ -24,23 +25,18 @@ extension PerfScenarios {
             },
             PerfScenario("Queries", "OR group of three products, take 50", sql: 1, writes: false) { world, _ in
                 _ = try await world.store.query(PerfSchema.order)
-                    .group {
-                        $0.filter("product", .equals, .string(PerfSchema.products[0]))
-                        $0.filter("product", .equals, .string(PerfSchema.products[1]))
-                        $0.filter("product", .equals, .string(PerfSchema.products[2]))
-                    }
+                    .filter(
+                        "product" == .string(PerfSchema.products[0]) || "product" == .string(PerfSchema.products[1])
+                            || "product" == .string(PerfSchema.products[2])
+                    )
                     .take(50)
             },
             PerfScenario("Queries", "OR of two conjunctions", sql: 1, writes: false) { world, _ in
                 _ = try await world.store.query(PerfSchema.order)
-                    .group {
-                        $0.all(
-                            EntityStore.Filter(field: "product", op: .equals, value: .string(PerfSchema.products[0])),
-                            EntityStore.Filter(field: "quantity", op: .greaterThan, value: .int(10)))
-                        $0.all(
-                            EntityStore.Filter(field: "status", op: .equals, value: .string("refunded")),
-                            EntityStore.Filter(field: "total", op: .greaterThan, value: .double(2_000)))
-                    }
+                    .filter(
+                        ("product" == .string(PerfSchema.products[0]) && "quantity" > 10)
+                            || ("status" == "refunded" && "total" > 2_000)
+                    )
                     .take(50)
             },
             PerfScenario("Queries", "exclude, client-side negation", sql: 1, writes: false) { world, _ in
@@ -71,7 +67,7 @@ extension PerfScenarios {
             PerfScenario("Queries", "maximum(total) from an exact view", sql: 1, writes: false) { world, _ in
                 _ = try await world.store.query(PerfSchema.order)
                     .filter("product", .equals, .string(world.hotProduct))
-                    .maximum("total")
+                    .max("total")
             },
             PerfScenario("Queries", "sum(total) by product", sql: 1, writes: false) { world, _ in
                 _ = try await world.store.query(PerfSchema.order).sum("total", by: "product")

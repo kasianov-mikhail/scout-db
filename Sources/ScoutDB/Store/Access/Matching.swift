@@ -9,19 +9,12 @@ import CoreLocation
 import Foundation
 
 extension EntityStore {
-    public func explain(entity: String, filters: [Filter] = [], sort: [Sort] = [], createdBy creator: String? = nil) async throws -> QueryPlan {
+    func explain(entity: String, filters: [Filter] = [], sort: [Sort] = [], createdBy creator: String? = nil) async throws -> QueryPlan {
         let definition = try await registry.definition(for: entity)
         return try plan(filters, entity: entity, sort: sort, createdBy: creator, using: definition)
     }
 
-    /// Explains a disjunctive query the way it actually runs: one `QueryPlan`
-    /// per OR branch, since a single plan cannot express a disjunction.
-    ///
-    /// The store fans an OR query out into one server query per branch, so each
-    /// branch has its own server/client split. `QueryBuilder.explain()` routes
-    /// through here so a `.group { … }` is reflected rather than dropped.
-    ///
-    public func explain(entity: String, any branches: [[Filter]], sort: [Sort] = [], createdBy creator: String? = nil) async throws -> [QueryPlan] {
+    func explain(entity: String, any branches: [[Filter]], sort: [Sort] = [], createdBy creator: String? = nil) async throws -> [QueryPlan] {
         let definition = try await registry.definition(for: entity)
         return try branches.map { try plan($0, entity: entity, sort: sort, createdBy: creator, using: definition) }
     }
@@ -98,6 +91,16 @@ extension EntityStore {
         }
     }
 
+    private static func serverComplement(of filter: Filter, in field: FieldDefinition) -> ServerFilter? {
+        guard let op = filter.op.complement?.serverOperator, field.alwaysPresent else {
+            return nil
+        }
+        guard case .slot(let pool, let slot) = field.storage, pool.isQueryable else {
+            return nil
+        }
+        return ServerFilter(field: slot, op: op, value: filter.value)
+    }
+
     static func ordered(_ lhs: EntityRecord, _ rhs: EntityRecord, by sorts: [Sort]) -> Bool {
         for sort in sorts {
             let order: ComparisonResult
@@ -106,7 +109,9 @@ extension EntityStore {
             } else {
                 order = rank(lhs.values[sort.field], rhs.values[sort.field])
             }
-            guard order != .orderedSame else { continue }
+            guard order != .orderedSame else {
+                continue
+            }
             return sort.ascending ? order == .orderedAscending : order == .orderedDescending
         }
         return false
@@ -114,7 +119,9 @@ extension EntityStore {
 
     private static func rankDistance(_ lhs: RecordValue?, _ rhs: RecordValue?, from origin: CLLocation) -> ComparisonResult {
         func distance(_ value: RecordValue?) -> Double {
-            guard case .location(let latitude, let longitude)? = value else { return .greatestFiniteMagnitude }
+            guard case .location(let latitude, let longitude)? = value else {
+                return .greatestFiniteMagnitude
+            }
             return CLLocation(latitude: latitude, longitude: longitude).distance(from: origin)
         }
         return order(distance(lhs), distance(rhs))
@@ -133,7 +140,9 @@ extension EntityStore {
         case (.date(let lhs)?, .date(let rhs)?):
             return order(lhs, rhs)
         default:
-            guard let lhs = lhs?.scalar, let rhs = rhs?.scalar else { return .orderedSame }
+            guard let lhs = lhs?.scalar, let rhs = rhs?.scalar else {
+                return .orderedSame
+            }
             return order(lhs, rhs)
         }
     }
@@ -163,10 +172,8 @@ extension EntityStore {
                 guard filter.op != .near, filter.op != .search else {
                     throw SchemaError.invalidValue(filter.field)
                 }
-                if let op = filter.op.complement?.serverOperator, field.alwaysPresent, case .slot(let pool, let slot) = field.storage,
-                    pool.isQueryable
-                {
-                    server.append(ServerFilter(field: slot, op: op, value: filter.value))
+                if let complement = Self.serverComplement(of: filter, in: field) {
+                    server.append(complement)
                 } else {
                     client.append(filter)
                 }
@@ -203,7 +210,9 @@ extension EntityStore {
                     throw SchemaError.unknownField(filter.field)
                 }
                 guard case .slot(let pool, let slot) = field.storage else {
-                    guard filter.op != .near else { throw SchemaError.invalidValue(filter.field) }
+                    guard filter.op != .near else {
+                        throw SchemaError.invalidValue(filter.field)
+                    }
                     client.append(filter)
                     continue
                 }
@@ -251,10 +260,14 @@ extension EntityStore {
             let options = filter.value.members ?? [filter.value]
             return { record in record.values[field].map { !options.contains($0) } ?? false }
         case .beginsWith:
-            guard case .string(let prefix) = filter.value else { return { _ in false } }
+            guard case .string(let prefix) = filter.value else {
+                return { _ in false }
+            }
             return stringMatcher(field) { $0.hasPrefix(prefix) }
         case .contains:
-            guard case .string(let needle) = filter.value else { return { _ in false } }
+            guard case .string(let needle) = filter.value else {
+                return { _ in false }
+            }
             return { record in
                 switch record.values[field] {
                 case .string(let text)?:
@@ -266,18 +279,30 @@ extension EntityStore {
                 }
             }
         case .endsWith:
-            guard case .string(let suffix) = filter.value else { return { _ in false } }
+            guard case .string(let suffix) = filter.value else {
+                return { _ in false }
+            }
             return stringMatcher(field) { $0.hasSuffix(suffix) }
         case .like:
-            guard case .string(let pattern) = filter.value else { return { _ in false } }
-            guard let regex = try? Regex(wildcardPattern(pattern)) else { throw SchemaError.invalidValue(filter.field) }
+            guard case .string(let pattern) = filter.value else {
+                return { _ in false }
+            }
+            guard let regex = try? Regex(wildcardPattern(pattern)) else {
+                throw SchemaError.invalidValue(filter.field)
+            }
             return stringMatcher(field) { $0.wholeMatch(of: regex) != nil }
         case .matches:
-            guard case .string(let pattern) = filter.value else { return { _ in false } }
-            guard let regex = try? Regex(pattern) else { throw SchemaError.invalidValue(filter.field) }
+            guard case .string(let pattern) = filter.value else {
+                return { _ in false }
+            }
+            guard let regex = try? Regex(pattern) else {
+                throw SchemaError.invalidValue(filter.field)
+            }
             return stringMatcher(field) { $0.wholeMatch(of: regex) != nil }
         case .search:
-            guard case .string(let needle) = filter.value else { return { _ in false } }
+            guard case .string(let needle) = filter.value else {
+                return { _ in false }
+            }
             let needles = needle.lowercased().split { !$0.isLetter && !$0.isNumber }
             return stringMatcher(field) { text in
                 let tokens = Set(text.lowercased().split { !$0.isLetter && !$0.isNumber })
@@ -291,7 +316,9 @@ extension EntityStore {
     private static func comparisonMatcher(for filter: Filter) -> (EntityRecord) -> Bool {
         let field = filter.field
         return { record in
-            guard let value = record.values[field], comparable(value, filter.value) else { return false }
+            guard let value = record.values[field], comparable(value, filter.value) else {
+                return false
+            }
             return switch (filter.op, rank(value, filter.value)) {
             case (.greaterThan, .orderedDescending), (.lessThan, .orderedAscending):
                 true
@@ -316,12 +343,14 @@ extension EntityStore {
 
     private static func stringMatcher(_ field: String, _ predicate: @escaping (String) -> Bool) -> (EntityRecord) -> Bool {
         { record in
-            guard case .string(let text)? = record.values[field] else { return false }
+            guard case .string(let text)? = record.values[field] else {
+                return false
+            }
             return predicate(text)
         }
     }
 
-    static func wildcardPattern(_ pattern: String) -> String {
+    fileprivate static func wildcardPattern(_ pattern: String) -> String {
         pattern.map { character -> String in
             switch character {
             case "*":
@@ -340,11 +369,15 @@ extension EntityStore {
 
     private func ngramPrefilter(for needles: [String], of field: FieldDefinition, in fields: [FieldDefinition]) -> [ServerFilter] {
         let shadow = fields.first { $0.derived == Derivation(source: field.name, transform: .ngrams) }
-        guard case .slot(_, let slot)? = shadow?.storage else { return [] }
+        guard case .slot(_, let slot)? = shadow?.storage else {
+            return []
+        }
 
         return needles.flatMap { needle in
             let folded = needle.folded
-            guard folded.count >= 3 else { return [ServerFilter]() }
+            guard folded.count >= 3 else {
+                return [ServerFilter]()
+            }
             return EntityCoder.trigrams(of: folded).map {
                 ServerFilter(field: slot, op: .contains, value: .string($0))
             }

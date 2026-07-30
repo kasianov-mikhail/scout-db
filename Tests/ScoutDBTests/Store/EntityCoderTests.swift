@@ -123,7 +123,7 @@ struct EntityCoderTests {
         let definition = makeDefinition(
             entity: "log",
             fields: [
-                FieldDefinition(name: "count", type: .int, storage: .slot(.int, "i_00"), minimum: 0)
+                FieldDefinition(name: "count", type: .int, storage: .slot(.int, "i_00"), min: 0)
             ])
         #expect(throws: SchemaError.invalidValue("count")) {
             try coder.resolve(["count": .int(-1)], at: 2, using: definition)
@@ -204,7 +204,7 @@ struct EntityCoderTests {
         let definition = makeDefinition(
             entity: "sample",
             fields: [
-                FieldDefinition(name: "counts", type: .intList, storage: .slot(.intList, "li_00"), minimum: 0)
+                FieldDefinition(name: "counts", type: .intList, storage: .slot(.intList, "li_00"), min: 0)
             ])
         #expect(throws: SchemaError.invalidValue("counts")) {
             try coder.resolve(["counts": .ints([1, -1, 2])], at: 2, using: definition)

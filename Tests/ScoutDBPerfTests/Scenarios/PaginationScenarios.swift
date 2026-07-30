@@ -6,7 +6,8 @@
 // https://opensource.org/licenses/MIT.
 
 import Foundation
-import ScoutDB
+
+@testable import ScoutDB
 
 extension PerfScenarios {
     static var pagination: [PerfScenario] {
@@ -21,7 +22,9 @@ extension PerfScenarios {
                 var seen = 0
                 for try await _ in world.store.query(PerfSchema.order).stream(pageSize: 100) {
                     seen += 1
-                    if seen == 500 { return }
+                    if seen == 500 {
+                        return
+                    }
                 }
             },
         ]

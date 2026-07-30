@@ -14,17 +14,29 @@ public actor SchemaRegistry {
     private var loading: [String: Task<EntityDefinition, any Error>] = [:]
 
     /// Creates a registry backed by any `CloudDatabase` implementation.
+    ///
+    /// The entities the library keeps for itself — the transaction envelope and
+    /// the revision log — are seeded from the definitions built into it, so
+    /// they need no publishing of their own.
+    ///
     public init(database: any CloudDatabase) {
         self.database = database
+
+        for definition in Self.builtIns {
+            cache[definition.entity] = definition
+        }
     }
 
-    /// The entity's definition, read from the database once and kept.
-    ///
-    /// A miss is served by a task the entity's other callers join, so the
-    /// several branches of one disjunctive read cost a single descriptor query
-    /// between them rather than one apiece.
-    ///
-    public func definition(for entity: String) async throws -> EntityDefinition {
+    fileprivate static var builtIns: [EntityDefinition] {
+        [.transaction, .revision]
+    }
+
+    fileprivate static let builtInEntities: Set<String> = [
+        EntityStore.transactionEntity,
+        EntityStore.revisionEntity,
+    ]
+
+    func definition(for entity: String) async throws -> EntityDefinition {
         if let cached = cache[entity] {
             return cached
         }
@@ -45,8 +57,21 @@ public actor SchemaRegistry {
         return definition
     }
 
-    public func definitions() -> [EntityDefinition] {
-        Array(cache.values)
+    func definitions() -> [EntityDefinition] {
+        cache.values.filter { !Self.builtInEntities.contains($0.entity) }
+    }
+
+    /// The entity's schema as a caller sees it: the fields a write may carry
+    /// and the rules over them, without the storage the library keeps to
+    /// itself.
+    public func schema(for entity: String) async throws -> EntitySchema {
+        EntitySchema(try await definition(for: entity))
+    }
+
+    /// The schemas of every entity loaded so far, which `preload()` fills in
+    /// one query — the library's own entities left out.
+    public func schemas() -> [EntitySchema] {
+        definitions().map(EntitySchema.init)
     }
 
     @discardableResult public func preload() async throws -> Int {
@@ -61,24 +86,10 @@ public actor SchemaRegistry {
                 cache[entity] = definition
             }
         }
-        return cache.count
+        return definitions().count
     }
 
-    /// Seeds the registry with a definition embedded in the app, without touching
-    /// the database — reads and writes can proceed before `publish` lands in SchemaDescriptor.
-    ///
-    public func register(_ definition: EntityDefinition) throws {
-        try definition.validateForPublish()
-        cache[definition.entity] = definition
-    }
-
-    /// Retires an entity: every one of its schema descriptors leaves the active
-    /// set, so lookups and preloads stop seeing it and fail with `unknownEntity`.
-    ///
-    /// Publishing the entity again reactivates it — the descriptor records are
-    /// keyed by entity and version, so a republish flips them back to active.
-    ///
-    public func retire(entity: String) async throws {
+    func retire(entity: String) async throws {
         let descriptors = try await database.allRecords(matching: metaQuery(entity: entity))
         guard descriptors.count > 0 else {
             throw SchemaError.unknownEntity(entity)
@@ -90,8 +101,8 @@ public actor SchemaRegistry {
         cache[entity] = nil
     }
 
-    public func publish(_ definition: EntityDefinition) async throws {
-        try definition.validateForPublish()
+    func publish(_ definition: EntityDefinition) async throws {
+        try definition.validate()
         let record = CKRecord(recordType: SchemaDescriptorEntry.recordType, recordID: CKRecord.ID(recordName: "\(definition.entity)@\(definition.version)"))
         record["entity"] = definition.entity
         record["entity_version"] = Int64(definition.version)
@@ -102,7 +113,9 @@ public actor SchemaRegistry {
     }
 
     private func latest(of entries: [SchemaDescriptorEntry]) throws -> EntityDefinition? {
-        guard let entry = entries.max(by: { $0.version < $1.version }) else { return nil }
+        guard let entry = entries.max(by: { $0.version < $1.version }) else {
+            return nil
+        }
         let definition = try JSONDecoder().decode(EntityDefinition.self, from: entry.definition)
         try definition.validate()
         return definition

@@ -7,59 +7,20 @@
 
 import Foundation
 
-/// The published shape of one entity: its fields, the constraints over them,
-/// and the aggregates kept for them.
-///
-/// A definition is versioned rather than replaced. Every record carries the
-/// version it was written under, `fields` keeps every field ever declared, and
-/// a read resolves the record against the fields active at its own version —
-/// so records written before a migration stay readable forever.
-///
-public struct EntityDefinition: Codable, Equatable, Sendable {
-    /// The record type this definition describes, unique within the database.
-    public let entity: String
-
-    /// The version this definition publishes, stamped on every record it
-    /// writes and resolved per record on read.
-    public let version: Int
-
-    /// Every field ever declared for the entity, closed ones included — ask
-    /// `fields(at:)` for the ones a given version actually carries.
-    public let fields: [FieldDefinition]
-
-    /// The timestamp field, active at `version`, that orders paged reads and
-    /// buckets every view that is not a plain `lifetime` one.
-    public var envelopeDate: String?
-
-    /// The fields whose values derive the record's id, turning a write into an
-    /// upsert — a record missing any of them is rejected.
-    public var unique: [String]?
-
-    /// Claim-backed uniqueness constraints, one field tuple each — unlike
-    /// `unique`, they reject duplicates instead of deriving the record's
-    /// identity, and every value is held by a claim record taken with a
-    /// compare-and-swap, so two racing writers cannot both win.
-    public var uniqueKeys: [[String]]?
-
-    /// The key list published by versions that spelled claim-backed keys apart
-    /// from read-validated ones — decoded and honored like `uniqueKeys`, never
-    /// published anew.
-    public var enforcedKeys: [[String]]?
-
-    /// Materialized aggregate views, each kept current on every write.
-    public var views: [AggregateView]?
-
-    /// Names the key that seals `encrypted` fields and backs `hmac`
-    /// derivations; either one makes it mandatory.
-    public var keyID: String?
-
-    /// An audited entity appends a revision record on every update and delete;
-    /// publish `EntityStore.revisionDefinition` before enabling it.
-    public var audited: Bool?
-
+struct EntityDefinition: Codable, Equatable, Sendable {
+    let entity: String
+    let version: Int
+    let fields: [FieldDefinition]
+    var envelopeDate: String?
+    var unique: [String]?
+    var uniqueKeys: [[String]]?
+    var enforcedKeys: [[String]]?
+    var views: [AggregateView]?
+    var keyID: String?
+    var audited: Bool?
     private let index = FieldIndex()
 
-    public init(
+    init(
         entity: String, version: Int, fields: [FieldDefinition], envelopeDate: String? = nil, unique: [String]? = nil,
         uniqueKeys: [[String]]? = nil, enforcedKeys: [[String]]? = nil, views: [AggregateView]? = nil, keyID: String? = nil,
         audited: Bool? = nil
@@ -80,20 +41,24 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
         case entity, version, fields, envelopeDate, unique, uniqueKeys, enforcedKeys, views, keyID, audited
     }
 
-    public static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.entity == rhs.entity && lhs.version == rhs.version && lhs.fields == rhs.fields && lhs.envelopeDate == rhs.envelopeDate
-            && lhs.unique == rhs.unique && lhs.uniqueKeys == rhs.uniqueKeys && lhs.enforcedKeys == rhs.enforcedKeys && lhs.views == rhs.views
-            && lhs.keyID == rhs.keyID && lhs.audited == rhs.audited
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.entity == rhs.entity
+            && lhs.version == rhs.version
+            && lhs.fields == rhs.fields
+            && lhs.envelopeDate == rhs.envelopeDate
+            && lhs.unique == rhs.unique
+            && lhs.uniqueKeys == rhs.uniqueKeys
+            && lhs.enforcedKeys == rhs.enforcedKeys
+            && lhs.views == rhs.views
+            && lhs.keyID == rhs.keyID
+            && lhs.audited == rhs.audited
     }
 
-    /// The fields active at the given version, memoized per version.
-    public func fields(at version: Int) -> [FieldDefinition] {
+    func fields(at version: Int) -> [FieldDefinition] {
         index.entry(at: version, of: fields).active
     }
 
-    /// The active field with the given name, resolving duplicate historical names
-    /// in favor of the first declaration — the one shared tie-break policy.
-    public func field(named name: String, at version: Int) -> FieldDefinition? {
+    func field(named name: String, at version: Int) -> FieldDefinition? {
         index.entry(at: version, of: fields).byName[name]
     }
 
@@ -105,25 +70,50 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
         views?.first { $0.name == name }
     }
 
-    /// Every claim-backed key the entity declares, across both the current list
-    /// and the one older definitions published theirs under.
+    func view(grouping group: String?, folding field: String?, histogram: Bool = false, bucket: AggregateBucket? = nil) -> AggregateView? {
+        let candidates = (views ?? []).filter { view in
+            guard view.groupBy == group else {
+                return false
+            }
+            guard !histogram else {
+                return view.histogram?.field == field
+            }
+            guard view.histogram == nil else {
+                return false
+            }
+            guard let field else {
+                return true
+            }
+            return view.metric?.field == field
+        }
+        if let bucket {
+            return candidates.first { ($0.bucket ?? .hour) == bucket }
+        }
+        return candidates.min { Self.resolution($0) < Self.resolution($1) }
+    }
+
+    private static func resolution(_ view: AggregateView) -> Int {
+        switch view.bucket ?? .hour {
+        case .hour:
+            0
+        case .day:
+            1
+        case .weekday:
+            2
+        case .lifetime:
+            3
+        }
+    }
+
     var claimedKeys: [[String]] {
         (uniqueKeys ?? []) + (enforcedKeys ?? [])
     }
 
-    /// The publish-time validation: everything `validate()` checks, plus the
-    /// shapes that are legal to read back but wasteful to ever publish anew.
-    public func validateForPublish() throws {
-        try validate()
-    }
-
-    /// Checks that the definition holds together — slots, derivations, keys and
-    /// views — throwing `SchemaError.invalidDefinition` on the first problem.
-    public func validate() throws {
+    func validate() throws {
         let names = Set(fields.map(\.name))
         for field in fields {
             if case .slot(let pool, let slot) = field.storage {
-                guard field.type.pool == pool else {
+                guard field.type == pool else {
                     throw SchemaError.invalidDefinition(
                         "Field '\(field.name)' of type '\(field.type.rawValue)' cannot live in the '\(pool.rawValue)' pool")
                 }
@@ -166,14 +156,18 @@ public struct EntityDefinition: Codable, Equatable, Sendable {
             if field.allowed != nil, ![.string, .text, .stringList].contains(field.type) {
                 throw SchemaError.invalidDefinition("Field '\(field.name)' of type '\(field.type.rawValue)' cannot constrain 'allowed'")
             }
-            if field.minimum != nil || field.maximum != nil, ![.int, .double, .intList, .doubleList].contains(field.type) {
+            if field.min != nil || field.max != nil, ![.int, .double, .intList, .doubleList].contains(field.type) {
                 throw SchemaError.invalidDefinition("Field '\(field.name)' of type '\(field.type.rawValue)' cannot constrain 'minimum'/'maximum'")
             }
         }
         for lhs in fields {
             for rhs in fields where lhs.name != rhs.name || lhs.since != rhs.since {
-                guard case .slot(_, let lhsSlot) = lhs.storage else { continue }
-                guard case .slot(_, let rhsSlot) = rhs.storage else { continue }
+                guard case .slot(_, let lhsSlot) = lhs.storage else {
+                    continue
+                }
+                guard case .slot(_, let rhsSlot) = rhs.storage else {
+                    continue
+                }
                 if lhsSlot == rhsSlot, lhs.overlaps(rhs) {
                     throw SchemaError.invalidDefinition("Fields '\(lhs.name)' and '\(rhs.name)' share slot '\(lhsSlot)'")
                 }
@@ -252,11 +246,24 @@ private final class FieldIndex: @unchecked Sendable {
 
     func entry(at version: Int, of fields: [FieldDefinition]) -> Entry {
         lock.lock()
-        defer { lock.unlock() }
-        if let cached = entries[version] { return cached }
-        let active = fields.filter { $0.isActive(at: version) }
-        let entry = Entry(active: active, byName: Dictionary(active.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first }))
+        defer {
+            lock.unlock()
+        }
+
+        if let cached = entries[version] {
+            return cached
+        }
+
+        let active = fields.filter {
+            $0.isActive(at: version)
+        }
+
+        let entry = Entry(
+            active: active,
+            byName: Dictionary(active.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        )
         entries[version] = entry
+
         return entry
     }
 }
