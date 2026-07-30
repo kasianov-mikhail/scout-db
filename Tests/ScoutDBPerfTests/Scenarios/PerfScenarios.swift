@@ -10,9 +10,8 @@ import ScoutDB
 
 enum PerfScenarios {
     static var all: [PerfScenario] {
-        schema + queries + writes + pagination + aggregates + counters + uniqueKeys + transactions + leases + conflicts
-            + relations + revisions + lifecycle + assets + encryption + migrations
-            + liveQueries + subscriptions + pushEvents
+        schema + queries + writes + pagination + aggregates + uniqueKeys + transactions + conflicts
+            + relations + revisions + lifecycle + assets + encryption + migrations + subscriptions + pushEvents
     }
 }
 

@@ -25,7 +25,9 @@ public struct ChangeEvent: Equatable, Sendable {
     /// `.updated`; `.deleted` only appears for hard deletes.
     ///
     public init?(userInfo: [AnyHashable: Any]) {
-        guard let notification = CKNotification(fromRemoteNotificationDictionary: userInfo) as? CKQueryNotification else { return nil }
+        guard let notification = CKNotification(fromRemoteNotificationDictionary: userInfo) as? CKQueryNotification else {
+            return nil
+        }
         self.init(notification: notification)
     }
 
@@ -57,7 +59,9 @@ extension EntityStore {
     /// records tombstoned by the change.
     ///
     public func record(for event: ChangeEvent) async throws -> EntityRecord? {
-        guard event.kind != .deleted else { return nil }
+        guard event.kind != .deleted else {
+            return nil
+        }
         return try await fetch(uuid: event.uuid)
     }
 
@@ -71,13 +75,17 @@ extension EntityStore {
     /// deletes, tombstones, and non-query notifications.
     ///
     public func record(fromPush userInfo: [AnyHashable: Any]) async throws -> EntityRecord? {
-        guard let notification = CKNotification(fromRemoteNotificationDictionary: userInfo) as? CKQueryNotification else { return nil }
+        guard let notification = CKNotification(fromRemoteNotificationDictionary: userInfo) as? CKQueryNotification else {
+            return nil
+        }
         return try await record(for: notification)
     }
 
     /// The record behind a query notification; see `record(fromPush:)`.
     public func record(for notification: CKQueryNotification) async throws -> EntityRecord? {
-        guard notification.queryNotificationReason != .recordDeleted, let uuid = notification.recordID?.recordName else { return nil }
+        guard notification.queryNotificationReason != .recordDeleted, let uuid = notification.recordID?.recordName else {
+            return nil
+        }
         let fields = (notification.recordFields ?? [:]).compactMapValues { $0 as? any CKRecordValue }
         return try await record(uuid: uuid, pushedFields: fields)
     }

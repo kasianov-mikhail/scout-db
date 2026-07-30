@@ -9,22 +9,8 @@ import CloudKit
 import Foundation
 
 extension EntityStore {
-    /// Subscribes to server-side changes of an entity, delivered as silent pushes.
-    ///
-    /// The predicate is built from the same filters a read takes; a filter that can
-    /// only run client-side (`like`, `matches`, `isNull`, a payload field, ...)
-    /// cannot narrow a push subscription and throws `invalidValue`. A delete in
-    /// ScoutDB is a tombstone rewrite, so deletions arrive as record updates.
-    ///
-    /// `projecting` puts the named fields (plus the record envelope) into the
-    /// push payload itself, so `record(fromPush:)` decodes the change without a
-    /// follow-up fetch. Keep the projection light — the payload shares the
-    /// notification's size budget.
-    ///
-    /// Saving under an existing `id` replaces that subscription. Returns the id.
-    ///
     @discardableResult
-    public func subscribe(entity: String, filters: [Filter] = [], id: String? = nil, projecting fields: [String]? = nil) async throws -> String {
+    package func subscribe(entity: String, filters: [Filter] = [], id: String? = nil, projecting fields: [String]? = nil) async throws -> String {
         let definition = try await registry.definition(for: entity)
         let (server, client) = try split(filters, entity: entity, using: definition)
         guard client.isEmpty else {
@@ -55,5 +41,36 @@ extension EntityStore {
     /// The subscriptions currently registered with the database.
     public func subscriptions() async throws -> [CKSubscription] {
         try await database.subscriptions()
+    }
+}
+
+extension QueryBuilder {
+    /// Registers a server-side subscription for the query, and returns its id.
+    ///
+    /// The device is pushed a notification whenever a record the query matches
+    /// is written, changed or deleted. Every filter has to be one the server can
+    /// answer — a subscription has no client to fall back on — and a disjunction
+    /// cannot be subscribed to at all, since CloudKit takes one predicate per
+    /// subscription. `fields` rides the notification itself, so
+    /// ``EntityStore/record(fromPush:)`` decodes the change without a fetch.
+    ///
+    /// Saving under an existing `id` replaces that subscription.
+    ///
+    /// ```swift
+    /// try await store.query("purchase")
+    ///     .filter("status" == "paid")
+    ///     .subscribe(projecting: ["product_id", "amount"])
+    /// ```
+    ///
+    @discardableResult public func subscribe(id: String? = nil, projecting fields: [String]? = nil) async throws -> String {
+        guard let flat else {
+            throw SchemaError.invalidDefinition("A subscription carries one server predicate and cannot honor a disjunction")
+        }
+        return try await store.subscribe(
+            entity: entity,
+            filters: flat,
+            id: id,
+            projecting: fields ?? projection
+        )
     }
 }
