@@ -13,8 +13,7 @@ extension QueryBuilder {
     /// Takes a single filter or a whole expression of them, and `AND`-s it with
     /// whatever the builder already carries — so a disjunction narrows the same
     /// way a plain filter does. Each alternative of the result costs one server
-    /// query; ask ``explain()`` how many the query came to, and which of its
-    /// filters the server answers rather than the client.
+    /// query, so what an expression multiplies out to is what it costs.
     ///
     /// ```swift
     /// try await store.query("log")

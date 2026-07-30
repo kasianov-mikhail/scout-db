@@ -14,7 +14,6 @@ import Foundation
 /// results. An expression is therefore held in disjunctive normal form as it is
 /// built — a list of alternatives, each a list of filters that must hold at
 /// once — and `alternatives.count` is what the query will cost in requests.
-/// ``QueryBuilder/explain()`` reports the same list, one plan per alternative.
 ///
 /// That form is kept by construction rather than derived at the end: `||`
 /// appends the alternatives of both sides, `&&` multiplies them out. So two

@@ -87,12 +87,6 @@ extension PerfScenarios {
                     .fields("total", "date")
                     .take(200)
             },
-            PerfScenario("Queries", "explain the plan", sql: 1, writes: false) { world, _ in
-                _ = try await world.store.query(PerfSchema.order)
-                    .filter("product", .equals, .string(world.hotProduct))
-                    .filter("quantity", .greaterThan, .int(2))
-                    .explain()
-            },
         ]
     }
 }
