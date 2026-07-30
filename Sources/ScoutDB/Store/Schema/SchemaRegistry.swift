@@ -75,8 +75,8 @@ public actor SchemaRegistry {
     }
 
     @discardableResult public func preload() async throws -> Int {
-        let query = ckQuery(
-            SchemaDescriptorEntry.recordType,
+        let query = CKQuery(
+            recordType: SchemaDescriptorEntry.recordType,
             filters: [
                 ServerFilter(field: "status", op: .equals, value: .string("active"))
             ])
@@ -122,8 +122,8 @@ public actor SchemaRegistry {
     }
 
     private func metaQuery(entity: String) -> CKQuery {
-        ckQuery(
-            SchemaDescriptorEntry.recordType,
+        CKQuery(
+            recordType: SchemaDescriptorEntry.recordType,
             filters: [
                 ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                 ServerFilter(field: "status", op: .equals, value: .string("active")),

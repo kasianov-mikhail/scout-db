@@ -67,19 +67,20 @@ struct ServerSort: Equatable, Sendable {
     var origin: RecordValue?
 }
 
-func ckQuery(_ recordType: String, filters: [ServerFilter], sort: [ServerSort] = []) -> CKQuery {
-    let predicate: NSPredicate =
-        filters.isEmpty
-        ? NSPredicate(value: true)
-        : NSCompoundPredicate(type: .and, subpredicates: filters.map(\.predicate))
-    let query = CKQuery(recordType: recordType, predicate: predicate)
-    if sort.count > 0 {
-        query.sortDescriptors = sort.map { clause in
-            if case .location(let latitude, let longitude)? = clause.origin {
-                return CKLocationSortDescriptor(key: clause.field, relativeLocation: CLLocation(latitude: latitude, longitude: longitude))
+extension CKQuery {
+    convenience init(recordType: String, filters: [ServerFilter], sort: [ServerSort] = []) {
+        self.init(
+            recordType: recordType,
+            predicate: filters.isEmpty
+                ? NSPredicate(value: true)
+                : NSCompoundPredicate(type: .and, subpredicates: filters.map(\.predicate)))
+        if sort.count > 0 {
+            sortDescriptors = sort.map { clause in
+                if case .location(let latitude, let longitude)? = clause.origin {
+                    return CKLocationSortDescriptor(key: clause.field, relativeLocation: CLLocation(latitude: latitude, longitude: longitude))
+                }
+                return NSSortDescriptor(key: clause.field, ascending: clause.ascending)
             }
-            return NSSortDescriptor(key: clause.field, ascending: clause.ascending)
         }
     }
-    return query
 }
