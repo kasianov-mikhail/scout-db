@@ -126,12 +126,6 @@ let store = EntityStore(database: database, registry: SchemaRegistry(database: d
 `InMemoryContainer` stands in for `CloudContainer` when the code under test checks account
 status, and it can be made to report any `CKAccountStatus` you want to exercise.
 
-## Documentation
-
-The [docs](docs) folder covers the rest: the frozen physical schema, migrations, filtering,
-the operator reference, aggregation, records, the `@Entity` macro, sync, operations, and
-security.
-
 ## License
 
 ScoutDB is available under the MIT license. See the [LICENSE](LICENSE) file for details.
