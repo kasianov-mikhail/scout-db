@@ -6,6 +6,7 @@
 // https://opensource.org/licenses/MIT.
 
 import Foundation
+import ScoutDBTesting
 
 @testable import ScoutDB
 
@@ -31,19 +32,18 @@ enum PerfRunner {
             let world = try await bench.world(for: scenario)
             if let setUp = scenario.setUp {
                 try await setUp(world)
-                world.app.reset()
-                world.wire.reset()
+                world.database.resetRequests()
             }
             for iteration in 0..<iterations {
                 try await scenario.body(world, iteration)
             }
             return PerfResult(
                 feature: scenario.feature, scenario: scenario.name, size: bench.corpus.size, iterations: iterations, sql: scenario.sql,
-                app: world.app.snapshot, wire: world.wire.snapshot, failure: nil)
+                requests: world.database.requests, failure: nil)
         } catch {
             return PerfResult(
                 feature: scenario.feature, scenario: scenario.name, size: bench.corpus.size, iterations: iterations, sql: scenario.sql,
-                app: PerfRecorder.Tally(), wire: PerfRecorder.Tally(), failure: "\(error)")
+                requests: RequestTally(), failure: "\(error)")
         }
     }
 }

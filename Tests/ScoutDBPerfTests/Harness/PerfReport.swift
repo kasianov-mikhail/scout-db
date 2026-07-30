@@ -6,6 +6,7 @@
 // https://opensource.org/licenses/MIT.
 
 import Foundation
+import ScoutDBTesting
 
 @testable import ScoutDB
 
@@ -21,19 +22,18 @@ enum PerfReport {
         Column(title: "scenario", width: 34) { $0.scenario },
         Column(title: "size", width: 7) { $0.size.rawValue },
         Column(title: "iter", width: 5) { "\($0.iterations)" },
-        Column(title: "query", width: 6) { "\($0.app[.query])" },
-        Column(title: "cont", width: 5) { "\($0.app[.continuation])" },
-        Column(title: "fetch", width: 6) { "\($0.app[.fetch])" },
-        Column(title: "save", width: 5) { "\($0.app[.save])" },
-        Column(title: "modify", width: 7) { "\($0.app[.modify])" },
-        Column(title: "cas", width: 5) { "\($0.app[.conditionalSave])" },
-        Column(title: "other", width: 6) { "\(other(of: $0.app))" },
-        Column(title: "total", width: 6) { "\($0.app.total)" },
+        Column(title: "query", width: 6) { "\($0.requests[.query])" },
+        Column(title: "cont", width: 5) { "\($0.requests[.continuation])" },
+        Column(title: "fetch", width: 6) { "\($0.requests[.fetch])" },
+        Column(title: "save", width: 5) { "\($0.requests[.save])" },
+        Column(title: "modify", width: 7) { "\($0.requests[.modify])" },
+        Column(title: "cas", width: 5) { "\($0.requests[.conditionalSave])" },
+        Column(title: "other", width: 6) { "\(other(of: $0.requests))" },
+        Column(title: "total", width: 6) { "\($0.requests.total)" },
         Column(title: "req/op", width: 7) { number($0.perOperation) },
         Column(title: "sql", width: 5) { "\($0.sql)" },
         Column(title: "over", width: 8) { $0.overhead.map { "\(number($0))×" } ?? "—" },
-        Column(title: "wire", width: 6) { "\($0.wire.total)" },
-        Column(title: "err", width: 4) { $0.failure == nil ? "\($0.app.failures)" : "!" },
+        Column(title: "err", width: 4) { $0.failure == nil ? "\($0.requests.failures)" : "!" },
     ]
 
     static func header(title: String) -> String {
@@ -327,18 +327,17 @@ enum PerfReport {
     }
 
     private static func summary(_ results: [PerfResult]) -> String {
-        let requests = results.reduce(0) { $0 + $1.app.total }
-        let wire = results.reduce(0) { $0 + $1.wire.total }
+        let requests = results.reduce(0) { $0 + $1.requests.total }
         let statements = results.reduce(0) { $0 + $1.sql * $1.iterations }
         let failed = results.filter { $0.failure != nil }.count
-        let errors = results.reduce(0) { $0 + $1.app.failures }
+        let errors = results.reduce(0) { $0 + $1.requests.failures }
         let overhead = statements > 0 ? Double(requests) / Double(statements) : 0
         return String(
-            format: "%d scenarios · %d requests (%d at the wire) · %d SQL statements · %.1f× overall · %d failed calls · %d broken scenarios",
-            results.count, requests, wire, statements, overhead, errors, failed)
+            format: "%d scenarios · %d requests · %d SQL statements · %.1f× overall · %d failed calls · %d broken scenarios",
+            results.count, requests, statements, overhead, errors, failed)
     }
 
-    private static func other(of tally: PerfRecorder.Tally) -> Int {
+    private static func other(of tally: RequestTally) -> Int {
         tally[.subscriptionSave] + tally[.subscriptionDelete] + tally[.subscriptionList]
     }
 
@@ -387,7 +386,6 @@ enum PerfReport {
         let perOperation: Double
         let sqlStatements: Int
         let overhead: Double?
-        let wireTotal: Int
         let recordsCarried: Int
         let failedCalls: Int
         let failure: String?
@@ -398,14 +396,13 @@ enum PerfReport {
             size = result.size.rawValue
             records = result.size.records
             iterations = result.iterations
-            requests = Dictionary(uniqueKeysWithValues: result.app.counts.map { ($0.key.rawValue, $0.value) })
-            total = result.app.total
+            requests = Dictionary(uniqueKeysWithValues: result.requests.counts.map { ($0.key.rawValue, $0.value) })
+            total = result.requests.total
             perOperation = rounded(result.perOperation)
             sqlStatements = result.sql
             overhead = result.overhead.map(rounded)
-            wireTotal = result.wire.total
-            recordsCarried = result.app.records
-            failedCalls = result.app.failures
+            recordsCarried = result.requests.records
+            failedCalls = result.requests.failures
             failure = result.failure
         }
     }

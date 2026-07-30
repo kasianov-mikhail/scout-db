@@ -36,7 +36,7 @@ schema freely — the CloudKit [schema](Schema) is uploaded once and never touch
 | 🔐 | **Security** | Client-side field encryption with key rotation, filterable hashed surrogates, and trusted-writer filtering for public databases. |
 | 📎 | **Records** | Assets up to 50 MB per field, entity references with cascading delete, an opt-in audit log, and a soft-delete lifecycle. |
 | 📡 | **Sync** | Push-triggered reads over per-entity subscriptions, and projected push payloads that decode without a fetch. |
-| ⚙️ | **Reliability** | Unique-key upserts, optimistic concurrency, outbox transactions, and telemetry over every request ScoutDB makes. |
+| ⚙️ | **Reliability** | Unique-key upserts, optimistic concurrency, and outbox transactions. |
 
 ## Requirements
 

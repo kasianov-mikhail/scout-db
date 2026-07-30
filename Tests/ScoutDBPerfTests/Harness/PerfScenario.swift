@@ -6,6 +6,7 @@
 // https://opensource.org/licenses/MIT.
 
 import Foundation
+import ScoutDBTesting
 
 struct PerfScenario: Sendable {
     let feature: String
@@ -44,12 +45,11 @@ struct PerfResult: Sendable {
     let size: DatasetSize
     let iterations: Int
     let sql: Int
-    let app: PerfRecorder.Tally
-    let wire: PerfRecorder.Tally
+    let requests: RequestTally
     let failure: String?
 
     var perOperation: Double {
-        iterations > 0 ? Double(app.total) / Double(iterations) : 0
+        iterations > 0 ? Double(requests.total) / Double(iterations) : 0
     }
 
     var overhead: Double? {
