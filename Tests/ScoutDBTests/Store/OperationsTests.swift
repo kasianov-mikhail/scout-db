@@ -348,13 +348,13 @@ struct OperationsTests {
         #expect(database.storedSubscriptions.isEmpty)
     }
 
-    @Test("Drop tombstones the records and retires the schema; a republish revives the entity")
-    func dropEntity() async throws {
+    @Test("Retiring an entity hides its schema; a republish revives it")
+    func retireEntity() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
 
-        let dropped = try await store.drop(entity: "purchase")
-        #expect(dropped == 2)
+        #expect(try await store.deleteAll(entity: "purchase", any: [[]]) == 2)
+        try await registry.retire(entity: "purchase")
         await #expect(throws: SchemaError.unknownEntity("purchase")) {
             _ = try await store.read(entity: "purchase")
         }
@@ -468,7 +468,7 @@ struct OperationsTests {
         }
     }
 
-    @Test("Mutations treat a tombstoned record as absent, but restore still lifts it")
+    @Test("Mutations treat a tombstoned record as absent, but a write to its uuid revives it")
     func mutationsSkipTombstones() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "t-1")
         try await store.delete(entity: "purchase", uuid: "t-1")
@@ -477,30 +477,8 @@ struct OperationsTests {
             try await store.update(entity: "purchase", uuid: "t-1") { $0.values["quantity"] = .int(1) }
         }
 
-        _ = try await store.restore(entity: "purchase", uuid: "t-1")
+        try await store.write(makePurchase().values, entity: "purchase", uuid: "t-1")
         #expect(try await store.read(entity: "purchase").map(\.uuid) == ["t-1"])
-    }
-
-    @Test("Restore lifts a tombstone with its values, compact purges old tombstones")
-    func restoreAndCompact() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        try await store.delete(entity: "purchase", uuid: "p-1")
-        #expect(try await store.read(entity: "purchase").isEmpty)
-
-        let restored = try await store.restore(entity: "purchase", uuid: "p-1")
-        #expect(restored.values["product_id"] == .string("sku-42"))
-        #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-1"])
-
-        #expect(try await store.restore(entity: "purchase", uuid: "p-1").deleted == false)
-
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
-        try await store.delete(entity: "purchase", uuid: "p-1")
-        #expect(try await store.compact(entity: "purchase", olderThan: Date(timeIntervalSince1970: 0)) == 0)
-        #expect(try await store.compact(entity: "purchase", olderThan: Date().addingTimeInterval(60)) == 1)
-        #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-2"])
-        await #expect(throws: SchemaError.notFound("p-1")) {
-            try await store.restore(entity: "purchase", uuid: "p-1")
-        }
     }
 
     @Test("An audited entity appends a revision on every update and delete")
@@ -894,8 +872,6 @@ struct OperationsTests {
         }
         #expect(try await store.read(entity: "purchase").isEmpty)
         #expect(try await store.read(entity: "seat").map(\.uuid) == ["s-2"])
-        try await store.restore(entity: "purchase", uuid: "p-1")
-        #expect(try await store.fetch(entity: "purchase", uuids: ["p-1"]).first?.values["quantity"] == .int(9))
     }
 
     @Test("A transaction patches existing records with update steps")

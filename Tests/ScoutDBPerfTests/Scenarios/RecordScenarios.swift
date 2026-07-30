@@ -69,37 +69,6 @@ extension PerfScenarios {
         ]
     }
 
-    static var lifecycle: [PerfScenario] {
-        [
-            PerfScenario("Lifecycle", "restore a tombstoned record", sql: 1) { world, iteration in
-                _ = try await world.store.restore(entity: PerfSchema.session, uuid: world.tombstoned(iteration))
-            },
-            PerfScenario("Lifecycle", "compact tombstones", sql: 1, iterations: 2) { world, _ in
-                _ = try await world.store.compact(entity: PerfSchema.session, olderThan: Date().addingTimeInterval(60))
-            },
-            PerfScenario(
-                "Lifecycle", "drop an entity", sql: 1, iterations: 1,
-                setUp: { world in
-                    let entity = world.fresh("drp", 0)
-                    try await world.registry.publish(
-                        EntityDefinition(
-                            entity: entity, version: 1,
-                            fields: [
-                                FieldDefinition(name: "label", type: .string, storage: .slot(.string, "s_00"), required: true),
-                                FieldDefinition(name: "at", type: .timestamp, storage: .slot(.timestamp, "t_00"), required: true),
-                            ], envelopeDate: "at"))
-                    let batch = (0..<50).map { index in
-                        EntityWrite(values: ["label": .string("l\(index)"), "at": .date(world.corpus.now)], uuid: "\(entity)-\(index)")
-                    }
-                    try await world.store.write(batch, entity: entity)
-                    world.stage.entities.append(entity)
-                }
-            ) { world, _ in
-                _ = try await world.store.drop(entity: world.stage.entities[0])
-            },
-        ]
-    }
-
     static var assets: [PerfScenario] {
         [
             PerfScenario("Assets", "write a record carrying an asset", sql: 1) { world, iteration in

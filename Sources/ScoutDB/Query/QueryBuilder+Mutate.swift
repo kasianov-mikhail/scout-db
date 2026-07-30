@@ -33,8 +33,8 @@ extension QueryBuilder {
 
     /// Tombstones every matching record, and returns how many were deleted.
     ///
-    /// A delete is a tombstone: the record leaves every query but stays
-    /// restorable until `compact(entity:olderThan:)` erases it. The sweep pages
+    /// A delete is a tombstone: the record leaves every query but its row stays
+    /// behind, so a later write to the same uuid sees it. The sweep pages
     /// through the query the way ``update(_:)`` does.
     ///
     /// ```swift

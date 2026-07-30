@@ -449,6 +449,13 @@ extension EntityStore {
         return removed
     }
 
+    func purge(entity: String, filters: [Filter]) async throws -> Int {
+        let victims = try await read(entity: entity, filters: filters, fields: [])
+        let ids = victims.map { CKRecord.ID(recordName: $0.uuid) }
+        try await database.delete(records: ids)
+        return ids.count
+    }
+
     public func fetch(entity: String, uuids: [String]) async throws -> [EntityRecord] {
         let definition = try await registry.definition(for: entity)
         let records = try await items(entity: entity, uuids: uuids)
