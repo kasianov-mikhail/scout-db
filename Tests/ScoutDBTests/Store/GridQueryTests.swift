@@ -12,8 +12,8 @@ import Testing
 
 @testable import ScoutDB
 
-@Suite("Grid reads, asked for by shape")
-struct GridReadsTests {
+@Suite("Grid queries, asked for by shape")
+struct GridQueryTests {
     let database = InMemoryDatabase()
     let store: EntityStore
     let registry: SchemaRegistry

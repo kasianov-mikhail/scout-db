@@ -61,7 +61,7 @@ public struct AggregateTotal: AggregateStatistics, Equatable, Sendable {
     public var squares: Double?
 }
 
-package struct GridRead {
+package struct GridQuery {
     let store: EntityStore
     let entity: String
     let view: String
@@ -486,14 +486,25 @@ extension EntityStore {
         async throws -> [String: GridFold]?
     {
         let definition = try await registry.definition(for: entity)
+
         guard definition.views?.isEmpty == false, let parsed = CountQuery(any: branches, envelopeDate: definition.envelopeDate) else {
             return nil
         }
+
         let query = Self.keyed(parsed, in: definition) ?? parsed
+
         guard query.numericField == nil else {
             return nil
         }
-        return try await gridFold(query, of: field, folding: kind, by: group, entity: entity, in: definition)
+
+        return try await gridFold(
+            query,
+            of: field,
+            folding: kind,
+            by: group,
+            entity: entity,
+            in: definition
+        )
     }
 
     func alwaysPresent(_ field: String, entity: String) async throws -> Bool {

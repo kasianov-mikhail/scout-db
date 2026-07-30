@@ -56,13 +56,13 @@ extension QueryBuilder {
     /// ```
     ///
     public func sum(_ field: String) async throws -> Double {
-        try await store.aggregate(
-            .sum,
-            of: field,
+        try await FoldQuery(
+            store: store,
             entity: entity,
-            any: alternatives,
-            createdBy: creator
-        ) ?? 0
+            branches: alternatives,
+            creator: creator
+        )
+        .value(fold: .sum, field: field) ?? 0
     }
 
     /// The smallest value of a numeric field across the matching records.
@@ -78,13 +78,13 @@ extension QueryBuilder {
     /// ```
     ///
     public func min(_ field: String) async throws -> Double? {
-        try await store.aggregate(
-            .min,
-            of: field,
+        try await FoldQuery(
+            store: store,
             entity: entity,
-            any: alternatives,
-            createdBy: creator
+            branches: alternatives,
+            creator: creator
         )
+        .value(fold: .min, field: field)
     }
 
     /// The largest value of a numeric field across the matching records.
@@ -100,13 +100,13 @@ extension QueryBuilder {
     /// ```
     ///
     public func max(_ field: String) async throws -> Double? {
-        try await store.aggregate(
-            .max,
-            of: field,
+        try await FoldQuery(
+            store: store,
             entity: entity,
-            any: alternatives,
-            createdBy: creator
+            branches: alternatives,
+            creator: creator
         )
+        .value(fold: .max, field: field)
     }
 
     /// The mean of a numeric field across the matching records.
@@ -122,13 +122,13 @@ extension QueryBuilder {
     /// ```
     ///
     public func average(_ field: String) async throws -> Double? {
-        try await store.aggregate(
-            .average,
-            of: field,
+        try await FoldQuery(
+            store: store,
             entity: entity,
-            any: alternatives,
-            createdBy: creator
+            branches: alternatives,
+            creator: creator
         )
+        .value(fold: .average, field: field)
     }
 
     /// Sums a numeric field per distinct value of the grouping field.
@@ -145,14 +145,13 @@ extension QueryBuilder {
     /// ```
     ///
     public func sum(_ field: String, by group: String) async throws -> [String: Double] {
-        try await store.aggregate(
-            .sum,
-            of: field,
-            by: group,
+        try await FoldQuery(
+            store: store,
             entity: entity,
-            any: alternatives,
-            createdBy: creator
+            branches: alternatives,
+            creator: creator
         )
+        .values(fold: .sum, field: field, group: group)
     }
 
     /// The smallest value of a numeric field per distinct value of the grouping
@@ -167,14 +166,13 @@ extension QueryBuilder {
     /// ```
     ///
     public func min(_ field: String, by group: String) async throws -> [String: Double] {
-        try await store.aggregate(
-            .min,
-            of: field,
-            by: group,
+        try await FoldQuery(
+            store: store,
             entity: entity,
-            any: alternatives,
-            createdBy: creator
+            branches: alternatives,
+            creator: creator
         )
+        .values(fold: .min, field: field, group: group)
     }
 
     /// The largest value of a numeric field per distinct value of the grouping
@@ -189,14 +187,13 @@ extension QueryBuilder {
     /// ```
     ///
     public func max(_ field: String, by group: String) async throws -> [String: Double] {
-        try await store.aggregate(
-            .max,
-            of: field,
-            by: group,
+        try await FoldQuery(
+            store: store,
             entity: entity,
-            any: alternatives,
-            createdBy: creator
+            branches: alternatives,
+            creator: creator
         )
+        .values(fold: .max, field: field, group: group)
     }
 
     /// The mean of a numeric field per distinct value of the grouping field.
@@ -210,14 +207,13 @@ extension QueryBuilder {
     /// ```
     ///
     public func average(_ field: String, by group: String) async throws -> [String: Double] {
-        try await store.aggregate(
-            .average,
-            of: field,
-            by: group,
+        try await FoldQuery(
+            store: store,
             entity: entity,
-            any: alternatives,
-            createdBy: creator
+            branches: alternatives,
+            creator: creator
         )
+        .values(fold: .average, field: field, group: group)
     }
 
     /// Counts the matching records per distinct value of the grouping field.
@@ -233,12 +229,13 @@ extension QueryBuilder {
     /// ```
     ///
     public func count(by group: String) async throws -> [String: Int] {
-        try await store.counts(
-            by: group,
+        try await FoldQuery(
+            store: store,
             entity: entity,
-            any: alternatives,
-            createdBy: creator
+            branches: alternatives,
+            creator: creator
         )
+        .counts(group: group)
     }
 
     /// The distinct values a field takes across the matching records.
@@ -282,7 +279,7 @@ extension QueryBuilder {
     public func series(_ field: String? = nil, by group: String? = nil, bucket: AggregateBucket? = nil, from: Date? = nil, to: Date? = nil)
         async throws -> [AggregateSeriesPoint]
     {
-        try await GridRead(
+        try await GridQuery(
             self,
             field: field,
             group: group,
@@ -309,7 +306,7 @@ extension QueryBuilder {
     public func totals(_ field: String? = nil, by group: String? = nil, bucket: AggregateBucket? = nil, from: Date? = nil, to: Date? = nil)
         async throws -> [AggregateTotal]
     {
-        try await GridRead(
+        try await GridQuery(
             self,
             field: field,
             group: group,
@@ -331,7 +328,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func percentile(_ p: Double, of field: String, by group: String? = nil, from: Date? = nil, to: Date? = nil) async throws -> Double? {
-        try await GridRead(
+        try await GridQuery(
             self,
             field: field,
             group: group,
@@ -343,7 +340,7 @@ extension QueryBuilder {
     }
 }
 
-extension GridRead {
+extension GridQuery {
     fileprivate init(
         _ query: QueryBuilder, field: String?, group: String?, histogram: Bool = false, bucket: AggregateBucket? = nil, from: Date?, to: Date?
     ) async throws {
