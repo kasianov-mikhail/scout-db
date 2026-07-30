@@ -19,7 +19,7 @@ extension EntityStore {
 
         let subscription = CKQuerySubscription(
             recordType: Entity.recordType,
-            predicate: ckQuery(Entity.recordType, filters: server).predicate,
+            predicate: CKQuery(recordType: Entity.recordType, filters: server).predicate,
             subscriptionID: id ?? "scout-\(entity)",
             options: [.firesOnRecordCreation, .firesOnRecordUpdate, .firesOnRecordDeletion])
         let info = CKSubscription.NotificationInfo()

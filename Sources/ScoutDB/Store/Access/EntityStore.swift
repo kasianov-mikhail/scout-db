@@ -220,7 +220,7 @@ public struct EntityStore: Sendable {
         }
         let matchers = try Self.matchers(for: client)
         return (
-            ckQuery(Entity.recordType, filters: server, sort: sort),
+            CKQuery(recordType: Entity.recordType, filters: server, sort: sort),
             { record in !record.deleted && matchers.allSatisfy { $0(record) } }
         )
     }

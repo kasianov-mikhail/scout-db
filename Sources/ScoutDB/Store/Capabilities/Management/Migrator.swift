@@ -36,8 +36,8 @@ public struct Migrator: Sendable {
 
     @discardableResult public func backfill(entity: String, transform: (inout EntityRecord, _ previous: EntityRecord) throws -> Void) async throws -> Int {
         let definition = try await registry.definition(for: entity)
-        let query = ckQuery(
-            Entity.recordType,
+        let query = CKQuery(
+            recordType: Entity.recordType,
             filters: [
                 ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                 ServerFilter(field: "schema_version", op: .lessThan, value: .int(Int64(definition.version))),
@@ -87,8 +87,8 @@ public struct Migrator: Sendable {
         }
 
         try await database.forEachPage(
-            matching: ckQuery(
-                Aggregate.recordType,
+            matching: CKQuery(
+                recordType: Aggregate.recordType,
                 filters: [
                     ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                     ServerFilter(field: "view", op: .equals, value: .string(viewName)),
@@ -105,8 +105,8 @@ public struct Migrator: Sendable {
         let aggregator = GridAggregator(database: database)
         var counted = 0
         try await database.forEachPage(
-            matching: ckQuery(
-                Entity.recordType,
+            matching: CKQuery(
+                recordType: Entity.recordType,
                 filters: [
                     ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                     ServerFilter(field: "deleted", op: .equals, value: .int(0)),
@@ -129,8 +129,8 @@ public struct Migrator: Sendable {
         var rotated = definition
         rotated.keyID = newKeyID
 
-        let query = ckQuery(
-            Entity.recordType,
+        let query = CKQuery(
+            recordType: Entity.recordType,
             filters: [
                 ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                 ServerFilter(field: "deleted", op: .equals, value: .int(0)),

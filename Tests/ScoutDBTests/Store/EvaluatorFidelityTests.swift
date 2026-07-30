@@ -93,7 +93,7 @@ struct EvaluatorFidelityTests {
         record["g_00"] = CLLocation(latitude: 1, longitude: 2)
 
         let filter = ServerFilter(field: field, op: op, value: value, radius: op == .near ? 10 : nil)
-        #expect(PredicateEvaluator.evaluate(ckQuery("Entity", filters: [filter]).predicate, record: record) != nil)
+        #expect(PredicateEvaluator.evaluate(CKQuery(recordType: "Entity", filters: [filter]).predicate, record: record) != nil)
     }
 
     @Test("An inexpressible predicate is unknown, not false")

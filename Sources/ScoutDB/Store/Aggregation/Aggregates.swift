@@ -797,6 +797,6 @@ extension EntityStore {
             filters.append(ServerFilter(field: "date", op: .lessThan, value: .date(to)))
         }
         let keys = ["date", "group_key"] + counts.map(Aggregate.countCell) + (values.map(Aggregate.valueKeys) ?? [])
-        return try await database.allRecords(matching: ckQuery(Aggregate.recordType, filters: filters), desiredKeys: keys)
+        return try await database.allRecords(matching: CKQuery(recordType: Aggregate.recordType, filters: filters), desiredKeys: keys)
     }
 }

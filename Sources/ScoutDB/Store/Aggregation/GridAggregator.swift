@@ -308,8 +308,8 @@ struct GridAggregator {
     }
 
     private func adopt(_ slot: GridSlot) async throws -> CKRecord? {
-        let query = ckQuery(
-            Aggregate.recordType,
+        let query = CKQuery(
+            recordType: Aggregate.recordType,
             filters: [
                 ServerFilter(field: "entity", op: .equals, value: .string(slot.entity)),
                 ServerFilter(field: "view", op: .equals, value: .string(slot.view)),
