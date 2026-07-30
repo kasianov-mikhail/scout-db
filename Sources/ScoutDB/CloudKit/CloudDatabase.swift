@@ -29,30 +29,21 @@ public enum QueryCursor: @unchecked Sendable {
 /// query and fetch names all describe the public one.
 ///
 public protocol CloudDatabase: Sendable {
-    /// Runs a query against the database's records.
     func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     )
+
     func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     )
+
     func save(_ record: CKRecord) async throws -> CKRecord
     func modifyRecords(saving: [CKRecord], deleting: [CKRecord.ID]) async throws
-    /// Saves each record only if it is unchanged on the server, non-atomically;
-    /// returns the outcome of every record.
     func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)]
     func save(subscription: CKSubscription) async throws
     func deleteSubscription(id: CKSubscription.ID) async throws
     func subscriptions() async throws -> [CKSubscription]
-    /// The record behind an ID, or nil when the server has none.
     func fetchRecord(id: CKRecord.ID) async throws -> CKRecord?
-    /// The records behind a set of IDs, in request order; an ID the server has
-    /// no record for is simply absent from the result.
-    ///
-    /// Records ScoutDB writes carry deterministic names, so the store reaches
-    /// them by ID rather than by predicate — one request either way, but a
-    /// fetch skips the query index, which lags a just-written record.
-    ///
     func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord]
 }
 
@@ -84,10 +75,17 @@ extension CloudDatabase {
             return try await fetchRecords(ids: ids)
         }
         let database = self
+
         return try await withThrowingTaskGroup(of: RecordBatch.self) { group in
             for (index, batch) in ids.chunked(into: batchSize).enumerated() {
-                group.addTask { RecordBatch(index: index, records: try await database.fetchRecords(ids: batch)) }
+                group.addTask {
+                    RecordBatch(
+                        index: index,
+                        records: try await database.fetchRecords(ids: batch)
+                    )
+                }
             }
+
             var batches: [Int: [CKRecord]] = [:]
             for try await batch in group {
                 batches[batch.index] = batch.records
@@ -98,7 +96,12 @@ extension CloudDatabase {
 
     func allRecords(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]? = nil) async throws -> [CKRecord] {
         var collected: [CKRecord] = []
-        try await forEachPage(matching: query, desiredKeys: desiredKeys) { collected += $0 }
+        try await forEachPage(
+            matching: query,
+            desiredKeys: desiredKeys
+        ) {
+            collected += $0
+        }
         return collected
     }
 
@@ -106,13 +109,22 @@ extension CloudDatabase {
         matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]? = nil,
         _ body: ([CKRecord]) async throws -> Void
     ) async throws {
-        var (results, cursor) = try await records(matching: query, desiredKeys: desiredKeys, resultsLimit: CKQueryOperation.maximumResults)
+        var (results, cursor) = try await records(
+            matching: query,
+            desiredKeys: desiredKeys,
+            resultsLimit: CKQueryOperation.maximumResults
+        )
+
         while true {
             try await body(try results.map { try $0.1.get() })
             guard let token = cursor else {
                 return
             }
-            let page = try await records(continuingMatchFrom: token, desiredKeys: desiredKeys, resultsLimit: CKQueryOperation.maximumResults)
+            let page = try await records(
+                continuingMatchFrom: token,
+                desiredKeys: desiredKeys,
+                resultsLimit: CKQueryOperation.maximumResults
+            )
             results = page.matchResults
             cursor = page.queryCursor
         }
@@ -168,7 +180,12 @@ extension CKDatabase: CloudDatabase {
     ) {
         do {
             return try await throttled { database in
-                let (results, cursor) = try await database.records(matching: query, inZoneWith: nil, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+                let (results, cursor) = try await database.records(
+                    matching: query,
+                    inZoneWith: nil,
+                    desiredKeys: desiredKeys,
+                    resultsLimit: resultsLimit
+                )
                 return (results, cursor.map(QueryCursor.cloudKit))
             }
         } catch let error as CKError where error.code == .unknownItem {
@@ -185,7 +202,11 @@ extension CKDatabase: CloudDatabase {
         return try await throttled { database in
             let (results, next): (matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?) =
                 try await withCheckedThrowingContinuation { continuation in
-                    database.fetch(withCursor: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit) { result in
+                    database.fetch(
+                        withCursor: cursor,
+                        desiredKeys: desiredKeys,
+                        resultsLimit: resultsLimit
+                    ) { result in
                         continuation.resume(with: result)
                     }
                 }
@@ -196,7 +217,13 @@ extension CKDatabase: CloudDatabase {
     public func save(_ record: CKRecord) async throws -> CKRecord {
         try await throttled { database in
             do {
-                let results = try await database.modifyRecords(saving: [record], deleting: [], savePolicy: .ifServerRecordUnchanged, atomically: true)
+                let results = try await database.modifyRecords(
+                    saving: [record],
+                    deleting: [],
+                    savePolicy: .ifServerRecordUnchanged,
+                    atomically: true
+                )
+
                 guard let result = results.saveResults[record.recordID] else {
                     throw CKError(.internalError)
                 }
@@ -215,13 +242,24 @@ extension CKDatabase: CloudDatabase {
 
     public func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {
         try await throttled { database in
-            _ = try await database.modifyRecords(saving: records, deleting: recordIDs, savePolicy: .allKeys, atomically: true)
+            _ = try await database.modifyRecords(
+                saving: records,
+                deleting: recordIDs,
+                savePolicy: .allKeys,
+                atomically: true
+            )
         }
     }
 
     public func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
         try await throttled { database in
-            let results = try await database.modifyRecords(saving: records, deleting: [], savePolicy: .ifServerRecordUnchanged, atomically: false)
+            let results = try await database.modifyRecords(
+                saving: records,
+                deleting: [],
+                savePolicy: .ifServerRecordUnchanged,
+                atomically: false
+            )
+
             return records.map { record in
                 guard let result = results.saveResults[record.recordID] else {
                     return (record.recordID, .failure(CKError(.internalError)))
@@ -236,14 +274,20 @@ extension CKDatabase: CloudDatabase {
 
     public func save(subscription: CKSubscription) async throws {
         try await throttled { database in
-            let results = try await database.modifySubscriptions(saving: [subscription], deleting: [])
+            let results = try await database.modifySubscriptions(
+                saving: [subscription],
+                deleting: []
+            )
             _ = try results.saveResults[subscription.subscriptionID]?.get()
         }
     }
 
     public func deleteSubscription(id: CKSubscription.ID) async throws {
         try await throttled { database in
-            let results = try await database.modifySubscriptions(saving: [], deleting: [id])
+            let results = try await database.modifySubscriptions(
+                saving: [],
+                deleting: [id]
+            )
             _ = try results.deleteResults[id]?.get()
         }
     }
@@ -262,8 +306,10 @@ extension CKDatabase: CloudDatabase {
         guard ids.count > 0 else {
             return []
         }
+
         return try await throttled { database in
             let results = try await database.records(for: ids)
+
             return try ids.compactMap { id in
                 guard let result = results[id] else {
                     return nil
@@ -306,7 +352,9 @@ public struct PartialWriteError: LocalizedError {
         guard error.code == .partialFailure, let partial = error.userInfo[CKPartialErrorsByItemIDKey] as? [CKRecord.ID: any Error] else {
             return nil
         }
+
         let causes = partial.filter { ($0.value as? CKError)?.code != .batchRequestFailed }
+
         guard causes.count > 0 else {
             return nil
         }
