@@ -397,23 +397,15 @@ struct OperationsTests {
         }
     }
 
-    @Test("Push payloads map to change events and back to records")
+    @Test("A push that is not a query notification resolves to no record")
     func pushEvents() async throws {
-        #expect(ChangeEvent(reason: .recordCreated, recordName: "p-1", subscriptionID: "scout-purchase")?.kind == .created)
-        #expect(ChangeEvent(reason: .recordUpdated, recordName: "p-1", subscriptionID: nil)?.kind == .updated)
-        #expect(ChangeEvent(reason: .recordDeleted, recordName: "p-1", subscriptionID: nil)?.kind == .deleted)
-        #expect(ChangeEvent(reason: .recordCreated, recordName: nil, subscriptionID: nil) == nil)
-        #expect(ChangeEvent(userInfo: ["aps": ["alert": "hi"]]) == nil)
+        #expect(try await store.record(fromPush: ["aps": ["alert": "hi"]]) == nil)
 
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        let created = try #require(ChangeEvent(reason: .recordCreated, recordName: "p-1", subscriptionID: "scout-purchase"))
-        #expect(try await store.record(for: created)?.values["product_id"] == .string("sku-42"))
+        #expect(try await store.record(uuid: "p-1", pushedFields: [:])?.values["product_id"] == .string("sku-42"))
 
         try await store.delete(entity: "purchase", uuid: "p-1")
-        let updated = try #require(ChangeEvent(reason: .recordUpdated, recordName: "p-1", subscriptionID: nil))
-        #expect(try await store.record(for: updated) == nil)
-        let deleted = try #require(ChangeEvent(reason: .recordDeleted, recordName: "p-1", subscriptionID: nil))
-        #expect(try await store.record(for: deleted) == nil)
+        #expect(try await store.record(uuid: "p-1", pushedFields: [:]) == nil)
     }
 
     @Test("A projected subscription carries its fields, and the pushed fields decode without a fetch")

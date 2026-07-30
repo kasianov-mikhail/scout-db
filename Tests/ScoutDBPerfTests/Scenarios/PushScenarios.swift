@@ -41,17 +41,23 @@ extension PerfScenarios {
 
     static var pushEvents: [PerfScenario] {
         [
-            PerfScenario("Push events", "an update push, resolved by fetch", sql: 1, writes: false) { world, iteration in
-                guard let event = ChangeEvent(reason: .recordUpdated, recordName: world.order(iteration), subscriptionID: "perf") else {
-                    return
-                }
-                _ = try await world.store.record(for: event)
+            PerfScenario("Push events", "an unprojected push, resolved by fetch", sql: 1, writes: false) { world, iteration in
+                _ = try await world.store.record(uuid: world.order(iteration), pushedFields: [:])
             },
-            PerfScenario("Push events", "a hard-delete push", sql: 0, writes: false) { world, iteration in
-                guard let event = ChangeEvent(reason: .recordDeleted, recordName: world.order(iteration), subscriptionID: "perf") else {
-                    return
-                }
-                _ = try await world.store.record(for: event)
+            PerfScenario("Push events", "a projected push, decoded in place", sql: 0, writes: false) { world, iteration in
+                _ = try await world.store.record(
+                    uuid: world.order(iteration),
+                    pushedFields: [
+                        "entity": PerfSchema.order as NSString, "schema_version": 1 as NSNumber,
+                        "deleted": 0 as NSNumber, "s_01": "sku-air" as NSString, "d_00": 99.0 as NSNumber,
+                    ])
+            },
+            PerfScenario("Push events", "a tombstone push", sql: 0, writes: false) { world, iteration in
+                _ = try await world.store.record(
+                    uuid: world.order(iteration),
+                    pushedFields: [
+                        "entity": PerfSchema.order as NSString, "schema_version": 1 as NSNumber, "deleted": 1 as NSNumber,
+                    ])
             },
         ]
     }
