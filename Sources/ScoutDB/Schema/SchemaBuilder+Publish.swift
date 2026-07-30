@@ -35,9 +35,23 @@ extension SchemaBuilder {
     ///
     public func create() async throws {
         var allocator = SlotAllocator()
-        let fields = try declarations.map { try resolve($0, allocator: &allocator, since: nil) }
-        let grid = Self.grid(over: fields, declaring: views ?? [], envelopeDate: envelopeDate)
-        try await publish(fields: fields, version: 1, inheriting: nil, publishing: grid)
+
+        let fields = try declarations.map {
+            try resolve($0, allocator: &allocator, since: nil)
+        }
+
+        let grid = Self.grid(
+            over: fields,
+            declaring: views,
+            envelopeDate: envelopeDate
+        )
+
+        try await publish(
+            fields: fields,
+            version: 1,
+            inheriting: nil,
+            publishing: grid
+        )
     }
 
     /// Publishes the next version, diffed against the current one, and names
@@ -70,26 +84,45 @@ extension SchemaBuilder {
     @discardableResult public func update() async throws -> [String] {
         let previous = try await registry.definition(for: entity)
         let version = previous.version + 1
+
         var allocator = SlotAllocator(reserving: previous.fields)
         var fields: [FieldDefinition] = []
         var carried: Set<String> = []
 
         for declaration in declarations {
-            let active = previous.fields(at: previous.version).first { $0.name == declaration.name }
+            let active =
+                previous
+                .fields(at: previous.version)
+                .first { $0.name == declaration.name }
+
             if let active, active.type == declaration.type, active.storage.isSlot == declaration.wantsSlot {
-                var kept = try resolve(declaration, allocator: &allocator, since: active.since, storage: active.storage)
+                var kept = try resolve(
+                    declaration,
+                    allocator: &allocator,
+                    since: active.since,
+                    storage: active.storage
+                )
+
                 kept.until = active.until
                 fields.append(kept)
                 carried.insert(declaration.name)
             } else {
-                fields.append(try resolve(declaration, allocator: &allocator, since: version))
+                fields.append(
+                    try resolve(
+                        declaration,
+                        allocator: &allocator,
+                        since: version
+                    )
+                )
             }
         }
+
         for field in previous.fields {
             let redeclared = carried.contains(field.name) && field.isActive(at: previous.version)
             if redeclared {
                 continue
             }
+
             var closed = field
             if field.isActive(at: previous.version), field.until == nil {
                 closed.until = version
@@ -98,11 +131,26 @@ extension SchemaBuilder {
         }
 
         let active = Set(fields.filter { $0.isActive(at: version) }.map(\.name))
-        let carriedViews = Self.merge(views ?? [], onto: previous.views ?? [], keeping: active)
-        try await publish(fields: fields, version: version, inheriting: previous, publishing: carriedViews)
+
+        let carriedViews = Self.merge(
+            views,
+            onto: previous.views ?? [],
+            keeping: active
+        )
+
+        try await publish(
+            fields: fields,
+            version: version,
+            inheriting: previous,
+            publishing: carriedViews
+        )
 
         let counted = Set(carriedViews.compactMap(\.groupBy))
-        return fields.filter { $0.since == version && Self.groupable($0) && !counted.contains($0.name) }.map(\.name)
+
+        return fields.filter {
+            $0.since == version && Self.groupable($0) && !counted.contains($0.name)
+        }
+        .map(\.name)
     }
 
     func publish(fields: [FieldDefinition], version: Int, inheriting previous: EntityDefinition?, publishing views: [AggregateView]) async throws {

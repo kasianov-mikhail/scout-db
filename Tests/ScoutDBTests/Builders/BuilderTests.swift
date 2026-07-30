@@ -150,6 +150,20 @@ struct BuilderTests {
         #expect(Set(views.compactMap(\.groupBy)) == ["carrier", "weight"])
     }
 
+    @Test("A declared extremum reaches the published grid")
+    func declaredExtremum() async throws {
+        try await store.schema("reading")
+            .field("sensor", .string, .required)
+            .field("value", .double)
+            .min("value", by: "sensor")
+            .max("value", by: "sensor")
+            .create()
+
+        let views = try #require(try await registry.definition(for: "reading").views)
+        #expect(views.first { $0.name == "min_value_by_sensor" }?.min == "value")
+        #expect(views.first { $0.name == "max_value_by_sensor" }?.max == "value")
+    }
+
     @Test("An ungrouped field is left out of the grid")
     func ungroupedField() async throws {
         try await store.schema("event")

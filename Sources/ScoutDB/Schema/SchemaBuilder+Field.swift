@@ -94,12 +94,19 @@ extension SchemaBuilder {
     ///
     public func field(_ name: String, _ type: FieldType, _ constraints: FieldConstraint...) -> Self {
         var builder = self
-        builder.declarations.append(Declaration(name: name, type: type, constraints: constraints))
+        builder.declarations.append(
+            Declaration(
+                name: name,
+                type: type,
+                constraints: constraints
+            )
+        )
         return builder
     }
 
     func resolve(_ declaration: Declaration, allocator: inout SlotAllocator, since: Int?, storage: Storage? = nil) throws -> FieldDefinition {
         let resolved: Storage
+
         if let storage {
             resolved = storage
         } else if declaration.wantsSlot {
@@ -109,7 +116,13 @@ extension SchemaBuilder {
             resolved = .payload
         }
 
-        var field = FieldDefinition(name: declaration.name, type: declaration.type, storage: resolved, since: since)
+        var field = FieldDefinition(
+            name: declaration.name,
+            type: declaration.type,
+            storage: resolved,
+            since: since
+        )
+
         for constraint in declaration.constraints {
             switch constraint {
             case .required:
@@ -148,10 +161,9 @@ struct SlotAllocator {
 
     init(reserving fields: [FieldDefinition] = []) {
         for field in fields {
-            guard case .slot(let pool, let slot) = field.storage else {
-                continue
+            if case .slot(let pool, let slot) = field.storage {
+                used[pool, default: []].insert(slot)
             }
-            used[pool, default: []].insert(slot)
         }
     }
 
