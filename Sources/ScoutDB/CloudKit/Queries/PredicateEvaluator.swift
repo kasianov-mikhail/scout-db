@@ -13,6 +13,7 @@ enum PredicateEvaluator {
     static func evaluate(_ predicate: NSPredicate, record: CKRecord) -> Bool? {
         if let compound = predicate as? NSCompoundPredicate {
             let subpredicates = compound.subpredicates as? [NSPredicate] ?? []
+
             switch compound.compoundPredicateType {
             case .and:
                 var sawUnknown = false
@@ -27,6 +28,7 @@ enum PredicateEvaluator {
                     }
                 }
                 return sawUnknown ? nil : true
+
             case .or:
                 var sawUnknown = false
                 for subpredicate in subpredicates {
@@ -40,12 +42,15 @@ enum PredicateEvaluator {
                     }
                 }
                 return sawUnknown ? nil : false
+
             case .not:
                 return subpredicates.first.flatMap { evaluate($0, record: record).map { !$0 } }
+
             @unknown default:
                 return nil
             }
         }
+
         if let comparison = predicate as? NSComparisonPredicate {
             return evaluate(comparison, record: record)
         }
@@ -55,6 +60,7 @@ enum PredicateEvaluator {
         if predicate == NSPredicate(value: false) {
             return false
         }
+
         return nil
     }
 
@@ -65,6 +71,7 @@ enum PredicateEvaluator {
         if comparison.leftExpression.expressionType == .evaluatedObject {
             return evaluateSearch(comparison, record: record)
         }
+
         guard comparison.leftExpression.expressionType == .keyPath else {
             return nil
         }
@@ -74,6 +81,7 @@ enum PredicateEvaluator {
 
         let key = comparison.leftExpression.keyPath
         let target = comparison.rightExpression.constantValue
+
         let value: Any? =
             switch key {
             case "modificationDate":
@@ -83,6 +91,7 @@ enum PredicateEvaluator {
             default:
                 record[key]
             }
+
         guard let value else { return nil }
 
         switch comparison.predicateOperatorType {
@@ -98,16 +107,19 @@ enum PredicateEvaluator {
             return compare(value, target) == .orderedAscending
         case .lessThanOrEqualTo:
             return compare(value, target) != .orderedDescending
+
         case .beginsWith:
             guard let text = value as? String, let prefix = target as? String else {
                 return nil
             }
             return text.hasPrefix(prefix)
+
         case .in:
             guard let options = target as? [Any] else {
                 return nil
             }
             return options.contains { compare(value, $0) == .orderedSame }
+
         case .contains:
             if let list = value as? [Any] {
                 return list.contains { compare($0, target) == .orderedSame }
@@ -116,6 +128,7 @@ enum PredicateEvaluator {
                 return nil
             }
             return text.contains(needle)
+
         default:
             return nil
         }
@@ -123,6 +136,7 @@ enum PredicateEvaluator {
 
     private static func evaluateDistance(_ comparison: NSComparisonPredicate, record: CKRecord) -> Bool? {
         let arguments = comparison.leftExpression.arguments ?? []
+
         guard arguments.count == 2, arguments[0].expressionType == .keyPath else {
             return nil
         }
@@ -138,6 +152,7 @@ enum PredicateEvaluator {
         guard let point = record[arguments[0].keyPath] as? CLLocation else {
             return nil
         }
+
         return point.distance(from: center) < radius
     }
 
@@ -148,14 +163,18 @@ enum PredicateEvaluator {
         guard let needle = (comparison.rightExpression.constantValue as? String)?.lowercased() else {
             return nil
         }
+
         var required = Set(needle.split { !$0.isLetter && !$0.isNumber })
+
         guard !required.isEmpty else {
             return true
         }
+
         for key in record.allKeys() {
             guard let text = record[key] as? String else {
                 continue
             }
+
             for token in text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }) {
                 required.remove(token)
                 if required.isEmpty {
@@ -163,6 +182,7 @@ enum PredicateEvaluator {
                 }
             }
         }
+
         return false
     }
 
@@ -186,6 +206,7 @@ enum PredicateEvaluator {
             return order(lhs, rhs)
         case (let lhs as [Any], let rhs as [Any]):
             return order(lhs, rhs)
+
         default:
             if let lhs = recordName(of: lhs), let rhs = recordName(of: rhs) {
                 return order(lhs, rhs)
@@ -259,6 +280,7 @@ enum PredicateEvaluator {
     private static func order(_ lhs: [Any], _ rhs: [Any]) -> ComparisonResult {
         for (lhs, rhs) in zip(lhs, rhs) {
             let element = compare(lhs, rhs)
+
             guard element == .orderedSame else {
                 return element
             }
