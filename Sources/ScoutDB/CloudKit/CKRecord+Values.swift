@@ -132,11 +132,11 @@ private nonisolated(unsafe) var creatorKey: UInt8 = 0
 private nonisolated(unsafe) var changeTagKey: UInt8 = 0
 
 extension CKRecord {
-    var recordModificationDate: Date? {
+    package var recordModificationDate: Date? {
         objc_getAssociatedObject(self, &modificationDateKey) as? Date ?? modificationDate
     }
 
-    var recordCreator: String? {
+    package var recordCreator: String? {
         objc_getAssociatedObject(self, &creatorKey) as? String ?? creatorUserRecordID?.recordName
     }
 
@@ -156,7 +156,7 @@ extension CKRecord {
         objc_setAssociatedObject(self, &changeTagKey, tag, .OBJC_ASSOCIATION_RETAIN)
     }
 
-    func carryOverrides(to other: CKRecord) {
+    package func carryOverrides(to other: CKRecord) {
         if let tag = recordVersionTag {
             other.overrideChangeTag(tag)
         }

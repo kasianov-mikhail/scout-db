@@ -19,6 +19,10 @@ public enum QueryCursor: @unchecked Sendable {
     case materialized(query: CKQuery, remaining: [CKRecord.ID])
 }
 
+/// One page of a query: the matched records in order, and the cursor that
+/// continues the read when more remain.
+public typealias QueryPage = (matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?)
+
 /// A seam shaped exactly like the CKDatabase calls the store makes — not a
 /// backend abstraction. `CKDatabase` conforms by forwarding; tests inject an
 /// in-memory implementation (see the `ScoutDBTesting` product) that evaluates
@@ -29,13 +33,9 @@ public enum QueryCursor: @unchecked Sendable {
 /// query and fetch names all describe the public one.
 ///
 public protocol CloudDatabase: Sendable {
-    func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
-        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
-    )
+    func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> QueryPage
 
-    func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
-        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
-    )
+    func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> QueryPage
 
     func save(_ record: CKRecord) async throws -> CKRecord
     func modifyRecords(saving: [CKRecord], deleting: [CKRecord.ID]) async throws
@@ -175,9 +175,7 @@ extension CloudDatabase {
 }
 
 extension CKDatabase: CloudDatabase {
-    public func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
-        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
-    ) {
+    public func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> QueryPage {
         do {
             return try await throttled { database in
                 let (results, cursor) = try await database.records(
@@ -193,9 +191,7 @@ extension CKDatabase: CloudDatabase {
         }
     }
 
-    public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
-        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
-    ) {
+    public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> QueryPage {
         guard case .cloudKit(let cursor) = cursor else {
             throw CKError(.invalidArguments)
         }

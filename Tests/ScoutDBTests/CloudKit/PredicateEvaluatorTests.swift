@@ -6,9 +6,8 @@
 // https://opensource.org/licenses/MIT.
 
 import CloudKit
+import ScoutDBTesting
 import Testing
-
-@testable import ScoutDB
 
 @Suite("Predicate evaluator")
 struct PredicateEvaluatorTests {
