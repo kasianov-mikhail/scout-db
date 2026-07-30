@@ -13,12 +13,9 @@ import ScoutDBTesting
 
 struct PerfWorld: @unchecked Sendable {
     let corpus: Corpus
-    let backing: InMemoryDatabase
-    let database: any CloudDatabase
+    let database: InMemoryDatabase
     let registry: SchemaRegistry
     let store: EntityStore
-    let app: PerfRecorder
-    let wire: PerfRecorder
     let runID: String
     let repeats: Int
     let stage: PerfStage
@@ -59,19 +56,14 @@ final class PerfBench {
         dirty = scenario.writes || scenario.setUp != nil
         runs += 1
 
-        let wire = PerfRecorder()
-        let app = PerfRecorder()
-        let observed = ObservedDatabase(backing: backing, observer: wire)
-        let database = ObservedDatabase(backing: observed, observer: app)
-        let registry = SchemaRegistry(database: database)
-        let store = EntityStore(database: database, registry: registry, keyProvider: PerfKeyProvider())
+        let registry = SchemaRegistry(database: backing)
+        let store = EntityStore(database: backing, registry: registry, keyProvider: PerfKeyProvider())
 
         try await registry.preload()
-        wire.reset()
-        app.reset()
+        backing.resetRequests()
 
         return PerfWorld(
-            corpus: corpus, backing: backing, database: database, registry: registry, store: store, app: app, wire: wire,
+            corpus: corpus, database: backing, registry: registry, store: store,
             runID: "r\(runs)", repeats: scenario.repeats(on: corpus.size), stage: PerfStage())
     }
 

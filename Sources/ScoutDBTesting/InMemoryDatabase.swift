@@ -99,10 +99,35 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         var pageLimit: Int?
         var rawConflictErrors = false
         var unindexed: Set<CKRecord.ID> = []
+        var tally = RequestTally()
     }
 
     private let lock = NSLock()
     private var state = State()
+
+    /// Every call the double has served since the last `resetRequests()`.
+    public var requests: RequestTally {
+        lock.withLock { state.tally }
+    }
+
+    /// Drops the tally so the next call starts a fresh budget, leaving the
+    /// stored records where they are.
+    public func resetRequests() {
+        lock.withLock { state.tally = RequestTally() }
+    }
+
+    private func counting<R>(_ kind: RequestTally.Kind, carrying carried: (R) -> Int = { _ in 0 }, _ body: () throws -> R) rethrows -> R {
+        lock.lock()
+        defer { lock.unlock() }
+        do {
+            let result = try body()
+            state.tally.add(kind, carrying: carried(result))
+            return result
+        } catch {
+            state.tally.fail(kind)
+            throw error
+        }
+    }
 
     public var records: [CKRecord] {
         get { lock.withLock { state.table.all() } }
@@ -163,7 +188,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     public func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        try lock.withLock {
+        try counting(.query, carrying: { $0.matchResults.count }) {
             try popErrorLocked(writing: false)
             return pageLocked(query: query, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
         }
@@ -172,7 +197,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
         matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
     ) {
-        try lock.withLock {
+        try counting(.continuation, carrying: { $0.matchResults.count }) {
             try popErrorLocked(writing: false)
             let resumed = LocalQuery.resume(
                 indexedLocked(), from: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit, pageLimit: state.pageLimit)
@@ -202,7 +227,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     }
 
     public func save(_ record: CKRecord) async throws -> CKRecord {
-        try lock.withLock {
+        try counting(.save, carrying: { _ in 1 }) {
             try popErrorLocked(writing: true)
             if let server = conflictingServerLocked(for: record) {
                 throw RecordConflictError(serverRecord: server)
@@ -213,7 +238,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     }
 
     public func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {
-        try lock.withLock {
+        try counting(.modify, carrying: { _ in records.count + recordIDs.count }) {
             try popErrorLocked(writing: true)
             records.forEach(upsertLocked)
             state.table.remove(recordIDs)
@@ -221,7 +246,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     }
 
     public func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
-        try lock.withLock {
+        try counting(.conditionalSave, carrying: { $0.count }) {
             var queued: [CKRecord.ID: any Error] = [:]
             let batch = Set(records.map(\.recordID))
             while let next = pendingConflictLocked(in: batch, queued: queued) {
@@ -295,7 +320,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     }
 
     public func save(subscription: CKSubscription) async throws {
-        try lock.withLock {
+        try counting(.subscriptionSave) {
             try popErrorLocked(writing: true)
             state.subscriptions.removeAll { $0.subscriptionID == subscription.subscriptionID }
             state.subscriptions.append(subscription)
@@ -303,28 +328,28 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     }
 
     public func deleteSubscription(id: CKSubscription.ID) async throws {
-        try lock.withLock {
+        try counting(.subscriptionDelete) {
             try popErrorLocked(writing: true)
             state.subscriptions.removeAll { $0.subscriptionID == id }
         }
     }
 
     public func subscriptions() async throws -> [CKSubscription] {
-        try lock.withLock {
+        try counting(.subscriptionList, carrying: { $0.count }) {
             try popErrorLocked(writing: false)
             return state.subscriptions
         }
     }
 
     public func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
-        try lock.withLock {
+        try counting(.fetch, carrying: { $0 == nil ? 0 : 1 }) {
             try popErrorLocked(writing: false)
             return state.table.record(id: id).map { project($0, keys: nil) }
         }
     }
 
     public func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
-        try lock.withLock {
+        try counting(.fetch, carrying: { $0.count }) {
             try popErrorLocked(writing: false)
             return ids.compactMap { state.table.record(id: $0).map { project($0, keys: nil) } }
         }

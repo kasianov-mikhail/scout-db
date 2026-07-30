@@ -14,14 +14,8 @@ import Testing
 
 @Suite("Grid writes")
 struct GridWritesTests {
-    let backing = InMemoryDatabase()
-    let recorder = Recorder()
-    let database: ObservedDatabase
+    let database = InMemoryDatabase()
     let noon = Date(timeIntervalSince1970: 36_000)
-
-    init() {
-        database = ObservedDatabase(backing: backing, observer: recorder)
-    }
 
     private func paymentDefinition(views: [AggregateView]) -> EntityDefinition {
         makeDefinition(
@@ -41,12 +35,12 @@ struct GridWritesTests {
         }
     }
 
-    private func requests(_ kind: DatabaseOperation.Kind) -> Int {
-        recorder.operations.filter { $0.kind == kind }.count
+    private func requests(_ kind: RequestTally.Kind) -> Int {
+        database.requests[kind]
     }
 
     private var slots: [CKRecord] {
-        backing.records.filter { $0.recordType == Aggregate.recordType }
+        database.records.filter { $0.recordType == Aggregate.recordType }
     }
 
     @Test("Every slot a batch touches is read and written in one request each")
@@ -70,7 +64,7 @@ struct GridWritesTests {
         let definition = paymentDefinition(views: [AggregateView(name: "revenue", bucket: .lifetime, sum: "amount")])
         let aggregator = GridAggregator(database: database)
         try await aggregator.record(payments(["app"]), using: definition)
-        recorder.reset()
+        database.resetRequests()
 
         try await aggregator.record(payments(["pro"]), using: definition)
 
@@ -89,7 +83,7 @@ struct GridWritesTests {
         try await aggregator.record(payments(["app"]), using: definition)
         #expect(requests(.query) == 0)
 
-        recorder.reset()
+        database.resetRequests()
         try await aggregator.record(payments(["a|b"]), using: definition)
         #expect(requests(.query) == 1)
     }
@@ -105,7 +99,7 @@ struct GridWritesTests {
         let definition = paymentDefinition(views: [AggregateView(name: "cheapest", bucket: .lifetime, min: "amount")])
         let stored = payment(amount: 5)
         try await GridAggregator(database: database).record([stored], using: definition)
-        recorder.reset()
+        database.resetRequests()
 
         try await GridAggregator(database: database).rebalance(removing: [stored], adding: [payment(amount: 9)], using: definition)
 
@@ -119,7 +113,7 @@ struct GridWritesTests {
         let definition = paymentDefinition(views: [AggregateView(name: "cheapest", bucket: .lifetime, min: "amount")])
         let stored = payment(amount: 5)
         try await GridAggregator(database: database).record([stored], using: definition)
-        recorder.reset()
+        database.resetRequests()
 
         try await GridAggregator(database: database).rebalance(removing: [stored], adding: [payment(amount: 2)], using: definition)
 
@@ -135,8 +129,8 @@ struct GridWritesTests {
 
         let server = try #require(slots.first).copy() as! CKRecord
         server["c_00"] = (server["c_00"] as? Int64 ?? 0) + 5
-        try await backing.modifyRecords(saving: [server], deleting: [])
-        recorder.reset()
+        try await database.modifyRecords(saving: [server], deleting: [])
+        database.resetRequests()
 
         try await aggregator.record(payments(["pro"]), using: definition)
 
@@ -151,8 +145,8 @@ struct GridWritesTests {
         let aggregator = GridAggregator(database: database)
         try await aggregator.record(payments(["app"]), using: definition)
 
-        backing.records.removeAll { $0.recordType == Aggregate.recordType }
-        backing.writeErrors = [CKError(.unknownItem)]
+        database.records.removeAll { $0.recordType == Aggregate.recordType }
+        database.writeErrors = [CKError(.unknownItem)]
 
         try await aggregator.record(payments(["pro"]), using: definition)
 
