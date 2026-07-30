@@ -92,8 +92,9 @@ struct BuilderTests {
         #expect(try await store.query("contact").filter("email", .endsWith, "gmail.com").take(100).map(\.uuid) == ["c-1"])
         #expect(try await store.query("contact").filter("bio", .contains, "engineer").take(100).map(\.uuid) == ["c-1"])
 
-        let plans = try await store.query("contact").filter("email", .endsWith, "gmail.com").explain()
-        #expect(plans.first?.server.contains { $0.contains("moc.liamg") } == true)
+        let filter = EntityStore.Filter(field: "email", op: .endsWith, value: .string("gmail.com"))
+        let (server, _) = try store.split([filter], entity: "contact", using: definition)
+        #expect(server.contains { $0.op == .beginsWith && $0.value == .string("moc.liamg") })
     }
 
     @Test("The schema builder assigns slots in declaration order")
@@ -291,21 +292,21 @@ struct BuilderTests {
 
     @Test("Equalities over one field fold into a single in-list branch")
     func disjunctionFolds() async throws {
-        let plans = try await store.query("purchase")
+        let builder = store.query("purchase")
             .filter("product_id" == "sku-0" || "product_id" == "sku-1" || "product_id" == "sku-2")
-            .explain()
+        #expect(builder.alternatives.count == 1)
 
-        #expect(plans.count == 1)
-        #expect(plans[0].server.contains { $0.contains("sku-0") && $0.contains("sku-1") && $0.contains("sku-2") })
+        let definition = try await registry.definition(for: "purchase")
+        let (server, _) = try store.split(builder.alternatives[0], entity: "purchase", using: definition)
+        #expect(server.contains { $0.op == .in && $0.value == .strings(["sku-0", "sku-1", "sku-2"]) })
     }
 
     @Test("A conjunction inside a disjunction multiplies the alternatives out")
     func conjunctionDistributes() async throws {
-        let plans = try await store.query("purchase")
+        let builder = store.query("purchase")
             .filter(("quantity" > 1 || "quantity" < 0) && ("amount" > 5 || "amount" < 1))
-            .explain()
 
-        #expect(plans.count == 4)
+        #expect(builder.alternatives.count == 4)
     }
 
     @Test("An expression narrows the same way a plain filter does")
@@ -329,26 +330,17 @@ struct BuilderTests {
         #expect(records.map(\.uuid) == ["p-0", "p-2"])
     }
 
-    @Test("Explain reports one plan per alternative")
-    func explainGroups() async throws {
-        let flat = try await store.query("purchase").filter("quantity" > 0).explain()
-        #expect(flat.count == 1)
-        #expect(!flat[0].server.isEmpty)
-
-        let grouped = try await store.query("purchase")
-            .filter("quantity" > 0)
-            .filter("product_id" == "sku-0" || "product_id" == "sku-2")
-            .explain()
-        #expect(grouped.count == 1)
-        #expect(grouped[0].server.contains { $0.contains("sku-0") && $0.contains("sku-2") })
-
-        let fanned = try await store.query("purchase")
+    @Test("A base filter rides along every alternative the query fans into")
+    func baseFilterFansOut() async throws {
+        let builder = store.query("purchase")
             .filter("quantity" > 0)
             .filter("product_id" == "sku-0" || "quantity" == 2)
-            .explain()
-        #expect(fanned.count == 2)
-        #expect(!Set(fanned[0].server).intersection(fanned[1].server).isEmpty)
-        #expect(fanned.contains { plan in plan.server.contains { $0.contains("sku-0") } })
+        #expect(builder.alternatives.count == 2)
+
+        let definition = try await registry.definition(for: "purchase")
+        let branches = try builder.alternatives.map { try store.split($0, entity: "purchase", using: definition).server }
+        #expect(branches[0].contains { branches[1].contains($0) })
+        #expect(branches.contains { $0.contains { $0.value == .string("sku-0") } })
     }
 
     @Test("Builder update and delete rewrite matching records")
@@ -384,25 +376,33 @@ struct BuilderTests {
 
     @Test("Exclude runs on the server when the field cannot be missing")
     func excludePushdown() async throws {
-        let required = try await store.query("purchase").exclude("product_id", .equals, "sku-1").explain()
-        #expect(required[0].server.contains("s_00 notEquals sku-1"))
-        #expect(required[0].client.isEmpty)
+        func sides(_ builder: QueryBuilder, using definition: EntityDefinition) throws -> (server: [ServerFilter], client: [EntityStore.Filter]) {
+            try store.split(builder.alternatives[0], entity: builder.entity, using: definition)
+        }
 
-        let optional = try await store.query("purchase").exclude("quantity", .greaterThan, .int(1)).explain()
-        #expect(optional[0].client.contains("quantity greaterThan i1"))
+        let purchase = try await registry.definition(for: "purchase")
 
-        let payload = try await store.query("purchase").exclude("comment", .equals, "gift").explain()
-        #expect(payload[0].client.contains("comment equals gift"))
+        let required = try sides(store.query("purchase").exclude("product_id", .equals, "sku-1"), using: purchase)
+        #expect(required.server.contains(ServerFilter(field: "s_00", op: .notEquals, value: .string("sku-1"))))
+        #expect(required.client.isEmpty)
+
+        let optional = try sides(store.query("purchase").exclude("quantity", .greaterThan, .int(1)), using: purchase)
+        #expect(optional.client.contains(EntityStore.Filter(field: "quantity", op: .greaterThan, value: .int(1), negated: true)))
+
+        let payload = try sides(store.query("purchase").exclude("comment", .equals, "gift"), using: purchase)
+        #expect(payload.client.contains(EntityStore.Filter(field: "comment", op: .equals, value: .string("gift"), negated: true)))
 
         try await store.schema("shipment")
             .field("carrier", .string, .required)
             .field("weight", .double, .defaultValue(.double(0)))
             .create()
-        let defaulted = try await store.query("shipment").exclude("weight", .lessThan, .double(5)).explain()
-        #expect(defaulted[0].server.contains("d_00 greaterThanOrEquals d5.0"))
+        let shipment = try await registry.definition(for: "shipment")
 
-        let excluded = try await store.query("shipment").exclude("carrier", .in, .strings(["ups", "dhl"])).explain()
-        #expect(excluded[0].server.contains { $0.hasPrefix("s_00 notIn") })
+        let defaulted = try sides(store.query("shipment").exclude("weight", .lessThan, .double(5)), using: shipment)
+        #expect(defaulted.server.contains(ServerFilter(field: "d_00", op: .greaterThanOrEquals, value: .double(5))))
+
+        let excluded = try sides(store.query("shipment").exclude("carrier", .in, .strings(["ups", "dhl"])), using: shipment)
+        #expect(excluded.server.contains(ServerFilter(field: "s_00", op: .notIn, value: .strings(["ups", "dhl"]))))
     }
 
     @Test("A malformed regex filter throws instead of matching nothing")

@@ -9,26 +9,6 @@ import CoreLocation
 import Foundation
 
 extension EntityStore {
-    func explain(entity: String, filters: [Filter] = [], sort: [Sort] = [], createdBy creator: String? = nil) async throws -> QueryPlan {
-        let definition = try await registry.definition(for: entity)
-        return try plan(filters, entity: entity, sort: sort, createdBy: creator, using: definition)
-    }
-
-    func explain(entity: String, any branches: [[Filter]], sort: [Sort] = [], createdBy creator: String? = nil) async throws -> [QueryPlan] {
-        let definition = try await registry.definition(for: entity)
-        return try branches.map { try plan($0, entity: entity, sort: sort, createdBy: creator, using: definition) }
-    }
-
-    private func plan(_ filters: [Filter], entity: String, sort: [Sort], createdBy creator: String?, using definition: EntityDefinition) throws -> QueryPlan {
-        let (server, client) = try split(filters, entity: entity, using: definition)
-        let scoped = server + (creator.map { [ServerFilter(field: "creatorUserRecordID", op: .equals, value: .reference($0))] } ?? [])
-        return QueryPlan(
-            server: scoped.map { "\($0.field) \($0.op.rawValue) \($0.value.canonical)" },
-            client: client.map { "\($0.field) \($0.op) \($0.value.canonical)" },
-            sort: try serverSort(sort, using: definition).map { "\($0.field) \($0.ascending ? "asc" : "desc")" }
-        )
-    }
-
     public enum Match: Equatable, Sendable {
         case equals, notEquals
         case greaterThan, greaterThanOrEquals, lessThan, lessThanOrEquals

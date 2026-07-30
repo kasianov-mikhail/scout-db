@@ -132,27 +132,4 @@ extension QueryBuilder {
             createdBy: creator
         )
     }
-
-    /// Explains how the query splits into server predicates and client matchers,
-    /// one `QueryPlan` per alternative.
-    ///
-    /// A query with no `||` yields a single plan; every alternative the
-    /// expression carries adds one, since the store runs a server query per
-    /// alternative. Reading the plans is how you see what a disjunction came to
-    /// cost before running it.
-    ///
-    /// ```swift
-    /// for plan in try await store.query("purchase").filter("title", .endsWith, "World").explain() {
-    ///     print(plan)   // SERVER title_rev BEGINSWITH "dlroW" …
-    /// }
-    /// ```
-    ///
-    public func explain() async throws -> [QueryPlan] {
-        try await store.explain(
-            entity: entity,
-            any: alternatives,
-            sort: sorts,
-            createdBy: creator
-        )
-    }
 }

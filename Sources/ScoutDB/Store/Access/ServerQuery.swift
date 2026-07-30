@@ -9,17 +9,6 @@ import CloudKit
 import CoreLocation
 import Foundation
 
-public struct QueryPlan: Equatable, Sendable, CustomStringConvertible {
-    public let server: [String]
-    public let client: [String]
-    public let sort: [String]
-
-    public var description: String {
-        let lines = server.map { "SERVER \($0)" } + client.map { "CLIENT \($0)" } + sort.map { "SORT \($0)" }
-        return lines.joined(separator: "\n")
-    }
-}
-
 struct ServerFilter: Equatable, Sendable {
     enum Operator: String, CaseIterable, Sendable {
         case equals

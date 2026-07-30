@@ -615,7 +615,6 @@ struct OperationsTests {
             streamed.insert(record.uuid)
         }
         #expect(streamed == ["p-1", "p-3"])
-        #expect(try await mine.explain().first?.server.contains("creatorUserRecordID equals ruser-a") == true)
 
         #expect(
             try await mine.update { record in
@@ -718,17 +717,17 @@ struct OperationsTests {
         #expect(records.map(\.uuid) == ["p-1"])
     }
 
-    @Test("Explain reveals the server and client sides of a query")
-    func explain() async throws {
+    @Test("A query splits into server predicates, client matchers and slot sorts")
+    func queryPlanning() async throws {
         let filters = [
             EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-42")),
             EntityStore.Filter(field: "comment", op: .contains, value: .string("gif")),
         ]
-        let plan = try await store.explain(entity: "purchase", filters: filters, sort: [EntityStore.Sort(field: "date")])
-        #expect(plan.server.contains("s_00 equals sku-42"))
-        #expect(plan.client.contains("comment contains gif"))
-        #expect(plan.sort == ["t_00 asc"])
-        #expect(plan.description.contains("SERVER s_00 equals sku-42"))
+        let definition = try await registry.definition(for: "purchase")
+        let (server, client) = try store.split(filters, entity: "purchase", using: definition)
+        #expect(server.contains(ServerFilter(field: "s_00", op: .equals, value: .string("sku-42"))))
+        #expect(client == [filters[1]])
+        #expect(try store.serverSort([EntityStore.Sort(field: "date")], using: definition) == [ServerSort(field: "t_00", ascending: true)])
     }
 
     @Test("Paginated reads apply client-side filters across pages")
