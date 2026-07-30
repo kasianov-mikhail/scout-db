@@ -185,18 +185,14 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
 
     public init() {}
 
-    public func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
-        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
-    ) {
+    public func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> QueryPage {
         try counting(.query, carrying: { $0.matchResults.count }) {
             try popErrorLocked(writing: false)
             return pageLocked(query: query, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
         }
     }
 
-    public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
-        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
-    ) {
+    public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> QueryPage {
         try counting(.continuation, carrying: { $0.matchResults.count }) {
             try popErrorLocked(writing: false)
             let resumed = LocalQuery.resume(
@@ -220,9 +216,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         throw error
     }
 
-    private func pageLocked(query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) -> (
-        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
-    ) {
+    private func pageLocked(query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) -> QueryPage {
         LocalQuery.page(indexedLocked(), matching: query, desiredKeys: desiredKeys, resultsLimit: resultsLimit, pageLimit: state.pageLimit)
     }
 

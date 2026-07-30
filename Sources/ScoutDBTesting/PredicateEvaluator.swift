@@ -8,9 +8,10 @@
 import CloudKit
 import CoreLocation
 import Foundation
+import ScoutDB
 
-enum PredicateEvaluator {
-    static func evaluate(_ predicate: NSPredicate, record: CKRecord) -> Bool? {
+package enum PredicateEvaluator {
+    package static func evaluate(_ predicate: NSPredicate, record: CKRecord) -> Bool? {
         if let compound = predicate as? NSCompoundPredicate {
             let subpredicates = compound.subpredicates as? [NSPredicate] ?? []
 
@@ -186,7 +187,7 @@ enum PredicateEvaluator {
         return false
     }
 
-    static func compare(_ lhs: Any?, _ rhs: Any?) -> ComparisonResult {
+    package static func compare(_ lhs: Any?, _ rhs: Any?) -> ComparisonResult {
         switch (lhs, rhs) {
         case (nil, nil):
             return .orderedSame

@@ -949,17 +949,13 @@ private final class GridQueries: CloudDatabase, @unchecked Sendable {
         lock.withLock { log.filter { $0.query.recordType == Aggregate.recordType } }
     }
 
-    func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
-        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
-    ) {
+    func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> QueryPage {
         let response = try await backing.records(matching: query, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
         lock.withLock { log.append((query, desiredKeys, response.matchResults.count)) }
         return response
     }
 
-    func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> (
-        matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?
-    ) {
+    func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> QueryPage {
         try await backing.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
     }
 
