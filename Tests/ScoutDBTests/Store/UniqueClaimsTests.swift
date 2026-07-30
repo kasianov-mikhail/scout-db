@@ -125,19 +125,6 @@ struct UniqueClaimsTests {
         try await store.write(["code": .string("gold")], entity: "badge", uuid: "b-2")
     }
 
-    @Test("A restore re-claims its values, and fails once they are re-taken")
-    func restoreReclaims() async throws {
-        try await store.write(["code": .string("gold")], entity: "badge", uuid: "b-1")
-        try await store.delete(entity: "badge", uuid: "b-1")
-        try await store.write(["code": .string("gold")], entity: "badge", uuid: "b-2")
-        await #expect(throws: SchemaError.duplicateKey(fields: ["code"])) {
-            try await store.restore(entity: "badge", uuid: "b-1")
-        }
-        try await store.delete(entity: "badge", uuid: "b-2")
-        _ = try await store.restore(entity: "badge", uuid: "b-1")
-        #expect(claims.first?["owner"] as? String == "b-1")
-    }
-
     @Test("A stale claim whose owner no longer holds the value is adopted")
     func staleClaimAdopted() async throws {
         try await store.write(["code": .string("gold")], entity: "badge", uuid: "b-1")

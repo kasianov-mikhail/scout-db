@@ -12,7 +12,7 @@ import Foundation
 enum PerfScenarios {
     static var all: [PerfScenario] {
         schema + queries + writes + pagination + aggregates + uniqueKeys + transactions + conflicts
-            + relations + revisions + lifecycle + assets + encryption + migrations + subscriptions + pushEvents
+            + relations + revisions + assets + encryption + migrations + subscriptions + pushEvents
     }
 }
 
@@ -31,10 +31,6 @@ extension PerfWorld {
 
     func session(_ index: Int) -> String {
         corpus.sessions[(index &* 11) % (corpus.sessions.count - corpus.deleted.count)]
-    }
-
-    func tombstoned(_ index: Int) -> String {
-        corpus.deleted[index % corpus.deleted.count]
     }
 
     var hotProduct: String {

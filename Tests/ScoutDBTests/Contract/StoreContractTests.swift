@@ -61,8 +61,8 @@ struct StoreContractTests {
         }
     }
 
-    @Test("A delete hides the record and restore lifts the tombstone")
-    func deleteAndRestore() async throws {
+    @Test("A delete hides the record, and a rewrite of its uuid brings it back")
+    func deleteAndRewrite() async throws {
         try await withContract { f in
             let entity = try await f.publishOrder()
             try await f.store.write(orderValues(product: "keep-me"), entity: entity, uuid: "d-1")
@@ -71,9 +71,9 @@ struct StoreContractTests {
             try await f.store.delete(entity: entity, uuid: "d-1")
             try await eventually { try await f.store.read(entity: entity).isEmpty }
 
-            let restored = try await f.store.restore(entity: entity, uuid: "d-1")
-            #expect(restored.values["product"] == .string("keep-me"))
+            try await f.store.write(orderValues(product: "keep-me"), entity: entity, uuid: "d-1")
             try await eventually { try await f.store.read(entity: entity).count == 1 }
+            #expect(try await f.store.fetch(entity: entity, uuids: ["d-1"]).first?.values["product"] == .string("keep-me"))
         }
     }
 
