@@ -9,8 +9,8 @@ import Foundation
 
 extension EntityStore {
     /// A fold over one numeric field of a filtered read.
-    public enum Fold: String, Sendable {
-        case sum, minimum, maximum, average
+    enum Fold: String, Sendable {
+        case sum, min, max, average
     }
 
     /// Folds a numeric field across the matching records, fetching only that
@@ -29,12 +29,8 @@ extension EntityStore {
     /// A `createdBy` scope always scans: a view's grid folds every writer's
     /// records together and cannot be split back by creator.
     ///
-    public func aggregate(_ fold: Fold, of field: String, entity: String, filters: [Filter] = [], createdBy creator: String? = nil) async throws -> Double? {
-        try await aggregate(fold, of: field, entity: entity, any: [filters], createdBy: creator)
-    }
-
     /// Folds a numeric field across the records matching any of the OR branches.
-    public func aggregate(_ fold: Fold, of field: String, entity: String, any branches: [[Filter]], createdBy creator: String? = nil) async throws
+    func aggregate(_ fold: Fold, of field: String, entity: String, any branches: [[Filter]], createdBy creator: String? = nil) async throws
         -> Double?
     {
         let definition = try await registry.definition(for: entity)
@@ -49,9 +45,9 @@ extension EntityStore {
                 values.reduce(0, +)
             case .average:
                 count > 0 ? values.reduce(0, +) / Double(count) : nil
-            case .minimum:
+            case .min:
                 values.min()
-            case .maximum:
+            case .max:
                 values.max()
             }
         }
@@ -59,9 +55,9 @@ extension EntityStore {
         return switch fold {
         case .sum:
             scalars.reduce(0, +)
-        case .minimum:
+        case .min:
             scalars.min()
-        case .maximum:
+        case .max:
             scalars.max()
         case .average:
             scalars.isEmpty ? nil : scalars.reduce(0, +) / Double(scalars.count)
@@ -74,14 +70,8 @@ extension EntityStore {
     /// strings (the raw string for a string field); records missing either field
     /// are skipped.
     ///
-    public func aggregate(_ fold: Fold, of field: String, by group: String, entity: String, filters: [Filter] = [], createdBy creator: String? = nil)
-        async throws -> [String: Double]
-    {
-        try await aggregate(fold, of: field, by: group, entity: entity, any: [filters], createdBy: creator)
-    }
-
     /// Folds a numeric field per group across the records matching any of the OR branches.
-    public func aggregate(_ fold: Fold, of field: String, by group: String, entity: String, any branches: [[Filter]], createdBy creator: String? = nil)
+    func aggregate(_ fold: Fold, of field: String, by group: String, entity: String, any branches: [[Filter]], createdBy creator: String? = nil)
         async throws -> [String: Double]
     {
         let definition = try await registry.definition(for: entity)
@@ -97,22 +87,24 @@ extension EntityStore {
                 folded.mapValues { $0.value ?? 0 }
             case .average:
                 folded.compactMapValues { fold in fold.count > 0 ? fold.value.map { $0 / Double(fold.count) } : nil }
-            case .minimum, .maximum:
+            case .min, .max:
                 folded.compactMapValues(\.value)
             }
         }
         var buckets: [String: [Double]] = [:]
         for record in try await read(entity: entity, any: branches, fields: [field, group], createdBy: creator) {
-            guard let key = record.values[group]?.canonical, let scalar = record.values[field]?.scalar else { continue }
+            guard let key = record.values[group]?.canonical, let scalar = record.values[field]?.scalar else {
+                continue
+            }
             buckets[key, default: []].append(scalar)
         }
         return buckets.mapValues { scalars in
             switch fold {
             case .sum:
                 scalars.reduce(0, +)
-            case .minimum:
+            case .min:
                 scalars.min() ?? 0
-            case .maximum:
+            case .max:
                 scalars.max() ?? 0
             case .average:
                 scalars.reduce(0, +) / Double(scalars.count)
@@ -125,27 +117,36 @@ extension EntityStore {
     /// A view grouping by that field answers the covered query shapes from its
     /// grid, without reading records.
     ///
-    public func counts(by group: String, entity: String, filters: [Filter] = [], createdBy creator: String? = nil) async throws -> [String: Int] {
-        try await counts(by: group, entity: entity, any: [filters], createdBy: creator)
-    }
-
     /// Counts records per group across the records matching any of the OR branches.
-    public func counts(by group: String, entity: String, any branches: [[Filter]], createdBy creator: String? = nil) async throws -> [String: Int] {
+    func counts(by group: String, entity: String, any branches: [[Filter]], createdBy creator: String? = nil) async throws -> [String: Int] {
         let definition = try await registry.definition(for: entity)
         guard definition.field(named: group, at: definition.version) != nil else {
             throw SchemaError.unknownField(group)
         }
-        if creator == nil, try await alwaysPresent(group, entity: entity),
-            let folded = try await viewFold(of: nil, by: group, entity: entity, any: branches)
-        {
-            return folded.mapValues(\.count)
+        if let gridded = try await griddedCounts(by: group, entity: entity, any: branches, createdBy: creator) {
+            return gridded
         }
         var counts: [String: Int] = [:]
         for record in try await read(entity: entity, any: branches, fields: [group], createdBy: creator) {
-            guard let key = record.values[group]?.canonical else { continue }
+            guard let key = record.values[group]?.canonical else {
+                continue
+            }
             counts[key, default: 0] += 1
         }
         return counts
+    }
+
+    private func griddedCounts(by group: String, entity: String, any branches: [[Filter]], createdBy creator: String?) async throws -> [String: Int]? {
+        guard creator == nil else {
+            return nil
+        }
+        guard try await alwaysPresent(group, entity: entity) else {
+            return nil
+        }
+        guard let folded = try await viewFold(of: nil, by: group, entity: entity, any: branches) else {
+            return nil
+        }
+        return folded.mapValues(\.count)
     }
 
     private func gridFold(_ fold: Fold, of field: String, by group: String? = nil, entity: String, any branches: [[Filter]]) async throws
@@ -156,14 +157,18 @@ extension EntityStore {
         case .sum:
             kind = .sum
         case .average:
-            guard try await alwaysPresent(field, entity: entity) else { return nil }
+            guard try await alwaysPresent(field, entity: entity) else {
+                return nil
+            }
             kind = .sum
-        case .minimum:
+        case .min:
             kind = .min
-        case .maximum:
+        case .max:
             kind = .max
         }
-        if let group, try await alwaysPresent(group, entity: entity) == false { return nil }
+        if let group, try await alwaysPresent(group, entity: entity) == false {
+            return nil
+        }
         return try await viewFold(of: field, folding: kind, by: group, entity: entity, any: branches)
     }
 }

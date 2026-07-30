@@ -9,14 +9,18 @@ import Foundation
 
 extension EntityStore {
     func extremum(in range: GridAggregator.CellRange, using definition: EntityDefinition) async throws -> Double? {
-        guard let metric = range.view.metric, metric.kind != .sum else { return nil }
+        guard let metric = range.view.metric, metric.kind != .sum else {
+            return nil
+        }
         var filters: [Filter] = []
 
         if let groupBy = range.view.groupBy {
-            guard let field = definition.field(named: groupBy, at: definition.version),
-                let parse = Self.canonicalParser(of: field.type),
-                let value = parse(range.group)
-            else { return nil }
+            guard let field = definition.field(named: groupBy, at: definition.version) else {
+                return nil
+            }
+            guard let parse = Self.canonicalParser(of: field.type), let value = parse(range.group) else {
+                return nil
+            }
             filters.append(Filter(field: groupBy, op: .equals, value: value))
         }
         if let dateField = definition.envelopeDate, let window = Self.window(of: range) {
@@ -40,9 +44,12 @@ extension EntityStore {
         case .lifetime:
             return nil
         }
-        guard let from = calendar.date(byAdding: unit, value: range.index, to: range.period),
-            let to = calendar.date(byAdding: unit, value: 1, to: from)
-        else { return nil }
+        guard let from = calendar.date(byAdding: unit, value: range.index, to: range.period) else {
+            return nil
+        }
+        guard let to = calendar.date(byAdding: unit, value: 1, to: from) else {
+            return nil
+        }
         return (from, to)
     }
 }
