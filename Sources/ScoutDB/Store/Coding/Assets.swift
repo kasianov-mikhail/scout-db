@@ -115,7 +115,7 @@ private final class StagedFiles: @unchecked Sendable {
 
 extension EntityStore {
     /// The directory asset bytes are staged into before their write uploads them.
-    public static var assetStagingDirectory: URL {
+    package static var assetStagingDirectory: URL {
         EntityCoder.stagingDirectory
     }
 
