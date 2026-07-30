@@ -32,7 +32,7 @@ public struct SchemaBuilder {
     var envelopeDate: String?
     var unique: [String]?
     var uniqueKeys: [[String]]?
-    var views: [AggregateView]?
+    var views: [AggregateView] = []
     var keyID: String?
     var audited: Bool?
 

@@ -28,9 +28,8 @@ extension SchemaBuilder {
     ///
     public func count(by group: String? = nil, bucket: AggregateBucket = .lifetime, shards: Int? = nil) -> Self {
         var builder = self
-        var views = builder.views ?? []
 
-        views.append(
+        builder.views.append(
             AggregateView(
                 name: Self.name(nil, of: nil, by: group, bucket: bucket),
                 groupBy: group,
@@ -39,7 +38,6 @@ extension SchemaBuilder {
             )
         )
 
-        builder.views = views
         return builder
     }
 
@@ -62,9 +60,8 @@ extension SchemaBuilder {
     ///
     public func sum(_ field: String, by group: String? = nil, bucket: AggregateBucket = .lifetime, shards: Int? = nil) -> Self {
         var builder = self
-        var views = builder.views ?? []
 
-        views.append(
+        builder.views.append(
             AggregateView(
                 name: Self.name("sum", of: field, by: group, bucket: bucket),
                 groupBy: group,
@@ -74,7 +71,6 @@ extension SchemaBuilder {
             )
         )
 
-        builder.views = views
         return builder
     }
 
@@ -93,9 +89,8 @@ extension SchemaBuilder {
     ///
     public func min(_ field: String, by group: String? = nil, bucket: AggregateBucket = .lifetime, exact: Bool = false) -> Self {
         var builder = self
-        var views = builder.views ?? []
 
-        views.append(
+        builder.views.append(
             AggregateView(
                 name: Self.name("min", of: field, by: group, bucket: bucket),
                 groupBy: group,
@@ -122,9 +117,8 @@ extension SchemaBuilder {
     ///
     public func max(_ field: String, by group: String? = nil, bucket: AggregateBucket = .lifetime, exact: Bool = false) -> Self {
         var builder = self
-        var views = builder.views ?? []
 
-        views.append(
+        builder.views.append(
             AggregateView(
                 name: Self.name("max", of: field, by: group, bucket: bucket),
                 groupBy: group,
@@ -134,7 +128,6 @@ extension SchemaBuilder {
             )
         )
 
-        builder.views = views
         return builder
     }
 
@@ -158,9 +151,8 @@ extension SchemaBuilder {
     ///
     public func stats(_ field: String, by group: String? = nil, bucket: AggregateBucket = .lifetime, shards: Int? = nil) -> Self {
         var builder = self
-        var views = builder.views ?? []
 
-        views.append(
+        builder.views.append(
             AggregateView(
                 name: Self.name("stats", of: field, by: group, bucket: bucket),
                 groupBy: group,
@@ -170,7 +162,6 @@ extension SchemaBuilder {
             )
         )
 
-        builder.views = views
         return builder
     }
 
@@ -194,16 +185,14 @@ extension SchemaBuilder {
     ///
     public func histogram(of field: String, bounds: [Double]) -> Self {
         var builder = self
-        var views = builder.views ?? []
 
-        views.append(
+        builder.views.append(
             AggregateView(
                 name: Self.name("hist", of: field, by: nil, bucket: nil),
                 histogram: AggregateView.Histogram(field: field, bounds: bounds)
             )
         )
 
-        builder.views = views
         return builder
     }
 
