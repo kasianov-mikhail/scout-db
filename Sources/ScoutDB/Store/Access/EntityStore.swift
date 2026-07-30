@@ -372,7 +372,7 @@ public struct EntityStore: Sendable {
         guard let trustedWriters else {
             return true
         }
-        guard let creator = record.recordCreator else {
+        guard let creator = record.creatorName else {
             return false
         }
         return trustedWriters.contains(creator)

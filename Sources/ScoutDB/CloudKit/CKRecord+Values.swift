@@ -127,50 +127,36 @@ extension RecordValue {
     }
 }
 
-private nonisolated(unsafe) var modificationDateKey: UInt8 = 0
-private nonisolated(unsafe) var creatorKey: UInt8 = 0
-private nonisolated(unsafe) var changeTagKey: UInt8 = 0
+/// The record metadata a `CloudDatabase` double stamps for itself.
+///
+/// CloudKit assigns a change tag, a modification date and a creator on the
+/// server, and `CKRecord` exposes all three read-only. A double has no server
+/// to assign them, so it stores its own here and the library reads them where
+/// it would read CloudKit's. Nothing in ScoutDB writes them — the double does,
+/// through the accessors `ScoutDBTesting` puts on top of this.
+///
+package struct RecordOverrides: Sendable {
+    package var modificationDate: Date?
+    package var creator: String?
+    package var changeTag: String?
+}
+
+private nonisolated(unsafe) var overridesKey: UInt8 = 0
 
 extension CKRecord {
-    package var recordModificationDate: Date? {
-        objc_getAssociatedObject(self, &modificationDateKey) as? Date ?? modificationDate
+    package var overrides: RecordOverrides {
+        get { objc_getAssociatedObject(self, &overridesKey) as? RecordOverrides ?? RecordOverrides() }
+        set { objc_setAssociatedObject(self, &overridesKey, newValue, .OBJC_ASSOCIATION_RETAIN) }
     }
 
-    package var recordCreator: String? {
-        objc_getAssociatedObject(self, &creatorKey) as? String ?? creatorUserRecordID?.recordName
+    var creatorName: String? {
+        overrides.creator ?? creatorUserRecordID?.recordName
     }
 
-    package var recordVersionTag: String? {
-        objc_getAssociatedObject(self, &changeTagKey) as? String ?? recordChangeTag
-    }
-
-    package func overrideModificationDate(_ date: Date) {
-        objc_setAssociatedObject(self, &modificationDateKey, date, .OBJC_ASSOCIATION_RETAIN)
-    }
-
-    func overrideCreator(_ name: String) {
-        objc_setAssociatedObject(self, &creatorKey, name, .OBJC_ASSOCIATION_RETAIN)
-    }
-
-    package func overrideChangeTag(_ tag: String) {
-        objc_setAssociatedObject(self, &changeTagKey, tag, .OBJC_ASSOCIATION_RETAIN)
-    }
-
-    package func carryOverrides(to other: CKRecord) {
-        if let tag = recordVersionTag {
-            other.overrideChangeTag(tag)
-        }
-        if let date = recordModificationDate {
-            other.overrideModificationDate(date)
-        }
-        if let creator = recordCreator {
-            other.overrideCreator(creator)
-        }
-    }
-
+    /// A copy that keeps the overrides `copy()` leaves behind.
     package func duplicate() -> CKRecord {
         let copy = self.copy() as! CKRecord
-        carryOverrides(to: copy)
+        copy.overrides = overrides
         return copy
     }
 }

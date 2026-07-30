@@ -5,7 +5,6 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-import CloudKit
 import Foundation
 import ScoutDBTesting
 
@@ -69,23 +68,9 @@ final class PerfBench {
 
     private func restore() {
         backing = InMemoryDatabase()
-        backing.records = corpus.records.map(Self.clone)
+        backing.records = corpus.records.map { $0.duplicate() }
         backing.pageLimit = Self.pageLimit
     }
 
     static let pageLimit = 200
-
-    private static func clone(_ record: CKRecord) -> CKRecord {
-        let copy = record.copy() as! CKRecord
-        if let tag = record.recordVersionTag {
-            copy.overrideChangeTag(tag)
-        }
-        if let date = record.recordModificationDate {
-            copy.overrideModificationDate(date)
-        }
-        if let creator = record.recordCreator {
-            copy.overrideCreator(creator)
-        }
-        return copy
-    }
 }
