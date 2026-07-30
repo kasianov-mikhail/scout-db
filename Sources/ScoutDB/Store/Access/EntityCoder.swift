@@ -136,7 +136,7 @@ struct EntityCoder {
         let values = entityRecord.values
 
         let record =
-            base ?? CKRecord(recordType: Entity.recordType, recordID: CKRecord.ID(recordName: entityRecord.uuid))
+            base ?? CKRecord(recordType: "Entity", recordID: CKRecord.ID(recordName: entityRecord.uuid))
         record["entity"] = entityRecord.entity
         record["schema_version"] = Int64(entityRecord.schemaVersion)
         record["uuid"] = entityRecord.uuid

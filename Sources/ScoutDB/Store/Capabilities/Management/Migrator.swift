@@ -37,7 +37,7 @@ public struct Migrator: Sendable {
     @discardableResult public func backfill(entity: String, transform: (inout EntityRecord, _ previous: EntityRecord) throws -> Void) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         let query = CKQuery(
-            recordType: Entity.recordType,
+            recordType: "Entity",
             filters: [
                 ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                 ServerFilter(field: "schema_version", op: .lessThan, value: .int(Int64(definition.version))),
@@ -106,7 +106,7 @@ public struct Migrator: Sendable {
         var counted = 0
         try await database.forEachPage(
             matching: CKQuery(
-                recordType: Entity.recordType,
+                recordType: "Entity",
                 filters: [
                     ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                     ServerFilter(field: "deleted", op: .equals, value: .int(0)),
@@ -130,7 +130,7 @@ public struct Migrator: Sendable {
         rotated.keyID = newKeyID
 
         let query = CKQuery(
-            recordType: Entity.recordType,
+            recordType: "Entity",
             filters: [
                 ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                 ServerFilter(field: "deleted", op: .equals, value: .int(0)),

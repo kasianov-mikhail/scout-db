@@ -18,8 +18,8 @@ extension EntityStore {
         }
 
         let subscription = CKQuerySubscription(
-            recordType: Entity.recordType,
-            predicate: CKQuery(recordType: Entity.recordType, filters: server).predicate,
+            recordType: "Entity",
+            predicate: CKQuery(recordType: "Entity", filters: server).predicate,
             subscriptionID: id ?? "scout-\(entity)",
             options: [.firesOnRecordCreation, .firesOnRecordUpdate, .firesOnRecordDeletion])
         let info = CKSubscription.NotificationInfo()
@@ -73,7 +73,7 @@ extension EntityStore {
             return try await fetch(uuid: uuid)
         }
         let definition = try await registry.definition(for: entity)
-        let record = CKRecord(recordType: Entity.recordType, recordID: CKRecord.ID(recordName: uuid))
+        let record = CKRecord(recordType: "Entity", recordID: CKRecord.ID(recordName: uuid))
         for (key, value) in pushedFields {
             record[key] = value
         }
