@@ -170,10 +170,7 @@ public struct EntityStore: Sendable {
         }
         let definition = try await registry.definition(for: entity)
         let removed = try decode(try await items(entity: entity, uuids: targets), using: definition).filter { !$0.deleted }
-        let values = Dictionary(removed.map { ($0.uuid, $0.values) }, uniquingKeysWith: { first, _ in first })
-        let tombstones = try targets.map { try tombstone(entity: entity, uuid: $0, definition: definition, values: values[$0] ?? [:]) }
-        try await database.write(records: tombstones)
-        try await settle(removed: removed, using: definition)
+        try await tombstone(uuids: targets, removing: removed, using: definition)
     }
 
     fileprivate func liveRecords(entity: String, uuids: [String], using definition: EntityDefinition) async throws -> [EntityRecord] {

@@ -82,67 +82,48 @@ extension Data: RecordValueConvertible {
 /// An element type whose arrays map onto one of the typed list kinds.
 public protocol RecordListElement: RecordValueConvertible {
     static func list(_ elements: [Self]) -> RecordValue
-    static func members(of value: RecordValue) -> [RecordValue]?
 }
 
 extension String: RecordListElement {
     public static func list(_ elements: [String]) -> RecordValue { .strings(elements) }
-
-    public static func members(of value: RecordValue) -> [RecordValue]? {
-        guard case .strings(let values) = value else {
-            return nil
-        }
-        return values.map(RecordValue.string)
-    }
 }
 
 extension Int64: RecordListElement {
     public static func list(_ elements: [Int64]) -> RecordValue { .ints(elements) }
-
-    public static func members(of value: RecordValue) -> [RecordValue]? {
-        guard case .ints(let values) = value else {
-            return nil
-        }
-        return values.map(RecordValue.int)
-    }
 }
 
 extension Int: RecordListElement {
     public static func list(_ elements: [Int]) -> RecordValue { .ints(elements.map(Int64.init)) }
-
-    public static func members(of value: RecordValue) -> [RecordValue]? {
-        guard case .ints(let values) = value else {
-            return nil
-        }
-        return values.map(RecordValue.int)
-    }
 }
 
 extension Double: RecordListElement {
     public static func list(_ elements: [Double]) -> RecordValue { .doubles(elements) }
-
-    public static func members(of value: RecordValue) -> [RecordValue]? {
-        guard case .doubles(let values) = value else {
-            return nil
-        }
-        return values.map(RecordValue.double)
-    }
 }
 
 extension Date: RecordListElement {
     public static func list(_ elements: [Date]) -> RecordValue { .dates(elements) }
+}
 
-    public static func members(of value: RecordValue) -> [RecordValue]? {
-        guard case .dates(let values) = value else {
-            return nil
+extension RecordValue {
+    var listMembers: [RecordValue]? {
+        switch self {
+        case .strings(let members):
+            members.map { .string($0) }
+        case .ints(let members):
+            members.map { .int($0) }
+        case .doubles(let members):
+            members.map { .double($0) }
+        case .dates(let members):
+            members.map { .date($0) }
+        default:
+            nil
         }
-        return values.map(RecordValue.date)
     }
 }
 
 extension Array: RecordValueConvertible where Element: RecordListElement {
     public init?(recordValue: RecordValue) {
-        guard let members = Element.members(of: recordValue) else {
+        guard let members = recordValue.listMembers else {
             return nil
         }
         var elements: [Element] = []

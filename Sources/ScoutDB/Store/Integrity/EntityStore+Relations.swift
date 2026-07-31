@@ -175,6 +175,7 @@ extension EntityStore {
                 continue
             }
             try await tombstone(victims, using: target.child)
+            try await cascadeDelete(entity: target.child.entity, uuids: victims.map(\.uuid))
         }
     }
 
@@ -189,29 +190,6 @@ extension EntityStore {
             any: branches
         )
         .sorted { $0.uuid < $1.uuid }
-    }
-
-    private func tombstone(_ victims: [EntityRecord], using child: EntityDefinition) async throws {
-        let tombstones = try victims.map {
-            try tombstone(
-                entity: child.entity,
-                uuid: $0.uuid,
-                definition: child,
-                values: $0.values
-            )
-        }
-
-        try await database.write(records: tombstones)
-
-        try await settle(
-            removed: victims,
-            using: child
-        )
-
-        try await cascadeDelete(
-            entity: child.entity,
-            uuids: victims.map(\.uuid)
-        )
     }
 
     private func detach(entity: String, field: String, uuids: [String]) async throws {

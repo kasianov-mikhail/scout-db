@@ -140,20 +140,3 @@ extension Array {
         count == 1 ? first : nil
     }
 }
-
-extension RecordValue {
-    fileprivate var listMembers: [RecordValue]? {
-        switch self {
-        case .strings(let members):
-            members.map { .string($0) }
-        case .ints(let members):
-            members.map { .int($0) }
-        case .doubles(let members):
-            members.map { .double($0) }
-        case .dates(let members):
-            members.map { .date($0) }
-        default:
-            nil
-        }
-    }
-}

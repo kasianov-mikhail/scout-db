@@ -17,13 +17,24 @@ extension EntityStore {
                 guard victims.count > 0 else {
                     return
                 }
-                let tombstones = try victims.map { try tombstone(entity: entity, uuid: $0.uuid, definition: definition, values: $0.values) }
-                try await database.write(records: tombstones)
-                try await settle(removed: victims, using: definition)
+                try await tombstone(victims, using: definition)
                 removed += victims.count
             }
         }
         return removed
+    }
+
+    func tombstone(_ removed: [EntityRecord], using definition: EntityDefinition) async throws {
+        try await tombstone(uuids: removed.map(\.uuid), removing: removed, using: definition)
+    }
+
+    func tombstone(uuids: [String], removing removed: [EntityRecord], using definition: EntityDefinition) async throws {
+        let values = Dictionary(removed.map { ($0.uuid, $0.values) }, uniquingKeysWith: { first, _ in first })
+        let tombstones = try uuids.map {
+            try tombstone(entity: definition.entity, uuid: $0, definition: definition, values: values[$0] ?? [:])
+        }
+        try await database.write(records: tombstones)
+        try await settle(removed: removed, using: definition)
     }
 
     func settle(removed: [EntityRecord], using definition: EntityDefinition) async throws {
