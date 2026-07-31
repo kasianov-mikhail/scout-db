@@ -8,6 +8,24 @@
 import CloudKit
 
 extension EntityStore {
+    public func delete(entity: String, uuid: String) async throws {
+        try await delete(entity: entity, uuids: [uuid])
+    }
+
+    func delete(entity: String, uuids: [String]) async throws {
+        guard uuids.count > 0 else {
+            return
+        }
+        var targets: [String] = []
+        var seen: Set<String> = []
+        for uuid in uuids where seen.insert(uuid).inserted {
+            targets.append(uuid)
+        }
+        let definition = try await registry.definition(for: entity)
+        let removed = try decode(try await items(entity: entity, uuids: targets), using: definition)
+        try await remove(removed, using: definition)
+    }
+
     @discardableResult func deleteAll(entity: String, any branches: [[Filter]]) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         var seen: Set<String> = []
