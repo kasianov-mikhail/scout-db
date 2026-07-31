@@ -8,26 +8,21 @@
 import Foundation
 
 extension EntityStore {
-    func extremum(in range: CellRange, using definition: EntityDefinition) async throws -> Double? {
-        guard let metric = range.view.metric, metric.kind != .sum else {
+    func extremum(in cell: GridCell, using definition: EntityDefinition) async throws -> Double? {
+        guard let metric = cell.view.metric, metric.kind != .sum else {
             return nil
         }
         var filters: [Filter] = []
 
-        if let groupBy = range.view.groupBy {
+        if let groupBy = cell.view.groupBy {
             guard let field = definition.field(named: groupBy, at: definition.version) else {
                 return nil
             }
-            guard let parse = field.type.canonicalParser, let value = parse(range.group) else {
+            guard let parse = field.type.canonicalParser, let value = parse(cell.group) else {
                 return nil
             }
 
             filters.append(Filter(field: groupBy, op: .equals, value: value))
-        }
-
-        if let dateField = definition.envelopeDate, let window = range.window {
-            filters.append(Filter(field: dateField, op: .greaterThanOrEquals, value: .date(window.from)))
-            filters.append(Filter(field: dateField, op: .lessThan, value: .date(window.to)))
         }
 
         let scalars = try await read(

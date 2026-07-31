@@ -16,7 +16,7 @@ extension EntityDefinition {
                 FieldDefinition(name: "record_uuid", type: .string, storage: .slot(.string, "s_01"), required: true),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00"), required: true),
                 FieldDefinition(name: "snapshot", type: .bytes, storage: .payload, required: true),
-            ], envelopeDate: "date")
+            ])
     }
 }
 

@@ -27,7 +27,6 @@ struct BuilderTests {
             .field("amount", .double)
             .field("date", .timestamp)
             .field("comment", .string, .payload)
-            .envelopeDate("date")
             .create()
 
         for (index, quantity) in [3, 1, 2].enumerated() {
@@ -46,7 +45,6 @@ struct BuilderTests {
         try await store.schema("ledger")
             .field("code", .string, .required)
             .field("date", .timestamp)
-            .envelopeDate("date")
             .audited()
             .create()
         #expect(try await registry.definition(for: "ledger").audited == true)
@@ -106,23 +104,21 @@ struct BuilderTests {
         #expect(definition.fields.first { $0.name == "amount" }?.storage == .slot(.double, "d_00"))
         #expect(definition.fields.first { $0.name == "comment" }?.storage == .payload)
         #expect(definition.fields.first { $0.name == "quantity" }?.min == 0)
-        #expect(definition.envelopeDate == "date")
     }
 
-    @Test("Creation grids every groupable field, and the days when dated")
+    @Test("Creation grids every groupable field")
     func implicitGrid() async throws {
         let definition = try await registry.definition(for: "purchase")
         let views = try #require(definition.views)
-        #expect(Set(views.map(\.name)) == ["by_product_id", "by_quantity", "by_amount", "by_day"])
-        #expect(views.first { $0.name == "by_product_id" }?.bucket == .lifetime)
-        #expect(views.first { $0.name == "by_day" }?.groupBy == nil)
+        #expect(Set(views.map(\.name)) == ["by_product_id", "by_quantity", "by_amount"])
+        #expect(views.first { $0.name == "by_product_id" }?.groupBy == "product_id")
 
-        let counted = try await GridQuery(store, entity: "purchase", view: "by_product_id").rows()
+        let counted = try await GridQuery(store, entity: "purchase", view: "by_product_id").totals()
         #expect(counted.map(\.count).reduce(0, +) == 3)
         #expect(try await store.query("purchase").filter("product_id", .equals, "sku-1").count() == 1)
     }
 
-    @Test("An entity without an envelope date grids its fields alone")
+    @Test("Creation leaves the fields it cannot group by out of the grid")
     func implicitGridWithoutDates() async throws {
         try await store.schema("label")
             .field("slug", .string, .required)
@@ -141,7 +137,6 @@ struct BuilderTests {
             .field("carrier", .string, .required)
             .field("weight", .double)
             .field("sent", .timestamp)
-            .envelopeDate("sent")
             .sum("weight", by: "carrier")
             .create()
 
@@ -486,26 +481,6 @@ struct BuilderTests {
         }
     }
 
-    @Test("Pagination and streaming honor a disjunction")
-    func groupPagination() async throws {
-        func query() -> QueryBuilder {
-            store.query("purchase").filter("product_id" == "sku-0" || "product_id" == "sku-2")
-        }
-
-        let first = try await query().paginate(size: 1)
-        #expect(first.records.map(\.uuid) == ["p-0"])
-        let cursor = try #require(first.cursor)
-
-        let second = try await query().paginate(size: 1, after: cursor)
-        #expect(second.records.map(\.uuid) == ["p-2"])
-
-        var streamed: [String] = []
-        for try await record in query().stream(pageSize: 1) {
-            streamed.append(record.uuid)
-        }
-        #expect(streamed == ["p-0", "p-2"])
-    }
-
     @Test("The builder pages by its sort clause, honoring OR groups")
     func fieldPage() async throws {
         let first = try await store.query("purchase").sort("quantity").page(size: 2)
@@ -528,13 +503,6 @@ struct BuilderTests {
 
         await #expect(throws: SchemaError.self) {
             _ = try await store.query("purchase").page(size: 1)
-        }
-    }
-
-    @Test("Pagination with a sort clause throws instead of ignoring it")
-    func paginateSortThrows() async throws {
-        await #expect(throws: SchemaError.self) {
-            _ = try await store.query("purchase").sort("quantity").paginate(size: 2)
         }
     }
 
@@ -614,25 +582,13 @@ struct BuilderTests {
         }
     }
 
-    @Test("Typed queries paginate, stream, observe, and scope by creator")
+    @Test("Typed queries page, observe, and scope by creator")
     func typedParity() async throws {
-        let first = try await store.query(TypedPurchase.self).paginate(size: 2)
-        #expect(first.items.map(\.productId) == ["sku-0", "sku-1"])
-        let rest = try await store.query(TypedPurchase.self).paginate(size: 2, after: first.cursor)
-        #expect(rest.items.map(\.productId) == ["sku-2"])
-        #expect(rest.cursor == nil)
-
         let cheap = try await store.query(TypedPurchase.self).sort(\.amount).page(size: 2)
         #expect(cheap.items.map(\.amount) == [10, 20])
         let expensive = try await store.query(TypedPurchase.self).sort(\.amount).page(size: 2, after: cheap.cursor)
         #expect(expensive.items.map(\.amount) == [30])
         #expect(expensive.cursor == nil)
-
-        var streamed: [TypedPurchase] = []
-        for try await purchase in try store.query(TypedPurchase.self).filter(\.quantity > 1).stream(pageSize: 1) {
-            streamed.append(purchase)
-        }
-        #expect(Set(streamed.compactMap(\.productId)) == ["sku-0", "sku-2"])
 
         database.records.first { $0.recordID.recordName == "p-0" }?.overrideCreator("user-a")
         let mine = try await store.query(TypedPurchase.self).createdBy("user-a").take(100)

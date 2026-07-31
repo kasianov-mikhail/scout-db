@@ -58,13 +58,10 @@ struct SchemaConsistencyTests {
 
     @Test("Aggregate cells match the aggregator addressing")
     func gridCells() {
-        let fields = Self.fields(of: "Aggregate")
-        #expect(fields.filter { $0.name.hasPrefix("c_") }.count == 64)
-
-        let buckets = 0..<CKRecord.valueCellCount
-        let expected = Set(buckets.map(CKRecord.valueCell) + buckets.map(CKRecord.squareCell))
-        #expect(Set(fields.map(\.name).filter { $0.hasPrefix("f_") }) == expected)
-        let names = Set(fields.map(\.name))
+        let names = Set(Self.fields(of: "Aggregate").map(\.name))
+        for field in [CKRecord.countCell, CKRecord.valueCell, CKRecord.squareCell] {
+            #expect(names.contains(field), "Aggregate is missing '\(field)'")
+        }
         for field in ["entity", "view", "group_key", "date", "schema_version"] {
             #expect(names.contains(field), "Aggregate is missing '\(field)'")
         }

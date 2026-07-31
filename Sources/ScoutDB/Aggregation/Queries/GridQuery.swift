@@ -12,22 +12,12 @@ struct GridQuery {
     let entity: String
     let view: String
     var group: String?
-    var from: Date?
-    var to: Date?
 
-    init(_ store: EntityStore, entity: String, view: String, group: String? = nil, from: Date? = nil, to: Date? = nil) {
+    init(_ store: EntityStore, entity: String, view: String, group: String? = nil) {
         self.store = store
         self.entity = entity
         self.view = view
         self.group = group
-        self.from = from
-        self.to = to
-    }
-}
-
-func merging<Row>(_ rows: [Row], sharding key: (Row) -> String, _ combine: (Row, Row) -> Row) -> [Row] {
-    Dictionary(grouping: rows, by: key).values.map { shards in
-        shards.dropFirst().reduce(shards[0], combine)
     }
 }
 

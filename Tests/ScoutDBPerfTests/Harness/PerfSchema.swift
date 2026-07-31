@@ -40,8 +40,8 @@ enum PerfSchema {
                 FieldDefinition(name: "tags", type: .stringList, storage: .slot(.stringList, "ls_00")),
                 FieldDefinition(name: "avatar", type: .asset, storage: .slot(.asset, "a_00")),
                 FieldDefinition(name: "bio", type: .text, storage: .payload),
-            ], envelopeDate: "signup", uniqueKeys: [["email"]],
-            views: [AggregateView(name: "by_country", groupBy: "country", bucket: .lifetime)])
+            ], uniqueKeys: [["email"]],
+            views: [AggregateView(name: "by_country", groupBy: "country")])
     }
 
     static var orderDefinition: EntityDefinition {
@@ -55,14 +55,12 @@ enum PerfSchema {
                 FieldDefinition(name: "total", type: .double, storage: .slot(.double, "d_00"), required: true),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00"), required: true),
                 FieldDefinition(name: "note", type: .string, storage: .payload),
-            ], envelopeDate: "date",
+            ],
             views: [
-                AggregateView(name: "daily", groupBy: "product", bucket: .day),
-                AggregateView(name: "revenue", groupBy: "product", bucket: .lifetime, sum: "total"),
-                AggregateView(name: "peak", groupBy: "product", bucket: .lifetime, max: "total", exact: true),
-                AggregateView(name: "by_status", groupBy: "status", bucket: .lifetime),
-                AggregateView(name: "by_quantity", groupBy: "quantity", bucket: .lifetime),
-                AggregateView(name: "spend", histogram: AggregateView.Histogram(field: "total", bounds: [50, 100, 250, 500, 1_000, 2_500])),
+                AggregateView(name: "revenue", groupBy: "product", sum: "total"),
+                AggregateView(name: "peak", groupBy: "product", max: "total", exact: true),
+                AggregateView(name: "by_status", groupBy: "status"),
+                AggregateView(name: "by_quantity", groupBy: "quantity"),
             ])
     }
 
@@ -75,7 +73,7 @@ enum PerfSchema {
                 FieldDefinition(name: "quantity", type: .int, storage: .slot(.int, "i_00"), required: true),
                 FieldDefinition(name: "price", type: .double, storage: .slot(.double, "d_00"), required: true),
                 FieldDefinition(name: "added", type: .timestamp, storage: .slot(.timestamp, "t_00"), required: true),
-            ], envelopeDate: "added")
+            ])
     }
 
     static var sessionDefinition: EntityDefinition {
@@ -87,7 +85,7 @@ enum PerfSchema {
                 FieldDefinition(name: "started", type: .timestamp, storage: .slot(.timestamp, "t_00"), required: true),
                 FieldDefinition(name: "seconds", type: .int, storage: .slot(.int, "i_00")),
                 FieldDefinition(name: "token", type: .string, storage: .payload, encrypted: true),
-            ], envelopeDate: "started", views: nil, keyID: keyID, audited: true)
+            ], views: nil, keyID: keyID, audited: true)
     }
 
     static var definitions: [EntityDefinition] {

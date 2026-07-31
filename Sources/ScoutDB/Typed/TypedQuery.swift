@@ -109,53 +109,10 @@ public struct TypedQueryBuilder<T: EntityRepresentable>: Sendable {
         try await builder.count()
     }
 
-    /// Returns one keyset page in envelope-date order.
-    ///
-    /// Like the untyped `paginate`, it cannot honor sort clauses and throws
-    /// when one was added.
-    ///
-    public func paginate(size: Int, after cursor: EntityCursor? = nil) async throws -> TypedPage<T> {
-        let page = try await builder.paginate(size: size, after: cursor)
-        return TypedPage(items: page.map(T.init(record:)), cursor: page.cursor)
-    }
-
     /// Returns one keyset page ordered by the builder's single sort clause.
     public func page(size: Int, after cursor: FieldCursor? = nil) async throws -> TypedFieldPage<T> {
         let page = try await builder.page(size: size, after: cursor)
         return TypedFieldPage(items: page.map(T.init(record:)), cursor: page.cursor)
-    }
-
-    /// Streams every matching value page by page.
-    public func stream(pageSize: Int = 100) -> AsyncThrowingStream<T, any Error> {
-        let base = builder.stream(pageSize: pageSize)
-        return AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    for try await record in base {
-                        continuation.yield(T(record: record))
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
-        }
-    }
-}
-
-/// One keyset page of decoded values in envelope-date order.
-public struct TypedPage<T: EntityRepresentable>: Sendable {
-    public let items: [T]
-    public let cursor: EntityCursor?
-}
-
-extension TypedPage: RandomAccessCollection {
-    public var startIndex: Int { items.startIndex }
-    public var endIndex: Int { items.endIndex }
-
-    public subscript(position: Int) -> T {
-        items[position]
     }
 }
 

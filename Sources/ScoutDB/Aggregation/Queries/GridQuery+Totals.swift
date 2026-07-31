@@ -5,35 +5,53 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
 import Foundation
 
 extension GridQuery {
-    func totals(having: (AggregateTotal) -> Bool = { _ in true }) async throws -> [AggregateTotal] {
-        let kind = try await store.registry
-            .definition(for: entity)
-            .view(named: view)?
-            .metric?.kind
+    func totals() async throws -> [AggregateTotal] {
+        let definition = try await store.registry.definition(for: entity)
 
-        let rows = try await rows()
+        guard let declared = definition.view(named: view) else {
+            throw SchemaError.unknownField(view)
+        }
 
-        return Dictionary(grouping: rows, by: \.group).map { group, rows in
-            let count = rows.reduce(0) {
-                $0 + $1.count
-            }
-            let value = rows.reduce(Double?.none) {
-                combined($0, $1.value, kind)
-            }
-            let squares = rows.reduce(Double?.none) {
-                combined($0, $1.squares, nil)
+        let kind = declared.metric?.kind
+        let isStats = declared.stats != nil
+
+        let records = try await store.gridRecords(
+            entity: entity,
+            view: view,
+            group: group,
+            values: kind != nil,
+            squares: isStats
+        )
+
+        var totals: [String: AggregateTotal] = [:]
+
+        for record in records {
+            guard let key = record["group_key"] as? String else {
+                continue
             }
 
-            return AggregateTotal(
-                group: group,
-                count: count,
-                value: value,
-                squares: squares
+            let count = Int(record.cellCount)
+            let value = kind == nil ? nil : record.cellValue
+            let squares = isStats ? record.cellSquare : nil
+
+            guard count != 0 || value != nil || squares != nil else {
+                continue
+            }
+
+            let merged = totals[key]
+
+            totals[key] = AggregateTotal(
+                group: key,
+                count: (merged?.count ?? 0) + count,
+                value: combined(merged?.value, value, kind),
+                squares: combined(merged?.squares, squares, nil)
             )
         }
-        .filter(having).sorted()
+
+        return totals.values.sorted()
     }
 }

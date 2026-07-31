@@ -8,32 +8,28 @@
 import Foundation
 
 extension SchemaBuilder {
-    /// Counts the records per value of the grouping field, at the given
-    /// resolution.
+    /// Counts the records per value of the grouping field.
     ///
-    /// Creation already counts every groupable field for its lifetime, so this
-    /// is for the grids nothing infers — the per-day counts a chart wants, or a
-    /// count over a field marked `.ungrouped`. On an `update()` an aggregate
-    /// joins the ones the entity already keeps, and one of the same shape
-    /// replaces its predecessor.
+    /// Creation already counts every groupable field, so this is for the grids
+    /// nothing infers — a count over a field marked `.ungrouped`, or one
+    /// spread over shards. On an `update()` an aggregate joins the ones the
+    /// entity already keeps, and one of the same shape replaces its
+    /// predecessor.
     ///
     /// ```swift
     /// try await store.schema("visit")
-    ///     .field("page", .string, .required)
-    ///     .field("date", .timestamp)
-    ///     .envelopeDate("date")
-    ///     .count(by: "page", bucket: .day)
+    ///     .field("page", .string, .ungrouped)
+    ///     .count(by: "page")
     ///     .create()
     /// ```
     ///
-    public func count(by group: String? = nil, bucket: AggregateBucket = .lifetime, shards: Int? = nil) -> Self {
+    public func count(by group: String? = nil, shards: Int? = nil) -> Self {
         var builder = self
 
         builder.views.append(
             AggregateView(
-                name: Self.name(nil, of: nil, by: group, bucket: bucket),
+                name: Self.name(nil, of: nil, by: group),
                 groupBy: group,
-                bucket: bucket,
                 shards: shards
             )
         )
@@ -58,14 +54,13 @@ extension SchemaBuilder {
     /// let revenue = try await store.query("purchase").totals("amount", by: "product_id")
     /// ```
     ///
-    public func sum(_ field: String, by group: String? = nil, bucket: AggregateBucket = .lifetime, shards: Int? = nil) -> Self {
+    public func sum(_ field: String, by group: String? = nil, shards: Int? = nil) -> Self {
         var builder = self
 
         builder.views.append(
             AggregateView(
-                name: Self.name("sum", of: field, by: group, bucket: bucket),
+                name: Self.name("sum", of: field, by: group),
                 groupBy: group,
-                bucket: bucket,
                 sum: field,
                 shards: shards
             )
@@ -87,14 +82,13 @@ extension SchemaBuilder {
     ///     .create()
     /// ```
     ///
-    public func min(_ field: String, by group: String? = nil, bucket: AggregateBucket = .lifetime, exact: Bool = false) -> Self {
+    public func min(_ field: String, by group: String? = nil, exact: Bool = false) -> Self {
         var builder = self
 
         builder.views.append(
             AggregateView(
-                name: Self.name("min", of: field, by: group, bucket: bucket),
+                name: Self.name("min", of: field, by: group),
                 groupBy: group,
-                bucket: bucket,
                 min: field,
                 exact: exact
             )
@@ -104,7 +98,7 @@ extension SchemaBuilder {
     }
 
     /// Keeps the largest value of the field a cell has seen, `exact` as in
-    /// ``min(_:by:bucket:exact:)``.
+    /// ``min(_:by:exact:)``.
     ///
     /// ```swift
     /// try await store.schema("purchase")
@@ -115,14 +109,13 @@ extension SchemaBuilder {
     /// let peak = try await store.query("purchase").max("amount")
     /// ```
     ///
-    public func max(_ field: String, by group: String? = nil, bucket: AggregateBucket = .lifetime, exact: Bool = false) -> Self {
+    public func max(_ field: String, by group: String? = nil, exact: Bool = false) -> Self {
         var builder = self
 
         builder.views.append(
             AggregateView(
-                name: Self.name("max", of: field, by: group, bucket: bucket),
+                name: Self.name("max", of: field, by: group),
                 groupBy: group,
-                bucket: bucket,
                 max: field,
                 exact: exact
             )
@@ -149,14 +142,13 @@ extension SchemaBuilder {
     ///     .map(\.standardDeviation)
     /// ```
     ///
-    public func stats(_ field: String, by group: String? = nil, bucket: AggregateBucket = .lifetime, shards: Int? = nil) -> Self {
+    public func stats(_ field: String, by group: String? = nil, shards: Int? = nil) -> Self {
         var builder = self
 
         builder.views.append(
             AggregateView(
-                name: Self.name("stats", of: field, by: group, bucket: bucket),
+                name: Self.name("stats", of: field, by: group),
                 groupBy: group,
-                bucket: bucket,
                 stats: field,
                 shards: shards
             )
@@ -165,89 +157,40 @@ extension SchemaBuilder {
         return builder
     }
 
-    /// Counts the field's values into the buckets a percentile is read off; the
-    /// bounds are exclusive upper ones, ascending.
-    ///
-    /// A value lands in the first bucket it falls under, and whatever reaches
-    /// the last bound lands in an overflow bucket past it. The percentile is
-    /// interpolated within the bucket it falls in, so the answer is as fine as
-    /// the bounds are — they are yours to pick, because only you know the
-    /// distribution.
-    ///
-    /// ```swift
-    /// try await store.schema("purchase")
-    ///     .field("amount", .double)
-    ///     .histogram(of: "amount", bounds: [50, 100, 250, 500, 1_000])
-    ///     .create()
-    ///
-    /// let p95 = try await store.query("purchase").percentile(0.95, of: "amount")
-    /// ```
-    ///
-    public func histogram(of field: String, bounds: [Double]) -> Self {
-        var builder = self
-
-        builder.views.append(
-            AggregateView(
-                name: Self.name("hist", of: field, by: nil, bucket: nil),
-                histogram: AggregateView.Histogram(field: field, bounds: bounds)
-            )
-        )
-
-        return builder
-    }
-
-    static func name(_ metric: String?, of field: String?, by group: String?, bucket: AggregateBucket?) -> String {
+    static func name(_ metric: String?, of field: String?, by group: String?) -> String {
         var parts = [metric, field, group.map { "by_\($0)" }].compactMap { $0 }
         if parts.isEmpty {
             parts = ["by_all"]
-        }
-        if let bucket, bucket != .lifetime {
-            parts.append(bucket.rawValue)
         }
         return parts.joined(separator: "_")
     }
 
     static func merge(_ declared: [AggregateView], onto inherited: [AggregateView], keeping active: Set<String>) -> [AggregateView] {
         let byName = Dictionary(declared.map { ($0.name, $0) }, uniquingKeysWith: { _, last in last })
-        let superseded = declared.map { Grouping($0) }
+        let superseded = declared.map(\.groupBy)
         var merged = inherited.compactMap { view -> AggregateView? in
             if let replacement = byName[view.name] {
                 return replacement
             }
-            let counts = view.metric == nil && view.histogram == nil
-            return counts && superseded.contains(Grouping(view)) ? nil : view
+            return view.metric == nil && superseded.contains(view.groupBy) ? nil : view
         }
         merged += declared.filter { view in !inherited.contains { $0.name == view.name } }
         return merged.filter { view in
-            let fields = [view.groupBy, view.metric?.field, view.histogram?.field].compactMap { $0 }
+            let fields = [view.groupBy, view.metric?.field].compactMap { $0 }
             return fields.allSatisfy(active.contains)
         }
     }
 
-    struct Grouping: Equatable {
-        let group: String?
-        let bucket: AggregateBucket
-
-        init(_ view: AggregateView) {
-            group = view.groupBy
-            bucket = view.bucket ?? .hour
-        }
-    }
-
-    static func grid(over fields: [FieldDefinition], declaring declared: [AggregateView], envelopeDate: String?) -> [AggregateView] {
+    static func grid(over fields: [FieldDefinition], declaring declared: [AggregateView]) -> [AggregateView] {
         var taken = Set(declared.map(\.name))
-        var counted = Set(declared.filter { $0.bucket == .lifetime }.compactMap(\.groupBy))
+        var counted = Set(declared.compactMap(\.groupBy))
         var grid = declared
 
         for field in fields where Self.groupable(field) {
             guard taken.insert("by_\(field.name)").inserted, counted.insert(field.name).inserted else {
                 continue
             }
-            grid.append(AggregateView(name: "by_\(field.name)", groupBy: field.name, bucket: .lifetime))
-        }
-        let daily = declared.contains { $0.groupBy == nil && $0.bucket == .day }
-        if envelopeDate != nil, !daily, taken.insert("by_day").inserted {
-            grid.append(AggregateView(name: "by_day", bucket: .day))
+            grid.append(AggregateView(name: "by_\(field.name)", groupBy: field.name))
         }
         return grid
     }
