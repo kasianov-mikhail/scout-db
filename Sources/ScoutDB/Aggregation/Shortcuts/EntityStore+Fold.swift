@@ -9,18 +9,6 @@ import CloudKit
 import Foundation
 
 extension EntityStore {
-    func fold(of field: String?, folding kind: Metric = .sum, by group: String?, entity: String, filters: [Filter])
-        async throws -> [String: GridFold]?
-    {
-        try await fold(
-            of: field,
-            folding: kind,
-            by: group,
-            entity: entity,
-            any: [filters]
-        )
-    }
-
     func fold(of field: String?, folding kind: Metric = .sum, by group: String?, entity: String, any branches: [[Filter]])
         async throws -> [String: GridFold]?
     {

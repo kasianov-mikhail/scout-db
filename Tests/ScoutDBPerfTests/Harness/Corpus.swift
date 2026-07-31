@@ -79,8 +79,6 @@ struct Corpus: @unchecked Sendable {
     let customers: [String]
     let orders: [String]
     let items: [String]
-    let sessions: [String]
-    let deleted: [String]
     let now: Date
 
     static let epoch = Date(timeIntervalSince1970: 1_700_000_000)
@@ -117,15 +115,12 @@ enum CorpusBuilder {
         let items = try await writeItems(size, orders: orders, store: store, generator: &generator)
         let sessions = try await writeSessions(size, customers: customers, store: store, generator: &generator)
 
-        var deleted: [String] = []
         for index in 0..<size.deletions {
-            let uuid = sessions[sessions.count - 1 - index]
-            try await store.delete(entity: PerfSchema.session, uuid: uuid)
-            deleted.append(uuid)
+            try await store.delete(entity: PerfSchema.session, uuid: sessions[sessions.count - 1 - index])
         }
 
         return Corpus(
-            size: size, records: database.records, customers: customers, orders: orders, items: items, sessions: sessions, deleted: deleted,
+            size: size, records: database.records, customers: customers, orders: orders, items: items,
             now: Corpus.epoch)
     }
 

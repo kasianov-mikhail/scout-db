@@ -47,8 +47,4 @@ extension PerfWorld {
             "date": .date(corpus.now.addingTimeInterval(-Double((iteration &+ offset) % 30) * 86_400)),
         ]
     }
-
-    func window(days: Int) -> (from: Date, to: Date) {
-        (corpus.now.addingTimeInterval(-Double(days) * 86_400), corpus.now.addingTimeInterval(86_400))
-    }
 }
