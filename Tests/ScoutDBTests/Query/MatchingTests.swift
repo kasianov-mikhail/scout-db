@@ -26,11 +26,7 @@ struct MatchingTests {
                 entity: "note",
                 fields: [
                     FieldDefinition(name: "title", type: .string, storage: .slot(.string, "s_00")),
-                    FieldDefinition(
-                        name: "title_rev", type: .string, storage: .slot(.string, "s_01"), derived: Derivation(source: "title", transform: .reversed)),
                     FieldDefinition(name: "title_fold", type: .string, storage: .slot(.string, "s_02"), derived: Derivation(source: "title", transform: .fold)),
-                    FieldDefinition(
-                        name: "title_grams", type: .stringList, storage: .slot(.stringList, "ls_00"), derived: Derivation(source: "title", transform: .ngrams)),
                     FieldDefinition(name: "body", type: .text, storage: .slot(.text, "x_00")),
                     FieldDefinition(name: "summary", type: .text, storage: .slot(.text, "x_01")),
                     FieldDefinition(name: "memo", type: .string, storage: .payload),
@@ -44,42 +40,10 @@ struct MatchingTests {
         return records.map(\.uuid)
     }
 
-    @Test("ENDSWITH runs server-side through the reversed shadow slot")
-    func endsWithShadow() async throws {
-        #expect(try await read("title", .endsWith, "World") == ["n-1"])
-        let item = try #require(database.records.first { $0.recordID.recordName == "n-1" })
-        #expect(item["s_01"] == "dlroW olleH")
-    }
-
-    @Test("ENDSWITH falls back to a client-side matcher without a shadow")
-    func endsWithFallback() async throws {
-        #expect(try await read("body", .endsWith, "fox") == ["n-1"])
-    }
-
     @Test("CONTAINS on a string is a client-side substring check")
     func substring() async throws {
         #expect(try await read("title", .contains, "lo Wo") == ["n-1"])
         #expect(try await read("title", .contains, "xyz") == [])
-    }
-
-    @Test("The ngram shadow materializes trigrams of the folded source")
-    func ngramShadow() async throws {
-        let item = try #require(database.records.first { $0.recordID.recordName == "n-1" })
-        let trigrams: [String] = try #require(item["ls_00"])
-        #expect(trigrams.contains("hel"))
-        #expect(trigrams.contains("o w"))
-        #expect(!trigrams.contains("Hel"))
-    }
-
-    @Test("Substring search narrows server-side through trigram predicates")
-    func ngramPrefilter() async throws {
-        let definition = try await registry.definition(for: "note")
-        let filter = EntityStore.Filter(field: "title", op: .contains, value: .string("lo Wo"))
-        let (server, client) = try store.split([filter], entity: "note", using: definition)
-
-        let trigramFilters = server.filter { $0.field == "ls_00" && $0.op == .contains }
-        #expect(trigramFilters.count == EntityCoder.trigrams(of: "lo wo").count)
-        #expect(client == [filter])
     }
 
     @Test("A slot the schema cannot sort is refused up front")
@@ -101,37 +65,6 @@ struct MatchingTests {
         }
 
         #expect(try store.split([EntityStore.Filter(field: "blob", op: .isNull, value: .int(0))], entity: "shot", using: definition).client.count == 1)
-    }
-
-    @Test("Short needles skip the trigram prefilter")
-    func shortNeedle() async throws {
-        #expect(try await read("title", .contains, "lo") == ["n-1"])
-        let definition = try await registry.definition(for: "note")
-        let filter = EntityStore.Filter(field: "title", op: .contains, value: .string("lo"))
-        let (server, _) = try store.split([filter], entity: "note", using: definition)
-        #expect(server.filter { $0.field == "ls_00" }.count == 0)
-    }
-
-    @Test("Wildcard literals feed the trigram prefilter")
-    func likePrefilter() async throws {
-        #expect(try await read("title", .like, "H*World") == ["n-1"])
-        let definition = try await registry.definition(for: "note")
-        let filter = EntityStore.Filter(field: "title", op: .like, value: .string("H*World"))
-        let (server, _) = try store.split([filter], entity: "note", using: definition)
-        #expect(server.filter { $0.field == "ls_00" }.count == EntityCoder.trigrams(of: "world").count)
-    }
-
-    @Test("LIKE supports * and ? wildcards")
-    func like() async throws {
-        #expect(try await read("title", .like, "H*World") == ["n-1"])
-        #expect(try await read("title", .like, "H?llo*") == ["n-1"])
-        #expect(try await read("title", .like, "H?World") == [])
-    }
-
-    @Test("MATCHES applies a whole-string regular expression")
-    func regex() async throws {
-        #expect(try await read("title", .matches, "H.*d") == ["n-1"])
-        #expect(try await read("title", .matches, "Hello") == [])
     }
 
     @Test("Full-text search matches whole tokens in searchable fields")

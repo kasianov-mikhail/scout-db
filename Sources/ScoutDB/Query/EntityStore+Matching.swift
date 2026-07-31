@@ -82,25 +82,10 @@ extension EntityStore {
                 continue
             }
             switch filter.op {
-            case .isNull, .isNotNull, .matches:
+            case .isNull, .isNotNull:
                 client.append(filter)
             case .contains where !field.type.isList:
-                if case .string(let needle) = filter.value {
-                    server += ngramPrefilter(for: [needle], of: field, in: fields)
-                }
                 client.append(filter)
-            case .like:
-                if case .string(let pattern) = filter.value {
-                    let literals = pattern.split { $0 == "*" || $0 == "?" }.map(String.init)
-                    server += ngramPrefilter(for: literals, of: field, in: fields)
-                }
-                client.append(filter)
-            case .endsWith:
-                if case .slot(_, let slot)? = reversedShadow(of: field, in: fields)?.storage, case .string(let suffix) = filter.value {
-                    server.append(ServerFilter(field: slot, op: .beginsWith, value: .string(String(suffix.reversed()))))
-                } else {
-                    client.append(filter)
-                }
             case .search:
                 guard field.type == .text, case .slot(_, let slot) = field.storage else {
                     throw SchemaError.invalidValue(filter.field)
@@ -171,27 +156,6 @@ extension EntityStore {
                     false
                 }
             }
-        case .endsWith:
-            guard case .string(let suffix) = filter.value else {
-                return { _ in false }
-            }
-            return stringMatcher(field) { $0.hasSuffix(suffix) }
-        case .like:
-            guard case .string(let pattern) = filter.value else {
-                return { _ in false }
-            }
-            guard let regex = try? Regex(wildcardPattern(pattern)) else {
-                throw SchemaError.invalidValue(filter.field)
-            }
-            return stringMatcher(field) { $0.wholeMatch(of: regex) != nil }
-        case .matches:
-            guard case .string(let pattern) = filter.value else {
-                return { _ in false }
-            }
-            guard let regex = try? Regex(pattern) else {
-                throw SchemaError.invalidValue(filter.field)
-            }
-            return stringMatcher(field) { $0.wholeMatch(of: regex) != nil }
         case .search:
             guard case .string(let needle) = filter.value else {
                 return { _ in false }
@@ -238,40 +202,6 @@ extension EntityStore {
                 return false
             }
             return predicate(text)
-        }
-    }
-
-    fileprivate static func wildcardPattern(_ pattern: String) -> String {
-        pattern.map { character -> String in
-            switch character {
-            case "*":
-                ".*"
-            case "?":
-                "."
-            default:
-                NSRegularExpression.escapedPattern(for: String(character))
-            }
-        }.joined()
-    }
-
-    private func reversedShadow(of field: FieldDefinition, in fields: [FieldDefinition]) -> FieldDefinition? {
-        fields.first { $0.derived == Derivation(source: field.name, transform: .reversed) }
-    }
-
-    private func ngramPrefilter(for needles: [String], of field: FieldDefinition, in fields: [FieldDefinition]) -> [ServerFilter] {
-        let shadow = fields.first { $0.derived == Derivation(source: field.name, transform: .ngrams) }
-        guard case .slot(_, let slot)? = shadow?.storage else {
-            return []
-        }
-
-        return needles.flatMap { needle in
-            let folded = needle.folded
-            guard folded.count >= 3 else {
-                return [ServerFilter]()
-            }
-            return EntityCoder.trigrams(of: folded).map {
-                ServerFilter(field: slot, op: .contains, value: .string($0))
-            }
         }
     }
 }
