@@ -32,9 +32,9 @@ extension QueryBuilder {
 
     /// Deletes every matching record, and returns how many were removed.
     ///
-    /// The record leaves the database outright, releasing the unique keys it
-    /// claimed and the grid cells it counted into. The sweep pages through the
-    /// query the way ``update(_:)`` does.
+    /// The record leaves the database outright, releasing the grid cells it
+    /// counted into. The sweep pages through the query the way ``update(_:)``
+    /// does.
     ///
     /// ```swift
     /// let dropped = try await store.query("purchase")

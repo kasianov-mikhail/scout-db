@@ -62,23 +62,6 @@ public struct Migrator: Sendable {
         return migrated
     }
 
-    @discardableResult public func backfillClaims(entity: String, batchSize: Int = 400) async throws -> Int {
-        let definition = try await registry.definition(for: entity)
-        guard !definition.claimedKeys.isEmpty || !EntityStore.exclusiveFields(of: definition).isEmpty else {
-            return 0
-        }
-        let store = EntityStore(database: database, registry: registry, keyProvider: keyProvider)
-        let fields = definition.claimedKeys.flatMap { $0 } + EntityStore.exclusiveFields(of: definition).map(\.name)
-        var claimed = 0
-        try await store.forEachPage(entity: entity, fields: Array(Set(fields))) { page in
-            for chunk in page.chunked(into: batchSize) {
-                try await store.claimUniqueKeys(of: chunk, using: definition)
-            }
-            claimed += page.count
-        }
-        return claimed
-    }
-
     @discardableResult public func backfill(view viewName: String, entity: String, batchSize: Int = 400) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         guard let view = definition.view(named: viewName) else {

@@ -151,7 +151,6 @@ extension SchemaBuilder {
             version: version,
             fields: fields,
             unique: unique ?? previous?.unique,
-            uniqueKeys: uniqueKeys ?? previous.flatMap { $0.claimedKeys.isEmpty ? nil : $0.claimedKeys },
             views: views.isEmpty ? nil : views,
             keyID: keyID ?? previous?.keyID
         )

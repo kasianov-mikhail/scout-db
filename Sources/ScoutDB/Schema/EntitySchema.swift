@@ -26,9 +26,6 @@ public struct EntitySchema: Sendable, Equatable {
     /// upserts.
     public let unique: [String]?
 
-    /// The field tuples no two live records may repeat.
-    public let uniqueKeys: [[String]]
-
     /// One field of an entity, as a caller writing records sees it.
     public struct Field: Sendable, Equatable {
         /// The name the field carries in a record's values.
@@ -84,7 +81,6 @@ extension EntitySchema {
         entity = definition.entity
         fields = definition.fields(at: definition.version).map(Field.init)
         unique = definition.unique
-        uniqueKeys = definition.claimedKeys
     }
 }
 

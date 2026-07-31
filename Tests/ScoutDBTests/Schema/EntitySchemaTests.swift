@@ -30,7 +30,6 @@ struct EntitySchemaTests {
             .field("comment", .string, .payload)
             .field("date", .timestamp)
             .unique(on: "product_id", "date")
-            .uniqueKey(on: "email")
             .create()
     }
 
@@ -64,7 +63,6 @@ struct EntitySchemaTests {
         let schema = try await registry.schema(for: "purchase")
         #expect(schema.entity == "purchase")
         #expect(schema.unique == ["product_id", "date"])
-        #expect(schema.uniqueKeys == [["email"]])
     }
 
     @Test("An encrypted field reads back as sealed")

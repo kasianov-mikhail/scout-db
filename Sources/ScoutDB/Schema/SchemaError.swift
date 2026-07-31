@@ -18,8 +18,6 @@ public enum SchemaError: Error, Equatable {
     case staleSchema(entity: String, version: Int)
     case invalidDefinition(String)
     case brokenReference(field: String, key: String)
-    case duplicateReference(field: String, key: String)
-    case duplicateKey(fields: [String])
 }
 
 extension SchemaError: LocalizedError {
@@ -45,10 +43,6 @@ extension SchemaError: LocalizedError {
             "Invalid definition: \(message)"
         case .brokenReference(let field, let key):
             "Reference field '\(field)' names a missing record '\(key)'"
-        case .duplicateReference(let field, let key):
-            "Exclusive field '\(field)' already references '\(key)'"
-        case .duplicateKey(let fields):
-            "Duplicate value for unique key (\(fields.joined(separator: ", ")))"
         }
     }
 }

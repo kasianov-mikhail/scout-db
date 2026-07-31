@@ -34,7 +34,6 @@ extension EntityStore {
         if enforceReferences {
             try await validateReferences(of: entityRecords, using: definition)
         }
-        try await claimUniqueKeys(of: entityRecords, using: definition)
 
         let (removedFromViews, addedToViews) = try await aggregationRebalance(entityRecords, stored: stored, using: definition)
 

@@ -56,32 +56,6 @@ struct OperationsTests {
         #expect(records.first?.values["quantity"] == .int(9))
     }
 
-    @Test("An update that moves a unique key onto a taken value throws")
-    func updateUniqueKeyCollision() async throws {
-        try await registry.publish(makeSeatDefinition())
-        try await store.write(["row": .string("a"), "number": .int(1)], entity: "seat", uuid: "seat-1")
-        try await store.write(["row": .string("a"), "number": .int(2)], entity: "seat", uuid: "seat-2")
-        await #expect(throws: SchemaError.duplicateKey(fields: ["row", "number"])) {
-            try await store.update(entity: "seat", uuid: "seat-2") { record in
-                record.values["number"] = .int(1)
-            }
-        }
-    }
-
-    @Test("An update that leaves unique keys untouched skips their validation")
-    func updateUntouchedUniqueKeys() async throws {
-        try await registry.publish(makeSeatDefinition())
-        try await store.write(["row": .string("a"), "number": .int(1)], entity: "seat", uuid: "seat-1")
-        try await store.write(["row": .string("a"), "number": .int(2)], entity: "seat", uuid: "seat-2")
-        let raced = try #require(database.records.first { $0["uuid"] as? String == "seat-2" })
-        raced["i_00"] = Int64(1)
-        try await store.update(entity: "seat", uuid: "seat-2") { record in
-            record.values["label"] = .string("window")
-        }
-        let records = try await store.read(entity: "seat", filters: [.init(field: "label", op: .equals, value: .string("window"))])
-        #expect(records.map(\.uuid) == ["seat-2"])
-    }
-
     @Test("A transform that clears fields clears their stored slot and payload values")
     func updateClears() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
@@ -159,67 +133,6 @@ struct OperationsTests {
         }
         #expect(reruns == 2)
         #expect(try await store.read(entity: "purchase").first?.values["quantity"] == .int(101))
-    }
-
-    @Test("A merged retry re-claims only the keys the merge moved")
-    func mergedRetryKeepsItsClaims() async throws {
-        try await registry.publish(
-            EntityDefinition(
-                entity: "badge", version: 1,
-                fields: [
-                    FieldDefinition(name: "code", type: .string, storage: .slot(.string, "s_00")),
-                    FieldDefinition(name: "label", type: .string, storage: .slot(.string, "s_01")),
-                ],
-                uniqueKeys: [["code"]]))
-        let counting = CountingFetches(backing: database)
-        let racing = EntityStore(database: counting, registry: registry)
-        try await racing.write(["code": .string("gold"), "label": .string("first")], entity: "badge", uuid: "b-1")
-
-        counting.reset()
-        try await racing.update(entity: "badge", uuid: "b-1") { record in
-            record.values["code"] = .string("silver")
-        }
-        let uncontested = counting.fetches
-
-        counting.reset()
-        try await racing.update(entity: "badge", uuid: "b-1") { record in
-            record.values["code"] = .string("bronze")
-            let winner = database.records.first { $0.recordID.recordName == "b-1" }
-            winner?["s_01"] = "second"
-            winner?.overrideChangeTag(UUID().uuidString)
-        }
-
-        #expect(counting.fetches == uncontested)
-        let merged = try #require(try await racing.read(entity: "badge").first)
-        #expect(merged.values["code"] == .string("bronze"))
-        #expect(merged.values["label"] == .string("second"))
-        #expect(database.records.filter { $0.recordType == "UniqueClaim" }.map { $0["owner"] as? String } == ["b-1"])
-    }
-
-    @Test("The independent tails of an update run in one round")
-    func updateTailsRunConcurrently() async throws {
-        try await registry.publish(
-            EntityDefinition(
-                entity: "badge", version: 1,
-                fields: [
-                    FieldDefinition(name: "code", type: .string, storage: .slot(.string, "s_00")),
-                    FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
-                ],
-                uniqueKeys: [["code"]],
-                views: [AggregateView(name: "total", sum: "amount")]))
-        let counting = CountingFetches(backing: database)
-        let claimed = EntityStore(database: counting, registry: registry)
-        try await claimed.write(["code": .string("gold"), "amount": .double(1)], entity: "badge", uuid: "b-1")
-
-        counting.reset()
-        try await claimed.update(entity: "badge", uuid: "b-1") { record in
-            record.values["code"] = .string("silver")
-            record.values["amount"] = .double(2)
-        }
-
-        #expect(counting.peakInFlight == 2)
-        #expect(database.records.first { $0.recordType == "Aggregate" }?["f_00"] as? Double == 2)
-        #expect(database.records.filter { $0.recordType == "UniqueClaim" }.count == 1)
     }
 
     @Test("CAS update of a missing record fails")
@@ -850,68 +763,6 @@ struct OperationsTests {
 
         try await store.write(["title": .string("Free"), "author_id": .string("a-9")], entity: "book", uuid: "b-4")
         #expect(Set(try await store.read(entity: "book").map(\.uuid)) == ["b-1", "b-4"])
-    }
-
-    @Test("An exclusive reference admits one holder, allows re-writes, rejects a second suitor")
-    func exclusiveReference() async throws {
-        try await registry.publish(
-            makeDefinition(
-                entity: "person",
-                fields: [
-                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
-                ]))
-        try await registry.publish(
-            makeDefinition(
-                entity: "passport",
-                fields: [
-                    FieldDefinition(name: "number", type: .string, storage: .slot(.string, "s_00")),
-                    FieldDefinition(name: "person_id", type: .string, storage: .slot(.string, "s_01"), references: "person", exclusive: true),
-                ]))
-        try await store.write(["name": .string("Ada")], entity: "person", uuid: "h-1")
-
-        try await store.write(["number": .string("111"), "person_id": .string("h-1")], entity: "passport", uuid: "d-1")
-        try await store.write(["number": .string("112"), "person_id": .string("h-1")], entity: "passport", uuid: "d-1")
-
-        await #expect(throws: SchemaError.duplicateReference(field: "person_id", key: "h-1")) {
-            try await store.write(["number": .string("222"), "person_id": .string("h-1")], entity: "passport", uuid: "d-2")
-        }
-        await #expect(throws: SchemaError.duplicateReference(field: "person_id", key: "h-2")) {
-            try await store.write(
-                [
-                    EntityWrite(values: ["number": .string("333"), "person_id": .string("h-2")], uuid: "d-3"),
-                    EntityWrite(values: ["number": .string("444"), "person_id": .string("h-2")], uuid: "d-4"),
-                ], entity: "passport")
-        }
-    }
-
-    @Test("An update cannot move an exclusive reference onto a taken key, and a re-key frees the old one")
-    func exclusiveReferenceUpdate() async throws {
-        try await registry.publish(
-            makeDefinition(
-                entity: "person",
-                fields: [
-                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
-                ]))
-        try await registry.publish(
-            makeDefinition(
-                entity: "passport",
-                fields: [
-                    FieldDefinition(name: "number", type: .string, storage: .slot(.string, "s_00")),
-                    FieldDefinition(name: "person_id", type: .string, storage: .slot(.string, "s_01"), references: "person", exclusive: true),
-                ]))
-        try await store.write(["number": .string("111"), "person_id": .string("h-1")], entity: "passport", uuid: "d-1")
-        try await store.write(["number": .string("222"), "person_id": .string("h-2")], entity: "passport", uuid: "d-2")
-
-        await #expect(throws: SchemaError.duplicateReference(field: "person_id", key: "h-1")) {
-            try await store.update(entity: "passport", uuid: "d-2") { record in
-                record.values["person_id"] = .string("h-1")
-            }
-        }
-
-        try await store.update(entity: "passport", uuid: "d-2") { record in
-            record.values["person_id"] = .string("h-3")
-        }
-        try await store.write(["number": .string("333"), "person_id": .string("h-2")], entity: "passport", uuid: "d-3")
     }
 
     @Test("A multi-field join resolves every reference in one call")
