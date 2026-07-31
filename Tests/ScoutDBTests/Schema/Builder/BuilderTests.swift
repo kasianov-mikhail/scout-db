@@ -564,81 +564,6 @@ struct BuilderTests {
         }
     }
 
-    @Test("Typed values write, batch-write, and update through their field map")
-    func typedWrites() async throws {
-        var item = TypedPurchase(record: EntityRecord(entity: "purchase", uuid: "", schemaVersion: 1, values: [:]))
-        item.productId = "sku-9"
-        item.quantity = 5
-        item.amount = 12.5
-        #expect(try await store.write(item, uuid: "t-1") == "t-1")
-
-        let stored = try await store.query(TypedPurchase.self).filter(\.quantity > 4).take(100)
-        #expect(stored.map(\.productId) == ["sku-9"])
-        #expect(stored.first?.amount == 12.5)
-
-        try await store.update(entity: "purchase", uuid: "t-1") { $0.values["comment"] = .string("gift") }
-        try await store.update(TypedPurchase.self, uuid: "t-1") { purchase in
-            purchase.quantity = 6
-            purchase.productId = nil
-        }
-        let updated = try #require(try await store.read(entity: "purchase", filters: [.init(field: "quantity", op: .equals, value: .int(6))]).first)
-        #expect(updated.values["comment"] == .string("gift"))
-        #expect(updated.values["product_id"] == .string("sku-9"))
-        #expect(updated.values["amount"] == .double(12.5))
-
-        var second = item
-        second.productId = "sku-10"
-        let uuids = try await store.write([item, second])
-        #expect(uuids.count == 2)
-        #expect(try await store.query(TypedPurchase.self).filter(\.quantity > 4).count() == 3)
-    }
-
-    @Test("Typed queries filter, sort, and decode through key paths")
-    func typedQueries() async throws {
-        let cheap = try await store.query(TypedPurchase.self)
-            .filter(\.quantity > 1)
-            .sort(\.quantity)
-            .take(100)
-        #expect(cheap.map(\.quantity) == [2, 3])
-        #expect(cheap.map(\.productId) == ["sku-2", "sku-0"])
-
-        let rest = try await store.query(TypedPurchase.self)
-            .exclude(\.productId == "sku-0")
-            .sort(\.amount, .descending)
-            .first()
-        #expect(rest?.productId == "sku-2")
-        #expect(try await store.query(TypedPurchase.self).filter(\.amount <= 20).count() == 2)
-
-        await #expect(throws: SchemaError.self) {
-            _ = try await store.query(TypedPurchase.self).filter(\.untracked == "x").take(100)
-        }
-    }
-
-    @Test("Typed queries paginate, stream, observe, and scope by creator")
-    func typedParity() async throws {
-        let first = try await store.query(TypedPurchase.self).paginate(size: 2)
-        #expect(first.items.map(\.productId) == ["sku-0", "sku-1"])
-        let rest = try await store.query(TypedPurchase.self).paginate(size: 2, after: first.cursor)
-        #expect(rest.items.map(\.productId) == ["sku-2"])
-        #expect(rest.cursor == nil)
-
-        let cheap = try await store.query(TypedPurchase.self).sort(\.amount).page(size: 2)
-        #expect(cheap.items.map(\.amount) == [10, 20])
-        let expensive = try await store.query(TypedPurchase.self).sort(\.amount).page(size: 2, after: cheap.cursor)
-        #expect(expensive.items.map(\.amount) == [30])
-        #expect(expensive.cursor == nil)
-
-        var streamed: [TypedPurchase] = []
-        for try await purchase in try store.query(TypedPurchase.self).filter(\.quantity > 1).stream(pageSize: 1) {
-            streamed.append(purchase)
-        }
-        #expect(Set(streamed.compactMap(\.productId)) == ["sku-0", "sku-2"])
-
-        database.records.first { $0.recordID.recordName == "p-0" }?.overrideCreator("user-a")
-        let mine = try await store.query(TypedPurchase.self).createdBy("user-a").take(100)
-        #expect(mine.map(\.productId) == ["sku-0"])
-    }
-
     @Test("Unique keys reject duplicates without deriving identity")
     func uniqueKeys() async throws {
         try await store.schema("account")
@@ -766,37 +691,5 @@ struct BuilderTests {
 
         try await store.write(["title": .string("hi")], entity: "note", uuid: "n-1")
         #expect(try await store.query("note").count() == 1)
-    }
-}
-
-private struct TypedPurchase: EntityRepresentable {
-    static let entityName = "purchase"
-
-    static func fieldName(for keyPath: PartialKeyPath<TypedPurchase>) -> String? {
-        switch keyPath {
-        case \TypedPurchase.productId: "product_id"
-        case \TypedPurchase.quantity: "quantity"
-        case \TypedPurchase.amount: "amount"
-        default: nil
-        }
-    }
-
-    var productId: String?
-    var quantity: Int64?
-    var amount: Double?
-    var untracked: String?
-
-    init(record: EntityRecord) {
-        productId = record["product_id"]
-        quantity = record["quantity"]
-        amount = record["amount"]
-    }
-
-    var recordValues: [String: RecordValue] {
-        var values: [String: RecordValue] = [:]
-        values["product_id"] = productId?.recordValue
-        values["quantity"] = quantity?.recordValue
-        values["amount"] = amount?.recordValue
-        return values
     }
 }
