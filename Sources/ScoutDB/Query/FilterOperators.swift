@@ -62,8 +62,8 @@ public func > (field: String, value: RecordValue) -> FilterExpression {
 
 /// Matches the records whose field is greater than or equal to the value.
 ///
-/// The half-open pair `>=` and `<` is what ``FilterExpression/between(_:_:_:)``
-/// builds, and the shape a range lands on cleanly.
+/// Paired with `<` it spells a half-open range, the shape a range lands on
+/// cleanly: `"quantity" >= 2 && "quantity" < 10`.
 ///
 /// ```swift
 /// try await store.query("purchase")

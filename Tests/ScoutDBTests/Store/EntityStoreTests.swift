@@ -150,19 +150,21 @@ struct EntityStoreTests {
         #expect(records.map(\.uuid) == ["p-2"])
     }
 
-    @Test("BETWEEN expands into a half-open range")
-    func between() async throws {
+    @Test("A half-open range keeps the lower bound and drops the upper")
+    func halfOpenRange() async throws {
         for (index, seconds) in [1_000, 2_000, 3_000].enumerated() {
             var values = makePurchase().values
             values["date"] = .date(Date(timeIntervalSince1970: TimeInterval(seconds)))
             try await store.write(values, entity: "purchase", uuid: "p-\(index)")
         }
-        let range = FilterExpression.between("date", .date(Date(timeIntervalSince1970: 1_500)), .date(Date(timeIntervalSince1970: 3_000)))
+        let range =
+            "date" >= .date(Date(timeIntervalSince1970: 1_500))
+            && "date" < .date(Date(timeIntervalSince1970: 3_000))
         let records = try await store.query("purchase").filter(range).take(100)
         #expect(records.map(\.uuid) == ["p-1"])
     }
 
-    @Test("containsAll and containsAny cover tag conjunction and disjunction")
+    @Test("Contains over a list field conjoins and disjoins")
     func tagCombinators() async throws {
         try await registry.publish(
             makeDefinition(
@@ -174,10 +176,10 @@ struct EntityStoreTests {
         try await store.write(["tags": .strings(["swift", "server"])], entity: "post", uuid: "n-2")
         try await store.write(["tags": .strings(["android"])], entity: "post", uuid: "n-3")
 
-        let both = try await store.query("post").filter(.containsAll("tags", ["swift", "ios"])).take(100)
+        let both = try await store.query("post").filter("tags" ~~ "swift" && "tags" ~~ "ios").take(100)
         #expect(both.map(\.uuid) == ["n-1"])
 
-        let either = try await store.query("post").filter(.containsAny("tags", ["ios", "server"])).take(100)
+        let either = try await store.query("post").filter("tags" ~~ "ios" || "tags" ~~ "server").take(100)
         #expect(Set(either.map(\.uuid)) == ["n-1", "n-2"])
     }
 
