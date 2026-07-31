@@ -14,27 +14,9 @@ public actor SchemaRegistry {
     private var loading: [String: Task<EntityDefinition, any Error>] = [:]
 
     /// Creates a registry backed by any `CloudDatabase` implementation.
-    ///
-    /// The entities the library keeps for itself — the transaction envelope and
-    /// the revision log — are seeded from the definitions built into it, so
-    /// they need no publishing of their own.
-    ///
     public init(database: any CloudDatabase) {
         self.database = database
-
-        for definition in Self.builtIns {
-            cache[definition.entity] = definition
-        }
     }
-
-    fileprivate static var builtIns: [EntityDefinition] {
-        [.transaction, .revision]
-    }
-
-    fileprivate static let builtInEntities: Set<String> = [
-        EntityStore.transactionEntity,
-        EntityStore.revisionEntity,
-    ]
 
     func definition(for entity: String) async throws -> EntityDefinition {
         if let cached = cache[entity] {
@@ -58,7 +40,7 @@ public actor SchemaRegistry {
     }
 
     func definitions() -> [EntityDefinition] {
-        cache.values.filter { !Self.builtInEntities.contains($0.entity) }
+        Array(cache.values)
     }
 
     /// The entity's schema as a caller sees it: the fields a write may carry
@@ -69,7 +51,7 @@ public actor SchemaRegistry {
     }
 
     /// The schemas of every entity loaded so far, which `preload()` fills in
-    /// one query — the library's own entities left out.
+    /// one query.
     public func schemas() -> [EntitySchema] {
         definitions().map(EntitySchema.init)
     }

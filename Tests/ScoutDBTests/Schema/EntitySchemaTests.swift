@@ -67,7 +67,6 @@ struct EntitySchemaTests {
         #expect(schema.envelopeDate == "date")
         #expect(schema.unique == ["product_id", "date"])
         #expect(schema.uniqueKeys == [["email"]])
-        #expect(schema.audited == false)
     }
 
     @Test("An encrypted field reads back as sealed")
@@ -99,37 +98,5 @@ struct EntitySchemaTests {
         #expect(await reader.schemas().isEmpty)
         try await reader.preload()
         #expect(await reader.schemas().map(\.entity) == ["purchase"])
-        #expect(await reader.schemas().contains { $0.entity.hasPrefix("_") } == false)
-    }
-
-    @Test("An audited entity records history without any setup of its own")
-    func revisionsNeedNoSetup() async throws {
-        try await store.schema("note")
-            .field("body", .string, .required)
-            .field("date", .timestamp)
-            .envelopeDate("date")
-            .audited()
-            .create()
-
-        try await store.write(["body": .string("first"), "date": .date(Date())], entity: "note", uuid: "n-1")
-        try await store.update(entity: "note", uuid: "n-1") { $0.values["body"] = .string("second") }
-
-        let history = try await store.history(entity: "note", uuid: "n-1")
-        #expect(history.map { $0.values["body"] } == [.string("first")])
-        #expect(try await registry.schema(for: "note").audited)
-    }
-
-    @Test("A transaction commits without any setup of its own")
-    func transactionsNeedNoSetup() async throws {
-        try await store.schema("note")
-            .field("body", .string, .required)
-            .field("date", .timestamp)
-            .envelopeDate("date")
-            .create()
-
-        try await store.transaction { draft in
-            draft.write(["body": .string("first"), "date": .date(Date())], entity: "note", uuid: "n-1")
-        }
-        #expect(try await store.fetch(entity: "note", uuids: ["n-1"]).count == 1)
     }
 }

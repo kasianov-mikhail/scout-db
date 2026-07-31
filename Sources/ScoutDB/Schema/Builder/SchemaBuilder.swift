@@ -34,7 +34,6 @@ public struct SchemaBuilder {
     var uniqueKeys: [[String]]?
     var views: [AggregateView] = []
     var keyID: String?
-    var audited: Bool?
 
     init(entity: String, registry: SchemaRegistry) {
         self.entity = entity
@@ -134,27 +133,6 @@ public struct SchemaBuilder {
     public func keyID(_ keyID: String) -> Self {
         var builder = self
         builder.keyID = keyID
-        return builder
-    }
-
-    /// Appends a revision record on every update and delete of the entity.
-    ///
-    /// Trim the log with `compactRevisions(olderThan:of:)` — every entry is a
-    /// record of its own. An `update()` that does not call this keeps whatever
-    /// the previous version declared.
-    ///
-    /// ```swift
-    /// try await store.schema("ledger")
-    ///     .field("amount", .double, .required)
-    ///     .audited()
-    ///     .create()
-    ///
-    /// let history = try await store.history(entity: "ledger", uuid: "l-1")
-    /// ```
-    ///
-    public func audited(_ audited: Bool = true) -> Self {
-        var builder = self
-        builder.audited = audited
         return builder
     }
 }

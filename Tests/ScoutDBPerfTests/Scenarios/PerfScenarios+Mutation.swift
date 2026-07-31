@@ -42,50 +42,6 @@ extension PerfScenarios {
         ]
     }
 
-    static var transactions: [PerfScenario] {
-        [
-            PerfScenario("Transactions", "three writes in one transaction", sql: 1) { world, iteration in
-                try await world.store.transaction { draft in
-                    for index in 0..<3 {
-                        draft.write(world.newOrder(iteration, offset: index), entity: PerfSchema.order, uuid: world.fresh("tx\(index)", iteration))
-                    }
-                }
-            },
-            PerfScenario("Transactions", "a write, an update and a delete", sql: 3) { world, iteration in
-                let uuid = world.fresh("mix", iteration)
-                try await world.store.transaction { draft in
-                    draft.write(world.newOrder(iteration), entity: PerfSchema.order, uuid: uuid)
-                    draft.update(["status": .string("paid")], entity: PerfSchema.order, uuid: world.order(iteration))
-                    draft.delete(entity: PerfSchema.item, uuid: world.item(iteration))
-                }
-            },
-            PerfScenario(
-                "Transactions", "repair a pending envelope", sql: 3, iterations: 1,
-                setUp: { world in
-                    let steps = [TransactionStep(entity: PerfSchema.order, uuid: world.fresh("rep", 0), values: world.newOrder(0))]
-                    try await world.store.write(
-                        [
-                            "status": .string("pending"),
-                            "date": .date(world.corpus.now),
-                            "steps": .bytes(try JSONEncoder().encode(steps)),
-                        ], entity: EntityStore.transactionEntity, uuid: world.fresh("env", 0))
-                }
-            ) { world, _ in
-                _ = try await world.store.repairTransactions()
-            },
-            PerfScenario(
-                "Transactions", "compact committed envelopes", sql: 1, iterations: 1,
-                setUp: { world in
-                    try await world.store.transaction { draft in
-                        draft.write(world.newOrder(0), entity: PerfSchema.order, uuid: world.fresh("cmp", 0))
-                    }
-                }
-            ) { world, _ in
-                _ = try await world.store.compactTransactions(olderThan: Date().addingTimeInterval(60))
-            },
-        ]
-    }
-
     static var conflicts: [PerfScenario] {
         [
             PerfScenario("Conflicts", "every iteration updates one record", sql: 2) { world, iteration in

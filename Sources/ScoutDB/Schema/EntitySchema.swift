@@ -32,9 +32,6 @@ public struct EntitySchema: Sendable, Equatable {
     /// The field tuples no two live records may repeat.
     public let uniqueKeys: [[String]]
 
-    /// Whether every update and delete appends a revision record.
-    public let audited: Bool
-
     /// One field of an entity, as a caller writing records sees it.
     public struct Field: Sendable, Equatable {
         /// The name the field carries in a record's values.
@@ -92,7 +89,6 @@ extension EntitySchema {
         envelopeDate = definition.envelopeDate
         unique = definition.unique
         uniqueKeys = definition.claimedKeys
-        audited = definition.audited == true
     }
 }
 

@@ -17,13 +17,11 @@ struct EntityDefinition: Codable, Equatable, Sendable {
     var enforcedKeys: [[String]]?
     var views: [AggregateView]?
     var keyID: String?
-    var audited: Bool?
     private let index = FieldIndex()
 
     init(
         entity: String, version: Int, fields: [FieldDefinition], envelopeDate: String? = nil, unique: [String]? = nil,
-        uniqueKeys: [[String]]? = nil, enforcedKeys: [[String]]? = nil, views: [AggregateView]? = nil, keyID: String? = nil,
-        audited: Bool? = nil
+        uniqueKeys: [[String]]? = nil, enforcedKeys: [[String]]? = nil, views: [AggregateView]? = nil, keyID: String? = nil
     ) {
         self.entity = entity
         self.version = version
@@ -34,11 +32,10 @@ struct EntityDefinition: Codable, Equatable, Sendable {
         self.enforcedKeys = enforcedKeys
         self.views = views
         self.keyID = keyID
-        self.audited = audited
     }
 
     private enum CodingKeys: String, CodingKey {
-        case entity, version, fields, envelopeDate, unique, uniqueKeys, enforcedKeys, views, keyID, audited
+        case entity, version, fields, envelopeDate, unique, uniqueKeys, enforcedKeys, views, keyID
     }
 
     static func == (lhs: Self, rhs: Self) -> Bool {
@@ -51,7 +48,6 @@ struct EntityDefinition: Codable, Equatable, Sendable {
             && lhs.enforcedKeys == rhs.enforcedKeys
             && lhs.views == rhs.views
             && lhs.keyID == rhs.keyID
-            && lhs.audited == rhs.audited
     }
 
     func fields(at version: Int) -> [FieldDefinition] {

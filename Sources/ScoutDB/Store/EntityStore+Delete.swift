@@ -5,8 +5,6 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-import CloudKit
-
 extension EntityStore {
     @discardableResult func deleteAll(entity: String, any branches: [[Filter]], createdBy creator: String? = nil) async throws -> Int {
         let definition = try await registry.definition(for: entity)
@@ -28,20 +26,10 @@ extension EntityStore {
         return removed
     }
 
-    func purge(entity: String, filters: [Filter]) async throws -> Int {
-        let victims = try await read(entity: entity, filters: filters, fields: [])
-        let ids = victims.map { CKRecord.ID(recordName: $0.uuid) }
-        try await database.delete(records: ids)
-        return ids.count
-    }
-
-    func settle(removed: [EntityRecord], using definition: EntityDefinition, auditing: Bool = true) async throws {
+    func settle(removed: [EntityRecord], using definition: EntityDefinition) async throws {
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask { await releaseUniqueClaims(of: removed, using: definition) }
             group.addTask { try await aggregator.remove(removed, using: definition) }
-            if auditing {
-                group.addTask { try await recordRevisions(removed, using: definition) }
-            }
             try await group.waitForAll()
         }
     }

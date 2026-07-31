@@ -145,7 +145,6 @@ extension EntityStore {
                 group.addTask { await releaseStaleClaims(for: owned, of: Array(zip(previous, next)), using: definition) }
             }
             group.addTask { try await aggregator.rebalance(removing: previous, adding: next, using: definition) }
-            group.addTask { try await recordRevisions(previous, using: definition) }
             try await group.waitForAll()
         }
     }
