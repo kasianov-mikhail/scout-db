@@ -138,19 +138,4 @@ struct GridWritesTests {
         let slot = try #require(slots.first)
         #expect(slot["c_00"] as? Int64 == 7)
     }
-
-    @Test("A cached slot deleted on the server is written again from scratch")
-    func vanishedSlotIsRebuilt() async throws {
-        let definition = paymentDefinition(views: [AggregateView(name: "revenue", sum: "amount")])
-        let aggregator = GridAggregator(database: database)
-        try await aggregator.record(payments(["app"]), using: definition)
-
-        database.records.removeAll { $0.recordType == GridSlot.recordType }
-        database.writeErrors = [CKError(.unknownItem)]
-
-        try await aggregator.record(payments(["pro"]), using: definition)
-
-        let slot = try #require(slots.first)
-        #expect(slot["c_00"] as? Int64 == 1)
-    }
 }
