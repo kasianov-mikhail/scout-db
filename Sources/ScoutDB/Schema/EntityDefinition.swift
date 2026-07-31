@@ -87,9 +87,6 @@ struct EntityDefinition: Codable, Equatable, Sendable {
             if let derived = field.derived, !names.contains(derived.source) {
                 throw SchemaError.invalidDefinition("Field '\(field.name)' derives from unknown '\(derived.source)'")
             }
-            if field.derived?.transform == .ngrams, field.type != .stringList {
-                throw SchemaError.invalidDefinition("Ngram field '\(field.name)' must be a string list")
-            }
             if field.encrypted == true, field.storage != .payload {
                 throw SchemaError.invalidDefinition("Encrypted field '\(field.name)' must live in payload")
             }

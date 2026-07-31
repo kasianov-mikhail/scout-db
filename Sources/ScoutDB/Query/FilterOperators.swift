@@ -102,9 +102,8 @@ public func <= (field: String, value: RecordValue) -> FilterExpression {
 /// Matches a substring of a string field, or membership in a list field.
 ///
 /// What it means follows the field's type: over a `.string` it is a substring
-/// search, over a `.stringList` it asks whether the list carries the value. A
-/// substring search is narrowed server-side when the field has an `ngrams`
-/// shadow, and runs on the client otherwise.
+/// search, run on the client after decoding, and over a `.stringList` it asks
+/// server-side whether the list carries the value.
 ///
 /// ```swift
 /// try await store.query("post")
@@ -118,8 +117,7 @@ public func ~~ (field: String, value: RecordValue) -> FilterExpression {
 
 /// Matches the records whose string field starts with the value.
 ///
-/// Server-side, and the reason a `reversed` shadow exists: an `endsWith` over
-/// the original field becomes this over the shadow.
+/// Server-side, over a slot-backed string field.
 ///
 /// ```swift
 /// try await store.query("cart")
