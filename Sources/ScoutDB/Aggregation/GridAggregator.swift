@@ -108,7 +108,7 @@ struct GridAggregator {
                 guard let date = envelope ?? (bucket == .lifetime ? Date(timeIntervalSince1970: 0) : nil) else {
                     continue
                 }
-                let (period, index) = Self.bucket(bucket, for: date)
+                let (period, index) = bucket.cell(for: date)
                 let slot = GridSlot(entity: entityRecord.entity, view: view.name, group: group, day: period, shard: shard)
                 var delta = deltas[slot, default: [:]][index, default: CellDelta()]
                 delta.count += sign
@@ -144,9 +144,9 @@ struct GridAggregator {
 
     private struct CellDelta {
         var count: Int64 = 0
-        var value: (kind: AggregateView.Metric, total: Double)?
+        var value: (kind: Metric, total: Double)?
         var squares: Double?
-        var removed: (kind: AggregateView.Metric, total: Double)?
+        var removed: (kind: Metric, total: Double)?
 
         func isNoop(recomputing: Bool) -> Bool {
             guard count == 0, (squares ?? 0) == 0 else {
@@ -165,20 +165,6 @@ struct GridAggregator {
                 return false
             }
             return kind.combine(removed.total, total) == removed.total
-        }
-    }
-
-    static func bucket(_ bucket: AggregateBucket, for date: Date) -> (period: Date, index: Int) {
-        let calendar = EntityCoder.calendar
-        return switch bucket {
-        case .hour:
-            (EntityCoder.periodStart(of: .day, for: date), calendar.component(.hour, from: date))
-        case .weekday:
-            (EntityCoder.periodStart(of: .weekOfYear, for: date), calendar.component(.weekday, from: date) - 1)
-        case .day:
-            (EntityCoder.periodStart(of: .month, for: date), calendar.component(.day, from: date) - 1)
-        case .lifetime:
-            (Date(timeIntervalSince1970: 0), 0)
         }
     }
 
@@ -361,6 +347,22 @@ struct GridAggregator {
 
     private static func vanished(_ error: any Error) -> Bool {
         (error as? CKError)?.code == .unknownItem
+    }
+}
+
+extension AggregateBucket {
+    fileprivate func cell(for date: Date) -> (period: Date, index: Int) {
+        let calendar = EntityCoder.calendar
+        return switch self {
+        case .hour:
+            (EntityCoder.periodStart(of: .day, for: date), calendar.component(.hour, from: date))
+        case .weekday:
+            (EntityCoder.periodStart(of: .weekOfYear, for: date), calendar.component(.weekday, from: date) - 1)
+        case .day:
+            (EntityCoder.periodStart(of: .month, for: date), calendar.component(.day, from: date) - 1)
+        case .lifetime:
+            (Date(timeIntervalSince1970: 0), 0)
+        }
     }
 }
 

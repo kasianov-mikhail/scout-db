@@ -127,6 +127,28 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
         }
     }
 
+    var canonicalParser: ((String) -> RecordValue?)? {
+        switch self {
+        case .string, .text:
+            { .string($0) }
+        case .int:
+            { $0.hasPrefix("i") ? Int64($0.dropFirst()).map(RecordValue.int) : nil }
+        case .double:
+            { $0.hasPrefix("d") ? Double($0.dropFirst()).map(RecordValue.double) : nil }
+        case .timestamp:
+            { canonical in
+                guard canonical.hasPrefix("t"), let milliseconds = Int64(canonical.dropFirst()) else {
+                    return nil
+                }
+                return .date(Date(millisecondsSince1970: milliseconds))
+            }
+        case .reference:
+            { $0.hasPrefix("r") ? .reference(String($0.dropFirst())) : nil }
+        default:
+            nil
+        }
+    }
+
     func matches(_ value: RecordValue) -> Bool {
         switch (self, value) {
         case (.string, .string), (.text, .string), (.int, .int), (.double, .double),

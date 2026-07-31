@@ -258,12 +258,14 @@ struct OperationsTests {
 
         let first = try await store.read(entity: "purchase", orderedBy: "quantity", limit: 2)
         #expect(first.records.map(\.uuid) == ["p-1", "p-2"])
-        let second = try await store.read(entity: "purchase", orderedBy: "quantity", limit: 2, after: try #require(first.cursor))
+        let firstCursor = try #require(first.cursor)
+        let second = try await store.read(entity: "purchase", orderedBy: "quantity", limit: 2, after: firstCursor)
         #expect(second.records.map(\.uuid) == ["p-3", "p-0"])
 
         let top = try await store.read(entity: "purchase", orderedBy: "quantity", descending: true, limit: 3)
         #expect(top.records.map(\.uuid) == ["p-0", "p-2", "p-3"])
-        let rest = try await store.read(entity: "purchase", orderedBy: "quantity", descending: true, limit: 3, after: try #require(top.cursor))
+        let topCursor = try #require(top.cursor)
+        let rest = try await store.read(entity: "purchase", orderedBy: "quantity", descending: true, limit: 3, after: topCursor)
         #expect(rest.records.map(\.uuid) == ["p-1"])
         #expect(rest.cursor == nil)
 

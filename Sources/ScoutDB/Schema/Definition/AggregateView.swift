@@ -50,21 +50,6 @@ struct AggregateView: Codable, Equatable, Sendable {
         let bounds: [Double]
     }
 
-    enum Metric: Equatable, Sendable {
-        case sum, min, max
-
-        func combine(_ lhs: Double, _ rhs: Double) -> Double {
-            switch self {
-            case .sum:
-                lhs + rhs
-            case .min:
-                Swift.min(lhs, rhs)
-            case .max:
-                Swift.max(lhs, rhs)
-            }
-        }
-    }
-
     var metric: (kind: Metric, field: String)? {
         if let sum {
             return (.sum, sum)
@@ -91,6 +76,55 @@ struct AggregateView: Codable, Equatable, Sendable {
             max == field && exact == true
         }
     }
+
+    func gridStart(from: Date?) -> Date? {
+        guard let from else {
+            return nil
+        }
+        guard histogram == nil else {
+            return EntityCoder.periodStart(of: .day, for: from)
+        }
+        guard let period = (bucket ?? .hour).period else {
+            return from
+        }
+        return EntityCoder.periodStart(of: period, for: from)
+    }
+
+    func cellFilter(from: Date?, to: Date?) -> (Date, Int) -> Bool {
+        guard histogram == nil, from != nil || to != nil else {
+            return { _, _ in true }
+        }
+
+        let bucket = self.bucket ?? .hour
+
+        return { period, index in
+            let date = bucket.cellDate(period: period, index: index)
+
+            if let from, date < from {
+                return false
+            }
+            if let to, date >= to {
+                return false
+            }
+
+            return true
+        }
+    }
+}
+
+enum Metric: Equatable, Sendable {
+    case sum, min, max
+
+    func combine(_ lhs: Double, _ rhs: Double) -> Double {
+        switch self {
+        case .sum:
+            lhs + rhs
+        case .min:
+            Swift.min(lhs, rhs)
+        case .max:
+            Swift.max(lhs, rhs)
+        }
+    }
 }
 
 /// The period one grid cell of an aggregate covers.
@@ -103,6 +137,30 @@ public enum AggregateBucket: String, Codable, Sendable {
     /// One running total per group, with no time grid — the categorical
     /// counter. The only bucket that works without an envelope date.
     case lifetime
+
+    var period: Calendar.Component? {
+        switch self {
+        case .hour:
+            .day
+        case .weekday:
+            .weekOfYear
+        case .day:
+            .month
+        case .lifetime:
+            nil
+        }
+    }
+
+    func cellDate(period: Date, index: Int) -> Date {
+        switch self {
+        case .hour:
+            EntityCoder.calendar.date(byAdding: .hour, value: index, to: period) ?? period
+        case .weekday, .day:
+            EntityCoder.calendar.date(byAdding: .day, value: index, to: period) ?? period
+        case .lifetime:
+            period
+        }
+    }
 }
 
 extension AggregateBucket: Comparable {

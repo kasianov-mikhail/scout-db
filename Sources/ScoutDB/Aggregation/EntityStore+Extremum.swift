@@ -18,14 +18,14 @@ extension EntityStore {
             guard let field = definition.field(named: groupBy, at: definition.version) else {
                 return nil
             }
-            guard let parse = Self.canonicalParser(of: field.type), let value = parse(range.group) else {
+            guard let parse = field.type.canonicalParser, let value = parse(range.group) else {
                 return nil
             }
 
             filters.append(Filter(field: groupBy, op: .equals, value: value))
         }
 
-        if let dateField = definition.envelopeDate, let window = Self.window(of: range) {
+        if let dateField = definition.envelopeDate, let window = range.window {
             filters.append(Filter(field: dateField, op: .greaterThanOrEquals, value: .date(window.from)))
             filters.append(Filter(field: dateField, op: .lessThan, value: .date(window.to)))
         }
@@ -41,12 +41,14 @@ extension EntityStore {
 
         return metric.kind == .min ? scalars.min() : scalars.max()
     }
+}
 
-    private static func window(of range: GridAggregator.CellRange) -> (from: Date, to: Date)? {
+extension GridAggregator.CellRange {
+    fileprivate var window: (from: Date, to: Date)? {
         let calendar = EntityCoder.calendar
         let unit: Calendar.Component
 
-        switch range.view.bucket ?? .hour {
+        switch view.bucket ?? .hour {
         case .hour:
             unit = .hour
         case .weekday, .day:
@@ -55,7 +57,7 @@ extension EntityStore {
             return nil
         }
 
-        guard let from = calendar.date(byAdding: unit, value: range.index, to: range.period) else {
+        guard let from = calendar.date(byAdding: unit, value: index, to: period) else {
             return nil
         }
         guard let to = calendar.date(byAdding: unit, value: 1, to: from) else {
