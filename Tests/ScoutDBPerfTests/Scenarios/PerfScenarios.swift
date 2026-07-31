@@ -12,7 +12,7 @@ import Foundation
 enum PerfScenarios {
     static var all: [PerfScenario] {
         schema + queries + writes + pagination + aggregates + conflicts
-            + relations + encryption + migrations
+            + encryption + migrations
     }
 }
 

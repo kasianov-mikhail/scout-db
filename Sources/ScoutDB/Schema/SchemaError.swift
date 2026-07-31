@@ -17,7 +17,6 @@ public enum SchemaError: Error, Equatable {
     case notFound(String)
     case staleSchema(entity: String, version: Int)
     case invalidDefinition(String)
-    case brokenReference(field: String, key: String)
 }
 
 extension SchemaError: LocalizedError {
@@ -41,8 +40,6 @@ extension SchemaError: LocalizedError {
             "Stale schema for entity '\(entity)' at version \(version)"
         case .invalidDefinition(let message):
             "Invalid definition: \(message)"
-        case .brokenReference(let field, let key):
-            "Reference field '\(field)' names a missing record '\(key)'"
         }
     }
 }

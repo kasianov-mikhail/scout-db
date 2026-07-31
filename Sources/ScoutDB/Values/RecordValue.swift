@@ -46,7 +46,7 @@ public enum RecordValue: Hashable, Sendable {
     /// A coordinate pair.
     case location(latitude: Double, longitude: Double)
 
-    /// The uuid of a record in the entity the field references.
+    /// The uuid of another record, stored as a CloudKit reference.
     case reference(String)
 
     /// A list of strings; also what an `ngrams` derivation produces.
