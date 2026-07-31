@@ -111,10 +111,49 @@ extension FilterExpression {
         guard let lhs = left[0].only, let rhs = right[0].only, lhs.field == rhs.field else {
             return nil
         }
-        guard let values = EntityStore.membership(of: lhs.values + rhs.values) else {
+        guard let values = membership(of: lhs.values + rhs.values) else {
             return nil
         }
         return EntityStore.Filter(field: lhs.field, op: .in, value: values)
+    }
+
+    private static func membership(of values: [RecordValue]) -> RecordValue? {
+        switch values.first {
+        case .string:
+            let members = values.compactMap { value -> String? in
+                guard case .string(let member) = value else {
+                    return nil
+                }
+                return member
+            }
+            return members.count == values.count ? .strings(members) : nil
+        case .int:
+            let members = values.compactMap { value -> Int64? in
+                guard case .int(let member) = value else {
+                    return nil
+                }
+                return member
+            }
+            return members.count == values.count ? .ints(members) : nil
+        case .double:
+            let members = values.compactMap { value -> Double? in
+                guard case .double(let member) = value else {
+                    return nil
+                }
+                return member
+            }
+            return members.count == values.count ? .doubles(members) : nil
+        case .date:
+            let members = values.compactMap { value -> Date? in
+                guard case .date(let member) = value else {
+                    return nil
+                }
+                return member
+            }
+            return members.count == values.count ? .dates(members) : nil
+        default:
+            return nil
+        }
     }
 }
 

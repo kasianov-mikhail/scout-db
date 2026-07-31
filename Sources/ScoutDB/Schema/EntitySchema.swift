@@ -26,9 +26,6 @@ public struct EntitySchema: Sendable, Equatable {
     /// upserts.
     public let unique: [String]?
 
-    /// The field tuples no two live records may repeat.
-    public let uniqueKeys: [[String]]
-
     /// One field of an entity, as a caller writing records sees it.
     public struct Field: Sendable, Equatable {
         /// The name the field carries in a record's values.
@@ -47,9 +44,6 @@ public struct EntitySchema: Sendable, Equatable {
         /// Whether the value lives outside the server-side slots, so filters
         /// over it run on the client.
         public let payload: Bool
-
-        /// The entity whose uuids the field holds, if it is a reference.
-        public let references: String?
 
         /// The closed set of strings every value must come from.
         public let allowed: [String]?
@@ -72,7 +66,7 @@ public struct EntitySchema: Sendable, Equatable {
 
         public static func == (lhs: Self, rhs: Self) -> Bool {
             lhs.name == rhs.name && lhs.type == rhs.type && lhs.required == rhs.required && lhs.encrypted == rhs.encrypted
-                && lhs.payload == rhs.payload && lhs.references == rhs.references && lhs.allowed == rhs.allowed
+                && lhs.payload == rhs.payload && lhs.allowed == rhs.allowed
                 && lhs.defaultValue == rhs.defaultValue && lhs.min == rhs.min && lhs.max == rhs.max
                 && lhs.pattern == rhs.pattern && lhs.derived?.source == rhs.derived?.source && lhs.derived?.transform == rhs.derived?.transform
         }
@@ -84,7 +78,6 @@ extension EntitySchema {
         entity = definition.entity
         fields = definition.fields(at: definition.version).map(Field.init)
         unique = definition.unique
-        uniqueKeys = definition.claimedKeys
     }
 }
 
@@ -95,7 +88,6 @@ extension EntitySchema.Field {
         required = field.required == true
         encrypted = field.encrypted == true
         payload = field.storage == .payload
-        references = field.references
         allowed = field.allowed
         defaultValue = field.defaultValue
         min = field.min

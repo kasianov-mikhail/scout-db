@@ -39,7 +39,7 @@ enum PerfSchema {
                 FieldDefinition(name: "points", type: .double, storage: .slot(.double, "d_00")),
                 FieldDefinition(name: "tags", type: .stringList, storage: .slot(.stringList, "ls_00")),
                 FieldDefinition(name: "bio", type: .text, storage: .payload),
-            ], uniqueKeys: [["email"]],
+            ],
             views: [AggregateView(name: "by_country", groupBy: "country")])
     }
 
@@ -47,7 +47,7 @@ enum PerfSchema {
         EntityDefinition(
             entity: order, version: 1,
             fields: [
-                FieldDefinition(name: "customer", type: .string, storage: .slot(.string, "s_00"), required: true, references: customer),
+                FieldDefinition(name: "customer", type: .string, storage: .slot(.string, "s_00"), required: true),
                 FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_01"), required: true, allowed: products),
                 FieldDefinition(name: "status", type: .string, storage: .slot(.string, "s_02"), required: true, allowed: statuses),
                 FieldDefinition(name: "quantity", type: .int, storage: .slot(.int, "i_00"), required: true, min: 1, max: 20),
@@ -67,7 +67,7 @@ enum PerfSchema {
         EntityDefinition(
             entity: item, version: 1,
             fields: [
-                FieldDefinition(name: "order", type: .string, storage: .slot(.string, "s_00"), required: true, references: order),
+                FieldDefinition(name: "order", type: .string, storage: .slot(.string, "s_00"), required: true),
                 FieldDefinition(name: "sku", type: .string, storage: .slot(.string, "s_01"), required: true, allowed: products),
                 FieldDefinition(name: "quantity", type: .int, storage: .slot(.int, "i_00"), required: true),
                 FieldDefinition(name: "price", type: .double, storage: .slot(.double, "d_00"), required: true),
@@ -79,7 +79,7 @@ enum PerfSchema {
         EntityDefinition(
             entity: session, version: 1,
             fields: [
-                FieldDefinition(name: "customer", type: .string, storage: .slot(.string, "s_00"), required: true, references: customer),
+                FieldDefinition(name: "customer", type: .string, storage: .slot(.string, "s_00"), required: true),
                 FieldDefinition(name: "device", type: .string, storage: .slot(.string, "s_01"), required: true, allowed: devices),
                 FieldDefinition(name: "started", type: .timestamp, storage: .slot(.timestamp, "t_00"), required: true),
                 FieldDefinition(name: "seconds", type: .int, storage: .slot(.int, "i_00")),

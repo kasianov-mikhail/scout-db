@@ -10,36 +10,6 @@ import Foundation
 @testable import ScoutDB
 
 extension PerfScenarios {
-    static var relations: [PerfScenario] {
-        [
-            PerfScenario(
-                "Relations", "join customers of 100 orders", sql: 1, writes: false,
-                setUp: { world in
-                    world.stage.records = try await world.store.fetch(entity: PerfSchema.order, uuids: world.orders(100, from: 0))
-                }
-            ) { world, _ in
-                _ = try await world.store.join(entity: PerfSchema.order, records: world.stage.records, field: "customer")
-            },
-            PerfScenario(
-                "Relations", "join two hops, item to customer", sql: 1, writes: false,
-                setUp: { world in
-                    world.stage.records = try await world.store.fetch(entity: PerfSchema.item, uuids: (0..<50).map { world.item($0) })
-                }
-            ) { world, _ in
-                _ = try await world.store.join(entity: PerfSchema.item, records: world.stage.records, path: ["order", "customer"])
-            },
-            PerfScenario("Relations", "children of one customer", sql: 1, writes: false) { world, iteration in
-                _ = try await world.store.children(entity: PerfSchema.order, of: world.customer(iteration), via: "customer")
-            },
-            PerfScenario("Relations", "delete one order, cascading", sql: 1) { world, iteration in
-                try await world.store.delete(entity: PerfSchema.order, uuid: world.order(iteration), cascade: true)
-            },
-            PerfScenario("Relations", "delete one customer, cascading", sql: 1, iterations: 2) { world, iteration in
-                try await world.store.delete(entity: PerfSchema.customer, uuid: world.customer(iteration), cascade: true)
-            },
-        ]
-    }
-
     static var encryption: [PerfScenario] {
         [
             PerfScenario("Encryption", "write a sealed field", sql: 1) { world, iteration in

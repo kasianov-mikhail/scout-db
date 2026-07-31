@@ -31,11 +31,6 @@ extension EntityStore {
             return EntityRecord(entity: entity, uuid: uuid, schemaVersion: definition.version, values: resolved)
         }
 
-        if enforceReferences {
-            try await validateReferences(of: entityRecords, using: definition)
-        }
-        try await claimUniqueKeys(of: entityRecords, using: definition)
-
         let (removedFromViews, addedToViews) = try await aggregationRebalance(entityRecords, stored: stored, using: definition)
 
         let encoded = try entityRecords.map { try coder.encode($0, using: definition) }

@@ -12,28 +12,24 @@ struct EntityDefinition: Codable, Equatable, Sendable {
     let version: Int
     let fields: [FieldDefinition]
     var unique: [String]?
-    var uniqueKeys: [[String]]?
-    var enforcedKeys: [[String]]?
     var views: [AggregateView]?
     var keyID: String?
     private let index = FieldIndex()
 
     init(
         entity: String, version: Int, fields: [FieldDefinition], unique: [String]? = nil,
-        uniqueKeys: [[String]]? = nil, enforcedKeys: [[String]]? = nil, views: [AggregateView]? = nil, keyID: String? = nil
+        views: [AggregateView]? = nil, keyID: String? = nil
     ) {
         self.entity = entity
         self.version = version
         self.fields = fields
         self.unique = unique
-        self.uniqueKeys = uniqueKeys
-        self.enforcedKeys = enforcedKeys
         self.views = views
         self.keyID = keyID
     }
 
     private enum CodingKeys: String, CodingKey {
-        case entity, version, fields, unique, uniqueKeys, enforcedKeys, views, keyID
+        case entity, version, fields, unique, views, keyID
     }
 
     static func == (lhs: Self, rhs: Self) -> Bool {
@@ -41,8 +37,6 @@ struct EntityDefinition: Codable, Equatable, Sendable {
             && lhs.version == rhs.version
             && lhs.fields == rhs.fields
             && lhs.unique == rhs.unique
-            && lhs.uniqueKeys == rhs.uniqueKeys
-            && lhs.enforcedKeys == rhs.enforcedKeys
             && lhs.views == rhs.views
             && lhs.keyID == rhs.keyID
     }
@@ -75,10 +69,6 @@ struct EntityDefinition: Codable, Equatable, Sendable {
         }
     }
 
-    var claimedKeys: [[String]] {
-        (uniqueKeys ?? []) + (enforcedKeys ?? [])
-    }
-
     func validate() throws {
         let names = Set(fields.map(\.name))
         for field in fields {
@@ -105,12 +95,6 @@ struct EntityDefinition: Codable, Equatable, Sendable {
             }
             if field.encrypted == true || field.derived?.transform == .hmac, keyID == nil {
                 throw SchemaError.invalidDefinition("Field '\(field.name)' needs a keyID on the definition")
-            }
-            if field.references != nil, ![.string, .stringList].contains(field.type) {
-                throw SchemaError.invalidDefinition("Reference field '\(field.name)' must be a string uuid or a string list of uuids")
-            }
-            if field.exclusive == true, field.references == nil || field.type != .string {
-                throw SchemaError.invalidDefinition("Exclusive field '\(field.name)' must be a scalar string reference")
             }
             if let pattern = field.pattern {
                 guard [.string, .text, .stringList].contains(field.type) else {
@@ -142,14 +126,6 @@ struct EntityDefinition: Codable, Equatable, Sendable {
         }
         for key in unique ?? [] where !names.contains(key) {
             throw SchemaError.invalidDefinition("Unique key '\(key)' is not a field")
-        }
-        for key in claimedKeys {
-            guard !key.isEmpty else {
-                throw SchemaError.invalidDefinition("A unique key cannot be empty")
-            }
-            for field in key where !names.contains(field) {
-                throw SchemaError.invalidDefinition("Unique key field '\(field)' is not a field")
-            }
         }
         for view in views ?? [] {
             if let groupBy = view.groupBy, !names.contains(groupBy) {

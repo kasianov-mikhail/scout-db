@@ -12,7 +12,6 @@ public struct EntityStore: Sendable {
     let registry: SchemaRegistry
     var keyProvider: (any EncryptionKeyProvider)?
     var trustedWriters: Set<String>?
-    var enforceReferences = false
     let slots = SlotCache()
 
     var aggregator: GridAggregator {
@@ -20,19 +19,13 @@ public struct EntityStore: Sendable {
     }
 
     /// Creates a store backed by any `CloudDatabase` implementation.
-    ///
-    /// With `enforceReferences` on, every write checks that its reference fields
-    /// name live parent records and throws `SchemaError.brokenReference` otherwise.
-    ///
     public init(
-        database: any CloudDatabase, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil, trustedWriters: Set<String>? = nil,
-        enforceReferences: Bool = false
+        database: any CloudDatabase, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil, trustedWriters: Set<String>? = nil
     ) {
         self.database = database
         self.registry = registry
         self.keyProvider = keyProvider
         self.trustedWriters = trustedWriters
-        self.enforceReferences = enforceReferences
     }
 
     struct Filter: Equatable, Sendable {

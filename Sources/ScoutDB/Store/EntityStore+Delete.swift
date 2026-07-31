@@ -50,10 +50,6 @@ extension EntityStore {
     }
 
     func settle(removed: [EntityRecord], using definition: EntityDefinition) async throws {
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask { await releaseUniqueClaims(of: removed, using: definition) }
-            group.addTask { try await aggregator.remove(removed, using: definition) }
-            try await group.waitForAll()
-        }
+        try await aggregator.remove(removed, using: definition)
     }
 }

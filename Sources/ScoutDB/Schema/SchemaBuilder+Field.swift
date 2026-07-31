@@ -48,14 +48,6 @@ extension SchemaBuilder {
         /// on every write rather than supplied by the caller.
         case derived(from: String, FieldTransform)
 
-        /// The entity whose uuids the field holds, making it a reference that
-        /// `join`, `children` and the reference checks can follow.
-        case references(String)
-
-        /// A reference that only one record may hold per parent, claim-backed
-        /// the way a `uniqueKey(on:)` is.
-        case exclusiveReference(String)
-
         /// A regular expression every value of the field must match whole.
         case matches(String)
 
@@ -141,11 +133,6 @@ extension SchemaBuilder {
                 field.max = value
             case .derived(let source, let transform):
                 field.derived = Derivation(source: source, transform: transform)
-            case .references(let entity):
-                field.references = entity
-            case .exclusiveReference(let entity):
-                field.references = entity
-                field.exclusive = true
             case .matches(let pattern):
                 field.pattern = pattern
             case .ungrouped:

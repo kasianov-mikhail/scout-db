@@ -42,9 +42,6 @@ extension PerfScenarios {
             ) { world, _ in
                 _ = try await world.migrator.rename(entity: PerfSchema.item, from: "sku", to: "code")
             },
-            PerfScenario("Migrations", "backfill the enforced-key claims", sql: 1, iterations: 1) { world, _ in
-                _ = try await world.migrator.backfillClaims(entity: PerfSchema.customer)
-            },
             PerfScenario("Migrations", "rebuild one view's grid", sql: 1, iterations: 1) { world, _ in
                 _ = try await world.migrator.backfill(view: "revenue", entity: PerfSchema.order)
             },
