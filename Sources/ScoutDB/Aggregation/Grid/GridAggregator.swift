@@ -36,7 +36,7 @@ struct GridAggregator {
         var merged = deltas(for: old, using: definition, adding: false)
         for (slot, cells) in deltas(for: new, using: definition, adding: true) {
             for (index, delta) in cells {
-                merged[slot, default: [:]][index] = merged[slot]?[index].map { $0.merging(delta) } ?? delta
+                merged[slot, default: [:]][index, default: CellDelta()].merge(delta)
             }
         }
         var live: [GridSlot: [Int: CellDelta]] = [:]
