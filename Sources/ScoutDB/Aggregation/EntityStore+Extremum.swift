@@ -21,15 +21,24 @@ extension EntityStore {
             guard let parse = field.type.canonicalParser, let value = parse(range.group) else {
                 return nil
             }
+
             filters.append(Filter(field: groupBy, op: .equals, value: value))
         }
+
         if let dateField = definition.envelopeDate, let window = range.window {
             filters.append(Filter(field: dateField, op: .greaterThanOrEquals, value: .date(window.from)))
             filters.append(Filter(field: dateField, op: .lessThan, value: .date(window.to)))
         }
 
-        let scalars = try await read(entity: definition.entity, filters: filters, fields: [metric.field])
-            .compactMap { $0.values[metric.field]?.scalar }
+        let scalars = try await read(
+            entity: definition.entity,
+            filters: filters,
+            fields: [metric.field]
+        )
+        .compactMap {
+            $0.values[metric.field]?.scalar
+        }
+
         return metric.kind == .min ? scalars.min() : scalars.max()
     }
 }
@@ -38,6 +47,7 @@ extension GridAggregator.CellRange {
     fileprivate var window: (from: Date, to: Date)? {
         let calendar = EntityCoder.calendar
         let unit: Calendar.Component
+
         switch view.bucket ?? .hour {
         case .hour:
             unit = .hour
@@ -46,12 +56,14 @@ extension GridAggregator.CellRange {
         case .lifetime:
             return nil
         }
+
         guard let from = calendar.date(byAdding: unit, value: index, to: period) else {
             return nil
         }
         guard let to = calendar.date(byAdding: unit, value: 1, to: from) else {
             return nil
         }
+
         return (from, to)
     }
 }

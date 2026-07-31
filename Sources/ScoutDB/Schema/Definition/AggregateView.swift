@@ -50,21 +50,6 @@ struct AggregateView: Codable, Equatable, Sendable {
         let bounds: [Double]
     }
 
-    enum Metric: Equatable, Sendable {
-        case sum, min, max
-
-        func combine(_ lhs: Double, _ rhs: Double) -> Double {
-            switch self {
-            case .sum:
-                lhs + rhs
-            case .min:
-                Swift.min(lhs, rhs)
-            case .max:
-                Swift.max(lhs, rhs)
-            }
-        }
-    }
-
     var metric: (kind: Metric, field: String)? {
         if let sum {
             return (.sum, sum)
@@ -123,6 +108,21 @@ struct AggregateView: Codable, Equatable, Sendable {
             }
 
             return true
+        }
+    }
+}
+
+enum Metric: Equatable, Sendable {
+    case sum, min, max
+
+    func combine(_ lhs: Double, _ rhs: Double) -> Double {
+        switch self {
+        case .sum:
+            lhs + rhs
+        case .min:
+            Swift.min(lhs, rhs)
+        case .max:
+            Swift.max(lhs, rhs)
         }
     }
 }

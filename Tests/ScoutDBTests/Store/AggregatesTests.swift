@@ -314,9 +314,9 @@ struct AggregatesTests {
         try await publishPayment(views: [AggregateView(name: "revenue", sum: "amount")])
         try await writePayments([2.5, 1.5])
 
-        let rows = try await GridQuery(store, entity: "payment", view: "revenue").rows()
-        #expect(rows.first?.value == 4)
-        #expect(rows.first?.average == 2)
+        let query = GridQuery(store, entity: "payment", view: "revenue")
+        #expect(try await query.rows().first?.value == 4)
+        #expect(try await query.totals().first?.average == 2)
     }
 
     @Test("GROUP BY and HAVING work over totals")
@@ -386,10 +386,10 @@ struct AggregatesTests {
         }
 
         let fifteenth = EntityCoder.periodStart(of: .day, for: midMonth)
-        let row = try #require(try await GridQuery(store, entity: "payment", view: "spread", from: fifteenth).rows().first)
-        #expect(row.count == 8)
-        #expect(row.average == 5)
-        #expect(row.variance == 4)
+        let total = try #require(try await GridQuery(store, entity: "payment", view: "spread", from: fifteenth).totals().first)
+        #expect(total.count == 8)
+        #expect(total.average == 5)
+        #expect(total.variance == 4)
     }
 
     @Test("DISTINCT returns unique values")
@@ -483,12 +483,12 @@ struct AggregatesTests {
         try await publishPayment(views: [AggregateView(name: "spread", stats: "amount")])
         try await writePayments([2, 4, 4, 4, 5, 5, 7, 9])
 
-        let rows = try await GridQuery(store, entity: "payment", view: "spread").rows()
-        let row = try #require(rows.first)
-        #expect(row.count == 8)
-        #expect(row.average == 5)
-        #expect(row.variance == 4)
-        #expect(row.standardDeviation == 2)
+        let totals = try await GridQuery(store, entity: "payment", view: "spread").totals()
+        let total = try #require(totals.first)
+        #expect(total.count == 8)
+        #expect(total.average == 5)
+        #expect(total.variance == 4)
+        #expect(total.standardDeviation == 2)
     }
 
     @Test("Percentiles interpolate within histogram buckets")

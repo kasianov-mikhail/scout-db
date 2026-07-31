@@ -41,57 +41,6 @@ public struct FilterExpression: Sendable {
         alternatives = [[filter]]
     }
 
-    /// Matches the values between the bounds, the lower one included and the
-    /// upper one not.
-    ///
-    /// ```swift
-    /// try await store.query("purchase")
-    ///     .filter(.between("quantity", .int(2), .int(10)))
-    ///     .take(50)
-    /// ```
-    ///
-    public static func between(_ field: String, _ lower: RecordValue, _ upper: RecordValue) -> Self {
-        FilterExpression([
-            [
-                EntityStore.Filter(field: field, op: .greaterThanOrEquals, value: lower),
-                EntityStore.Filter(field: field, op: .lessThan, value: upper),
-            ]
-        ])
-    }
-
-    /// Matches the records whose list field carries every one of the values.
-    ///
-    /// ```swift
-    /// try await store.query("post")
-    ///     .filter(.containsAll("tags", ["swift", "ios"]))
-    ///     .take(50)
-    /// ```
-    ///
-    public static func containsAll(_ field: String, _ values: [String]) -> Self {
-        FilterExpression([
-            values.map {
-                EntityStore.Filter(
-                    field: field,
-                    op: .contains,
-                    value: .string($0)
-                )
-            }
-        ])
-    }
-
-    /// Matches the records whose list field carries at least one of the values,
-    /// as one alternative apiece.
-    ///
-    /// ```swift
-    /// try await store.query("post")
-    ///     .filter(.containsAny("tags", ["ios", "server"]))
-    ///     .take(50)
-    /// ```
-    ///
-    public static func containsAny(_ field: String, _ values: [String]) -> Self {
-        FilterExpression(values.map { [EntityStore.Filter(field: field, op: .contains, value: .string($0))] })
-    }
-
     var negated: FilterExpression {
         alternatives.reduce(FilterExpression([[]])) { negated, alternative in
             let flipped = alternative.map { filter -> [EntityStore.Filter] in
