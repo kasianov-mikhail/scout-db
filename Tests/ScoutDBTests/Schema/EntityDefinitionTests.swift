@@ -86,23 +86,6 @@ struct EntityDefinitionTests {
         #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
-    @Test("Validation rejects an encrypted field in a slot")
-    func encryptedSlot() {
-        let definition = makeDefinition(
-            fields: [
-                FieldDefinition(name: "email", type: .string, storage: .slot(.string, "s_00"), encrypted: true)
-            ], keyID: "k1")
-        #expect(throws: SchemaError.self) { try definition.validate() }
-    }
-
-    @Test("Validation rejects encryption without a keyID")
-    func encryptedWithoutKey() {
-        let definition = makeDefinition(fields: [
-            FieldDefinition(name: "email", type: .string, storage: .payload, encrypted: true)
-        ])
-        #expect(throws: SchemaError.self) { try definition.validate() }
-    }
-
     @Test("Validation rejects a slot beyond the pool capacity")
     func slotBeyondCapacity() {
         let definition = makeDefinition(fields: [
@@ -150,10 +133,9 @@ struct EntityDefinitionTests {
 }
 
 func makeDefinition(
-    entity: String = "purchase", version: Int = 2, fields: [FieldDefinition], unique: [String]? = nil,
-    views: [AggregateView]? = nil, keyID: String? = nil
+    entity: String = "purchase", version: Int = 2, fields: [FieldDefinition], unique: [String]? = nil, views: [AggregateView]? = nil
 ) -> EntityDefinition {
-    EntityDefinition(entity: entity, version: version, fields: fields, unique: unique, views: views, keyID: keyID)
+    EntityDefinition(entity: entity, version: version, fields: fields, unique: unique, views: views)
 }
 
 func makePurchaseDefinition() -> EntityDefinition {

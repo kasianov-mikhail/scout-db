@@ -13,23 +13,21 @@ struct EntityDefinition: Codable, Equatable, Sendable {
     let fields: [FieldDefinition]
     var unique: [String]?
     var views: [AggregateView]?
-    var keyID: String?
     private let index = FieldIndex()
 
     init(
         entity: String, version: Int, fields: [FieldDefinition], unique: [String]? = nil,
-        views: [AggregateView]? = nil, keyID: String? = nil
+        views: [AggregateView]? = nil
     ) {
         self.entity = entity
         self.version = version
         self.fields = fields
         self.unique = unique
         self.views = views
-        self.keyID = keyID
     }
 
     private enum CodingKeys: String, CodingKey {
-        case entity, version, fields, unique, views, keyID
+        case entity, version, fields, unique, views
     }
 
     static func == (lhs: Self, rhs: Self) -> Bool {
@@ -38,7 +36,6 @@ struct EntityDefinition: Codable, Equatable, Sendable {
             && lhs.fields == rhs.fields
             && lhs.unique == rhs.unique
             && lhs.views == rhs.views
-            && lhs.keyID == rhs.keyID
     }
 
     func fields(at version: Int) -> [FieldDefinition] {
@@ -86,12 +83,6 @@ struct EntityDefinition: Codable, Equatable, Sendable {
             }
             if let derived = field.derived, !names.contains(derived.source) {
                 throw SchemaError.invalidDefinition("Field '\(field.name)' derives from unknown '\(derived.source)'")
-            }
-            if field.encrypted == true, field.storage != .payload {
-                throw SchemaError.invalidDefinition("Encrypted field '\(field.name)' must live in payload")
-            }
-            if field.encrypted == true || field.derived?.transform == .hmac, keyID == nil {
-                throw SchemaError.invalidDefinition("Field '\(field.name)' needs a keyID on the definition")
             }
             if let pattern = field.pattern {
                 guard [.string, .text, .stringList].contains(field.type) else {

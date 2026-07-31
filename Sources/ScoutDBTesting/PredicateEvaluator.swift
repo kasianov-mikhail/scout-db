@@ -82,8 +82,6 @@ package enum PredicateEvaluator {
             switch key {
             case "modificationDate":
                 record.recordModificationDate
-            case "creatorUserRecordID":
-                record.recordCreator
             default:
                 record[key]
             }

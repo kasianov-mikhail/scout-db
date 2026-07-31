@@ -11,13 +11,11 @@ import Foundation
 public struct Migrator: Sendable {
     let database: any CloudDatabase
     let registry: SchemaRegistry
-    var keyProvider: (any EncryptionKeyProvider)?
 
     /// Creates a migrator backed by any `CloudDatabase` implementation.
-    public init(database: any CloudDatabase, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil) {
+    public init(database: any CloudDatabase, registry: SchemaRegistry) {
         self.database = database
         self.registry = registry
-        self.keyProvider = keyProvider
     }
 
     @discardableResult public func backfill(entity: String, transform: (inout EntityRecord) throws -> Void = { _ in }) async throws -> Int {
@@ -42,7 +40,7 @@ public struct Migrator: Sendable {
                 ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                 ServerFilter(field: "schema_version", op: .lessThan, value: .int(Int64(definition.version))),
             ])
-        let coder = EntityCoder(keyProvider: keyProvider)
+        let coder = EntityCoder()
         var migrated = 0
         try await database.forEachPage(matching: query) { page in
             let rewritten = try page.map { record in
@@ -83,7 +81,7 @@ public struct Migrator: Sendable {
 
         var scoped = definition
         scoped.views = [view]
-        let coder = EntityCoder(keyProvider: keyProvider)
+        let coder = EntityCoder()
         let aggregator = GridAggregator(database: database)
         var counted = 0
         try await database.forEachPage(

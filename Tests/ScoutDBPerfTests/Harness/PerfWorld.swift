@@ -20,7 +20,7 @@ struct PerfWorld: @unchecked Sendable {
     let stage: PerfStage
 
     var migrator: Migrator {
-        Migrator(database: database, registry: registry, keyProvider: PerfKeyProvider())
+        Migrator(database: database, registry: registry)
     }
 
     func fresh(_ prefix: String, _ iteration: Int) -> String {
@@ -52,7 +52,7 @@ final class PerfBench {
         runs += 1
 
         let registry = SchemaRegistry(database: backing)
-        let store = EntityStore(database: backing, registry: registry, keyProvider: PerfKeyProvider())
+        let store = EntityStore(database: backing, registry: registry)
 
         try await registry.loadAll()
         backing.resetRequests()

@@ -502,18 +502,6 @@ struct OperationsTests {
         #expect(Set(await fresh.definitions().map(\.entity)) == ["purchase", "alpha", "beta"])
     }
 
-    @Test("Untrusted writers are filtered out of reads")
-    func trustedWriters() async throws {
-        try await store.write(makePurchase(uuid: "p-1").values, entity: "purchase", uuid: "p-1")
-        try await store.write(makePurchase(uuid: "p-2").values, entity: "purchase", uuid: "p-2")
-        stampCreator(uuid: "p-1", creator: "good")
-        stampCreator(uuid: "p-2", creator: "evil")
-
-        let guarded = EntityStore(database: database, registry: registry, trustedWriters: ["good"])
-        let records = try await guarded.read(entity: "purchase")
-        #expect(records.map(\.uuid) == ["p-1"])
-    }
-
     @Test("Typed lists round-trip through the record subscript")
     func typedListSubscript() {
         var record = EntityRecord(entity: "profile", uuid: "u-1", schemaVersion: 1, values: [:])
@@ -537,11 +525,5 @@ struct OperationsTests {
         #expect(days == [Date(timeIntervalSince1970: 0)])
         let mismatched: [Int64]? = record["tags"]
         #expect(mismatched == nil)
-    }
-
-    private func stampCreator(uuid: String, creator: String) {
-        for record in database.records where record.recordType == "Entity" && record.recordID.recordName == uuid {
-            record.overrideCreator(creator)
-        }
     }
 }

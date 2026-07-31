@@ -10,8 +10,6 @@ import Foundation
 public struct EntityStore: Sendable {
     let database: any CloudDatabase
     let registry: SchemaRegistry
-    var keyProvider: (any EncryptionKeyProvider)?
-    var trustedWriters: Set<String>?
     let slots = SlotCache()
 
     var aggregator: GridAggregator {
@@ -19,13 +17,9 @@ public struct EntityStore: Sendable {
     }
 
     /// Creates a store backed by any `CloudDatabase` implementation.
-    public init(
-        database: any CloudDatabase, registry: SchemaRegistry, keyProvider: (any EncryptionKeyProvider)? = nil, trustedWriters: Set<String>? = nil
-    ) {
+    public init(database: any CloudDatabase, registry: SchemaRegistry) {
         self.database = database
         self.registry = registry
-        self.keyProvider = keyProvider
-        self.trustedWriters = trustedWriters
     }
 
     struct Filter: Equatable, Sendable {

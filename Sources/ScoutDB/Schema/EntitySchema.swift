@@ -37,10 +37,6 @@ public struct EntitySchema: Sendable, Equatable {
         /// Whether a write that leaves the field empty is rejected.
         public let required: Bool
 
-        /// Whether the value is sealed under the entity's key before it leaves
-        /// the device.
-        public let encrypted: Bool
-
         /// Whether the value lives outside the server-side slots, so filters
         /// over it run on the client.
         public let payload: Bool
@@ -65,7 +61,7 @@ public struct EntitySchema: Sendable, Equatable {
         public let derived: (source: String, transform: FieldTransform)?
 
         public static func == (lhs: Self, rhs: Self) -> Bool {
-            lhs.name == rhs.name && lhs.type == rhs.type && lhs.required == rhs.required && lhs.encrypted == rhs.encrypted
+            lhs.name == rhs.name && lhs.type == rhs.type && lhs.required == rhs.required
                 && lhs.payload == rhs.payload && lhs.allowed == rhs.allowed
                 && lhs.defaultValue == rhs.defaultValue && lhs.min == rhs.min && lhs.max == rhs.max
                 && lhs.pattern == rhs.pattern && lhs.derived?.source == rhs.derived?.source && lhs.derived?.transform == rhs.derived?.transform
@@ -86,7 +82,6 @@ extension EntitySchema.Field {
         name = field.name
         type = field.type
         required = field.required == true
-        encrypted = field.encrypted == true
         payload = field.storage == .payload
         allowed = field.allowed
         defaultValue = field.defaultValue

@@ -30,7 +30,6 @@ public struct SchemaBuilder {
     var declarations: [Declaration] = []
     var unique: [String]?
     var views: [AggregateView] = []
-    var keyID: String?
 
     init(entity: String, registry: SchemaRegistry) {
         self.entity = entity
@@ -56,27 +55,6 @@ public struct SchemaBuilder {
     public func unique(on fields: String...) -> Self {
         var builder = self
         builder.unique = fields
-        return builder
-    }
-
-    /// Names the encryption key that seals `.encrypted` fields and backs
-    /// `hmac` derivations.
-    ///
-    /// The name is published with the schema; the key itself is resolved on the
-    /// device through the store's `EncryptionKeyProvider`, so it never leaves
-    /// it. Declaring either an encrypted field or an `hmac` shadow without this
-    /// is rejected at publish time.
-    ///
-    /// ```swift
-    /// try await store.schema("account")
-    ///     .field("token", .string, .payload, .encrypted)
-    ///     .keyID("account-key")
-    ///     .create()
-    /// ```
-    ///
-    public func keyID(_ keyID: String) -> Self {
-        var builder = self
-        builder.keyID = keyID
         return builder
     }
 }

@@ -120,7 +120,7 @@ struct CountQuery {
         guard let field = definition.field(named: name, at: definition.version) else {
             return
         }
-        guard field.type == .int, field.alwaysPresent, field.encrypted != true else {
+        guard field.type == .int, field.alwaysPresent else {
             return
         }
         guard case .slot = field.storage, let lower = field.min, let upper = field.max else {

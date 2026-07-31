@@ -28,10 +28,6 @@ extension SchemaBuilder {
         /// unlimited in number, but beyond the server's filters and sorts.
         case payload
 
-        /// Seals the value under the definition's key before it leaves the
-        /// device; only a payload field can be encrypted.
-        case encrypted
-
         /// The closed set of strings every value of the field must come from.
         case allowed([String])
 
@@ -121,8 +117,6 @@ extension SchemaBuilder {
                 field.required = true
             case .payload:
                 break
-            case .encrypted:
-                field.encrypted = true
             case .allowed(let values):
                 field.allowed = values
             case .defaultValue(let value):

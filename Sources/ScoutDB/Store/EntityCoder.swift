@@ -9,8 +9,6 @@ import CloudKit
 import Foundation
 
 struct EntityCoder {
-    var keyProvider: (any EncryptionKeyProvider)?
-
     let jsonEncoder = JSONEncoder()
     let jsonDecoder = JSONDecoder()
 
@@ -43,7 +41,7 @@ struct EntityCoder {
                 guard let derived = field.derived else {
                     continue
                 }
-                let value = try derive(derived, from: resolved[derived.source], keyID: definition.keyID)
+                let value = derive(derived, from: resolved[derived.source])
                 if value != resolved[field.name] {
                     resolved[field.name] = value
                     changed = true
@@ -105,23 +103,14 @@ struct EntityCoder {
     }
 
     func rewrite(_ record: CKRecord, using definition: EntityDefinition, transform: (inout EntityRecord) throws -> Void) throws -> Rewrite {
-        let (previous, payload) = try decodeWithPayload(record, using: definition)
+        let previous = try decode(record, using: definition)
         var next = previous
         try transform(&next)
         next.values = try resolve(next.values, at: next.schemaVersion, using: definition)
-        return Rewrite(previous: previous, next: next, record: try encode(next, using: definition, into: record, basePayload: payload))
+        return Rewrite(previous: previous, next: next, record: try encode(next, using: definition, into: record))
     }
 
-    private func decodedPayload(of record: CKRecord?) -> [String: RecordValue]? {
-        guard let data = record?["payload"] as? Data else {
-            return nil
-        }
-        return try? jsonDecoder.decode([String: RecordValue].self, from: data)
-    }
-
-    func encode(_ entityRecord: EntityRecord, using definition: EntityDefinition, into base: CKRecord? = nil, basePayload: [String: RecordValue]? = nil)
-        throws -> CKRecord
-    {
+    func encode(_ entityRecord: EntityRecord, using definition: EntityDefinition, into base: CKRecord? = nil) throws -> CKRecord {
         let fields = definition.fields(at: entityRecord.schemaVersion)
         let values = entityRecord.values
 
@@ -143,12 +132,7 @@ struct EntityCoder {
             case .slot(_, let slot):
                 record.setScoutValue(value, forKey: slot)
             case .payload:
-                payload[field.name] = field.encrypted == true ? try seal(value, keyID: definition.keyID) : value
-            }
-        }
-        if keyProvider == nil, let existing = basePayload ?? decodedPayload(of: base) {
-            for field in fields where field.encrypted == true && payload[field.name] == nil {
-                payload[field.name] = existing[field.name]
+                payload[field.name] = value
             }
         }
         record["payload"] = payload.count > 0 ? try jsonEncoder.encode(payload) : nil
@@ -156,12 +140,6 @@ struct EntityCoder {
     }
 
     func decode(_ record: CKRecord, using definition: EntityDefinition) throws -> EntityRecord {
-        try decodeWithPayload(record, using: definition).record
-    }
-
-    fileprivate func decodeWithPayload(_ record: CKRecord, using definition: EntityDefinition) throws -> (
-        record: EntityRecord, payload: [String: RecordValue]
-    ) {
         guard let version = record["schema_version"] as? Int64, let uuid = record["uuid"] as? String else {
             throw SchemaError.staleSchema(entity: definition.entity, version: 0)
         }
@@ -184,25 +162,19 @@ struct EntityCoder {
                 }
                 values[field.name] = value
             case .payload:
-                if field.encrypted == true {
-                    values[field.name] = keyProvider == nil ? nil : try payload[field.name].map { try open($0, keyID: definition.keyID) }
-                } else {
-                    values[field.name] = payload[field.name]
-                }
+                values[field.name] = payload[field.name]
             }
         }
 
-        return (EntityRecord(entity: definition.entity, uuid: uuid, schemaVersion: Int(version), values: values), payload)
+        return EntityRecord(entity: definition.entity, uuid: uuid, schemaVersion: Int(version), values: values)
     }
 
-    private func derive(_ derivation: Derivation, from source: RecordValue?, keyID: String?) throws -> RecordValue? {
+    private func derive(_ derivation: Derivation, from source: RecordValue?) -> RecordValue? {
         switch (derivation.transform, source) {
         case (.lowercase, .string(let value)?):
             .string(value.lowercased())
         case (.fold, .string(let value)?):
             .string(value.folded)
-        case (.hmac, let value?):
-            .string(try surrogate(for: value.canonical, keyID: keyID))
         case (.hour, .date(let value)?):
             .date(Self.periodStart(of: .hour, for: value))
         case (.day, .date(let value)?):

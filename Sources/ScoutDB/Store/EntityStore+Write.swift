@@ -18,7 +18,7 @@ extension EntityStore {
             return []
         }
         let definition = try await registry.definition(for: entity)
-        let coder = EntityCoder(keyProvider: keyProvider)
+        let coder = EntityCoder()
 
         var stored: Set<String> = []
         let entityRecords = try batch.map { entry in

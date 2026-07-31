@@ -6,7 +6,6 @@
 // https://opensource.org/licenses/MIT.
 
 import CloudKit
-import CryptoKit
 import Foundation
 import ScoutDBTesting
 import Testing
@@ -101,23 +100,6 @@ struct MigratorTests {
         #expect(migrated == 0)
     }
 
-    @Test("A keyless backfill preserves the ciphertext of encrypted fields it cannot read")
-    func keylessBackfillKeepsCiphertext() async throws {
-        try await registry.publish(makeSecureRenameDefinition(version: 1))
-        let provider = StaticKeyProvider(keys: ["k1": SymmetricKey(size: .bits256)])
-        let secure = EntityStore(database: database, registry: registry, keyProvider: provider)
-        try await secure.write(["email": .string("alice@example.com"), "status": .string("new")], entity: "account", uuid: "a-1")
-
-        try await registry.publish(makeSecureRenameDefinition(version: 2))
-        let migrated = try await migrator.backfill(entity: "account")
-        #expect(migrated == 1)
-
-        let reread = try #require(try await secure.read(entity: "account").first { $0.uuid == "a-1" })
-        #expect(reread.schemaVersion == 2)
-        #expect(reread.values["state"] == .string("new"))
-        #expect(reread.values["email"] == .string("alice@example.com"))
-    }
-
     @Test("View backfill recounts existing records into a freshly declared view")
     func viewBackfill() async throws {
         var definition = makeDefinition(
@@ -162,16 +144,6 @@ func makeRenameDefinition(version: Int) -> EntityDefinition {
             FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_00"), until: 2),
             FieldDefinition(name: "user_id", type: .string, storage: .slot(.string, "s_00"), since: 2),
         ])
-}
-
-func makeSecureRenameDefinition(version: Int) -> EntityDefinition {
-    makeDefinition(
-        entity: "account", version: version,
-        fields: [
-            FieldDefinition(name: "email", type: .string, storage: .payload, encrypted: true),
-            FieldDefinition(name: "status", type: .string, storage: .slot(.string, "s_00"), until: 2),
-            FieldDefinition(name: "state", type: .string, storage: .slot(.string, "s_00"), since: 2),
-        ], keyID: "k1")
 }
 
 func makeReslotDefinition(version: Int) -> EntityDefinition {
