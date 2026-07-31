@@ -195,33 +195,12 @@ struct EntityCoder {
         return (EntityRecord(entity: definition.entity, uuid: uuid, schemaVersion: Int(version), values: values), payload)
     }
 
-    static func trigrams(of text: String) -> [String] {
-        guard text.count >= 3 else {
-            return text.isEmpty ? [] : [text]
-        }
-        var seen: Set<String> = []
-        var trigrams: [String] = []
-        var start = text.startIndex
-        while let end = text.index(start, offsetBy: 3, limitedBy: text.endIndex) {
-            let trigram = String(text[start..<end])
-            if seen.insert(trigram).inserted {
-                trigrams.append(trigram)
-            }
-            start = text.index(after: start)
-        }
-        return trigrams
-    }
-
     private func derive(_ derivation: Derivation, from source: RecordValue?, keyID: String?) throws -> RecordValue? {
         switch (derivation.transform, source) {
         case (.lowercase, .string(let value)?):
             .string(value.lowercased())
         case (.fold, .string(let value)?):
             .string(value.folded)
-        case (.reversed, .string(let value)?):
-            .string(String(value.reversed()))
-        case (.ngrams, .string(let value)?):
-            .strings(Self.trigrams(of: value.folded))
         case (.hmac, let value?):
             .string(try surrogate(for: value.canonical, keyID: keyID))
         case (.hour, .date(let value)?):

@@ -79,7 +79,7 @@ extension QueryBuilder {
     ///
     /// The same negation as ``exclude(_:)`` for the matches the operators do not
     /// spell — and the only way to negate them at all, since `beginsWith`,
-    /// `contains`, `endsWith`, `like` and `matches` have no complementary
+    /// `contains` and `search` have no complementary
     /// operator to write positively.
     ///
     /// ```swift

@@ -40,34 +40,6 @@ struct BuilderTests {
         }
     }
 
-    @Test("A derived field is one the query planner narrows on")
-    func shadowFields() async throws {
-        try await store.schema("contact")
-            .field("email", .string, .required)
-            .field("bio", .text)
-            .field("email_reversed", .string, .derived(from: "email", .reversed))
-            .field("bio_ngrams", .stringList, .derived(from: "bio", .ngrams))
-            .create()
-
-        let definition = try await registry.definition(for: "contact")
-        let reversed = try #require(definition.field(named: "email_reversed", at: 1))
-        #expect(reversed.derived == Derivation(source: "email", transform: .reversed))
-        #expect(reversed.storage != .payload)
-        let ngrams = try #require(definition.field(named: "bio_ngrams", at: 1))
-        #expect(ngrams.type == .stringList)
-        #expect(ngrams.derived == Derivation(source: "bio", transform: .ngrams))
-
-        try await store.write(["email": .string("ada@gmail.com"), "bio": .string("systems engineer")], entity: "contact", uuid: "c-1")
-        try await store.write(["email": .string("bob@icloud.com"), "bio": .string("designer")], entity: "contact", uuid: "c-2")
-
-        #expect(try await store.query("contact").filter("email", .endsWith, "gmail.com").take(100).map(\.uuid) == ["c-1"])
-        #expect(try await store.query("contact").filter("bio", .contains, "engineer").take(100).map(\.uuid) == ["c-1"])
-
-        let filter = EntityStore.Filter(field: "email", op: .endsWith, value: .string("gmail.com"))
-        let (server, _) = try store.split([filter], entity: "contact", using: definition)
-        #expect(server.contains { $0.op == .beginsWith && $0.value == .string("moc.liamg") })
-    }
-
     @Test("The schema builder assigns slots in declaration order")
     func slotAllocation() async throws {
         let definition = try await registry.definition(for: "purchase")
@@ -364,14 +336,6 @@ struct BuilderTests {
 
         let excluded = try sides(store.query("shipment").exclude("carrier", .in, .strings(["ups", "dhl"])), using: shipment)
         #expect(excluded.server.contains(ServerFilter(field: "s_00", op: .notIn, value: .strings(["ups", "dhl"]))))
-    }
-
-    @Test("A malformed regex filter throws instead of matching nothing")
-    func malformedPatternFilter() async throws {
-        await #expect(throws: SchemaError.invalidValue("product_id")) {
-            _ = try await store.query("purchase").filter("product_id", .matches, "(").take(100)
-        }
-        #expect(try await store.query("purchase").filter("product_id", .matches, "sku-[0-9]").count() == 3)
     }
 
     @Test("A compound alternative requires all of its filters at once")

@@ -12,7 +12,6 @@ extension EntityStore {
         case equals, notEquals
         case greaterThan, greaterThanOrEquals, lessThan, lessThanOrEquals
         case `in`, notIn, beginsWith, contains, search
-        case endsWith, like, matches
         case isNull, isNotNull
 
         var serverOperator: ServerFilter.Operator? {
@@ -39,7 +38,7 @@ extension EntityStore {
                 .contains
             case .search:
                 .search
-            case .endsWith, .like, .matches, .isNull, .isNotNull:
+            case .isNull, .isNotNull:
                 nil
             }
         }

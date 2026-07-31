@@ -176,13 +176,13 @@ struct EntityCoderTests {
             fields: [
                 FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
                 FieldDefinition(
-                    name: "name_ngrams", type: .stringList, storage: .slot(.stringList, "ls_00"),
-                    derived: Derivation(source: "name_folded", transform: .ngrams)),
+                    name: "name_lower", type: .string, storage: .slot(.string, "s_02"),
+                    derived: Derivation(source: "name_folded", transform: .lowercase)),
                 FieldDefinition(name: "name_folded", type: .string, storage: .slot(.string, "s_01"), derived: Derivation(source: "name", transform: .fold)),
             ])
-        let resolved = try coder.resolve(["name": .string("Café")], at: 2, using: definition)
+        let resolved = try coder.resolve(["name": .string("CAFÉ")], at: 2, using: definition)
         #expect(resolved["name_folded"] == .string("cafe"))
-        #expect(resolved["name_ngrams"] == .strings(["caf", "afe"]))
+        #expect(resolved["name_lower"] == .string("cafe"))
     }
 
     @Test("allowed constrains every element of a string list")

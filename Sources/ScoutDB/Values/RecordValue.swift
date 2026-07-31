@@ -49,7 +49,7 @@ public enum RecordValue: Hashable, Sendable {
     /// The uuid of another record, stored as a CloudKit reference.
     case reference(String)
 
-    /// A list of strings; also what an `ngrams` derivation produces.
+    /// A list of strings.
     case strings([String])
 
     /// A list of whole numbers.
