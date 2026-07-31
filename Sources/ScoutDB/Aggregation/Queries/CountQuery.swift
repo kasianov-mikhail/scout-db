@@ -18,14 +18,6 @@ struct CountQuery {
     var numericGTE: Double?
     var numericLT: Double?
 
-    var serverGroup: String? {
-        groupKeys?.count == 1 ? groupKeys?.first : nil
-    }
-
-    func covers(_ key: String) -> Bool {
-        groupKeys?.contains(key) ?? true
-    }
-
     init?(_ filters: [EntityStore.Filter], envelopeDate: String?) {
         for filter in filters {
             guard !filter.negated, filter.radius == nil else {

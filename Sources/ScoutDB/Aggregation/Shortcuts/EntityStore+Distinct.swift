@@ -8,8 +8,29 @@
 import Foundation
 
 extension EntityStore {
-    private func griddedDistinct(of field: String, entity: String, filters: [Filter]) async throws -> [RecordValue]? {
+    func distinct(entity: String, field: String, filters: [Filter] = []) async throws -> [RecordValue] {
+        if let grid = try await grid(of: field, entity: entity, filters: filters) {
+            return grid
+        }
+
+        var seen: Set<String> = []
+        var values: [RecordValue] = []
+
+        for record in try await read(entity: entity, filters: filters, fields: [field]) {
+            guard let value = record.values[field] else {
+                continue
+            }
+            if seen.insert(value.canonical).inserted {
+                values.append(value)
+            }
+        }
+
+        return values
+    }
+
+    private func grid(of field: String, entity: String, filters: [Filter]) async throws -> [RecordValue]? {
         let definition = try await registry.definition(for: entity)
+
         guard let target = definition.field(named: field, at: definition.version) else {
             return nil
         }
@@ -19,27 +40,10 @@ extension EntityStore {
         guard let parse = target.type.canonicalParser else {
             return nil
         }
-        guard let folded = try await viewFold(of: nil, by: field, entity: entity, filters: filters) else {
+        guard let folded = try await fold(of: nil, by: field, entity: entity, filters: filters) else {
             return nil
         }
+
         return folded.keys.sorted().compactMap(parse)
-    }
-
-    func distinct(entity: String, field: String, filters: [Filter] = []) async throws -> [RecordValue] {
-        if let gridded = try await griddedDistinct(of: field, entity: entity, filters: filters) {
-            return gridded
-        }
-
-        var seen: Set<String> = []
-        var values: [RecordValue] = []
-        for record in try await read(entity: entity, filters: filters, fields: [field]) {
-            guard let value = record.values[field] else {
-                continue
-            }
-            if seen.insert(value.canonical).inserted {
-                values.append(value)
-            }
-        }
-        return values
     }
 }

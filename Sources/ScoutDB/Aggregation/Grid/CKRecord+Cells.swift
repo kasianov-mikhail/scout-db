@@ -16,9 +16,17 @@ extension CKRecord {
     private static let countCells = (0..<cellCount).map { String(format: "c_%02d", $0) }
     private static let valueCells = (0..<cellCount).map { String(format: "f_%02d", $0) }
 
-    static func countCell(_ index: Int) -> String { countCells[index] }
-    static func valueCell(_ index: Int) -> String { valueCells[index] }
-    static func squareCell(_ index: Int) -> String { valueCells[index + squareOffset] }
+    static func countCell(_ index: Int) -> String {
+        countCells[index]
+    }
+
+    static func valueCell(_ index: Int) -> String {
+        valueCells[index]
+    }
+
+    static func squareCell(_ index: Int) -> String {
+        valueCells[index + squareOffset]
+    }
 
     func count(at index: Int) -> Int64 {
         self[Self.countCell(index)] as? Int64 ?? 0

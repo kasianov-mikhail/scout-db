@@ -104,13 +104,13 @@ extension FoldQuery {
         guard try await store.alwaysPresent(group, entity: entity) else {
             return nil
         }
-        guard let folded = try await store.viewFold(of: nil, by: group, entity: entity, any: branches) else {
+        guard let folded = try await store.fold(of: nil, by: group, entity: entity, any: branches) else {
             return nil
         }
         return folded.mapValues(\.count)
     }
 
-    private func gridCells(fold: Fold, field: String, group: String? = nil) async throws -> [String: EntityStore.GridFold]? {
+    private func gridCells(fold: Fold, field: String, group: String? = nil) async throws -> [String: GridFold]? {
         guard creator == nil else {
             return nil
         }
@@ -122,7 +122,7 @@ extension FoldQuery {
             return nil
         }
 
-        return try await store.viewFold(
+        return try await store.fold(
             of: field,
             folding: fold.metric,
             by: group,
