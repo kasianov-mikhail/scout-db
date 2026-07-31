@@ -8,17 +8,17 @@
 import Foundation
 
 extension EntityStore {
-    func extremum(in cell: GridCell, using definition: EntityDefinition) async throws -> Double? {
-        guard let metric = cell.view.metric, metric.kind != .sum else {
+    func extremum(in view: AggregateView, group: String, using definition: EntityDefinition) async throws -> Double? {
+        guard let metric = view.metric, metric.kind != .sum else {
             return nil
         }
         var filters: [Filter] = []
 
-        if let groupBy = cell.view.groupBy {
+        if let groupBy = view.groupBy {
             guard let field = definition.field(named: groupBy, at: definition.version) else {
                 return nil
             }
-            guard let parse = field.type.canonicalParser, let value = parse(cell.group) else {
+            guard let parse = field.type.canonicalParser, let value = parse(group) else {
                 return nil
             }
 
