@@ -8,7 +8,6 @@
 import CloudKit
 import CoreLocation
 import Foundation
-import ScoutDB
 
 package enum PredicateEvaluator {
     package static func evaluate(_ predicate: NSPredicate, record: CKRecord) -> Bool? {
