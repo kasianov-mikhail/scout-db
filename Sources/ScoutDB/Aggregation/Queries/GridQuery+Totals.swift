@@ -19,7 +19,7 @@ extension GridQuery {
         let kind = declared.metric?.kind
         let isStats = declared.stats != nil
 
-        let records = try await store.gridRecords(
+        let records = try await store.grid(
             entity: entity,
             view: view,
             group: group,
