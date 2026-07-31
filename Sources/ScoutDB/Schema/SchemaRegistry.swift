@@ -113,7 +113,7 @@ public actor SchemaRegistry {
     }
 
     private func latest(of entries: [SchemaDescriptorEntry]) throws -> EntityDefinition? {
-        guard let entry = entries.max(by: { $0.version < $1.version }) else {
+        guard let entry = entries.max() else {
             return nil
         }
         let definition = try JSONDecoder().decode(EntityDefinition.self, from: entry.definition)
@@ -145,5 +145,11 @@ struct SchemaDescriptorEntry {
         self.entity = entity
         self.version = Int(version)
         self.definition = definition
+    }
+}
+
+extension SchemaDescriptorEntry: Comparable {
+    static func < (lhs: Self, rhs: Self) -> Bool {
+        lhs.version < rhs.version
     }
 }

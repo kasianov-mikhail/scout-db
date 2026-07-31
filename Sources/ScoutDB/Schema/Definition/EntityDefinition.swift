@@ -89,7 +89,7 @@ struct EntityDefinition: Codable, Equatable, Sendable {
         if let bucket {
             return candidates.first { ($0.bucket ?? .hour) == bucket }
         }
-        return candidates.min { $0.resolution < $1.resolution }
+        return candidates.min { ($0.bucket ?? .hour) < ($1.bucket ?? .hour) }
     }
 
     var claimedKeys: [[String]] {
@@ -218,21 +218,6 @@ struct EntityDefinition: Codable, Equatable, Sendable {
                     throw SchemaError.invalidDefinition("View '\(view.name)' cannot combine a histogram with a time bucket")
                 }
             }
-        }
-    }
-}
-
-extension AggregateView {
-    fileprivate var resolution: Int {
-        switch bucket ?? .hour {
-        case .hour:
-            0
-        case .day:
-            1
-        case .weekday:
-            2
-        case .lifetime:
-            3
         }
     }
 }

@@ -162,3 +162,22 @@ public enum AggregateBucket: String, Codable, Sendable {
         }
     }
 }
+
+extension AggregateBucket: Comparable {
+    public static func < (lhs: Self, rhs: Self) -> Bool {
+        lhs.resolution < rhs.resolution
+    }
+
+    private var resolution: Int {
+        switch self {
+        case .hour:
+            0
+        case .day:
+            1
+        case .weekday:
+            2
+        case .lifetime:
+            3
+        }
+    }
+}

@@ -16,11 +16,23 @@ struct AggregateRow: Equatable, Sendable {
     var squares: Double?
 }
 
+extension AggregateRow: Comparable {
+    static func < (lhs: Self, rhs: Self) -> Bool {
+        (lhs.period, lhs.group) < (rhs.period, rhs.group)
+    }
+}
+
 public struct AggregateSeriesPoint: Equatable, Sendable {
     public let group: String
     public let date: Date
     public let count: Int
     public let value: Double?
+}
+
+extension AggregateSeriesPoint: Comparable {
+    public static func < (lhs: Self, rhs: Self) -> Bool {
+        (lhs.date, lhs.group) < (rhs.date, rhs.group)
+    }
 }
 
 /// A per-group metric total paired with its sum of squares, from which the mean
@@ -48,6 +60,12 @@ public struct AggregateTotal: Equatable, Sendable {
 
     public var standardDeviation: Double? {
         variance.map(sqrt)
+    }
+}
+
+extension AggregateTotal: Comparable {
+    public static func < (lhs: Self, rhs: Self) -> Bool {
+        lhs.group < rhs.group
     }
 }
 
@@ -133,7 +151,7 @@ struct GridQuery {
                 squares: EntityStore.combined(merged.squares, shard.squares, nil)
             )
         }
-        .sorted { ($0.period, $0.group) < ($1.period, $1.group) }
+        .sorted()
     }
 
     func series() async throws -> [AggregateSeriesPoint] {
@@ -192,7 +210,7 @@ struct GridQuery {
                 value: EntityStore.combined(merged.value, shard.value, kind)
             )
         }
-        .sorted { ($0.date, $0.group) < ($1.date, $1.group) }
+        .sorted()
     }
 
     func totals(having: (AggregateTotal) -> Bool = { _ in true }) async throws -> [AggregateTotal] {
@@ -221,7 +239,7 @@ struct GridQuery {
                 squares: squares
             )
         }
-        .filter(having).sorted { $0.group < $1.group }
+        .filter(having).sorted()
     }
 
     func percentile(_ p: Double) async throws -> Double? {

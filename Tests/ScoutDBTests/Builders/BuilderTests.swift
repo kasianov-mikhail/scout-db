@@ -510,7 +510,8 @@ struct BuilderTests {
     func fieldPage() async throws {
         let first = try await store.query("purchase").sort("quantity").page(size: 2)
         #expect(first.records.map(\.uuid) == ["p-1", "p-2"])
-        let second = try await store.query("purchase").sort("quantity").page(size: 2, after: try #require(first.cursor))
+        let firstCursor = try #require(first.cursor)
+        let second = try await store.query("purchase").sort("quantity").page(size: 2, after: firstCursor)
         #expect(second.records.map(\.uuid) == ["p-0"])
         #expect(second.cursor == nil)
 
@@ -521,7 +522,8 @@ struct BuilderTests {
         }
         let top = try await grouped().page(size: 1)
         #expect(top.records.map(\.uuid) == ["p-0"])
-        let rest = try await grouped().page(size: 1, after: try #require(top.cursor))
+        let topCursor = try #require(top.cursor)
+        let rest = try await grouped().page(size: 1, after: topCursor)
         #expect(rest.records.map(\.uuid) == ["p-1"])
 
         await #expect(throws: SchemaError.self) {
