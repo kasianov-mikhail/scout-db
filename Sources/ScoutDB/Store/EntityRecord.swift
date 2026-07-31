@@ -41,7 +41,7 @@ public struct EntityRecord: Codable, Equatable, Sendable {
 
     /// Reads or writes the named field as the Swift type in play, `nil` when
     /// the field is absent or holds something else.
-    public subscript<T: RecordValueConvertible>(name: String) -> T? {
+    public subscript<T: RecordValue.Convertible>(name: String) -> T? {
         get { values[name].flatMap(T.init(recordValue:)) }
         set { values[name] = newValue?.recordValue }
     }
