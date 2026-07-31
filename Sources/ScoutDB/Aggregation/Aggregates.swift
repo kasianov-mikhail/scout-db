@@ -289,7 +289,7 @@ extension EntityStore {
         }
     }
 
-    fileprivate static func combined(_ lhs: Double?, _ rhs: Double?, _ kind: AggregateView.Metric?) -> Double? {
+    fileprivate static func combined(_ lhs: Double?, _ rhs: Double?, _ kind: Metric?) -> Double? {
         guard let lhs else {
             return rhs
         }
@@ -460,7 +460,7 @@ extension EntityStore {
         var value: Double?
     }
 
-    func viewFold(of field: String?, folding kind: AggregateView.Metric = .sum, by group: String?, entity: String, filters: [Filter])
+    func viewFold(of field: String?, folding kind: Metric = .sum, by group: String?, entity: String, filters: [Filter])
         async throws -> [String: GridFold]?
     {
         try await viewFold(
@@ -472,7 +472,7 @@ extension EntityStore {
         )
     }
 
-    func viewFold(of field: String?, folding kind: AggregateView.Metric = .sum, by group: String?, entity: String, any branches: [[Filter]])
+    func viewFold(of field: String?, folding kind: Metric = .sum, by group: String?, entity: String, any branches: [[Filter]])
         async throws -> [String: GridFold]?
     {
         let definition = try await registry.definition(for: entity)
@@ -508,7 +508,7 @@ extension EntityStore {
     }
 
     private func gridFold(
-        _ query: CountQuery, of field: String?, folding kind: AggregateView.Metric = .sum, by group: String?, entity: String,
+        _ query: CountQuery, of field: String?, folding kind: Metric = .sum, by group: String?, entity: String,
         in definition: EntityDefinition
     ) async throws -> [String: GridFold]? {
         guard group == nil || query.groupField == nil || query.groupField == group else {
@@ -675,7 +675,7 @@ extension EntityStore {
     }
 
     private static func foldPlan(
-        for query: CountQuery, in definition: EntityDefinition, folding metric: (kind: AggregateView.Metric, field: String)?, grouping group: String?
+        for query: CountQuery, in definition: EntityDefinition, folding metric: (kind: Metric, field: String)?, grouping group: String?
     ) -> AggregateView? {
         let ranged = query.from != nil || query.to != nil
         for view in definition.views ?? [] where view.histogram == nil && query.matchesGrouping(of: view) {

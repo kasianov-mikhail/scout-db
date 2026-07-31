@@ -144,9 +144,9 @@ struct GridAggregator {
 
     private struct CellDelta {
         var count: Int64 = 0
-        var value: (kind: AggregateView.Metric, total: Double)?
+        var value: (kind: Metric, total: Double)?
         var squares: Double?
-        var removed: (kind: AggregateView.Metric, total: Double)?
+        var removed: (kind: Metric, total: Double)?
 
         func isNoop(recomputing: Bool) -> Bool {
             guard count == 0, (squares ?? 0) == 0 else {

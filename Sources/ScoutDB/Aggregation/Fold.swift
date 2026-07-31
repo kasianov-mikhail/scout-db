@@ -13,7 +13,7 @@ enum Fold: String, Sendable {
     case max
     case average
 
-    var metric: AggregateView.Metric {
+    var metric: Metric {
         switch self {
         case .sum, .average:
             .sum
