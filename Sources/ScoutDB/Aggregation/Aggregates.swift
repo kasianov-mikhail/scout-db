@@ -8,17 +8,29 @@
 import CloudKit
 import Foundation
 
-/// A metric total paired with its sum of squares, from which the mean and spread
-/// derive.
-///
-/// Grid rows and their per-group totals both expose it.
-public protocol AggregateStatistics {
-    var count: Int { get }
-    var value: Double? { get }
-    var squares: Double? { get }
+struct AggregateRow: Equatable, Sendable {
+    let group: String
+    let period: Date
+    let count: Int
+    let value: Double?
+    var squares: Double?
 }
 
-extension AggregateStatistics {
+public struct AggregateSeriesPoint: Equatable, Sendable {
+    public let group: String
+    public let date: Date
+    public let count: Int
+    public let value: Double?
+}
+
+/// A per-group metric total paired with its sum of squares, from which the mean
+/// and spread derive.
+public struct AggregateTotal: Equatable, Sendable {
+    public let group: String
+    public let count: Int
+    public let value: Double?
+    public var squares: Double?
+
     public var average: Double? {
         guard let value, count > 0 else {
             return nil
@@ -37,28 +49,6 @@ extension AggregateStatistics {
     public var standardDeviation: Double? {
         variance.map(sqrt)
     }
-}
-
-struct AggregateRow: AggregateStatistics, Equatable, Sendable {
-    let group: String
-    let period: Date
-    let count: Int
-    let value: Double?
-    var squares: Double?
-}
-
-public struct AggregateSeriesPoint: Equatable, Sendable {
-    public let group: String
-    public let date: Date
-    public let count: Int
-    public let value: Double?
-}
-
-public struct AggregateTotal: AggregateStatistics, Equatable, Sendable {
-    public let group: String
-    public let count: Int
-    public let value: Double?
-    public var squares: Double?
 }
 
 struct GridQuery {
