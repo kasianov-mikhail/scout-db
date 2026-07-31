@@ -12,11 +12,11 @@ extension EntityStore {
     func viewCount(entity: String, any branches: [[Filter]]) async throws -> Int? {
         let definition = try await registry.definition(for: entity)
 
-        guard definition.views?.isEmpty == false, let parsed = CountQuery(any: branches, envelopeDate: definition.envelopeDate) else {
+        guard definition.views?.isEmpty == false, var query = CountQuery(any: branches, envelopeDate: definition.envelopeDate) else {
             return nil
         }
 
-        let query = parsed.keyed(in: definition) ?? parsed
+        query.key(in: definition)
 
         if query.numericField != nil {
             guard query.from == nil, query.to == nil, let (view, cells) = query.histogramPlan(in: definition) else {
@@ -70,11 +70,11 @@ extension EntityStore {
     {
         let definition = try await registry.definition(for: entity)
 
-        guard definition.views?.isEmpty == false, let parsed = CountQuery(any: branches, envelopeDate: definition.envelopeDate) else {
+        guard definition.views?.isEmpty == false, var query = CountQuery(any: branches, envelopeDate: definition.envelopeDate) else {
             return nil
         }
 
-        let query = parsed.keyed(in: definition) ?? parsed
+        query.key(in: definition)
 
         guard query.numericField == nil else {
             return nil
@@ -150,7 +150,7 @@ extension EntityStore {
     }
 
     func gridRecords(
-        entity: String, view: String, group: String? = nil, from: Date? = nil, to: Date? = nil, counts: Range<Int>, values: Range<Int>? = nil
+        entity: String, view: String, group: String?, from: Date? = nil, to: Date? = nil, counts: Range<Int>, values: Range<Int>? = nil
     ) async throws -> [CKRecord] {
         var filters = [
             ServerFilter(field: "entity", op: .equals, value: .string(entity)),

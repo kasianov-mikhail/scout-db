@@ -57,12 +57,12 @@ extension GridQuery {
             }
         }
 
-        return Self.merging(points, sharding: { "\($0.date.millisecondsSince1970)|\($0.group)" }) { merged, shard in
+        return merging(points, sharding: { "\($0.date.millisecondsSince1970)|\($0.group)" }) { merged, shard in
             AggregateSeriesPoint(
                 group: merged.group,
                 date: merged.date,
                 count: merged.count + shard.count,
-                value: Self.combined(merged.value, shard.value, kind)
+                value: combined(merged.value, shard.value, kind)
             )
         }
         .sorted()

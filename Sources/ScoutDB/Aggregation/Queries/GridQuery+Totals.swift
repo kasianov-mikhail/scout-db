@@ -21,10 +21,10 @@ extension GridQuery {
                 $0 + $1.count
             }
             let value = rows.reduce(Double?.none) {
-                Self.combined($0, $1.value, kind)
+                combined($0, $1.value, kind)
             }
             let squares = rows.reduce(Double?.none) {
-                Self.combined($0, $1.squares, nil)
+                combined($0, $1.squares, nil)
             }
 
             return AggregateTotal(

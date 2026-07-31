@@ -23,20 +23,20 @@ struct GridQuery {
         self.from = from
         self.to = to
     }
+}
 
-    static func merging<Row>(_ rows: [Row], sharding key: (Row) -> String, _ combine: (Row, Row) -> Row) -> [Row] {
-        Dictionary(grouping: rows, by: key).values.map { shards in
-            shards.dropFirst().reduce(shards[0], combine)
-        }
+func merging<Row>(_ rows: [Row], sharding key: (Row) -> String, _ combine: (Row, Row) -> Row) -> [Row] {
+    Dictionary(grouping: rows, by: key).values.map { shards in
+        shards.dropFirst().reduce(shards[0], combine)
     }
+}
 
-    static func combined(_ lhs: Double?, _ rhs: Double?, _ kind: Metric?) -> Double? {
-        guard let lhs else {
-            return rhs
-        }
-        guard let rhs else {
-            return lhs
-        }
-        return kind?.combine(lhs, rhs) ?? lhs + rhs
+func combined(_ lhs: Double?, _ rhs: Double?, _ kind: Metric?) -> Double? {
+    guard let lhs else {
+        return rhs
     }
+    guard let rhs else {
+        return lhs
+    }
+    return kind?.combine(lhs, rhs) ?? lhs + rhs
 }

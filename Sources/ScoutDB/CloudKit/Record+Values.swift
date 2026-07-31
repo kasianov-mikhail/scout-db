@@ -15,7 +15,7 @@ extension CKRecord {
     }
 
     func setScoutValue(_ value: RecordValue?, forKey key: String) {
-        self[key] = value?.ckValue
+        self[key] = value?.nativeValue
     }
 }
 
@@ -60,7 +60,7 @@ extension RecordValue {
         }
     }
 
-    fileprivate var ckValue: any CKRecordValueProtocol {
+    fileprivate var nativeValue: any CKRecordValueProtocol {
         switch self {
         case .string(let value):
             value

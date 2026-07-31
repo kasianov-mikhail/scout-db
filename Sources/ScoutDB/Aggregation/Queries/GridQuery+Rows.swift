@@ -65,13 +65,13 @@ extension GridQuery {
             )
         }
 
-        return Self.merging(rows, sharding: { "\($0.period.millisecondsSince1970)|\($0.group)" }) { merged, shard in
+        return merging(rows, sharding: { "\($0.period.millisecondsSince1970)|\($0.group)" }) { merged, shard in
             AggregateRow(
                 group: merged.group,
                 period: merged.period,
                 count: merged.count + shard.count,
-                value: Self.combined(merged.value, shard.value, kind),
-                squares: Self.combined(merged.squares, shard.squares, nil)
+                value: combined(merged.value, shard.value, kind),
+                squares: combined(merged.squares, shard.squares, nil)
             )
         }
         .sorted()
