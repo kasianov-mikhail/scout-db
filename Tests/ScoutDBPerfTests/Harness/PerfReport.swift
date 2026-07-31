@@ -26,7 +26,6 @@ enum PerfReport {
         Column(title: "save", width: 5) { "\($0.requests[.save])" },
         Column(title: "modify", width: 7) { "\($0.requests[.modify])" },
         Column(title: "cas", width: 5) { "\($0.requests[.conditionalSave])" },
-        Column(title: "other", width: 6) { "\(other(of: $0.requests))" },
         Column(title: "total", width: 6) { "\($0.requests.total)" },
         Column(title: "req/op", width: 7) { number($0.perOperation) },
         Column(title: "sql", width: 5) { "\($0.sql)" },
@@ -337,10 +336,6 @@ enum PerfReport {
         return String(
             format: "%d scenarios · %d requests · %d SQL statements · %.1f× overall · %d failed calls · %d broken scenarios",
             results.count, requests, statements, overhead, errors, failed)
-    }
-
-    private static func other(of tally: RequestTally) -> Int {
-        tally[.subscriptionSave] + tally[.subscriptionDelete] + tally[.subscriptionList]
     }
 
     private static func width<Row>(of columns: [Column<Row>]) -> Int {

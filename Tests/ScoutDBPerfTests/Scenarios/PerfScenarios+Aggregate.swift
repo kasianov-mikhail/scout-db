@@ -21,12 +21,6 @@ extension PerfScenarios {
             PerfScenario("Aggregation", "totals(peak)", sql: 1, writes: false) { world, _ in
                 _ = try await GridQuery(world.store, entity: PerfSchema.order, view: "peak").totals()
             },
-            PerfScenario("Aggregation", "distinct(product)", sql: 1, writes: false) { world, _ in
-                _ = try await world.store.distinct(entity: PerfSchema.order, field: "product")
-            },
-            PerfScenario("Aggregation", "distinct(country) of customers", sql: 1, writes: false) { world, _ in
-                _ = try await world.store.distinct(entity: PerfSchema.customer, field: "country")
-            },
             PerfScenario("Aggregation", "lifetime totals by country", sql: 1, writes: false) { world, _ in
                 _ = try await GridQuery(world.store, entity: PerfSchema.customer, view: "by_country").totals()
             },

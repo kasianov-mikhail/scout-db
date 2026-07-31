@@ -12,7 +12,6 @@ struct FoldQuery {
     let entity: String
 
     var branches: [[EntityStore.Filter]]
-    var creator: String?
 
     func value(fold: Fold, field: String) async throws -> Double? {
         let definition = try await store.registry.definition(for: entity)
@@ -29,8 +28,7 @@ struct FoldQuery {
         let records = try await store.read(
             entity: entity,
             any: branches,
-            fields: [field],
-            createdBy: creator
+            fields: [field]
         )
         let scalars = records.compactMap { $0.values[field]?.scalar }
 
@@ -52,8 +50,7 @@ struct FoldQuery {
         let records = try await store.read(
             entity: entity,
             any: branches,
-            fields: [field, group],
-            createdBy: creator
+            fields: [field, group]
         )
 
         var buckets: [String: [Double]] = [:]
@@ -81,8 +78,7 @@ struct FoldQuery {
         let records = try await store.read(
             entity: entity,
             any: branches,
-            fields: [group],
-            createdBy: creator
+            fields: [group]
         )
 
         var counts: [String: Int] = [:]
@@ -98,9 +94,6 @@ struct FoldQuery {
 
 extension FoldQuery {
     private func gridCounts(group: String) async throws -> [String: Int]? {
-        guard creator == nil else {
-            return nil
-        }
         guard try await store.alwaysPresent(group, entity: entity) else {
             return nil
         }
@@ -111,10 +104,6 @@ extension FoldQuery {
     }
 
     private func gridCells(fold: Fold, field: String, group: String? = nil) async throws -> [String: GridFold]? {
-        guard creator == nil else {
-            return nil
-        }
-
         if fold == .average, try await store.alwaysPresent(field, entity: entity) == false {
             return nil
         }

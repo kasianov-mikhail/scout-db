@@ -85,8 +85,7 @@ public func && (lhs: FilterExpression, rhs: FilterExpression) -> FilterExpressio
 /// normally costs one request per alternative. Two equalities over the same
 /// field are folded into a single `in` filter instead, and folding is pairwise
 /// along the chain, so `"a" == 1 || "a" == 2 || "a" == 3` ends as one filter
-/// rather than three alternatives. A negated filter or one carrying a `radius`
-/// never folds.
+/// rather than three alternatives. A negated filter never folds.
 ///
 /// ```swift
 /// try await store.query("log")
@@ -121,7 +120,7 @@ extension FilterExpression {
 
 extension EntityStore.Filter {
     fileprivate var values: [RecordValue] {
-        guard !negated, radius == nil else {
+        guard !negated else {
             return []
         }
         switch op {

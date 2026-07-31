@@ -6,7 +6,6 @@
 // https://opensource.org/licenses/MIT.
 
 import CloudKit
-import CoreLocation
 import Foundation
 import ScoutDB
 
@@ -97,15 +96,7 @@ extension [CKRecord] {
                     continue
                 }
 
-                let order: ComparisonResult
-
-                if let location = descriptor as? CKLocationSortDescriptor {
-                    let near = (lhs[key] as? CLLocation)?.distance(from: location.relativeLocation) ?? .greatestFiniteMagnitude
-                    let far = (rhs[key] as? CLLocation)?.distance(from: location.relativeLocation) ?? .greatestFiniteMagnitude
-                    order = PredicateEvaluator.compare(near as NSNumber, far as NSNumber)
-                } else {
-                    order = PredicateEvaluator.compare(lhs[key], rhs[key])
-                }
+                let order = PredicateEvaluator.compare(lhs[key], rhs[key])
 
                 guard order != .orderedSame else {
                     continue

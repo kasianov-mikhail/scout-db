@@ -101,26 +101,6 @@ extension CKDatabase: CloudDatabase {
         }
     }
 
-    public func save(subscription: CKSubscription) async throws {
-        try await throttled { database in
-            let results = try await database.modifySubscriptions(
-                saving: [subscription],
-                deleting: []
-            )
-            _ = try results.saveResults[subscription.subscriptionID]?.get()
-        }
-    }
-
-    public func deleteSubscription(id: CKSubscription.ID) async throws {
-        try await throttled { database in
-            let results = try await database.modifySubscriptions(
-                saving: [],
-                deleting: [id]
-            )
-            _ = try results.deleteResults[id]?.get()
-        }
-    }
-
     public func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
         try await throttled { database in
             do {
@@ -147,20 +127,6 @@ extension CKDatabase: CloudDatabase {
                     return try result.get()
                 } catch let error as CKError where error.code == .unknownItem {
                     return nil
-                }
-            }
-        }
-    }
-
-    public func subscriptions() async throws -> [CKSubscription] {
-        try await throttled { database in
-            try await withCheckedThrowingContinuation { continuation in
-                database.fetchAllSubscriptions { subscriptions, error in
-                    if let error {
-                        continuation.resume(throwing: error)
-                    } else {
-                        continuation.resume(returning: subscriptions ?? [])
-                    }
                 }
             }
         }

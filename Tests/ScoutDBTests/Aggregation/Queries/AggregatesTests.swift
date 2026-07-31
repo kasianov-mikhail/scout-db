@@ -168,42 +168,8 @@ struct AggregatesTests {
         #expect(totals.first?.value == 2)
     }
 
-    @Test("An exact min view recomputes the cell the removed extremum left")
-    func deleteRecomputesExactMin() async throws {
-        try await publishPayment(views: [AggregateView(name: "low", min: "amount", exact: true)])
-        try await store.write(["product": .string("app"), "amount": .double(2), "date": .date(noon)], entity: "payment", uuid: "p1")
-        try await store.write(["product": .string("app"), "amount": .double(8), "date": .date(noon)], entity: "payment", uuid: "p2")
-        try await store.write(["product": .string("app"), "amount": .double(5), "date": .date(noon)], entity: "payment", uuid: "p3")
-
-        try await store.delete(entity: "payment", uuid: "p1")
-        var totals = try await GridQuery(store, entity: "payment", view: "low").totals()
-        #expect(totals.first?.count == 2)
-        #expect(totals.first?.value == 5)
-
-        try await store.delete(entity: "payment", uuid: "p2")
-        totals = try await GridQuery(store, entity: "payment", view: "low").totals()
-        #expect(totals.first?.count == 1)
-        #expect(totals.first?.value == 5)
-
-        try await store.delete(entity: "payment", uuid: "p3")
-        #expect(try await GridQuery(store, entity: "payment", view: "low").totals().isEmpty)
-    }
-
-    @Test("An exact min view recomputes when an update lifts a record off the extremum")
-    func updateRecomputesExactMin() async throws {
-        try await publishPayment(views: [AggregateView(name: "low", min: "amount", exact: true)])
-        try await store.write(["product": .string("app"), "amount": .double(2), "date": .date(noon)], entity: "payment", uuid: "p1")
-        try await store.write(["product": .string("app"), "amount": .double(8), "date": .date(noon)], entity: "payment", uuid: "p2")
-
-        try await store.update(entity: "payment", uuid: "p1") { $0.values["amount"] = .double(6) }
-
-        let totals = try await GridQuery(store, entity: "payment", view: "low").totals()
-        #expect(totals.first?.count == 2)
-        #expect(totals.first?.value == 6)
-    }
-
-    @Test("An inexact min view keeps the extremum an update lifted a record off")
-    func updateKeepsInexactMin() async throws {
+    @Test("A min view keeps the extremum an update lifted a record off")
+    func updateKeepsMinExtremum() async throws {
         try await publishPayment(views: [AggregateView(name: "low", min: "amount")])
         try await store.write(["product": .string("app"), "amount": .double(2), "date": .date(noon)], entity: "payment", uuid: "p1")
         try await store.write(["product": .string("app"), "amount": .double(8), "date": .date(noon)], entity: "payment", uuid: "p2")
@@ -213,47 +179,6 @@ struct AggregatesTests {
         let totals = try await GridQuery(store, entity: "payment", view: "low").totals()
         #expect(totals.first?.count == 2)
         #expect(totals.first?.value == 2)
-    }
-
-    @Test("An exact max view narrows its recompute to the removal's own group")
-    func exactMaxNarrowsToItsCell() async throws {
-        try await publishPayment(views: [AggregateView(name: "peak", groupBy: "product", max: "amount", exact: true)])
-        try await store.write(["product": .string("app"), "amount": .double(9), "date": .date(noon)], entity: "payment", uuid: "a1")
-        try await store.write(["product": .string("app"), "amount": .double(4), "date": .date(noon)], entity: "payment", uuid: "a2")
-        try await store.write(["product": .string("book"), "amount": .double(20), "date": .date(noon)], entity: "payment", uuid: "b1")
-
-        try await store.delete(entity: "payment", uuid: "a1")
-
-        let totals = try await GridQuery(store, entity: "payment", view: "peak").totals()
-        #expect(totals.first { $0.group == "app" }?.value == 4)
-        #expect(totals.first { $0.group == "book" }?.value == 20)
-    }
-
-    @Test("A view left inexact keeps the extremum it saw, and an invalid exact view is rejected")
-    func exactViewRules() async throws {
-        try await publishPayment(views: [AggregateView(name: "low", min: "amount")])
-        try await store.write(["product": .string("app"), "amount": .double(2), "date": .date(noon)], entity: "payment", uuid: "p1")
-        try await store.write(["product": .string("app"), "amount": .double(8), "date": .date(noon)], entity: "payment", uuid: "p2")
-        try await store.delete(entity: "payment", uuid: "p1")
-        #expect(try await GridQuery(store, entity: "payment", view: "low").totals().first?.value == 2)
-
-        let sharded = makeDefinition(
-            entity: "e", fields: [FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"))],
-            views: [AggregateView(name: "x", max: "amount", shards: 4, exact: true)])
-        #expect(throws: SchemaError.self) { try sharded.validate() }
-
-        let summed = makeDefinition(
-            entity: "e", fields: [FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"))],
-            views: [AggregateView(name: "x", sum: "amount", exact: true)])
-        #expect(throws: SchemaError.self) { try summed.validate() }
-
-        let payloadGrouped = makeDefinition(
-            entity: "e",
-            fields: [
-                FieldDefinition(name: "kind", type: .string, storage: .payload),
-                FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
-            ], views: [AggregateView(name: "x", groupBy: "kind", max: "amount", exact: true)])
-        #expect(throws: SchemaError.self) { try payloadGrouped.validate() }
     }
 
     @Test("MIN view keeps the smallest value")
@@ -298,79 +223,6 @@ struct AggregatesTests {
         #expect(totals.first?.value == 6)
     }
 
-    @Test("DISTINCT returns unique values")
-    func distinct() async throws {
-        try await publishPayment(views: [])
-        try await writePayments([1], product: "app")
-        try await writePayments([2], product: "bundle")
-        try await writePayments([3], product: "app")
-
-        let products = try await store.distinct(entity: "payment", field: "product")
-        #expect(Set(products.map(\.canonical)) == ["app", "bundle"])
-        #expect(products.count == 2)
-    }
-
-    @Test("DISTINCT reads a covering view's grid instead of scanning")
-    func distinctThroughLifetimeView() async throws {
-        try await registry.publish(
-            makeDefinition(
-                entity: "sale",
-                fields: [
-                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00"), required: true),
-                    FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
-                ], views: [AggregateView(name: "by_product", groupBy: "product")]))
-        try await store.write(["product": .string("app"), "amount": .double(10)], entity: "sale")
-        try await store.write(["product": .string("app"), "amount": .double(5)], entity: "sale")
-        try await store.write(["product": .string("book"), "amount": .double(2)], entity: "sale", uuid: "s-book")
-
-        let grid = try #require(database.records.first { $0.recordType == "Aggregate" && $0["group_key"] as? String == "book" })
-        grid["group_key"] = "pen"
-        #expect(try await store.distinct(entity: "sale", field: "product").map(\.canonical) == ["app", "pen"])
-        #expect(
-            try await store.distinct(entity: "sale", field: "product", filters: [EntityStore.Filter(field: "product", op: .equals, value: .string("app"))]).map(
-                \.canonical) == ["app"])
-
-        grid["group_key"] = "book"
-        try await store.delete(entity: "sale", uuid: "s-book")
-        #expect(try await store.distinct(entity: "sale", field: "product").map(\.canonical) == ["app"])
-
-        #expect(
-            Set(
-                try await store.distinct(entity: "sale", field: "product", filters: [EntityStore.Filter(field: "amount", op: .greaterThan, value: .double(1))])
-                    .map(\.canonical)) == ["app"])
-    }
-
-    @Test("A grid-served DISTINCT rebuilds typed values from group keys")
-    func distinctRebuildsTypedValues() async throws {
-        try await registry.publish(
-            makeDefinition(
-                entity: "reading",
-                fields: [
-                    FieldDefinition(name: "level", type: .int, storage: .slot(.int, "i_00"), required: true)
-                ], views: [AggregateView(name: "by_level", groupBy: "level")]))
-        try await store.write(["level": .int(5)], entity: "reading")
-        try await store.write(["level": .int(12)], entity: "reading")
-        try await store.write(["level": .int(5)], entity: "reading")
-
-        let levels = try await store.distinct(entity: "reading", field: "level")
-        #expect(levels.count == 2)
-        #expect(levels.contains(.int(5)) && levels.contains(.int(12)))
-    }
-
-    @Test("DISTINCT of an optional field scans even under a covering view")
-    func distinctOptionalFieldScans() async throws {
-        try await registry.publish(
-            makeDefinition(
-                entity: "device",
-                fields: [
-                    FieldDefinition(name: "model", type: .string, storage: .slot(.string, "s_00"))
-                ], views: [AggregateView(name: "by_model", groupBy: "model")]))
-        try await store.write(["model": .string("mk1")], entity: "device")
-        try await store.write([:], entity: "device")
-
-        #expect(try await store.distinct(entity: "device", field: "model") == [.string("mk1")])
-    }
-
     @Test("A single-group aggregate read narrows to that group's rows")
     func aggregateOneGroup() async throws {
         try await publishPayment(views: [AggregateView(name: "revenue", groupBy: "product", sum: "amount")])
@@ -381,19 +233,6 @@ struct AggregatesTests {
         #expect(totals.map(\.group) == ["book"])
         #expect(totals.first?.value == 2)
         #expect(try await GridQuery(store, entity: "payment", view: "revenue", group: "app").totals().map(\.value) == [15])
-    }
-
-    @Test("Stats views expose variance and standard deviation")
-    func stats() async throws {
-        try await publishPayment(views: [AggregateView(name: "spread", stats: "amount")])
-        try await writePayments([2, 4, 4, 4, 5, 5, 7, 9])
-
-        let totals = try await GridQuery(store, entity: "payment", view: "spread").totals()
-        let total = try #require(totals.first)
-        #expect(total.count == 8)
-        #expect(total.average == 5)
-        #expect(total.variance == 4)
-        #expect(total.standardDeviation == 2)
     }
 
     @Test("A view with two metrics is rejected")
@@ -613,8 +452,8 @@ struct AggregatesTests {
         #expect(try await store.query("ledger").max("amount") == 10)
     }
 
-    @Test("An extremum reads an exact view's grid, while an inexact one scans")
-    func extremumThroughExactView() async throws {
+    @Test("An extremum reads its view's grid instead of scanning")
+    func extremumThroughView() async throws {
         try await registry.publish(
             makeDefinition(
                 entity: "reading",
@@ -623,24 +462,26 @@ struct AggregatesTests {
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"), required: true),
                 ],
                 views: [
-                    AggregateView(name: "peak", groupBy: "product", max: "amount", exact: true),
+                    AggregateView(name: "peak", groupBy: "product", max: "amount"),
                     AggregateView(name: "trough", groupBy: "product", min: "amount"),
                 ]))
         for (product, amount) in [("app", 10.0), ("app", 6.0), ("book", 4.0)] {
             try await store.write(["product": .string(product), "amount": .double(amount)], entity: "reading")
         }
 
-        let grid = try #require(
-            database.records.first {
-                $0.recordType == "Aggregate" && $0["view"] as? String == "peak" && $0["group_key"] as? String == "book"
-            })
-        grid["f_00"] = 41.0
+        for view in ["peak", "trough"] {
+            let grid = try #require(
+                database.records.first {
+                    $0.recordType == "Aggregate" && $0["view"] as? String == view && $0["group_key"] as? String == "book"
+                })
+            grid["f_00"] = view == "peak" ? 41.0 : 1.0
+        }
 
         #expect(try await store.query("reading").max("amount") == 41)
         #expect(try await store.query("reading").filter("product", .equals, "book").max("amount") == 41)
         #expect(try await store.query("reading").max("amount", by: "product") == ["app": 10, "book": 41])
 
-        #expect(try await store.query("reading").min("amount") == 4)
+        #expect(try await store.query("reading").min("amount") == 1)
     }
 
     @Test("Grouped folds and count(by:) read the grouping view's grid")
@@ -699,12 +540,10 @@ struct AggregatesTests {
         _ = try await reader.query("ledger").sum("amount")
         keys = try #require(watched.grid.last?.keys)
         #expect(keys.contains(CKRecord.valueCell))
-        #expect(keys.contains(CKRecord.squareCell) == false)
 
         _ = try await GridQuery(reader, entity: "ledger", view: "by_product").totals()
         keys = try #require(watched.grid.last?.keys)
         #expect(Set(keys).isSuperset(of: ["group_key", CKRecord.countCell, CKRecord.valueCell]))
-        #expect(keys.contains(CKRecord.squareCell) == false)
     }
 
     @Test("A fold with no covering view scans")
@@ -763,18 +602,6 @@ private final class GridQueries: CloudDatabase, @unchecked Sendable {
 
     func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
         try await backing.saveIfUnchanged(records)
-    }
-
-    func save(subscription: CKSubscription) async throws {
-        try await backing.save(subscription: subscription)
-    }
-
-    func deleteSubscription(id: CKSubscription.ID) async throws {
-        try await backing.deleteSubscription(id: id)
-    }
-
-    func subscriptions() async throws -> [CKSubscription] {
-        try await backing.subscriptions()
     }
 
     func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {

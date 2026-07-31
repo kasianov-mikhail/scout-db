@@ -93,7 +93,7 @@ struct EntitySchemaTests {
     func loadedSchemas() async throws {
         let reader = SchemaRegistry(database: database)
         #expect(await reader.schemas().isEmpty)
-        try await reader.preload()
+        try await reader.loadAll()
         #expect(await reader.schemas().map(\.entity) == ["purchase"])
     }
 }

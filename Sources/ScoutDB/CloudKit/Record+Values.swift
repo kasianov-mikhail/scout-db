@@ -32,11 +32,6 @@ extension RecordValue {
             self = .location(latitude: value.coordinate.latitude, longitude: value.coordinate.longitude)
         case let value as CKRecord.Reference:
             self = .reference(value.recordID.recordName)
-        case let value as CKAsset:
-            guard let url = value.fileURL else {
-                return nil
-            }
-            self = .asset(url)
         case let value as [String]:
             self = .strings(value)
         case let value as [Date]:
@@ -49,8 +44,6 @@ extension RecordValue {
             }
         case let value as [CLLocation]:
             self = .locations(value.map { GeoPoint(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude) })
-        case let value as [CKAsset]:
-            self = .assets(value.compactMap(\.fileURL))
         case let value as NSNumber where CFNumberIsFloatType(value):
             self = .double(value.doubleValue)
         case let value as NSNumber:
@@ -82,14 +75,10 @@ extension RecordValue {
             value
         case .locations(let value):
             value.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
-        case .assets(let value):
-            value.map { CKAsset(fileURL: $0) }
         case .location(let latitude, let longitude):
             CLLocation(latitude: latitude, longitude: longitude)
         case .reference(let value):
             CKRecord.Reference(recordID: CKRecord.ID(recordName: value), action: .none)
-        case .asset(let value):
-            CKAsset(fileURL: value)
         }
     }
 
@@ -115,14 +104,10 @@ extension RecordValue {
             value as NSArray
         case .locations(let value):
             value.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) } as NSArray
-        case .assets(let value):
-            value.map { CKAsset(fileURL: $0) } as NSArray
         case .location(let latitude, let longitude):
             CLLocation(latitude: latitude, longitude: longitude)
         case .reference(let value):
             CKRecord.Reference(recordID: CKRecord.ID(recordName: value), action: .none)
-        case .asset(let value):
-            value as NSURL
         }
     }
 }

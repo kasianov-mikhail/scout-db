@@ -35,7 +35,7 @@ extension EntityStore {
         let stored = Dictionary(fetched.map { ($0.recordID.recordName, $0) }, uniquingKeysWith: { first, _ in first })
 
         var pending = try targets.map { uuid -> EntityCoder.Rewrite in
-            guard let record = stored[uuid], !Self.isTombstone(record) else {
+            guard let record = stored[uuid] else {
                 throw SchemaError.notFound(uuid)
             }
             return try coder.rewrite(record, using: definition, transform: transform)
@@ -53,7 +53,6 @@ extension EntityStore {
             let conflicts = try await save(pending.map(\.record))
             let losers = Dictionary(conflicts.map { ($0.recordID, $0) }, uniquingKeysWith: { first, _ in first })
             applied += pending.filter { losers[$0.record.recordID] == nil }
-            EntityCoder.abandonStagedAssets(in: pending.filter { losers[$0.record.recordID] != nil }.map(\.record))
             attempt += 1
             guard attempt < maxRetry else {
                 unresolved = conflicts.first
@@ -67,7 +66,6 @@ extension EntityStore {
             }
         }
 
-        EntityCoder.discardStagedAssets(in: applied.map(\.record))
         try await settle(rewritten: applied, owning: owned, using: definition)
         if let unresolved {
             throw RecordConflictError(serverRecord: unresolved)
@@ -75,7 +73,7 @@ extension EntityStore {
     }
 
     @discardableResult func updateAll(
-        entity: String, any branches: [[Filter]], maxRetry: Int = 3, createdBy creator: String? = nil, transform: (inout EntityRecord) throws -> Void
+        entity: String, any branches: [[Filter]], maxRetry: Int = 3, transform: (inout EntityRecord) throws -> Void
     ) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         let coder = EntityCoder(keyProvider: keyProvider)
@@ -85,7 +83,7 @@ extension EntityStore {
         var unresolved: CKRecord?
 
         for branch in branches where unresolved == nil {
-            let (query, included) = try liveQuery(branch, entity: entity, createdBy: creator, using: definition)
+            let (query, included) = try liveQuery(branch, entity: entity, using: definition)
             try await database.forEachPage(matching: query) { page in
                 guard unresolved == nil else {
                     return
@@ -184,15 +182,12 @@ extension EntityStore {
         let served = try coder.decode(winner, using: definition)
         let mine = Self.changedFields(from: rewrite.previous, to: rewrite.next)
         let theirs = Self.changedFields(from: rewrite.previous, to: served)
-        if rewrite.previous.deleted == rewrite.next.deleted, Set(mine.keys).isDisjoint(with: theirs.keys) {
+        if Set(mine.keys).isDisjoint(with: theirs.keys) {
             return try coder.rewrite(winner, using: definition) { record in
                 for (field, value) in mine {
                     record.values[field] = value
                 }
             }
-        }
-        guard !Self.isTombstone(winner) else {
-            throw SchemaError.notFound(rewrite.previous.uuid)
         }
         return try coder.rewrite(winner, using: definition, transform: transform)
     }
@@ -203,9 +198,5 @@ extension EntityStore {
             changes.updateValue(next.values[field], forKey: field)
         }
         return changes
-    }
-
-    private static func isTombstone(_ record: CKRecord) -> Bool {
-        (record["deleted"] as? Int64 ?? 0) > 0
     }
 }

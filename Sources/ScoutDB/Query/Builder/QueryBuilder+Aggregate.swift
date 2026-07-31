@@ -10,10 +10,10 @@ import Foundation
 extension QueryBuilder {
     /// Runs the query and returns the number of matching records.
     ///
-    /// A query a declared aggregate covers — no creator scope, and filters
-    /// limited to an equality, `in` list, or alternatives of them on the
-    /// aggregate's grouping — is answered from the grid without scanning
-    /// records. A threshold on an integer field an aggregate groups by is
+    /// A query a declared aggregate covers — filters limited to an equality,
+    /// `in` list, or alternatives of them on the aggregate's grouping — is
+    /// answered from the grid without scanning records. A threshold on an
+    /// integer field an aggregate groups by is
     /// answered from the grid too when the field's `min` and `max` bound it to
     /// a domain the range can name value by value; a strict threshold counts as
     /// the half-open one it equals, so `> 15` reads as `>= 16`. Every other
@@ -27,7 +27,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func count() async throws -> Int {
-        if creator == nil, let counted = try await store.count(entity: entity, any: alternatives) {
+        if let counted = try await store.count(entity: entity, any: alternatives) {
             return Swift.min(counted, ceiling ?? Int.max)
         }
         return try await store.read(
@@ -35,8 +35,7 @@ extension QueryBuilder {
             any: alternatives,
             sort: sorts,
             fields: [],
-            limit: ceiling,
-            createdBy: creator
+            limit: ceiling
         )
         .count
     }
@@ -57,8 +56,7 @@ extension QueryBuilder {
         try await FoldQuery(
             store: store,
             entity: entity,
-            branches: alternatives,
-            creator: creator
+            branches: alternatives
         )
         .value(fold: .sum, field: field) ?? 0
     }
@@ -79,8 +77,7 @@ extension QueryBuilder {
         try await FoldQuery(
             store: store,
             entity: entity,
-            branches: alternatives,
-            creator: creator
+            branches: alternatives
         )
         .value(fold: .min, field: field)
     }
@@ -101,8 +98,7 @@ extension QueryBuilder {
         try await FoldQuery(
             store: store,
             entity: entity,
-            branches: alternatives,
-            creator: creator
+            branches: alternatives
         )
         .value(fold: .max, field: field)
     }
@@ -123,8 +119,7 @@ extension QueryBuilder {
         try await FoldQuery(
             store: store,
             entity: entity,
-            branches: alternatives,
-            creator: creator
+            branches: alternatives
         )
         .value(fold: .average, field: field)
     }
@@ -146,8 +141,7 @@ extension QueryBuilder {
         try await FoldQuery(
             store: store,
             entity: entity,
-            branches: alternatives,
-            creator: creator
+            branches: alternatives
         )
         .values(fold: .sum, field: field, group: group)
     }
@@ -167,8 +161,7 @@ extension QueryBuilder {
         try await FoldQuery(
             store: store,
             entity: entity,
-            branches: alternatives,
-            creator: creator
+            branches: alternatives
         )
         .values(fold: .min, field: field, group: group)
     }
@@ -188,8 +181,7 @@ extension QueryBuilder {
         try await FoldQuery(
             store: store,
             entity: entity,
-            branches: alternatives,
-            creator: creator
+            branches: alternatives
         )
         .values(fold: .max, field: field, group: group)
     }
@@ -208,8 +200,7 @@ extension QueryBuilder {
         try await FoldQuery(
             store: store,
             entity: entity,
-            branches: alternatives,
-            creator: creator
+            branches: alternatives
         )
         .values(fold: .average, field: field, group: group)
     }
@@ -230,39 +221,16 @@ extension QueryBuilder {
         try await FoldQuery(
             store: store,
             entity: entity,
-            branches: alternatives,
-            creator: creator
+            branches: alternatives
         )
         .counts(group: group)
     }
 
-    /// The distinct values a field takes across the matching records.
-    ///
-    /// A grid counting by the field answers the query shapes ``count()``
-    /// covers — one row per live value, without reading records — as long as
-    /// the field is required or defaulted. Every other shape scans, fetching
-    /// only that field.
-    ///
-    /// ```swift
-    /// let products = try await store.query("purchase").distinct("product_id")
-    /// ```
-    ///
-    public func distinct(_ field: String) async throws -> [RecordValue] {
-        guard let branch = flat else {
-            throw SchemaError.invalidDefinition("Distinct values are read off the grid and cannot honor a disjunction")
-        }
-        return try await store.distinct(
-            entity: entity,
-            field: field,
-            filters: branch
-        )
-    }
-
     /// One total per group, folded across every record the grid counts.
     ///
-    /// One row per group: the count, the metric's value, and the `average`,
-    /// `variance` and `standardDeviation` derived from them. Without a `field`
-    /// the rows count alone. The only clause a grid read can honor is an
+    /// One row per group: the count, the metric's value, and the `average`
+    /// derived from them. Without a `field` the rows count alone. The only
+    /// clause a grid read can honor is an
     /// equality filter on the grouping field, which narrows it to that group
     /// server-side; any other filter throws rather than being quietly dropped.
     ///

@@ -23,9 +23,7 @@ public struct QueryBuilder: Sendable {
 
     var alternatives: [[EntityStore.Filter]] = [[]]
     var sorts: [EntityStore.Sort] = []
-    var projection: [String]?
     var ceiling: Int?
-    var creator: String?
 
     init(entity: String, store: EntityStore) {
         self.entity = entity

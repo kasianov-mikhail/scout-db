@@ -26,16 +26,15 @@ extension QueryBuilder {
         try await store.updateAll(
             entity: entity,
             any: alternatives,
-            createdBy: creator,
             transform: transform
         )
     }
 
-    /// Tombstones every matching record, and returns how many were deleted.
+    /// Deletes every matching record, and returns how many were removed.
     ///
-    /// A delete is a tombstone: the record leaves every query but its row stays
-    /// behind, so a later write to the same uuid sees it. The sweep pages
-    /// through the query the way ``update(_:)`` does.
+    /// The record leaves the database outright, releasing the unique keys it
+    /// claimed and the grid cells it counted into. The sweep pages through the
+    /// query the way ``update(_:)`` does.
     ///
     /// ```swift
     /// let dropped = try await store.query("purchase")
@@ -46,8 +45,7 @@ extension QueryBuilder {
     @discardableResult public func delete() async throws -> Int {
         try await store.deleteAll(
             entity: entity,
-            any: alternatives,
-            createdBy: creator
+            any: alternatives
         )
     }
 }

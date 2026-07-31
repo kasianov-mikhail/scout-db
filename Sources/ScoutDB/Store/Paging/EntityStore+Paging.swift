@@ -9,8 +9,8 @@ import Foundation
 
 extension EntityStore {
     func read(
-        entity: String, any branches: [[Filter]] = [[]], fields: [String]? = nil, orderedBy field: String, descending: Bool = false, limit: Int,
-        after cursor: FieldCursor? = nil, createdBy creator: String? = nil
+        entity: String, any branches: [[Filter]] = [[]], orderedBy field: String, descending: Bool = false, limit: Int,
+        after cursor: FieldCursor? = nil
     ) async throws -> FieldPage {
         let definition = try await registry.definition(for: entity)
 
@@ -30,12 +30,10 @@ extension EntityStore {
                     try await self.fieldPage(
                         entity: entity,
                         filters: branch,
-                        fields: fields,
                         field: field,
                         descending: descending,
                         cursor: cursor,
                         limit: limit,
-                        createdBy: creator,
                         using: definition
                     )
                 }
@@ -59,8 +57,7 @@ extension EntityStore {
     }
 
     private func fieldPage(
-        entity: String, filters: [Filter], fields: [String]?, field: String, descending: Bool, cursor: FieldCursor?, limit: Int,
-        createdBy creator: String?, using definition: EntityDefinition
+        entity: String, filters: [Filter], field: String, descending: Bool, cursor: FieldCursor?, limit: Int, using definition: EntityDefinition
     ) async throws -> [EntityRecord] {
         var pageFilters = filters
 
@@ -84,20 +81,12 @@ extension EntityStore {
             pageFilters,
             entity: entity,
             sort: sort,
-            createdBy: creator,
             using: definition
         )
 
-        let keys = try fields.map {
-            try desiredKeys(
-                $0 + pageFilters.map(\.field) + [field],
-                using: definition
-            )
-        }
-
         let collected = try await boundedRecords(
             matching: query,
-            desiredKeys: keys,
+            desiredKeys: nil,
             limit: limit,
             using: definition
         ) { record in

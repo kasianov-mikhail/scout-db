@@ -32,9 +32,7 @@ extension QueryBuilder {
     /// Narrows the query with a filter spelled out field by field.
     ///
     /// The same clause as ``filter(_:)`` for the matches the operators do not
-    /// spell — `beginsWith`, `contains`, `in`, `search`. A radius match has its
-    /// own clause, ``filter(_:near:within:)``, since a radius means nothing to
-    /// any of these.
+    /// spell — `beginsWith`, `contains`, `in`, `search`.
     ///
     /// ```swift
     /// try await store.query("place")
@@ -45,31 +43,6 @@ extension QueryBuilder {
     ///
     public func filter(_ field: String, _ method: EntityStore.Match, _ value: RecordValue) -> Self {
         let filter = EntityStore.Filter(field: field, op: method, value: value)
-        var builder = self
-        builder.alternatives = alternatives.map { $0 + [filter] }
-        return builder
-    }
-
-    /// Narrows the query to the records whose location field lies within the
-    /// radius of a point, in metres.
-    ///
-    /// The bound holds server-side, so the query costs what it returns rather
-    /// than the entity. Pair it with ``nearest(_:latitude:longitude:)`` to get
-    /// those records closest-first.
-    ///
-    /// ```swift
-    /// try await store.query("place")
-    ///     .filter("location", near: GeoPoint(latitude: 52.5, longitude: 13.4), within: 500)
-    ///     .take(20)
-    /// ```
-    ///
-    public func filter(_ field: String, near point: GeoPoint, within radius: Double) -> Self {
-        let filter = EntityStore.Filter(
-            field: field,
-            op: .near,
-            value: .location(latitude: point.latitude, longitude: point.longitude),
-            radius: radius
-        )
         var builder = self
         builder.alternatives = alternatives.map { $0 + [filter] }
         return builder
@@ -86,8 +59,8 @@ extension QueryBuilder {
     /// A comparison, equality or `in` over an always-present slot field —
     /// `.required`, or carrying a `.defaultValue` — is sent to the server as its
     /// complementary operator; every other negation is evaluated client-side
-    /// after decoding, so a record missing the field is kept. `near` and
-    /// `search` cannot be negated.
+    /// after decoding, so a record missing the field is kept. `search` cannot
+    /// be negated.
     ///
     /// ```swift
     /// try await store.query("purchase")

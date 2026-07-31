@@ -5,6 +5,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
 import Foundation
 
 extension EntityStore {
@@ -125,7 +126,7 @@ extension EntityStore {
             return
         }
 
-        try await registry.preload()
+        try await registry.loadAll()
         try await cascadeDelete(entity: entity, uuids: [uuid])
     }
 
@@ -174,7 +175,7 @@ extension EntityStore {
             guard let victims = probed[index], victims.count > 0 else {
                 continue
             }
-            try await tombstone(victims, using: target.child)
+            try await remove(victims, using: target.child)
         }
     }
 
@@ -191,17 +192,8 @@ extension EntityStore {
         .sorted { $0.uuid < $1.uuid }
     }
 
-    private func tombstone(_ victims: [EntityRecord], using child: EntityDefinition) async throws {
-        let tombstones = try victims.map {
-            try tombstone(
-                entity: child.entity,
-                uuid: $0.uuid,
-                definition: child,
-                values: $0.values
-            )
-        }
-
-        try await database.write(records: tombstones)
+    private func remove(_ victims: [EntityRecord], using child: EntityDefinition) async throws {
+        try await database.delete(records: victims.map { CKRecord.ID(recordName: $0.uuid) })
 
         try await settle(
             removed: victims,

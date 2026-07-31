@@ -172,21 +172,6 @@ struct StoreContractTests {
         }
     }
 
-    @Test("DISTINCT returns each stored value once")
-    func distinctValues() async throws {
-        try await withContract { f in
-            let entity = try await f.publishOrder()
-            for (index, product) in ["a", "b", "a"].enumerated() {
-                try await f.store.write(orderValues(product: product), entity: entity, uuid: "dv-\(index)")
-            }
-            try await eventually { try await f.store.read(entity: entity).count == 3 }
-
-            let products = try await f.store.distinct(entity: entity, field: "product")
-            let names = products.compactMap { if case .string(let name) = $0 { name } else { nil } }
-            #expect(names.sorted() == ["a", "b"])
-        }
-    }
-
     @Test("Folds aggregate matching records")
     func foldSum() async throws {
         try await withContract { f in

@@ -11,10 +11,10 @@ extension SchemaBuilder {
     /// Publishes version 1 of the entity, over a grid it builds itself.
     ///
     /// Every groupable field — a scalar string, reference, int or double in a
-    /// slot — gets a view counting its values. So `count`, `count(by:)` and
-    /// `distinct` are answered from the grid without anyone declaring
-    /// anything; ``sum(_:by:shards:)`` and its siblings remain for the shapes
-    /// nobody can guess, like a metric over a field.
+    /// slot — gets a view counting its values. So `count` and `count(by:)` are
+    /// answered from the grid without anyone declaring anything;
+    /// ``sum(_:by:shards:)`` and its siblings remain for the shapes nobody can
+    /// guess, like a metric over a field.
     ///
     /// The grid costs the writes it saves the reads: an entity carrying one
     /// reads its records before it rewrites them and rewrites its cells after,

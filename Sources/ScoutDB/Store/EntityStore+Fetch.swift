@@ -11,7 +11,7 @@ extension EntityStore {
     public func fetch(entity: String, uuids: [String]) async throws -> [EntityRecord] {
         let definition = try await registry.definition(for: entity)
         let records = try await items(entity: entity, uuids: uuids)
-        return try decode(records, using: definition).filter { !$0.deleted }.sorted { $0.uuid < $1.uuid }
+        return try decode(records, using: definition).sorted { $0.uuid < $1.uuid }
     }
 
     /// Fetches a single record by its identifier, resolving the entity from the record itself.
@@ -29,8 +29,7 @@ extension EntityStore {
             return nil
         }
         let definition = try await registry.definition(for: entity)
-        let decoded = try decode([record], using: definition)
-        return decoded.first { !$0.deleted }
+        return try decode([record], using: definition).first
     }
 
     func items(entity: String, uuids: [String]) async throws -> [CKRecord] {

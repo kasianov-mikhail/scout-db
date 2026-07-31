@@ -16,7 +16,6 @@ import Foundation
 public struct RequestTally: Sendable {
     public enum Kind: String, Sendable {
         case query, continuation, save, modify, conditionalSave
-        case subscriptionSave, subscriptionDelete, subscriptionList
         case fetch
     }
 

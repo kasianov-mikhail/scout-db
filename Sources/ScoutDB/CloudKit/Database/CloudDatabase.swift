@@ -24,9 +24,6 @@ public protocol CloudDatabase: Sendable {
     func save(_ record: CKRecord) async throws -> CKRecord
     func modifyRecords(saving: [CKRecord], deleting: [CKRecord.ID]) async throws
     func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)]
-    func save(subscription: CKSubscription) async throws
-    func deleteSubscription(id: CKSubscription.ID) async throws
-    func subscriptions() async throws -> [CKSubscription]
     func fetchRecord(id: CKRecord.ID) async throws -> CKRecord?
     func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord]
 }

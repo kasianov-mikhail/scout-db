@@ -17,14 +17,12 @@ extension GridQuery {
         }
 
         let kind = declared.metric?.kind
-        let isStats = declared.stats != nil
 
         let records = try await store.gridRecords(
             entity: entity,
             view: view,
             group: group,
-            values: kind != nil,
-            squares: isStats
+            values: kind != nil
         )
 
         var totals: [String: AggregateTotal] = [:]
@@ -36,9 +34,8 @@ extension GridQuery {
 
             let count = Int(record.cellCount)
             let value = kind == nil ? nil : record.cellValue
-            let squares = isStats ? record.cellSquare : nil
 
-            guard count != 0 || value != nil || squares != nil else {
+            guard count != 0 || value != nil else {
                 continue
             }
 
@@ -47,8 +44,7 @@ extension GridQuery {
             totals[key] = AggregateTotal(
                 group: key,
                 count: (merged?.count ?? 0) + count,
-                value: combined(merged?.value, value, kind),
-                squares: combined(merged?.squares, squares, nil)
+                value: combined(merged?.value, value, kind)
             )
         }
 

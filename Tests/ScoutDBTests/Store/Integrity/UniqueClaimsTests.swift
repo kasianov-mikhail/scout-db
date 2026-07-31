@@ -187,7 +187,7 @@ struct UniqueClaimsTests {
         #expect(try await migrator.backfillClaims(entity: "badge") == 2)
     }
 
-    @Test("Releasing more claims than one batch holds splits the delete")
+    @Test("Deleting more records and claims than one batch holds splits the delete")
     func releaseChunksClaims() async throws {
         let backing = InMemoryDatabase()
         let probe = BatchProbe(backing: backing)
@@ -200,7 +200,7 @@ struct UniqueClaimsTests {
 
         #expect(try await store.deleteAll(entity: "badge", any: [[]]) == 401)
         #expect(probe.deleteBatches.allSatisfy { $0 <= 400 })
-        #expect(probe.deleteBatches.reduce(0, +) == 401)
+        #expect(probe.deleteBatches.reduce(0, +) == 802)
     }
 }
 
@@ -240,18 +240,6 @@ final class BatchProbe: CloudDatabase, @unchecked Sendable {
 
     func save(_ record: CKRecord) async throws -> CKRecord {
         try await backing.save(record)
-    }
-
-    func save(subscription: CKSubscription) async throws {
-        try await backing.save(subscription: subscription)
-    }
-
-    func deleteSubscription(id: CKSubscription.ID) async throws {
-        try await backing.deleteSubscription(id: id)
-    }
-
-    func subscriptions() async throws -> [CKSubscription] {
-        try await backing.subscriptions()
     }
 
     func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {

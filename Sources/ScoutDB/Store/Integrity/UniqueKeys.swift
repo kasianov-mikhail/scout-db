@@ -198,7 +198,7 @@ extension EntityStore {
             return [:]
         }
         let records = try decode(try await items(entity: definition.entity, uuids: uuids), using: definition)
-        return Dictionary(records.filter { !$0.deleted }.map { ($0.uuid, $0) }, uniquingKeysWith: { first, _ in first })
+        return Dictionary(records.map { ($0.uuid, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     private func claimRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {

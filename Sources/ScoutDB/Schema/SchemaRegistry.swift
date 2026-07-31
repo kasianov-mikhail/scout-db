@@ -50,13 +50,12 @@ public actor SchemaRegistry {
         EntitySchema(try await definition(for: entity))
     }
 
-    /// The schemas of every entity loaded so far, which `preload()` fills in
-    /// one query.
+    /// The schemas of every entity the registry has loaded so far.
     public func schemas() -> [EntitySchema] {
         definitions().map(EntitySchema.init)
     }
 
-    @discardableResult public func preload() async throws -> Int {
+    @discardableResult func loadAll() async throws -> Int {
         let query = CKQuery(
             recordType: SchemaDescriptorEntry.recordType,
             filters: [

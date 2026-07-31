@@ -33,9 +33,7 @@ extension QueryBuilder {
             entity: entity,
             any: alternatives,
             sort: sorts,
-            fields: projection,
-            limit: limit,
-            createdBy: creator
+            limit: limit
         )
     }
 
@@ -72,12 +70,10 @@ extension QueryBuilder {
         return try await store.read(
             entity: entity,
             any: alternatives,
-            fields: projection,
             orderedBy: sort.field,
             descending: !sort.ascending,
             limit: size,
-            after: cursor,
-            createdBy: creator
+            after: cursor
         )
     }
 }

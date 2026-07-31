@@ -18,7 +18,7 @@ struct CountQuery {
 
     init?(_ filters: [EntityStore.Filter]) {
         for filter in filters {
-            guard !filter.negated, filter.radius == nil else {
+            guard !filter.negated else {
                 return nil
             }
 

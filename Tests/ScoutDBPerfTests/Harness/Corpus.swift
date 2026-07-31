@@ -59,7 +59,7 @@ enum DatasetSize: String, CaseIterable, Sendable {
         }
     }
 
-    var tombstones: Int {
+    var deletions: Int {
         Swift.max(8, sessions / 20)
     }
 
@@ -118,7 +118,7 @@ enum CorpusBuilder {
         let sessions = try await writeSessions(size, customers: customers, store: store, generator: &generator)
 
         var deleted: [String] = []
-        for index in 0..<size.tombstones {
+        for index in 0..<size.deletions {
             let uuid = sessions[sessions.count - 1 - index]
             try await store.delete(entity: PerfSchema.session, uuid: uuid)
             deleted.append(uuid)

@@ -32,8 +32,7 @@ extension CKRecord {
         overrides.modificationDate = date
     }
 
-    /// Stamps the writer a `creatorUserRecordID` query — or a trusted-writer
-    /// check — reads.
+    /// Stamps the writer a trusted-writer check reads.
     public func overrideCreator(_ name: String) {
         overrides.creator = name
     }

@@ -38,7 +38,6 @@ enum PerfSchema {
                 FieldDefinition(name: "signup", type: .timestamp, storage: .slot(.timestamp, "t_00"), required: true),
                 FieldDefinition(name: "points", type: .double, storage: .slot(.double, "d_00")),
                 FieldDefinition(name: "tags", type: .stringList, storage: .slot(.stringList, "ls_00")),
-                FieldDefinition(name: "avatar", type: .asset, storage: .slot(.asset, "a_00")),
                 FieldDefinition(name: "bio", type: .text, storage: .payload),
             ], uniqueKeys: [["email"]],
             views: [AggregateView(name: "by_country", groupBy: "country")])
@@ -58,7 +57,7 @@ enum PerfSchema {
             ],
             views: [
                 AggregateView(name: "revenue", groupBy: "product", sum: "total"),
-                AggregateView(name: "peak", groupBy: "product", max: "total", exact: true),
+                AggregateView(name: "peak", groupBy: "product", max: "total"),
                 AggregateView(name: "by_status", groupBy: "status"),
                 AggregateView(name: "by_quantity", groupBy: "quantity"),
             ])

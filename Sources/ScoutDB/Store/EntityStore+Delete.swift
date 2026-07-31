@@ -5,20 +5,21 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
+
 extension EntityStore {
-    @discardableResult func deleteAll(entity: String, any branches: [[Filter]], createdBy creator: String? = nil) async throws -> Int {
+    @discardableResult func deleteAll(entity: String, any branches: [[Filter]]) async throws -> Int {
         let definition = try await registry.definition(for: entity)
         var seen: Set<String> = []
         var removed = 0
         for branch in branches {
-            let (query, included) = try liveQuery(branch, entity: entity, createdBy: creator, using: definition)
+            let (query, included) = try liveQuery(branch, entity: entity, using: definition)
             try await forEachPage(matching: query, using: definition) { page in
                 let victims = page.filter { included($0) && seen.insert($0.uuid).inserted }
                 guard victims.count > 0 else {
                     return
                 }
-                let tombstones = try victims.map { try tombstone(entity: entity, uuid: $0.uuid, definition: definition, values: $0.values) }
-                try await database.write(records: tombstones)
+                try await database.delete(records: victims.map { CKRecord.ID(recordName: $0.uuid) })
                 try await settle(removed: victims, using: definition)
                 removed += victims.count
             }

@@ -97,7 +97,6 @@ struct BuilderTests {
             .field("slug", .string, .required)
             .field("caption", .text)
             .field("aliases", .stringList)
-            .field("icon", .asset)
             .create()
 
         let views = try #require(try await registry.definition(for: "label").views)
@@ -334,12 +333,6 @@ struct BuilderTests {
         #expect(try await store.query("purchase").exclude("product_id", .contains, "ku-").count() == 0)
 
         #expect(try await store.query("purchase").exclude("comment", .equals, "gift").count() == 3)
-
-        await #expect(throws: SchemaError.invalidValue("product_id")) {
-            _ = try await store.query("purchase")
-                .exclude(FilterExpression(EntityStore.Filter(field: "product_id", op: .near, value: .location(latitude: 0, longitude: 0), radius: 10)))
-                .take(100)
-        }
     }
 
     @Test("Exclude runs on the server when the field cannot be missing")

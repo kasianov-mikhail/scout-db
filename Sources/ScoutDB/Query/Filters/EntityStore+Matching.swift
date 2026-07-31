@@ -5,14 +5,13 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-import CoreLocation
 import Foundation
 
 extension EntityStore {
     public enum Match: Equatable, Sendable {
         case equals, notEquals
         case greaterThan, greaterThanOrEquals, lessThan, lessThanOrEquals
-        case `in`, notIn, beginsWith, contains, near, search
+        case `in`, notIn, beginsWith, contains, search
         case endsWith, like, matches
         case isNull, isNotNull
 
@@ -38,8 +37,6 @@ extension EntityStore {
                 .beginsWith
             case .contains:
                 .contains
-            case .near:
-                .near
             case .search:
                 .search
             case .endsWith, .like, .matches, .isNull, .isNotNull:
@@ -75,7 +72,7 @@ extension EntityStore {
         guard let op = filter.op.complement?.serverOperator, field.alwaysPresent else {
             return nil
         }
-        guard case .slot(let pool, let slot) = field.storage, pool.isQueryable else {
+        guard case .slot(_, let slot) = field.storage else {
             return nil
         }
         return ServerFilter(field: slot, op: op, value: filter.value)
@@ -83,28 +80,13 @@ extension EntityStore {
 
     static func ordered(_ lhs: EntityRecord, _ rhs: EntityRecord, by sorts: [Sort]) -> Bool {
         for sort in sorts {
-            let order: ComparisonResult
-            if case .location(let latitude, let longitude)? = sort.origin {
-                order = rankDistance(lhs.values[sort.field], rhs.values[sort.field], from: CLLocation(latitude: latitude, longitude: longitude))
-            } else {
-                order = rank(lhs.values[sort.field], rhs.values[sort.field])
-            }
+            let order = rank(lhs.values[sort.field], rhs.values[sort.field])
             guard order != .orderedSame else {
                 continue
             }
             return sort.ascending ? order == .orderedAscending : order == .orderedDescending
         }
         return false
-    }
-
-    private static func rankDistance(_ lhs: RecordValue?, _ rhs: RecordValue?, from origin: CLLocation) -> ComparisonResult {
-        func distance(_ value: RecordValue?) -> Double {
-            guard case .location(let latitude, let longitude)? = value else {
-                return .greatestFiniteMagnitude
-            }
-            return CLLocation(latitude: latitude, longitude: longitude).distance(from: origin)
-        }
-        return order(distance(lhs), distance(rhs))
     }
 
     static func rank(_ lhs: RecordValue?, _ rhs: RecordValue?) -> ComparisonResult {
@@ -149,7 +131,7 @@ extension EntityStore {
                 throw SchemaError.unknownField(filter.field)
             }
             if filter.negated {
-                guard filter.op != .near, filter.op != .search else {
+                guard filter.op != .search else {
                     throw SchemaError.invalidValue(filter.field)
                 }
                 if let complement = Self.serverComplement(of: filter, in: field) {
@@ -189,17 +171,11 @@ extension EntityStore {
                 guard let op = filter.op.serverOperator else {
                     throw SchemaError.unknownField(filter.field)
                 }
-                guard case .slot(let pool, let slot) = field.storage else {
-                    guard filter.op != .near else {
-                        throw SchemaError.invalidValue(filter.field)
-                    }
+                guard case .slot(_, let slot) = field.storage else {
                     client.append(filter)
                     continue
                 }
-                guard pool.isQueryable else {
-                    throw SchemaError.invalidValue(filter.field)
-                }
-                server.append(ServerFilter(field: slot, op: op, value: filter.value, radius: filter.radius))
+                server.append(ServerFilter(field: slot, op: op, value: filter.value))
             }
         }
         return (server, client)
@@ -210,13 +186,10 @@ extension EntityStore {
             guard let field = definition.field(named: sort.field, at: definition.version), case .slot(let pool, let slot) = field.storage else {
                 throw SchemaError.unknownField(sort.field)
             }
-            if sort.origin != nil, field.type != .location {
+            guard pool.isSortable else {
                 throw SchemaError.invalidValue(sort.field)
             }
-            if sort.origin == nil, !pool.isSortable {
-                throw SchemaError.invalidValue(sort.field)
-            }
-            return ServerSort(field: slot, ascending: sort.ascending, origin: sort.origin)
+            return ServerSort(field: slot, ascending: sort.ascending)
         }
     }
 
@@ -288,8 +261,6 @@ extension EntityStore {
                 let tokens = Set(text.lowercased().split { !$0.isLetter && !$0.isNumber })
                 return needles.allSatisfy(tokens.contains)
             }
-        default:
-            return { _ in false }
         }
     }
 
