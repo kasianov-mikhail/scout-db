@@ -93,17 +93,13 @@ struct GridQuery {
             entity: entity,
             view: view,
             group: group,
-            from: EntityStore.gridStart(from, of: declared),
+            from: declared.gridStart(from: from),
             to: to,
             counts: cells,
             values: kind == nil ? nil : 0..<Aggregate.cellCount
         )
 
-        let covers = EntityStore.cellFilter(
-            declared,
-            from: from,
-            to: to
-        )
+        let covers = declared.cellFilter(from: from, to: to)
 
         let rows = records.compactMap { record -> AggregateRow? in
             guard let period = record["date"] as? Date, let group = record["group_key"] as? String else {
@@ -158,7 +154,7 @@ struct GridQuery {
         }
 
         let bucket = declared.bucket ?? .hour
-        let covers = EntityStore.cellFilter(declared, from: from, to: to)
+        let covers = declared.cellFilter(from: from, to: to)
         let isStats = declared.stats != nil
         let kind = declared.metric?.kind
         var points: [AggregateSeriesPoint] = []
@@ -168,7 +164,7 @@ struct GridQuery {
             entity: entity,
             view: view,
             group: group,
-            from: EntityStore.gridStart(from, of: declared),
+            from: declared.gridStart(from: from),
             to: to,
             counts: cells,
             values: kind == nil ? nil : cells
@@ -190,7 +186,7 @@ struct GridQuery {
                 points.append(
                     AggregateSeriesPoint(
                         group: group,
-                        date: EntityStore.cellDate(bucket, period: period, index: index),
+                        date: bucket.cellDate(period: period, index: index),
                         count: count,
                         value: value
                     )
@@ -251,7 +247,7 @@ struct GridQuery {
             entity: entity,
             view: view,
             group: group,
-            from: EntityStore.gridStart(from, of: declared),
+            from: declared.gridStart(from: from),
             to: to,
             counts: counts.indices
         )
@@ -309,66 +305,6 @@ extension EntityStore {
         return kind?.combine(lhs, rhs) ?? lhs + rhs
     }
 
-    fileprivate static func cellDate(_ bucket: AggregateBucket, period: Date, index: Int) -> Date {
-        switch bucket {
-        case .hour:
-            EntityCoder.calendar.date(byAdding: .hour, value: index, to: period) ?? period
-        case .weekday, .day:
-            EntityCoder.calendar.date(byAdding: .day, value: index, to: period) ?? period
-        case .lifetime:
-            period
-        }
-    }
-
-    fileprivate static func period(of bucket: AggregateBucket) -> Calendar.Component? {
-        switch bucket {
-        case .hour:
-            .day
-        case .weekday:
-            .weekOfYear
-        case .day:
-            .month
-        case .lifetime:
-            nil
-        }
-    }
-
-    fileprivate static func gridStart(_ from: Date?, of view: AggregateView) -> Date? {
-        guard let from else {
-            return nil
-        }
-        guard view.histogram == nil else {
-            return EntityCoder.periodStart(of: .day, for: from)
-        }
-        guard let period = period(of: view.bucket ?? .hour) else {
-            return from
-        }
-        return EntityCoder.periodStart(of: period, for: from)
-    }
-
-    fileprivate static func cellFilter(_ view: AggregateView, from: Date?, to: Date?) -> (Date, Int) -> Bool {
-        guard view.histogram == nil, from != nil || to != nil else {
-            return { _, _ in true }
-        }
-
-        return { period, index in
-            let date = cellDate(
-                view.bucket ?? .hour,
-                period: period,
-                index: index
-            )
-
-            if let from, date < from {
-                return false
-            }
-            if let to, date >= to {
-                return false
-            }
-
-            return true
-        }
-    }
-
     private func griddedDistinct(of field: String, entity: String, filters: [Filter]) async throws -> [RecordValue]? {
         let definition = try await registry.definition(for: entity)
         guard let target = definition.field(named: field, at: definition.version) else {
@@ -377,7 +313,7 @@ extension EntityStore {
         guard target.alwaysPresent, target.encrypted != true else {
             return nil
         }
-        guard let parse = Self.canonicalParser(of: target.type) else {
+        guard let parse = target.type.canonicalParser else {
             return nil
         }
         guard let folded = try await viewFold(of: nil, by: field, entity: entity, filters: filters) else {
@@ -402,28 +338,6 @@ extension EntityStore {
             }
         }
         return values
-    }
-
-    static func canonicalParser(of type: FieldType) -> ((String) -> RecordValue?)? {
-        switch type {
-        case .string, .text:
-            { .string($0) }
-        case .int:
-            { $0.hasPrefix("i") ? Int64($0.dropFirst()).map(RecordValue.int) : nil }
-        case .double:
-            { $0.hasPrefix("d") ? Double($0.dropFirst()).map(RecordValue.double) : nil }
-        case .timestamp:
-            { canonical in
-                guard canonical.hasPrefix("t"), let milliseconds = Int64(canonical.dropFirst()) else {
-                    return nil
-                }
-                return .date(Date(millisecondsSince1970: milliseconds))
-            }
-        case .reference:
-            { $0.hasPrefix("r") ? .reference(String($0.dropFirst())) : nil }
-        default:
-            nil
-        }
     }
 
     func viewCount(entity: String, any branches: [[Filter]]) async throws -> Int? {
@@ -528,14 +442,14 @@ extension EntityStore {
             return nil
         }
 
-        let covers = Self.cellFilter(view, from: query.from, to: query.to)
+        let covers = view.cellFilter(from: query.from, to: query.to)
         let cells = 0..<Aggregate.squareOffset
 
         let records = try await gridRecords(
             entity: entity,
             view: view.name,
             group: query.serverGroup,
-            from: Self.gridStart(query.from, of: view),
+            from: view.gridStart(from: query.from),
             to: query.to,
             counts: cells,
             values: field == nil ? nil : cells
@@ -610,7 +524,7 @@ extension EntityStore {
                     groupKeys = [value.canonical]
 
                 case (.in, let value):
-                    guard groupField == nil, let keys = Self.elementCanonicals(of: value) else {
+                    guard groupField == nil, let keys = value.elementCanonicals else {
                         return nil
                     }
                     groupField = filter.field
@@ -677,10 +591,6 @@ extension EntityStore {
 
         func matchesGrouping(of view: AggregateView) -> Bool {
             groupField == nil || groupField == view.groupBy
-        }
-
-        private static func elementCanonicals(of value: RecordValue) -> Set<String>? {
-            value.members.map { Set($0.map(\.canonical)) }
         }
     }
 
@@ -798,5 +708,11 @@ extension EntityStore {
         }
         let keys = ["date", "group_key"] + counts.map(Aggregate.countCell) + (values.map(Aggregate.valueKeys) ?? [])
         return try await database.allRecords(matching: CKQuery(recordType: Aggregate.recordType, filters: filters), desiredKeys: keys)
+    }
+}
+
+extension RecordValue {
+    fileprivate var elementCanonicals: Set<String>? {
+        members.map { Set($0.map(\.canonical)) }
     }
 }
