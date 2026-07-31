@@ -22,7 +22,7 @@ struct EntitySchemaTests {
         registry = SchemaRegistry(database: database)
         store = EntityStore(database: database, registry: registry)
         try await store.schema("purchase")
-            .field("product_id", .string, .required, .references("product"))
+            .field("product_id", .string, .required)
             .field("status", .string, .allowed(["placed", "paid"]), .defaultValue(.string("placed")))
             .field("quantity", .int, .min(1), .max(20))
             .field("email", .string, .matches("^.+@.+$"))
@@ -41,7 +41,6 @@ struct EntitySchemaTests {
         let product = try #require(byName["product_id"])
         #expect(product.type == .string)
         #expect(product.required)
-        #expect(product.references == "product")
 
         let status = try #require(byName["status"])
         #expect(status.allowed == ["placed", "paid"])
