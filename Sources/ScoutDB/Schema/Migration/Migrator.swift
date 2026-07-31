@@ -88,7 +88,7 @@ public struct Migrator: Sendable {
 
         try await database.forEachPage(
             matching: CKQuery(
-                recordType: Aggregate.recordType,
+                recordType: GridSlot.recordType,
                 filters: [
                     ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                     ServerFilter(field: "view", op: .equals, value: .string(viewName)),

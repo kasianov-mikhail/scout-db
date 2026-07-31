@@ -1130,7 +1130,7 @@ struct OperationsTests {
         #expect(try await store.read(entity: "note").isEmpty)
 
         let counts = database.records.filter { $0.recordType == "Aggregate" }
-            .flatMap { record in (0..<Aggregate.cellCount).map { record[Aggregate.countCell($0)] as? Int64 ?? 0 } }
+            .flatMap { record in (0..<CKRecord.cellCount).map { record.count(at: $0) } }
         #expect(counts.allSatisfy { $0 >= 0 })
         #expect(counts.reduce(0, +) == 0)
     }
