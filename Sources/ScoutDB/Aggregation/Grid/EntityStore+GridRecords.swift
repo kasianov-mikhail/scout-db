@@ -10,7 +10,7 @@ import Foundation
 
 extension EntityStore {
     func gridRecords(
-        entity: String, view: String, group: String? = nil, from: Date? = nil, to: Date? = nil, counts: Range<Int>, values: Range<Int>? = nil
+        entity: String, view: String, group: String?, from: Date? = nil, to: Date? = nil, counts: Range<Int>, values: Range<Int>? = nil
     ) async throws -> [CKRecord] {
         var filters = [
             ServerFilter(field: "entity", op: .equals, value: .string(entity)),

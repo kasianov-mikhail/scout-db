@@ -81,13 +81,13 @@ struct GridQuery {
             )
         }
 
-        return Self.merging(rows, sharding: { "\($0.period.millisecondsSince1970)|\($0.group)" }) { merged, shard in
+        return merging(rows, sharding: { "\($0.period.millisecondsSince1970)|\($0.group)" }) { merged, shard in
             AggregateRow(
                 group: merged.group,
                 period: merged.period,
                 count: merged.count + shard.count,
-                value: Self.combined(merged.value, shard.value, kind),
-                squares: Self.combined(merged.squares, shard.squares, nil)
+                value: combined(merged.value, shard.value, kind),
+                squares: combined(merged.squares, shard.squares, nil)
             )
         }
         .sorted()
@@ -141,12 +141,12 @@ struct GridQuery {
             }
         }
 
-        return Self.merging(points, sharding: { "\($0.date.millisecondsSince1970)|\($0.group)" }) { merged, shard in
+        return merging(points, sharding: { "\($0.date.millisecondsSince1970)|\($0.group)" }) { merged, shard in
             AggregateSeriesPoint(
                 group: merged.group,
                 date: merged.date,
                 count: merged.count + shard.count,
-                value: Self.combined(merged.value, shard.value, kind)
+                value: combined(merged.value, shard.value, kind)
             )
         }
         .sorted()
@@ -165,10 +165,10 @@ struct GridQuery {
                 $0 + $1.count
             }
             let value = rows.reduce(Double?.none) {
-                Self.combined($0, $1.value, kind)
+                combined($0, $1.value, kind)
             }
             let squares = rows.reduce(Double?.none) {
-                Self.combined($0, $1.squares, nil)
+                combined($0, $1.squares, nil)
             }
 
             return AggregateTotal(
@@ -233,20 +233,20 @@ struct GridQuery {
 
         return histogram.bounds.last
     }
+}
 
-    private static func merging<Row>(_ rows: [Row], sharding key: (Row) -> String, _ combine: (Row, Row) -> Row) -> [Row] {
-        Dictionary(grouping: rows, by: key).values.map { shards in
-            shards.dropFirst().reduce(shards[0], combine)
-        }
+func merging<Row>(_ rows: [Row], sharding key: (Row) -> String, _ combine: (Row, Row) -> Row) -> [Row] {
+    Dictionary(grouping: rows, by: key).values.map { shards in
+        shards.dropFirst().reduce(shards[0], combine)
     }
+}
 
-    private static func combined(_ lhs: Double?, _ rhs: Double?, _ kind: Metric?) -> Double? {
-        guard let lhs else {
-            return rhs
-        }
-        guard let rhs else {
-            return lhs
-        }
-        return kind?.combine(lhs, rhs) ?? lhs + rhs
+func combined(_ lhs: Double?, _ rhs: Double?, _ kind: Metric?) -> Double? {
+    guard let lhs else {
+        return rhs
     }
+    guard let rhs else {
+        return lhs
+    }
+    return kind?.combine(lhs, rhs) ?? lhs + rhs
 }

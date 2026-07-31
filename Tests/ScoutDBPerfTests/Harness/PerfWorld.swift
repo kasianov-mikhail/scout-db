@@ -19,10 +19,6 @@ struct PerfWorld: @unchecked Sendable {
     let repeats: Int
     let stage: PerfStage
 
-    var size: DatasetSize {
-        corpus.size
-    }
-
     var migrator: Migrator {
         Migrator(database: database, registry: registry, keyProvider: PerfKeyProvider())
     }

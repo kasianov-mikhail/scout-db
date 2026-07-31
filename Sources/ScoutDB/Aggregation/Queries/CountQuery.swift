@@ -147,36 +147,34 @@ struct CountQuery {
         return nil
     }
 
-    func keyed(in definition: EntityDefinition) -> CountQuery? {
+    mutating func key(in definition: EntityDefinition) {
         guard groupField == nil, let name = numericField else {
-            return nil
+            return
         }
         guard let field = definition.field(named: name, at: definition.version) else {
-            return nil
+            return
         }
         guard field.type == .int, field.alwaysPresent, field.encrypted != true else {
-            return nil
+            return
         }
         guard case .slot = field.storage, let lower = field.min, let upper = field.max else {
-            return nil
+            return
         }
         guard (definition.views ?? []).contains(where: { $0.histogram == nil && $0.groupBy == name }) else {
-            return nil
+            return
         }
 
         let floor = max(lower.rounded(.up), numericGTE?.rounded(.up) ?? -.greatestFiniteMagnitude)
         let ceiling = min(upper.rounded(.down), numericLT.map { $0.rounded(.up) - 1 } ?? .greatestFiniteMagnitude)
         guard ceiling - floor < Self.namedDomain, let first = Int64(exactly: floor), let last = Int64(exactly: ceiling) else {
-            return nil
+            return
         }
 
-        var keyed = self
-        keyed.groupField = name
-        keyed.groupKeys = Set((first <= last ? Array(first...last) : []).map { RecordValue.int($0).canonical })
-        keyed.numericField = nil
-        keyed.numericGTE = nil
-        keyed.numericLT = nil
-        return keyed
+        groupField = name
+        groupKeys = Set((first <= last ? Array(first...last) : []).map { RecordValue.int($0).canonical })
+        numericField = nil
+        numericGTE = nil
+        numericLT = nil
     }
 
     func histogramPlan(in definition: EntityDefinition) -> (view: AggregateView, cells: Range<Int>)? {

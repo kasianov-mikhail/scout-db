@@ -26,11 +26,11 @@ extension EntityStore {
     {
         let definition = try await registry.definition(for: entity)
 
-        guard definition.views?.isEmpty == false, let parsed = CountQuery(any: branches, envelopeDate: definition.envelopeDate) else {
+        guard definition.views?.isEmpty == false, var query = CountQuery(any: branches, envelopeDate: definition.envelopeDate) else {
             return nil
         }
 
-        let query = parsed.keyed(in: definition) ?? parsed
+        query.key(in: definition)
 
         guard query.numericField == nil else {
             return nil

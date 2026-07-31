@@ -8,8 +8,6 @@
 import Foundation
 import ScoutDBTesting
 
-@testable import ScoutDB
-
 enum PerfReport {
     private struct Column<Row>: Sendable {
         let title: String

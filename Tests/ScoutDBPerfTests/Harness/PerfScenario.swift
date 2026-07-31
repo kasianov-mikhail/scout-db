@@ -33,10 +33,6 @@ struct PerfScenario: Sendable {
     func repeats(on size: DatasetSize) -> Int {
         iterations ?? size.iterations
     }
-
-    var slug: String {
-        "\(feature).\(name)"
-    }
 }
 
 struct PerfResult: Sendable {
