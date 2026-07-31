@@ -10,14 +10,10 @@ import Foundation
 struct CellDelta {
     var count: Int64 = 0
     var value: (kind: Metric, total: Double)?
-    var squares: Double?
     var removed: (kind: Metric, total: Double)?
 
     mutating func merge(_ other: CellDelta) {
         count += other.count
-        if let squares = other.squares {
-            self.squares = (self.squares ?? 0) + squares
-        }
         if let (kind, total) = other.value {
             value = (kind, value.map { kind.combine($0.total, total) } ?? total)
         }
@@ -26,11 +22,8 @@ struct CellDelta {
         }
     }
 
-    func isNoop(recomputing: Bool) -> Bool {
-        guard count == 0, (squares ?? 0) == 0 else {
-            return false
-        }
-        guard !recomputing || removed == nil else {
+    func isNoop() -> Bool {
+        guard count == 0 else {
             return false
         }
         guard let (kind, total) = value else {

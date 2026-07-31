@@ -30,14 +30,10 @@ extension RecordValue {
             "t[\(value.map { String($0.millisecondsSince1970) }.joined(separator: ","))]"
         case .locations(let value):
             "g[\(value.map { "\($0.latitude);\($0.longitude)" }.joined(separator: ","))]"
-        case .assets(let value):
-            "a[\(value.map(\.absoluteString).joined(separator: ","))]"
         case .location(let latitude, let longitude):
             "g\(latitude),\(longitude)"
         case .reference(let value):
             "r\(value)"
-        case .asset(let value):
-            "a\(value.absoluteString)"
         }
     }
 
@@ -78,8 +74,6 @@ extension RecordValue {
         case .dates(let value):
             value.isEmpty
         case .locations(let value):
-            value.isEmpty
-        case .assets(let value):
             value.isEmpty
         default:
             false

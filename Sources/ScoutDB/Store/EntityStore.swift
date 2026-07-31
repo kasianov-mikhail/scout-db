@@ -39,9 +39,7 @@ public struct EntityStore: Sendable {
     let slots = SlotCache()
 
     var aggregator: GridAggregator {
-        GridAggregator(database: database, slots: slots) { view, group, definition in
-            try await extremum(in: view, group: group, using: definition)
-        }
+        GridAggregator(database: database, slots: slots)
     }
 
     /// Creates a store backed by any `CloudDatabase` implementation.
@@ -64,14 +62,12 @@ public struct EntityStore: Sendable {
         let field: String
         let op: Match
         let value: RecordValue
-        var radius: Double?
         var negated = false
 
-        init(field: String, op: Match, value: RecordValue, radius: Double? = nil, negated: Bool = false) {
+        init(field: String, op: Match, value: RecordValue, negated: Bool = false) {
             self.field = field
             self.op = op
             self.value = value
-            self.radius = radius
             self.negated = negated
         }
     }
@@ -79,16 +75,10 @@ public struct EntityStore: Sendable {
     struct Sort: Equatable, Sendable {
         let field: String
         var ascending = true
-        var origin: RecordValue?
 
         init(field: String, ascending: Bool = true) {
             self.field = field
             self.ascending = ascending
-        }
-        static func distance(from field: String, latitude: Double, longitude: Double) -> Sort {
-            var sort = Sort(field: field)
-            sort.origin = .location(latitude: latitude, longitude: longitude)
-            return sort
         }
     }
 
@@ -123,13 +113,7 @@ public struct EntityStore: Sendable {
         let (removedFromViews, addedToViews) = try await aggregationRebalance(entityRecords, stored: stored, using: definition)
 
         let encoded = try entityRecords.map { try coder.encode($0, using: definition) }
-        do {
-            try await database.write(records: encoded)
-        } catch {
-            EntityCoder.abandonStagedAssets(in: encoded)
-            throw error
-        }
-        EntityCoder.discardStagedAssets(in: encoded)
+        try await database.write(records: encoded)
         try await aggregator.rebalance(removing: removedFromViews, adding: addedToViews, using: definition)
         return entityRecords.map(\.uuid)
     }
@@ -169,36 +153,31 @@ public struct EntityStore: Sendable {
             targets.append(uuid)
         }
         let definition = try await registry.definition(for: entity)
-        let removed = try decode(try await items(entity: entity, uuids: targets), using: definition).filter { !$0.deleted }
-        try await tombstone(uuids: targets, removing: removed, using: definition)
+        let removed = try decode(try await items(entity: entity, uuids: targets), using: definition)
+        try await remove(removed, using: definition)
     }
 
     fileprivate func liveRecords(entity: String, uuids: [String], using definition: EntityDefinition) async throws -> [EntityRecord] {
         guard definition.views?.isEmpty == false else {
             return []
         }
-        return try decode(try await items(entity: entity, uuids: uuids), using: definition).filter { !$0.deleted }
-    }
-
-    func tombstone(entity: String, uuid: String, definition: EntityDefinition, values: [String: RecordValue] = [:]) throws -> CKRecord {
-        try EntityCoder(keyProvider: keyProvider)
-            .encode(EntityRecord(entity: entity, uuid: uuid, schemaVersion: definition.version, values: values, deleted: true), using: definition)
+        return try decode(try await items(entity: entity, uuids: uuids), using: definition)
     }
 
     func read(
-        entity: String, filters: [Filter] = [], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil, createdBy creator: String? = nil
+        entity: String, filters: [Filter] = [], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil
     ) async throws -> [EntityRecord] {
         let definition = try await registry.definition(for: entity)
         if try clientRanked(sort, using: definition) {
             let projection = fields.map { $0 + sort.map(\.field) }
-            let ranked = try await read(entity: entity, filters: filters, fields: projection, createdBy: creator)
+            let ranked = try await read(entity: entity, filters: filters, fields: projection)
                 .sorted { Self.ordered($0, $1, by: sort) }
             guard let limit else {
                 return ranked
             }
             return Array(ranked.prefix(limit))
         }
-        let (query, included) = try liveQuery(filters, entity: entity, sort: try serverSort(sort, using: definition), createdBy: creator, using: definition)
+        let (query, included) = try liveQuery(filters, entity: entity, sort: try serverSort(sort, using: definition), using: definition)
         let keys = try fields.map { try desiredKeys($0 + filters.map(\.field), using: definition) }
         if let limit {
             return Array(try await boundedRecords(matching: query, desiredKeys: keys, limit: limit, using: definition, where: included).prefix(limit))
@@ -206,19 +185,15 @@ public struct EntityStore: Sendable {
         return try decode(try await database.allRecords(matching: query, desiredKeys: keys), using: definition).filter(included)
     }
 
-    func liveQuery(_ filters: [Filter], entity: String, sort: [ServerSort] = [], createdBy creator: String? = nil, using definition: EntityDefinition)
+    func liveQuery(_ filters: [Filter], entity: String, sort: [ServerSort] = [], using definition: EntityDefinition)
         throws
         -> (query: CKQuery, included: (EntityRecord) -> Bool)
     {
-        var (server, client) = try split(filters, entity: entity, using: definition)
-        server.append(ServerFilter(field: "deleted", op: .equals, value: .int(0)))
-        if let creator {
-            server.append(ServerFilter(field: "creatorUserRecordID", op: .equals, value: .reference(creator)))
-        }
+        let (server, client) = try split(filters, entity: entity, using: definition)
         let matchers = try Self.matchers(for: client)
         return (
             CKQuery(recordType: "Entity", filters: server, sort: sort),
-            { record in !record.deleted && matchers.allSatisfy { $0(record) } }
+            { record in matchers.allSatisfy { $0(record) } }
         )
     }
 
@@ -286,17 +261,17 @@ public struct EntityStore: Sendable {
     }
 
     func read(
-        entity: String, any branches: [[Filter]], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil, createdBy creator: String? = nil
+        entity: String, any branches: [[Filter]], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil
     ) async throws -> [EntityRecord] {
         if branches.count == 1 {
-            return try await read(entity: entity, filters: branches[0], sort: sort, fields: fields, limit: limit, createdBy: creator)
+            return try await read(entity: entity, filters: branches[0], sort: sort, fields: fields, limit: limit)
         }
         let branchFields = fields.map { $0 + sort.map(\.field) }
         if let limit, sort.isEmpty {
             var seen: Set<String> = []
             var union: [EntityRecord] = []
             for branch in branches {
-                let page: [EntityRecord] = try await read(entity: entity, filters: branch, fields: branchFields, limit: limit, createdBy: creator)
+                let page: [EntityRecord] = try await read(entity: entity, filters: branch, fields: branchFields, limit: limit)
                 for record in page where seen.insert(record.uuid).inserted {
                     union.append(record)
                     if union.count == limit {
@@ -313,8 +288,7 @@ public struct EntityStore: Sendable {
                     (
                         index,
                         try await self.read(
-                            entity: entity, filters: branch, sort: bounded ? sort : [], fields: branchFields, limit: bounded ? limit : nil,
-                            createdBy: creator)
+                            entity: entity, filters: branch, sort: bounded ? sort : [], fields: branchFields, limit: bounded ? limit : nil)
                     )
                 }
             }

@@ -23,11 +23,7 @@ extension CloudDatabase {
 
     func write(records: [CKRecord]) async throws {
         for chunk in records.chunked(into: Self.maxBatchSize) {
-            do {
-                try await modifyRecords(saving: chunk, deleting: [])
-            } catch let error as CKError {
-                throw PartialWriteError(error) ?? error
-            }
+            try await modifyRecords(saving: chunk, deleting: [])
         }
     }
 

@@ -18,24 +18,15 @@ struct AggregateView: Codable, Equatable, Sendable {
 
     var max: String?
 
-    var stats: String?
-
     var shards: Int?
 
-    var exact: Bool?
-
-    init(
-        name: String, groupBy: String? = nil, sum: String? = nil, min: String? = nil, max: String? = nil, stats: String? = nil,
-        shards: Int? = nil, exact: Bool? = nil
-    ) {
+    init(name: String, groupBy: String? = nil, sum: String? = nil, min: String? = nil, max: String? = nil, shards: Int? = nil) {
         self.name = name
         self.groupBy = groupBy
         self.sum = sum
         self.min = min
         self.max = max
-        self.stats = stats
         self.shards = shards
-        self.exact = exact
     }
 
     var metric: (kind: Metric, field: String)? {
@@ -48,20 +39,17 @@ struct AggregateView: Codable, Equatable, Sendable {
         if let max {
             return (.max, max)
         }
-        if let stats {
-            return (.sum, stats)
-        }
         return nil
     }
 
     func answers(_ kind: Metric, of field: String) -> Bool {
         switch kind {
         case .sum:
-            sum == field || stats == field
+            sum == field
         case .min:
-            min == field && exact == true
+            min == field
         case .max:
-            max == field && exact == true
+            max == field
         }
     }
 }

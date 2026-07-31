@@ -149,16 +149,4 @@ final class CountingFetches: CloudDatabase, @unchecked Sendable {
     func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
         try await request { try await backing.saveIfUnchanged(records) }
     }
-
-    func save(subscription: CKSubscription) async throws {
-        try await backing.save(subscription: subscription)
-    }
-
-    func deleteSubscription(id: CKSubscription.ID) async throws {
-        try await backing.deleteSubscription(id: id)
-    }
-
-    func subscriptions() async throws -> [CKSubscription] {
-        try await backing.subscriptions()
-    }
 }

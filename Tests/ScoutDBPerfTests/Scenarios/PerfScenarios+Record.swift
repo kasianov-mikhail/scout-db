@@ -40,41 +40,6 @@ extension PerfScenarios {
         ]
     }
 
-    static var assets: [PerfScenario] {
-        [
-            PerfScenario("Assets", "write a record carrying an asset", sql: 1) { world, iteration in
-                try await world.store.write(
-                    [
-                        "name": .string("Avatar \(iteration)"),
-                        "email": .string("\(world.runID)-asset-\(iteration)@example.com"),
-                        "country": .string("de"),
-                        "signup": .date(world.corpus.now),
-                        "avatar": .bytes(Data(repeating: UInt8(iteration % 251), count: 64 * 1_024)),
-                    ], entity: PerfSchema.customer, uuid: world.fresh("ava", iteration))
-            },
-            PerfScenario(
-                "Assets", "read the asset bytes back", sql: 1, writes: false,
-                setUp: { world in
-                    for iteration in 0..<world.repeats {
-                        let uuid = world.fresh("read", iteration)
-                        try await world.store.write(
-                            [
-                                "name": .string("Avatar \(iteration)"),
-                                "email": .string("\(world.runID)-read-\(iteration)@example.com"),
-                                "country": .string("fr"),
-                                "signup": .date(world.corpus.now),
-                                "avatar": .bytes(Data(repeating: UInt8(128 + iteration % 100), count: 32 * 1_024)),
-                            ], entity: PerfSchema.customer, uuid: uuid)
-                        world.stage.uuids.append(uuid)
-                    }
-                }
-            ) { world, iteration in
-                let record = try await world.store.fetch(entity: PerfSchema.customer, uuids: [world.stage.uuids[iteration]]).first
-                _ = try record?.assetData(for: "avatar")
-            },
-        ]
-    }
-
     static var encryption: [PerfScenario] {
         [
             PerfScenario("Encryption", "write a sealed field", sql: 1) { world, iteration in

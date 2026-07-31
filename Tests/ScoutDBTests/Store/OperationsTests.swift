@@ -323,29 +323,6 @@ struct OperationsTests {
         #expect(try await uuids([.init(field: "tags", op: .contains, value: .string("swift"))]) == ["u-1"])
         #expect(try await uuids([.init(field: "score", op: .notEquals, value: .int(10))]) == ["u-2"])
         #expect(try await uuids([.init(field: "score", op: .notIn, value: .ints([10]))]) == ["u-2"])
-
-        await #expect(throws: SchemaError.invalidValue("spot")) {
-            _ = try await store.read(entity: "profile", filters: [.init(field: "spot", op: .near, value: .location(latitude: 0, longitude: 0), radius: 10)])
-        }
-    }
-
-    @Test("Subscriptions register a server predicate and can be removed")
-    func changeSubscriptions() async throws {
-        let id = try await store.query("purchase").filter("quantity" > 1).subscribe()
-        #expect(id == "scout-purchase")
-
-        let stored = try #require(database.storedSubscriptions.first as? CKQuerySubscription)
-        #expect(stored.predicate.predicateFormat.contains("entity == \"purchase\""))
-        #expect(stored.predicate.predicateFormat.contains("i_01"))
-        #expect(stored.notificationInfo?.shouldSendContentAvailable == true)
-        #expect(try await store.subscriptions().count == 1)
-
-        await #expect(throws: SchemaError.invalidValue("product_id")) {
-            try await store.subscribe(entity: "purchase", filters: [.init(field: "product_id", op: .like, value: .string("sku*"))])
-        }
-
-        try await store.unsubscribe(id: id)
-        #expect(database.storedSubscriptions.isEmpty)
     }
 
     @Test("Retiring an entity hides its schema; a republish revives it")
@@ -360,7 +337,7 @@ struct OperationsTests {
         }
 
         let fresh = SchemaRegistry(database: database)
-        try await fresh.preload()
+        try await fresh.loadAll()
         #expect(await fresh.definitions().isEmpty)
 
         try await registry.publish(makePurchaseDefinition())
@@ -371,24 +348,10 @@ struct OperationsTests {
         }
     }
 
-    @Test("A batch write unwraps a partial failure to the records that caused it")
-    func partialFailureUnwrapped() async throws {
-        let culprit = CKRecord.ID(recordName: "p-1")
-        let innocent = CKRecord.ID(recordName: "p-2")
-        let partial = CKError(
-            .partialFailure,
-            userInfo: [CKPartialErrorsByItemIDKey: [culprit: CKError(.quotaExceeded), innocent: CKError(.batchRequestFailed)]])
-        database.writeErrors = [partial]
-
-        do {
-            try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-            Issue.record("Expected a PartialWriteError")
-        } catch let error as PartialWriteError {
-            #expect(error.reasons.count == 1)
-            #expect((error.reasons[culprit] as? CKError)?.code == .quotaExceeded)
-        }
-
+    @Test("A batch write surfaces the error the database raised")
+    func batchWriteError() async throws {
         database.writeErrors = [CKError(.partialFailure)]
+
         do {
             try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
             Issue.record("Expected a CKError")
@@ -397,71 +360,8 @@ struct OperationsTests {
         }
     }
 
-    @Test("A push that is not a query notification resolves to no record")
-    func pushEvents() async throws {
-        #expect(try await store.record(fromPush: ["aps": ["alert": "hi"]]) == nil)
-
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        #expect(try await store.record(uuid: "p-1", pushedFields: [:])?.values["product_id"] == .string("sku-42"))
-
-        try await store.delete(entity: "purchase", uuid: "p-1")
-        #expect(try await store.record(uuid: "p-1", pushedFields: [:]) == nil)
-    }
-
-    @Test("A projected subscription carries its fields, and the pushed fields decode without a fetch")
-    func projectedPush() async throws {
-        try await store.subscribe(entity: "purchase", projecting: ["product_id", "quantity"])
-        let stored = try #require(database.storedSubscriptions.first as? CKQuerySubscription)
-        let keys = try #require(stored.notificationInfo?.desiredKeys)
-        #expect(Set(keys).isSuperset(of: ["entity", "schema_version", "uuid", "deleted", "s_00", "i_01"]))
-
-        database.errors = [CKError(.networkUnavailable)]
-        let pushed = try await store.record(
-            uuid: "p-1",
-            pushedFields: [
-                "entity": "purchase" as NSString, "schema_version": 2 as NSNumber, "uuid": "p-1" as NSString, "deleted": 0 as NSNumber,
-                "s_00": "sku-42" as NSString, "i_01": 7 as NSNumber,
-            ])
-        #expect(pushed?.values["product_id"] == .string("sku-42"))
-        #expect(pushed?.values["quantity"] == .int(7))
-        #expect(pushed?.values["comment"] == nil)
-        database.errors = []
-
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
-        #expect(try await store.record(uuid: "p-2", pushedFields: [:])?.values["product_id"] == .string("sku-42"))
-
-        let tombstone: [String: any CKRecordValue] = [
-            "entity": "purchase" as NSString, "schema_version": 2 as NSNumber, "uuid": "p-1" as NSString, "deleted": 1 as NSNumber,
-        ]
-        #expect(try await store.record(uuid: "p-1", pushedFields: tombstone) == nil)
-    }
-
-    @Test("A distance sort ranks nearest-first, missing locations last")
-    func distanceSort() async throws {
-        try await registry.publish(
-            makeDefinition(
-                entity: "place",
-                fields: [
-                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
-                    FieldDefinition(name: "spot", type: .location, storage: .slot(.location, "g_00")),
-                ]))
-        try await store.write(["name": .string("near"), "spot": .location(latitude: 0.01, longitude: 0.01)], entity: "place", uuid: "l-near")
-        try await store.write(["name": .string("far"), "spot": .location(latitude: 10, longitude: 10)], entity: "place", uuid: "l-far")
-        try await store.write(["name": .string("nowhere")], entity: "place", uuid: "l-none")
-
-        let ranked = try await store.read(entity: "place", sort: [.distance(from: "spot", latitude: 0, longitude: 0)])
-        #expect(ranked.map(\.uuid) == ["l-near", "l-far", "l-none"])
-
-        let closest = try await store.query("place").nearest("spot", latitude: 9, longitude: 9).first()
-        #expect(closest?.uuid == "l-far")
-
-        await #expect(throws: SchemaError.invalidValue("name")) {
-            _ = try await store.read(entity: "place", sort: [.distance(from: "name", latitude: 0, longitude: 0)])
-        }
-    }
-
-    @Test("Mutations treat a tombstoned record as absent, but a write to its uuid revives it")
-    func mutationsSkipTombstones() async throws {
+    @Test("Mutations treat a deleted record as absent, and its uuid is free again")
+    func mutationsSkipDeleted() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "t-1")
         try await store.delete(entity: "purchase", uuid: "t-1")
 
@@ -471,60 +371,6 @@ struct OperationsTests {
 
         try await store.write(makePurchase().values, entity: "purchase", uuid: "t-1")
         #expect(try await store.read(entity: "purchase").map(\.uuid) == ["t-1"])
-    }
-
-    @Test("Reads scope to a creator, the public-database pattern")
-    func createdByScope() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
-        var big = makePurchase().values
-        big["quantity"] = .int(9)
-        try await store.write(big, entity: "purchase", uuid: "p-3")
-        stampCreator(uuid: "p-1", creator: "user-a")
-        stampCreator(uuid: "p-2", creator: "user-b")
-        stampCreator(uuid: "p-3", creator: "user-a")
-
-        #expect(Set(try await store.read(entity: "purchase", createdBy: "user-a").map(\.uuid)) == ["p-1", "p-3"])
-        #expect(try await store.read(entity: "purchase", createdBy: "user-b").map(\.uuid) == ["p-2"])
-        #expect(try await store.read(entity: "purchase", createdBy: "ghost").isEmpty)
-
-        #expect(try await store.query("purchase").createdBy("user-a").filter("quantity" > 5).count() == 1)
-        let grouped = try await store.query("purchase")
-            .createdBy("user-a")
-            .filter("quantity" == 3 || "quantity" == 9)
-            .take(100)
-        #expect(Set(grouped.map(\.uuid)) == ["p-1", "p-3"])
-    }
-
-    @Test("Every query terminal honors the creator scope")
-    func createdByScopedTerminals() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
-        var big = makePurchase().values
-        big["quantity"] = .int(9)
-        try await store.write(big, entity: "purchase", uuid: "p-3")
-        stampCreator(uuid: "p-1", creator: "user-a")
-        stampCreator(uuid: "p-2", creator: "user-b")
-        stampCreator(uuid: "p-3", creator: "user-a")
-        let mine = store.query("purchase").createdBy("user-a")
-
-        #expect(try await mine.sum("quantity") == 12)
-        #expect(try await mine.min("quantity") == 3)
-        #expect(try await mine.max("quantity") == 9)
-        #expect(try await mine.average("quantity") == 6)
-        #expect(try await mine.sum("quantity", by: "product_id") == ["sku-42": 12])
-        #expect(try await mine.count(by: "product_id") == ["sku-42": 2])
-
-        #expect(try await mine.sort("quantity").page(size: 10).records.map(\.uuid) == ["p-1", "p-3"])
-
-        #expect(
-            try await mine.update { record in
-                record.values["comment"] = .string("mine")
-            } == 2)
-        #expect(try await store.read(entity: "purchase", createdBy: "user-b").first?.values["comment"] == .string("gift"))
-
-        #expect(try await mine.delete() == 2)
-        #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-2"])
     }
 
     @Test("A pattern constraint gates writes by a whole-string regex")
@@ -570,7 +416,7 @@ struct OperationsTests {
         #expect(try await store.fetch(uuid: "ghost") == nil)
     }
 
-    @Test("Fetch by identifier hides tombstoned records")
+    @Test("Fetch by identifier misses a deleted record")
     func fetchByUUIDDeleted() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
         try await store.delete(entity: "purchase", uuid: "p-1")
@@ -710,7 +556,7 @@ struct OperationsTests {
         #expect(try await store.fetch(entity: "purchase", uuids: ["p-1"]).first?.values["quantity"] == .int(3))
     }
 
-    @Test("deleteAll tombstones every matching record")
+    @Test("deleteAll removes every matching record")
     func deleteAll() async throws {
         try await store.write(makePurchase(uuid: "p-1").values, entity: "purchase", uuid: "p-1")
         var other = makePurchase(uuid: "p-2").values
@@ -723,8 +569,8 @@ struct OperationsTests {
         #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-2"])
     }
 
-    @Test("Preload warms the cache for every published entity")
-    func preload() async throws {
+    @Test("A bulk load warms the cache for every published entity")
+    func loadAll() async throws {
         try await registry.publish(
             makeDefinition(
                 entity: "alpha",
@@ -739,8 +585,8 @@ struct OperationsTests {
                 ]))
 
         let fresh = SchemaRegistry(database: database)
-        let preloaded = try await fresh.preload()
-        #expect(preloaded == 3)
+        let loaded = try await fresh.loadAll()
+        #expect(loaded == 3)
         #expect(Set(await fresh.definitions().map(\.entity)) == ["purchase", "alpha", "beta"])
     }
 

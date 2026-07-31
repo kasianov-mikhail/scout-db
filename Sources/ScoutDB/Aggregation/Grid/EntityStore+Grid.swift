@@ -9,7 +9,7 @@ import CloudKit
 import Foundation
 
 extension EntityStore {
-    func grid(entity: String, view: String, group: String?, values: Bool = false, squares: Bool = false) async throws -> [CKRecord] {
+    func grid(entity: String, view: String, group: String?, values: Bool = false) async throws -> [CKRecord] {
         var filters = [
             ServerFilter(field: "entity", op: .equals, value: .string(entity)),
             ServerFilter(field: "view", op: .equals, value: .string(view)),
@@ -23,9 +23,6 @@ extension EntityStore {
 
         if values {
             keys.append(CKRecord.valueCell)
-        }
-        if squares {
-            keys.append(CKRecord.squareCell)
         }
 
         return try await database.allRecords(

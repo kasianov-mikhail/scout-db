@@ -11,17 +11,12 @@ import Foundation
 struct GridAggregator {
     let database: any CloudDatabase
     let slots: SlotCache
-    let recompute: (@Sendable (AggregateView, String, EntityDefinition) async throws -> Double?)?
     let maxRetry = 3
     let maxBatch = 400
 
-    init(
-        database: any CloudDatabase, slots: SlotCache = SlotCache(),
-        recompute: (@Sendable (AggregateView, String, EntityDefinition) async throws -> Double?)? = nil
-    ) {
+    init(database: any CloudDatabase, slots: SlotCache = SlotCache()) {
         self.database = database
         self.slots = slots
-        self.recompute = recompute
     }
 
     func record(_ batch: [EntityRecord], using definition: EntityDefinition) async throws {
@@ -38,24 +33,17 @@ struct GridAggregator {
             merged[slot, default: CellDelta()].merge(delta)
         }
         var live: [GridSlot: CellDelta] = [:]
-        for (slot, delta) in merged where !delta.isNoop(recomputing: recomputes(slot.view, in: definition)) {
+        for (slot, delta) in merged where !delta.isNoop() {
             live[slot] = delta
         }
         try await apply(live, using: definition)
-    }
-
-    private func recomputes(_ view: String, in definition: EntityDefinition) -> Bool {
-        guard recompute != nil, let view = definition.view(named: view), view.exact == true, let metric = view.metric else {
-            return false
-        }
-        return metric.kind != .sum
     }
 
     private func deltas(for batch: [EntityRecord], using definition: EntityDefinition, adding: Bool) -> [GridSlot: CellDelta] {
         let sign: Int64 = adding ? 1 : -1
         var deltas: [GridSlot: CellDelta] = [:]
 
-        for entityRecord in batch where entityRecord.deleted == false {
+        for entityRecord in batch {
             for view in definition.views ?? [] {
                 let group = view.groupBy.flatMap { entityRecord.values[$0]?.canonical } ?? ""
                 let shard = view.shards.map { Self.shard(of: entityRecord.uuid, among: $0) }
@@ -71,9 +59,6 @@ struct GridAggregator {
                     } else {
                         delta.removed = (kind, delta.removed.map { kind.combine($0.total, value) } ?? value)
                     }
-                }
-                if let scalar = view.stats.flatMap({ entityRecord.values[$0]?.scalar }) {
-                    delta.squares = (delta.squares ?? 0) + Double(sign) * scalar * scalar
                 }
                 deltas[slot] = delta
             }
@@ -96,14 +81,10 @@ struct GridAggregator {
             return
         }
         var pending = try await open(deltas)
-        let exact = try await recomputed(&pending, using: definition)
 
         for _ in 0..<maxRetry {
             for entry in pending.values {
                 entry.record.fold(entry.delta)
-                if let settled = exact[entry.record.recordID] {
-                    entry.record.setCellValue(settled)
-                }
             }
             var retry: [CKRecord.ID: CKRecord] = [:]
             for chunk in Array(pending.values).chunked(into: maxBatch) {
@@ -132,25 +113,6 @@ struct GridAggregator {
             return
         }
         throw RecordConflictError(serverRecord: stranded.record)
-    }
-
-    private func recomputed(_ pending: inout [CKRecord.ID: Pending], using definition: EntityDefinition) async throws -> [CKRecord.ID: Double?] {
-        guard let recompute else {
-            return [:]
-        }
-        var exact: [CKRecord.ID: Double?] = [:]
-        for (id, entry) in pending {
-            guard let view = definition.view(named: entry.slot.view), view.exact == true, let metric = view.metric, metric.kind != .sum else {
-                continue
-            }
-            guard let removed = entry.delta.removed, let stored = entry.record.cellValue, stored == removed.total else {
-                continue
-            }
-            exact[id] = try await recompute(view, entry.slot.group, definition)
-            pending[id]?.delta.value = nil
-            pending[id]?.delta.removed = nil
-        }
-        return exact
     }
 
     private func open(_ deltas: [GridSlot: CellDelta]) async throws -> [CKRecord.ID: Pending] {
@@ -202,9 +164,6 @@ extension CKRecord {
         setCellCount(cellCount + delta.count)
         if let (kind, total) = delta.value {
             setCellValue(cellValue.map { kind.combine($0, total) } ?? total)
-        }
-        if let squares = delta.squares {
-            setCellSquare((cellSquare ?? 0) + squares)
         }
     }
 }

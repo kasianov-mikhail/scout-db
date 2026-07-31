@@ -13,18 +13,6 @@ import Testing
 
 @Suite("Contract: sync")
 struct SyncContractTests {
-    @Test("Subscriptions save, list, and delete by id")
-    func subscriptionLifecycle() async throws {
-        try await withContract { f in
-            let entity = try await f.publishOrder()
-            let id = try await f.store.query(entity).subscribe(id: "contract-sub-\(entity)")
-
-            try await eventually { try await f.store.subscriptions().contains { $0.subscriptionID == id } }
-            try await f.store.unsubscribe(id: id)
-            try await eventually { try await f.store.subscriptions().allSatisfy { $0.subscriptionID != id } }
-        }
-    }
-
     @Test("A stale conditional save loses to the server copy")
     func staleConditionalSave() async throws {
         try await withContract { f in

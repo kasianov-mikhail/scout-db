@@ -84,15 +84,12 @@ struct EvaluatorFidelityTests {
         let value: RecordValue =
             switch op {
             case .in, .notIn: .strings(["a", "b"])
-            case .near: .location(latitude: 1, longitude: 2)
             default: .string("a")
             }
-        let field = op == .near ? "g_00" : "s_00"
         let record = CKRecord(recordType: "Entity", recordID: CKRecord.ID(recordName: "r"))
         record["s_00"] = "a"
-        record["g_00"] = CLLocation(latitude: 1, longitude: 2)
 
-        let filter = ServerFilter(field: field, op: op, value: value, radius: op == .near ? 10 : nil)
+        let filter = ServerFilter(field: "s_00", op: op, value: value)
         #expect(PredicateEvaluator.evaluate(CKQuery(recordType: "Entity", filters: [filter]).predicate, record: record) != nil)
     }
 

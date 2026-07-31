@@ -48,9 +48,6 @@ extension PerfScenarios {
             PerfScenario("Migrations", "rebuild one view's grid", sql: 1, iterations: 1) { world, _ in
                 _ = try await world.migrator.backfill(view: "revenue", entity: PerfSchema.order)
             },
-            PerfScenario("Migrations", "rotate the encryption key", sql: 1, iterations: 1) { world, _ in
-                _ = try await world.migrator.rotateKey(entity: PerfSchema.session, to: "perf-key-2")
-            },
         ]
     }
 

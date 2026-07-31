@@ -93,7 +93,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
 
     private struct State {
         var table = RecordTable()
-        var subscriptions: [CKSubscription] = []
         var errors: [any Error] = []
         var writeErrors: [any Error] = []
         var pageLimit: Int?
@@ -132,11 +131,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     public var records: [CKRecord] {
         get { lock.withLock { state.table.all() } }
         set { lock.withLock { state.table.replaceAll(with: newValue) } }
-    }
-
-    public var storedSubscriptions: [CKSubscription] {
-        get { lock.withLock { state.subscriptions } }
-        set { lock.withLock { state.subscriptions = newValue } }
     }
 
     public var errors: [any Error] {
@@ -313,28 +307,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         return project(stored, keys: nil)
     }
 
-    public func save(subscription: CKSubscription) async throws {
-        try counting(.subscriptionSave) {
-            try popErrorLocked(writing: true)
-            state.subscriptions.removeAll { $0.subscriptionID == subscription.subscriptionID }
-            state.subscriptions.append(subscription)
-        }
-    }
-
-    public func deleteSubscription(id: CKSubscription.ID) async throws {
-        try counting(.subscriptionDelete) {
-            try popErrorLocked(writing: true)
-            state.subscriptions.removeAll { $0.subscriptionID == id }
-        }
-    }
-
-    public func subscriptions() async throws -> [CKSubscription] {
-        try counting(.subscriptionList, carrying: { $0.count }) {
-            try popErrorLocked(writing: false)
-            return state.subscriptions
-        }
-    }
-
     public func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
         try counting(.fetch, carrying: { $0 == nil ? 0 : 1 }) {
             try popErrorLocked(writing: false)
@@ -349,36 +321,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    private let assetDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("InMemoryAssets-\(UUID().uuidString)", isDirectory: true)
-
-    private func retainingAssets(of record: CKRecord) -> CKRecord {
-        let prefix = EntityStore.assetStagingDirectory.standardizedFileURL.path + "/"
-        let staged = record.allKeys().filter { key in
-            guard let url = (record[key] as? CKAsset)?.fileURL else {
-                return false
-            }
-            return url.standardizedFileURL.path.hasPrefix(prefix)
-        }
-        guard staged.count > 0 else {
-            return record
-        }
-        let stored = record.duplicate()
-        for key in staged {
-            guard let url = (stored[key] as? CKAsset)?.fileURL else {
-                continue
-            }
-            let copy = assetDirectory.appendingPathComponent(UUID().uuidString)
-            try? FileManager.default.createDirectory(at: assetDirectory, withIntermediateDirectories: true)
-            guard (try? FileManager.default.copyItem(at: url, to: copy)) != nil else {
-                continue
-            }
-            stored[key] = CKAsset(fileURL: copy)
-        }
-        return stored
-    }
-
     private func upsertLocked(_ record: CKRecord) {
-        let record = retainingAssets(of: record)
         state.table.put(record)
         record.overrideModificationDate(Date())
         record.overrideChangeTag(UUID().uuidString)

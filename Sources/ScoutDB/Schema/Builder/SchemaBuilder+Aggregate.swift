@@ -71,34 +71,33 @@ extension SchemaBuilder {
 
     /// Keeps the smallest value of the field a cell has seen.
     ///
-    /// Removing the record holding it leaves the value standing unless `exact`
-    /// is on, which recomputes the cell from the records behind it instead — at
-    /// the cost of one query per removal that takes the extremum out.
+    /// The cell holds a running extremum, so removing the record that set it
+    /// leaves the value standing — a read served by the view answers with what
+    /// the group once reached, not what it holds now.
     ///
     /// ```swift
     /// try await store.schema("purchase")
     ///     .field("amount", .double)
-    ///     .min("amount", by: "product_id", exact: true)
+    ///     .min("amount", by: "product_id")
     ///     .create()
     /// ```
     ///
-    public func min(_ field: String, by group: String? = nil, exact: Bool = false) -> Self {
+    public func min(_ field: String, by group: String? = nil) -> Self {
         var builder = self
 
         builder.views.append(
             AggregateView(
                 name: Self.name("min", of: field, by: group),
                 groupBy: group,
-                min: field,
-                exact: exact
+                min: field
             )
         )
 
         return builder
     }
 
-    /// Keeps the largest value of the field a cell has seen, `exact` as in
-    /// ``min(_:by:exact:)``.
+    /// Keeps the largest value of the field a cell has seen, standing after a
+    /// removal as in ``min(_:by:)``.
     ///
     /// ```swift
     /// try await store.schema("purchase")
@@ -109,48 +108,14 @@ extension SchemaBuilder {
     /// let peak = try await store.query("purchase").max("amount")
     /// ```
     ///
-    public func max(_ field: String, by group: String? = nil, exact: Bool = false) -> Self {
+    public func max(_ field: String, by group: String? = nil) -> Self {
         var builder = self
 
         builder.views.append(
             AggregateView(
                 name: Self.name("max", of: field, by: group),
                 groupBy: group,
-                max: field,
-                exact: exact
-            )
-        )
-
-        return builder
-    }
-
-    /// Keeps Σx and Σx² of the field, which `variance` and `standardDeviation`
-    /// derive from.
-    ///
-    /// Two numbers per cell instead of one, and the spread comes out of them at
-    /// read time — no second pass over the records. The totals read back on
-    /// ``AggregateTotal``, alongside the count the cell keeps anyway.
-    ///
-    /// ```swift
-    /// try await store.schema("reading")
-    ///     .field("sensor", .string, .required)
-    ///     .field("value", .double)
-    ///     .stats("value", by: "sensor")
-    ///     .create()
-    ///
-    /// let spread = try await store.query("reading").totals("value", by: "sensor")
-    ///     .map(\.standardDeviation)
-    /// ```
-    ///
-    public func stats(_ field: String, by group: String? = nil, shards: Int? = nil) -> Self {
-        var builder = self
-
-        builder.views.append(
-            AggregateView(
-                name: Self.name("stats", of: field, by: group),
-                groupBy: group,
-                stats: field,
-                shards: shards
+                max: field
             )
         )
 

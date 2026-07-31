@@ -19,9 +19,9 @@ extension PerfScenarios {
             PerfScenario("Schema", "definition, warm registry", sql: 0, writes: false) { world, _ in
                 _ = try await world.registry.definition(for: PerfSchema.order)
             },
-            PerfScenario("Schema", "preload every definition", sql: 1, writes: false) { world, _ in
+            PerfScenario("Schema", "load every definition", sql: 1, writes: false) { world, _ in
                 let registry = SchemaRegistry(database: world.database)
-                try await registry.preload()
+                try await registry.loadAll()
             },
             PerfScenario("Schema", "publish a new entity", sql: 1) { world, iteration in
                 let entity = world.fresh("ent", iteration)

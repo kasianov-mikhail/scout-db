@@ -16,14 +16,12 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
     case bytes
     case location
     case reference
-    case asset
 
     case stringList
     case intList
     case doubleList
     case timestampList
     case locationList
-    case assetList
 
     var slotPrefix: String {
         switch self {
@@ -43,8 +41,6 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
             "g"
         case .reference:
             "r"
-        case .asset:
-            "a"
         case .stringList:
             "ls"
         case .intList:
@@ -55,21 +51,10 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
             "lt"
         case .locationList:
             "lg"
-        case .assetList:
-            "la"
         }
     }
 
     var capacity: Int { 16 }
-
-    var isQueryable: Bool {
-        switch self {
-        case .asset, .assetList:
-            false
-        default:
-            true
-        }
-    }
 
     var isSortable: Bool {
         switch self {
@@ -101,7 +86,7 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
 
     var isList: Bool {
         switch self {
-        case .stringList, .intList, .doubleList, .timestampList, .locationList, .assetList:
+        case .stringList, .intList, .doubleList, .timestampList, .locationList:
             true
         default:
             false
@@ -120,30 +105,6 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
             .dates([])
         case .locationList:
             .locations([])
-        case .assetList:
-            .assets([])
-        default:
-            nil
-        }
-    }
-
-    var canonicalParser: ((String) -> RecordValue?)? {
-        switch self {
-        case .string, .text:
-            { .string($0) }
-        case .int:
-            { $0.hasPrefix("i") ? Int64($0.dropFirst()).map(RecordValue.int) : nil }
-        case .double:
-            { $0.hasPrefix("d") ? Double($0.dropFirst()).map(RecordValue.double) : nil }
-        case .timestamp:
-            { canonical in
-                guard canonical.hasPrefix("t"), let milliseconds = Int64(canonical.dropFirst()) else {
-                    return nil
-                }
-                return .date(Date(millisecondsSince1970: milliseconds))
-            }
-        case .reference:
-            { $0.hasPrefix("r") ? .reference(String($0.dropFirst())) : nil }
         default:
             nil
         }
@@ -152,9 +113,9 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
     func matches(_ value: RecordValue) -> Bool {
         switch (self, value) {
         case (.string, .string), (.text, .string), (.int, .int), (.double, .double),
-            (.timestamp, .date), (.bytes, .bytes), (.location, .location), (.reference, .reference), (.asset, .asset),
+            (.timestamp, .date), (.bytes, .bytes), (.location, .location), (.reference, .reference),
             (.stringList, .strings), (.intList, .ints), (.doubleList, .doubles), (.timestampList, .dates),
-            (.locationList, .locations), (.assetList, .assets):
+            (.locationList, .locations):
             true
         default:
             false

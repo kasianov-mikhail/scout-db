@@ -76,12 +76,6 @@ extension PerfScenarios {
                     .sort("date", .descending)
                     .first()
             },
-            PerfScenario("Queries", "projection to two fields", sql: 1, writes: false) { world, _ in
-                _ = try await world.store.query(PerfSchema.order)
-                    .filter("product", .equals, .string(world.hotProduct))
-                    .fields("total", "date")
-                    .take(200)
-            },
         ]
     }
 }

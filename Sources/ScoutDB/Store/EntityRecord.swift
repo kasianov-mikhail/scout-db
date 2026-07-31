@@ -27,16 +27,11 @@ public struct EntityRecord: Codable, Equatable, Sendable {
     /// The record's fields, keyed by name.
     public var values: [String: RecordValue]
 
-    /// Whether the record is a tombstone — deletes soft-delete by default, so
-    /// other devices can sync the removal.
-    public var deleted = false
-
-    public init(entity: String, uuid: String, schemaVersion: Int, values: [String: RecordValue], deleted: Bool = false) {
+    public init(entity: String, uuid: String, schemaVersion: Int, values: [String: RecordValue]) {
         self.entity = entity
         self.uuid = uuid
         self.schemaVersion = schemaVersion
         self.values = values
-        self.deleted = deleted
     }
 
     /// Reads or writes the named field as the Swift type in play, `nil` when

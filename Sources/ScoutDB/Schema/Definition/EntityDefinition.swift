@@ -94,9 +94,6 @@ struct EntityDefinition: Codable, Equatable, Sendable {
                     throw SchemaError.invalidDefinition("Slot '\(slot)' is beyond the '\(pool.rawValue)' pool capacity of \(pool.capacity)")
                 }
             }
-            if field.type == .asset, field.storage == .payload {
-                throw SchemaError.invalidDefinition("Asset field '\(field.name)' must live in an asset slot")
-            }
             if let derived = field.derived, !names.contains(derived.source) {
                 throw SchemaError.invalidDefinition("Field '\(field.name)' derives from unknown '\(derived.source)'")
             }
@@ -158,7 +155,7 @@ struct EntityDefinition: Codable, Equatable, Sendable {
             if let groupBy = view.groupBy, !names.contains(groupBy) {
                 throw SchemaError.invalidDefinition("View '\(view.name)' groups by unknown '\(groupBy)'")
             }
-            let metrics = [view.sum, view.min, view.max, view.stats].compactMap { $0 }
+            let metrics = [view.sum, view.min, view.max].compactMap { $0 }
             guard metrics.count <= 1 else {
                 throw SchemaError.invalidDefinition("View '\(view.name)' declares more than one metric")
             }
@@ -169,19 +166,6 @@ struct EntityDefinition: Codable, Equatable, Sendable {
             }
             if let shards = view.shards, !(2...64).contains(shards) {
                 throw SchemaError.invalidDefinition("View '\(view.name)' must shard into 2...64 records")
-            }
-            if view.exact == true {
-                guard view.min != nil || view.max != nil else {
-                    throw SchemaError.invalidDefinition("View '\(view.name)' can only keep a min or max exact")
-                }
-                guard view.shards == nil else {
-                    throw SchemaError.invalidDefinition("View '\(view.name)' cannot keep an extremum exact across shards")
-                }
-                if let groupBy = view.groupBy {
-                    guard let field = field(named: groupBy, at: version), case .slot = field.storage, field.encrypted != true else {
-                        throw SchemaError.invalidDefinition("View '\(view.name)' can only keep an extremum exact when it groups by a filterable field")
-                    }
-                }
             }
         }
     }

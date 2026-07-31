@@ -41,7 +41,6 @@ public struct Migrator: Sendable {
             filters: [
                 ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                 ServerFilter(field: "schema_version", op: .lessThan, value: .int(Int64(definition.version))),
-                ServerFilter(field: "deleted", op: .equals, value: .int(0)),
             ])
         let coder = EntityCoder(keyProvider: keyProvider)
         var migrated = 0
@@ -108,8 +107,7 @@ public struct Migrator: Sendable {
             matching: CKQuery(
                 recordType: "Entity",
                 filters: [
-                    ServerFilter(field: "entity", op: .equals, value: .string(entity)),
-                    ServerFilter(field: "deleted", op: .equals, value: .int(0)),
+                    ServerFilter(field: "entity", op: .equals, value: .string(entity))
                 ])
         ) { page in
             for chunk in page.chunked(into: batchSize) {
@@ -119,44 +117,6 @@ public struct Migrator: Sendable {
             }
         }
         return counted
-    }
-
-    @discardableResult public func rotateKey(entity: String, to newKeyID: String) async throws -> Int {
-        let definition = try await registry.definition(for: entity)
-        guard let oldKeyID = definition.keyID, oldKeyID != newKeyID else {
-            throw SchemaError.missingKey(newKeyID)
-        }
-        var rotated = definition
-        rotated.keyID = newKeyID
-
-        let query = CKQuery(
-            recordType: "Entity",
-            filters: [
-                ServerFilter(field: "entity", op: .equals, value: .string(entity)),
-                ServerFilter(field: "deleted", op: .equals, value: .int(0)),
-            ])
-        let coder = EntityCoder(keyProvider: keyProvider)
-        var sealed = 0
-        try await database.forEachPage(matching: query) { page in
-            let rewritten = try page.map { record -> CKRecord in
-                let decoded: EntityRecord
-                do {
-                    decoded = try coder.decode(record, using: definition)
-                } catch {
-                    decoded = try coder.decode(record, using: rotated)
-                }
-                var next = decoded
-                next.values = try coder.resolve(next.values, at: next.schemaVersion, using: rotated)
-                return try coder.encode(next, using: rotated, into: record)
-            }
-            guard rewritten.count > 0 else {
-                return
-            }
-            try await database.write(records: rewritten)
-            sealed += rewritten.count
-        }
-        try await registry.publish(rotated)
-        return sealed
     }
 
     private func rekey(_ decoded: EntityRecord, using definition: EntityDefinition) -> [String: RecordValue] {

@@ -116,25 +116,15 @@ struct PaginationTests {
         #expect(records.map(\.uuid) == ["p-0", "p-2"])
     }
 
-    @Test("A projected field-ordered page keeps the ordering field and the filtered fields")
-    func fieldPageProjection() async throws {
+    @Test("A field-ordered page carries the ordering field and its cursor")
+    func fieldPageCursor() async throws {
         try await writePurchases(3)
 
         let filters = [EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-42"))]
-        let page = try await store.read(entity: "purchase", any: [filters], fields: ["total"], orderedBy: "quantity", limit: 2)
+        let page = try await store.read(entity: "purchase", any: [filters], orderedBy: "quantity", limit: 2)
         #expect(page.records.count == 2)
-        #expect(page.records.allSatisfy { $0.values["total"] != nil })
         #expect(page.records.allSatisfy { $0.values["quantity"] != nil })
-        #expect(page.records.allSatisfy { $0.values["comment"] == nil })
         #expect(try #require(page.cursor).value == page.records.last?.values["quantity"])
-    }
-
-    @Test("The builder's projection reaches its pages")
-    func builderProjection() async throws {
-        try await writePurchases(3)
-
-        let ordered = try await store.query("purchase").fields("total").sort("quantity").page(size: 3)
-        #expect(ordered.records.allSatisfy { $0.values["total"] != nil && $0.values["product_id"] == nil })
     }
 
     @Test("A field-ordered walk over records sharing one value serves every one of them")

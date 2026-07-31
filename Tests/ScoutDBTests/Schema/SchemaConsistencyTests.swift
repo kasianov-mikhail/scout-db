@@ -36,13 +36,11 @@ struct SchemaConsistencyTests {
             case .bytes: "BYTES QUERYABLE"
             case .location: "LOCATION QUERYABLE"
             case .reference: "REFERENCE QUERYABLE"
-            case .asset: "ASSET"
             case .stringList: "LIST<STRING> QUERYABLE"
             case .intList: "LIST<INT64> QUERYABLE"
             case .doubleList: "LIST<DOUBLE> QUERYABLE"
             case .timestampList: "LIST<TIMESTAMP> QUERYABLE"
             case .locationList: "LIST<LOCATION> QUERYABLE"
-            case .assetList: "LIST<ASSET>"
             }
         let slots = Self.fields(of: "Entity").filter { $0.name.hasPrefix("\(pool.slotPrefix)_") }
         #expect(slots.allSatisfy { $0.spec == expected })
@@ -51,7 +49,7 @@ struct SchemaConsistencyTests {
     @Test("Entity carries the envelope the coder stamps")
     func itemEnvelope() {
         let names = Set(Self.fields(of: "Entity").map(\.name))
-        for field in ["entity", "schema_version", "uuid", "deleted", "payload"] {
+        for field in ["entity", "schema_version", "uuid", "payload"] {
             #expect(names.contains(field), "Entity is missing '\(field)'")
         }
     }
@@ -59,7 +57,7 @@ struct SchemaConsistencyTests {
     @Test("Aggregate cells match the aggregator addressing")
     func gridCells() {
         let names = Set(Self.fields(of: "Aggregate").map(\.name))
-        for field in [CKRecord.countCell, CKRecord.valueCell, CKRecord.squareCell] {
+        for field in [CKRecord.countCell, CKRecord.valueCell] {
             #expect(names.contains(field), "Aggregate is missing '\(field)'")
         }
         for field in ["entity", "view", "group_key", "date", "schema_version"] {

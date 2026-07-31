@@ -54,7 +54,7 @@ final class PerfBench {
         let registry = SchemaRegistry(database: backing)
         let store = EntityStore(database: backing, registry: registry, keyProvider: PerfKeyProvider())
 
-        try await registry.preload()
+        try await registry.loadAll()
         backing.resetRequests()
 
         return PerfWorld(

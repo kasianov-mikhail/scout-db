@@ -14,7 +14,7 @@ struct EntityCoder {
     let jsonEncoder = JSONEncoder()
     let jsonDecoder = JSONDecoder()
 
-    static let envelopeKeys = ["entity", "schema_version", "uuid", "deleted"]
+    static let envelopeKeys = ["entity", "schema_version", "uuid"]
 
     private static let patterns = PatternCache()
 
@@ -35,16 +35,6 @@ struct EntityCoder {
 
         for field in fields where resolved[field.name] == nil {
             resolved[field.name] = field.defaultValue
-        }
-        for field in fields where field.type == .asset {
-            switch resolved[field.name] {
-            case .bytes(let data)?:
-                resolved[field.name] = try Self.stage(data)
-            case .asset(let url)?:
-                try Self.validateAssetSize(at: url)
-            default:
-                break
-            }
         }
         let derivations = fields.filter { $0.derived != nil }
         for _ in 0...derivations.count {
@@ -140,7 +130,6 @@ struct EntityCoder {
         record["entity"] = entityRecord.entity
         record["schema_version"] = Int64(entityRecord.schemaVersion)
         record["uuid"] = entityRecord.uuid
-        record["deleted"] = Int64(entityRecord.deleted ? 1 : 0)
 
         var payload: [String: RecordValue] = [:]
         for field in fields {
@@ -203,8 +192,7 @@ struct EntityCoder {
             }
         }
 
-        let deleted = (record["deleted"] as? Int64 ?? 0) > 0
-        return (EntityRecord(entity: definition.entity, uuid: uuid, schemaVersion: Int(version), values: values, deleted: deleted), payload)
+        return (EntityRecord(entity: definition.entity, uuid: uuid, schemaVersion: Int(version), values: values), payload)
     }
 
     static func trigrams(of text: String) -> [String] {

@@ -144,23 +144,6 @@ struct EntityDefinitionTests {
         #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
-    @Test("Validation rejects an asset field in payload")
-    func assetStorage() {
-        let definition = makeDefinition(fields: [
-            FieldDefinition(name: "screenshot", type: .asset, storage: .payload)
-        ])
-        #expect(throws: SchemaError.self) { try definition.validate() }
-    }
-
-    @Test("Validation allows several asset fields in distinct slots")
-    func assetPool() throws {
-        let definition = makeDefinition(fields: [
-            FieldDefinition(name: "screenshot", type: .asset, storage: .slot(.asset, "a_00")),
-            FieldDefinition(name: "dump", type: .asset, storage: .slot(.asset, "a_01")),
-        ])
-        try definition.validate()
-    }
-
     @Test("Validation rejects a view summing a non-numeric field")
     func sumType() {
         let definition = makeDefinition(

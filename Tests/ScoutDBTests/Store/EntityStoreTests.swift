@@ -280,7 +280,7 @@ struct EntityStoreTests {
     }
 
     @Test("Deleted records disappear from reads")
-    func tombstone() async throws {
+    func deletedRecordsVanish() async throws {
         try await store.write(makePurchase(uuid: "p-1").values, entity: "purchase", uuid: "p-1")
         try await store.delete(entity: "purchase", uuid: "p-1")
         let records = try await store.read(entity: "purchase")
@@ -302,29 +302,6 @@ struct EntityStoreTests {
         let filter = EntityStore.Filter(field: "tags", op: .contains, value: .string("swift"))
         let records = try await store.read(entity: "post", filters: [filter])
         #expect(records.map(\.uuid) == ["n-1"])
-    }
-
-    @Test("Location fields support radius queries")
-    func radiusQuery() async throws {
-        try await registry.publish(
-            makeDefinition(
-                entity: "store_visit",
-                fields: [
-                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
-                    FieldDefinition(name: "place", type: .location, storage: .slot(.location, "g_00")),
-                ]))
-        try await store.write(["name": .string("moscow"), "place": .location(latitude: 55.751, longitude: 37.617)], entity: "store_visit", uuid: "v-1")
-        try await store.write(["name": .string("spb"), "place": .location(latitude: 59.939, longitude: 30.315)], entity: "store_visit", uuid: "v-2")
-
-        let center = RecordValue.location(latitude: 55.75, longitude: 37.62)
-        let filter = EntityStore.Filter(field: "place", op: .near, value: center, radius: 5_000)
-        let records = try await store.read(entity: "store_visit", filters: [filter])
-        #expect(records.map(\.uuid) == ["v-1"])
-
-        let queried = try await store.query("store_visit")
-            .filter("place", near: GeoPoint(latitude: 55.75, longitude: 37.62), within: 5_000)
-            .take(100)
-        #expect(queried.map(\.uuid) == ["v-1"])
     }
 
     @Test("Aggregate views count writes into grid cells")
@@ -365,24 +342,6 @@ struct EntityStoreTests {
         #expect(grids.count == 1)
         #expect(grids.first?.cellCount == 2)
         #expect(grids.first?.cellValue == 4.0)
-    }
-
-    @Test("Asset fields round-trip through the envelope")
-    func asset() async throws {
-        try await registry.publish(
-            makeDefinition(
-                entity: "report",
-                fields: [
-                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
-                    FieldDefinition(name: "dump", type: .asset, storage: .slot(.asset, "a_00")),
-                ]))
-        let url = URL(fileURLWithPath: "/tmp/dump.bin")
-        try await store.write(["name": .string("crash"), "dump": .asset(url)], entity: "report", uuid: "r-1")
-
-        let records = try await store.read(entity: "report")
-        #expect(records.first?.values["dump"] == .asset(url))
-        let item = try #require(database.records.first { $0.recordID.recordName == "r-1" })
-        #expect((item["a_00"] as? CKAsset)?.fileURL == url)
     }
 
     @Test("Encrypted fields hide plaintext but keep the surrogate filterable")

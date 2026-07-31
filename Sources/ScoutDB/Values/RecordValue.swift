@@ -49,9 +49,6 @@ public enum RecordValue: Hashable, Sendable {
     /// The uuid of a record in the entity the field references.
     case reference(String)
 
-    /// A file uploaded alongside the record rather than inside it.
-    case asset(URL)
-
     /// A list of strings; also what an `ngrams` derivation produces.
     case strings([String])
 
@@ -66,15 +63,12 @@ public enum RecordValue: Hashable, Sendable {
 
     /// A list of coordinate pairs.
     case locations([GeoPoint])
-
-    /// A list of files uploaded alongside the record.
-    case assets([URL])
 }
 
 extension RecordValue: Codable {
     private enum CodingKeys: String, CodingKey {
-        case string, int, double, date, bytes, location, reference, asset
-        case strings, ints, doubles, dates, locations, assets
+        case string, int, double, date, bytes, location, reference
+        case strings, ints, doubles, dates, locations
     }
 
     public init(from decoder: any Decoder) throws {
@@ -100,14 +94,10 @@ extension RecordValue: Codable {
             self = .dates(value.map(Date.init(millisecondsSince1970:)))
         } else if let value = try container.decodeIfPresent([GeoPoint].self, forKey: .locations) {
             self = .locations(value)
-        } else if let value = try container.decodeIfPresent([URL].self, forKey: .assets) {
-            self = .assets(value)
         } else if let value = try container.decodeIfPresent([Double].self, forKey: .location), value.count == 2 {
             self = .location(latitude: value[0], longitude: value[1])
         } else if let value = try container.decodeIfPresent(String.self, forKey: .reference) {
             self = .reference(value)
-        } else if let value = try container.decodeIfPresent(URL.self, forKey: .asset) {
-            self = .asset(value)
         } else {
             throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Unknown field value type"))
         }
@@ -137,14 +127,10 @@ extension RecordValue: Codable {
             try container.encode(value.map(\.millisecondsSince1970), forKey: .dates)
         case .locations(let value):
             try container.encode(value, forKey: .locations)
-        case .assets(let value):
-            try container.encode(value, forKey: .assets)
         case .location(let latitude, let longitude):
             try container.encode([latitude, longitude], forKey: .location)
         case .reference(let value):
             try container.encode(value, forKey: .reference)
-        case .asset(let value):
-            try container.encode(value, forKey: .asset)
         }
     }
 }

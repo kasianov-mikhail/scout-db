@@ -65,9 +65,6 @@ package enum PredicateEvaluator {
     }
 
     private static func evaluate(_ comparison: NSComparisonPredicate, record: CKRecord) -> Bool? {
-        if comparison.leftExpression.expressionType == .function {
-            return evaluateDistance(comparison, record: record)
-        }
         if comparison.leftExpression.expressionType == .evaluatedObject {
             return evaluateSearch(comparison, record: record)
         }
@@ -134,28 +131,6 @@ package enum PredicateEvaluator {
         }
     }
 
-    private static func evaluateDistance(_ comparison: NSComparisonPredicate, record: CKRecord) -> Bool? {
-        let arguments = comparison.leftExpression.arguments ?? []
-
-        guard arguments.count == 2, arguments[0].expressionType == .keyPath else {
-            return nil
-        }
-        guard arguments[1].expressionType == .constantValue, comparison.rightExpression.expressionType == .constantValue else {
-            return nil
-        }
-        guard let center = arguments[1].constantValue as? CLLocation else {
-            return nil
-        }
-        guard let radius = (comparison.rightExpression.constantValue as? NSNumber)?.doubleValue else {
-            return nil
-        }
-        guard let point = record[arguments[0].keyPath] as? CLLocation else {
-            return nil
-        }
-
-        return point.distance(from: center) < radius
-    }
-
     private static func evaluateSearch(_ comparison: NSComparisonPredicate, record: CKRecord) -> Bool? {
         guard comparison.rightExpression.expressionType == .constantValue else {
             return nil
@@ -211,9 +186,6 @@ package enum PredicateEvaluator {
             if let lhs = recordName(of: lhs), let rhs = recordName(of: rhs) {
                 return order(lhs, rhs)
             }
-            if let lhs = assetPath(of: lhs), let rhs = assetPath(of: rhs) {
-                return order(lhs, rhs)
-            }
             return order(rank(of: lhs), rank(of: rhs))
         }
     }
@@ -224,17 +196,6 @@ package enum PredicateEvaluator {
             value.recordID.recordName
         case let value as String:
             value
-        default:
-            nil
-        }
-    }
-
-    private static func assetPath(of value: Any?) -> String? {
-        switch value {
-        case let value as CKAsset:
-            value.fileURL?.absoluteString
-        case let value as URL:
-            value.absoluteString
         default:
             nil
         }
@@ -254,14 +215,10 @@ package enum PredicateEvaluator {
             4
         case is CKRecord.Reference:
             5
-        case is CKAsset:
-            6
-        case is URL:
-            7
         case is [Any]:
-            8
+            6
         default:
-            9
+            7
         }
     }
 

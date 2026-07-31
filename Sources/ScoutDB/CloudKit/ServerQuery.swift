@@ -6,7 +6,6 @@
 // https://opensource.org/licenses/MIT.
 
 import CloudKit
-import CoreLocation
 import Foundation
 
 struct ServerFilter: Equatable, Sendable {
@@ -21,14 +20,12 @@ struct ServerFilter: Equatable, Sendable {
         case notIn
         case beginsWith
         case contains
-        case near
         case search
     }
 
     let field: String
     let op: Operator
     let value: RecordValue
-    var radius: Double?
 
     var predicate: NSPredicate {
         let value = value.predicateValue
@@ -53,8 +50,6 @@ struct ServerFilter: Equatable, Sendable {
             NSPredicate(format: "%K BEGINSWITH %@", field, value)
         case .contains:
             NSPredicate(format: "%K CONTAINS %@", field, value)
-        case .near:
-            NSPredicate(format: "distanceToLocation:fromLocation:(%K, %@) < %f", field, value, radius ?? 0)
         case .search:
             NSPredicate(format: "self contains %@", value)
         }
@@ -64,7 +59,6 @@ struct ServerFilter: Equatable, Sendable {
 struct ServerSort: Equatable, Sendable {
     let field: String
     let ascending: Bool
-    var origin: RecordValue?
 }
 
 extension CKQuery {
@@ -75,12 +69,7 @@ extension CKQuery {
                 ? NSPredicate(value: true)
                 : NSCompoundPredicate(type: .and, subpredicates: filters.map(\.predicate)))
         if sort.count > 0 {
-            sortDescriptors = sort.map { clause in
-                if case .location(let latitude, let longitude)? = clause.origin {
-                    return CKLocationSortDescriptor(key: clause.field, relativeLocation: CLLocation(latitude: latitude, longitude: longitude))
-                }
-                return NSSortDescriptor(key: clause.field, ascending: clause.ascending)
-            }
+            sortDescriptors = sort.map { NSSortDescriptor(key: $0.field, ascending: $0.ascending) }
         }
     }
 }
