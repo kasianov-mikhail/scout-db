@@ -12,15 +12,13 @@ extension QueryBuilder {
     ///
     /// A query a declared aggregate covers — no creator scope, and filters
     /// limited to an equality, `in` list, or alternatives of them on the
-    /// aggregate's grouping, an `envelopeDate` range aligned with its cell
-    /// resolution (hours for an hour bucket, days for day and weekday ones), or
-    /// a threshold landing on a histogram bound — is answered from the grid
-    /// without scanning records. A strict threshold over an integer field counts
-    /// as the half-open one it equals, so `> 15` lands on a bound of 16. A
-    /// threshold on an integer field an aggregate groups by is answered without
-    /// a histogram at all when the field's `min` and `max` bound it to a domain
-    /// the range can name value by value. Every other query scans, fetching only
-    /// the envelope and the filtered fields rather than full payloads.
+    /// aggregate's grouping — is answered from the grid without scanning
+    /// records. A threshold on an integer field an aggregate groups by is
+    /// answered from the grid too when the field's `min` and `max` bound it to
+    /// a domain the range can name value by value; a strict threshold counts as
+    /// the half-open one it equals, so `> 15` reads as `>= 16`. Every other
+    /// query scans, fetching only the envelope and the filtered fields rather
+    /// than full payloads.
     ///
     /// ```swift
     /// let paid = try await store.query("purchase")
@@ -260,104 +258,34 @@ extension QueryBuilder {
         )
     }
 
-    /// One point per non-empty cell of the grid, dated at the cell's own
-    /// position within its period.
+    /// One total per group, folded across every record the grid counts.
     ///
-    /// `field` names the metric to carry alongside the counts, which the
-    /// point's `value` holds; without it the point counts alone. `bucket` picks
-    /// among several grids over the same grouping — left out, the finest one
-    /// wins. The only clause a grid read can honor is an equality filter on the
-    /// grouping field, which narrows it to that group server-side; any other
-    /// filter throws rather than being quietly dropped.
-    ///
-    /// ```swift
-    /// let daily = try await store.query("purchase")
-    ///     .series("amount", by: "product_id", bucket: .day, from: june, to: july)
-    /// // [AggregateSeriesPoint(group: "sku-42", date: ..., count: 812, value: 8120.5), ...]
-    /// ```
-    ///
-    public func series(_ field: String? = nil, by group: String? = nil, bucket: AggregateBucket? = nil, from: Date? = nil, to: Date? = nil)
-        async throws -> [AggregateSeriesPoint]
-    {
-        try await GridQuery(
-            self,
-            field: field,
-            group: group,
-            bucket: bucket,
-            from: from,
-            to: to
-        )
-        .series()
-    }
-
-    /// One total per group, the periods folded together.
-    ///
-    /// The whole range in one row per group: the count, the metric's value, and
-    /// the `average`, `variance` and `standardDeviation` derived from them.
-    /// Without a `field` the rows count alone; `from`/`to` bound the range at
-    /// the grid's own cell resolution.
+    /// One row per group: the count, the metric's value, and the `average`,
+    /// `variance` and `standardDeviation` derived from them. Without a `field`
+    /// the rows count alone. The only clause a grid read can honor is an
+    /// equality filter on the grouping field, which narrows it to that group
+    /// server-side; any other filter throws rather than being quietly dropped.
     ///
     /// ```swift
     /// let revenue = try await store.query("purchase")
-    ///     .totals("amount", by: "product_id", from: june, to: july)
+    ///     .totals("amount", by: "product_id")
     /// // [AggregateTotal(group: "sku-42", count: 48211, value: 481628.9), ...]
     /// ```
     ///
-    public func totals(_ field: String? = nil, by group: String? = nil, bucket: AggregateBucket? = nil, from: Date? = nil, to: Date? = nil)
-        async throws -> [AggregateTotal]
-    {
-        try await GridQuery(
-            self,
-            field: field,
-            group: group,
-            bucket: bucket,
-            from: from,
-            to: to
-        )
-        .totals()
-    }
-
-    /// Interpolates a percentile from the histogram kept over the field.
-    ///
-    /// Reads the bucket counts a `histogram(of:bounds:)` declaration maintains
-    /// and interpolates within the bucket the percentile falls in, so the answer
-    /// is as fine as the bounds are. `nil` when no value has been counted yet.
-    ///
-    /// ```swift
-    /// let p95 = try await store.query("purchase").percentile(0.95, of: "amount")
-    /// ```
-    ///
-    public func percentile(_ p: Double, of field: String, by group: String? = nil, from: Date? = nil, to: Date? = nil) async throws -> Double? {
-        try await GridQuery(
-            self,
-            field: field,
-            group: group,
-            histogram: true,
-            from: from,
-            to: to
-        )
-        .percentile(p)
+    public func totals(_ field: String? = nil, by group: String? = nil) async throws -> [AggregateTotal] {
+        try await GridQuery(self, field: field, group: group).totals()
     }
 }
 
 extension GridQuery {
-    fileprivate init(
-        _ query: QueryBuilder, field: String?, group: String?, histogram: Bool = false, bucket: AggregateBucket? = nil, from: Date?, to: Date?
-    ) async throws {
+    fileprivate init(_ query: QueryBuilder, field: String?, group: String?) async throws {
         let store = query.store
         let definition = try await store.registry.definition(for: query.entity)
 
-        let view = definition.view(
-            grouping: group,
-            folding: field,
-            histogram: histogram,
-            bucket: bucket
-        )
-
-        guard let view else {
+        guard let view = definition.view(grouping: group, folding: field) else {
             let shape = [
                 group.map { "grouped by '\($0)'" },
-                field.map { "\(histogram ? "bucketing" : "folding") '\($0)'" },
+                field.map { "folding '\($0)'" },
             ]
             throw SchemaError.invalidDefinition(
                 "Entity '\(query.entity)' keeps no aggregate \(shape.compactMap { $0 }.joined(separator: ", "))"
@@ -368,9 +296,7 @@ extension GridQuery {
             store,
             entity: query.entity,
             view: view.name,
-            group: try query.narrowing(to: group),
-            from: from,
-            to: to
+            group: try query.narrowing(to: group)
         )
     }
 }

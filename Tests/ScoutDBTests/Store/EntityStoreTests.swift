@@ -335,7 +335,7 @@ struct EntityStoreTests {
                 fields: [
                     FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
-                ], envelopeDate: "date", views: [AggregateView(name: "hourly", groupBy: "name")]))
+                ], views: [AggregateView(name: "by_name", groupBy: "name")]))
 
         let date = Date(timeIntervalSince1970: 36_000)
         try await store.write(["name": .string("open"), "date": .date(date)], entity: "tap")
@@ -343,7 +343,7 @@ struct EntityStoreTests {
 
         let grids = database.records.filter { $0.recordType == "Aggregate" }
         #expect(grids.count == 1)
-        #expect(grids.first?["c_10"] == Int64(2))
+        #expect(grids.first?.cellCount == 2)
         #expect(grids.first?["group_key"] == "open")
     }
 
@@ -355,7 +355,7 @@ struct EntityStoreTests {
                 fields: [
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
-                ], envelopeDate: "date", views: [AggregateView(name: "hourly", sum: "amount")]))
+                ], views: [AggregateView(name: "total", sum: "amount")]))
 
         let date = Date(timeIntervalSince1970: 36_000)
         try await store.write(["amount": .double(2.5), "date": .date(date)], entity: "payment")
@@ -363,8 +363,8 @@ struct EntityStoreTests {
 
         let grids = database.records.filter { $0.recordType == "Aggregate" }
         #expect(grids.count == 1)
-        #expect(grids.first?["c_10"] == Int64(2))
-        #expect(grids.first?["f_10"] == 4.0)
+        #expect(grids.first?.cellCount == 2)
+        #expect(grids.first?.cellValue == 4.0)
     }
 
     @Test("Asset fields round-trip through the envelope")
@@ -383,22 +383,6 @@ struct EntityStoreTests {
         #expect(records.first?.values["dump"] == .asset(url))
         let item = try #require(database.records.first { $0.recordID.recordName == "r-1" })
         #expect((item["a_00"] as? CKAsset)?.fileURL == url)
-    }
-
-    @Test("Weekday bucket counts into a weekly grid")
-    func weekdayBucket() async throws {
-        try await registry.publish(
-            makeDefinition(
-                entity: "visit",
-                fields: [
-                    FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00"))
-                ], envelopeDate: "date", views: [AggregateView(name: "weekly", bucket: .weekday)]))
-
-        let thursday = Date(timeIntervalSince1970: 36_000)
-        try await store.write(["date": .date(thursday)], entity: "visit")
-
-        let grids = database.records.filter { $0.recordType == "Aggregate" }
-        #expect(grids.first?["c_04"] == Int64(1))
     }
 
     @Test("Encrypted fields hide plaintext but keep the surrogate filterable")

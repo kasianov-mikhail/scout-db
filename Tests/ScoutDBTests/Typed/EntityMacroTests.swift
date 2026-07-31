@@ -51,7 +51,6 @@ struct EntityMacroTests {
             .field("quantity", .int)
             .field("amount", .double)
             .field("date", .timestamp)
-            .envelopeDate("date")
             .create()
     }
 

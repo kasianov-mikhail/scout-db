@@ -116,36 +116,6 @@ struct PaginationTests {
         #expect(records.map(\.uuid) == ["p-0", "p-2"])
     }
 
-    @Test("Keyset pages assemble from multiple server pages")
-    func keysetAcrossServerPages() async throws {
-        try await writePurchases(5)
-        database.pageLimit = 2
-
-        let first = try await store.read(entity: "purchase", limit: 3)
-        #expect(first.records.map(\.uuid) == ["p-0", "p-1", "p-2"])
-        let cursor = try #require(first.cursor)
-
-        let second = try await store.read(entity: "purchase", limit: 3, after: cursor)
-        #expect(second.records.map(\.uuid) == ["p-3", "p-4"])
-        #expect(second.cursor == nil)
-    }
-
-    @Test("A projected keyset page carries the requested fields, the cursor field and nothing else")
-    func keysetProjection() async throws {
-        try await writePurchases(3)
-
-        let page = try await store.read(entity: "purchase", fields: ["quantity"], limit: 2)
-        #expect(page.records.map(\.uuid) == ["p-0", "p-1"])
-        #expect(page.records.allSatisfy { $0.values["quantity"] != nil })
-        #expect(page.records.allSatisfy { $0.values["date"] != nil })
-        #expect(page.records.allSatisfy { $0.values["product_id"] == nil })
-
-        let cursor = try #require(page.cursor)
-        let next = try await store.read(entity: "purchase", fields: ["quantity"], limit: 2, after: cursor)
-        #expect(next.records.map(\.uuid) == ["p-2"])
-        #expect(next.records.allSatisfy { $0.values["product_id"] == nil })
-    }
-
     @Test("A projected field-ordered page keeps the ordering field and the filtered fields")
     func fieldPageProjection() async throws {
         try await writePurchases(3)
@@ -159,55 +129,12 @@ struct PaginationTests {
         #expect(try #require(page.cursor).value == page.records.last?.values["quantity"])
     }
 
-    @Test("The builder's projection reaches its pages and its stream")
+    @Test("The builder's projection reaches its pages")
     func builderProjection() async throws {
         try await writePurchases(3)
 
-        let paged = try await store.query("purchase").fields("quantity").paginate(size: 3)
-        #expect(paged.records.allSatisfy { $0.values["quantity"] != nil && $0.values["product_id"] == nil })
-
         let ordered = try await store.query("purchase").fields("total").sort("quantity").page(size: 3)
         #expect(ordered.records.allSatisfy { $0.values["total"] != nil && $0.values["product_id"] == nil })
-
-        var streamed: [EntityRecord] = []
-        for try await record in store.query("purchase").fields("quantity").stream(pageSize: 2) {
-            streamed.append(record)
-        }
-        #expect(streamed.count == 3)
-        #expect(streamed.allSatisfy { $0.values["quantity"] != nil && $0.values["product_id"] == nil })
-    }
-
-    @Test("Stream pages through small server pages in order")
-    func streamAcrossServerPages() async throws {
-        try await writePurchases(5)
-        database.pageLimit = 2
-
-        var uuids: [String] = []
-        for try await record in store.stream(entity: "purchase", any: [[]], pageSize: 3) {
-            uuids.append(record.uuid)
-        }
-        #expect(uuids == ["p-0", "p-1", "p-2", "p-3", "p-4"])
-    }
-
-    @Test("A walk over records sharing one envelope date serves every one of them")
-    func tiedDatesArePagedWhole() async throws {
-        let shared = Date(timeIntervalSince1970: 1_000)
-        for index in (0..<25).reversed() {
-            var values = makePurchase().values
-            values["date"] = .date(shared)
-            try await store.write(values, entity: "purchase", uuid: String(format: "p-%02d", index))
-        }
-
-        var served: [String] = []
-        var cursor: EntityCursor?
-        repeat {
-            let page = try await store.read(entity: "purchase", limit: 10, after: cursor)
-            served += page.records.map(\.uuid)
-            cursor = page.cursor
-        } while cursor != nil
-
-        #expect(served == served.sorted())
-        #expect(Set(served).count == 25)
     }
 
     @Test("A field-ordered walk over records sharing one value serves every one of them")

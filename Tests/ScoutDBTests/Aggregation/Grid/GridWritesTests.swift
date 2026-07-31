@@ -24,7 +24,7 @@ struct GridWritesTests {
                 FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00")),
                 FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
-            ], envelopeDate: "date", views: views)
+            ], views: views)
     }
 
     private func payments(_ products: [String]) -> [EntityRecord] {
@@ -46,8 +46,8 @@ struct GridWritesTests {
     @Test("Every slot a batch touches is read and written in one request each")
     func batchedSlots() async throws {
         let definition = paymentDefinition(views: [
-            AggregateView(name: "daily", groupBy: "product", bucket: .day),
-            AggregateView(name: "revenue", groupBy: "product", bucket: .lifetime, sum: "amount"),
+            AggregateView(name: "by_product", groupBy: "product"),
+            AggregateView(name: "revenue", groupBy: "product", sum: "amount"),
         ])
         let aggregator = GridAggregator(database: database)
 
@@ -61,7 +61,7 @@ struct GridWritesTests {
 
     @Test("A slot written before stays cached, so the next write only saves")
     func warmSlotSkipsTheFetch() async throws {
-        let definition = paymentDefinition(views: [AggregateView(name: "revenue", bucket: .lifetime, sum: "amount")])
+        let definition = paymentDefinition(views: [AggregateView(name: "revenue", sum: "amount")])
         let aggregator = GridAggregator(database: database)
         try await aggregator.record(payments(["app"]), using: definition)
         database.resetRequests()
@@ -77,7 +77,7 @@ struct GridWritesTests {
 
     @Test("Only a slot named before separators were escaped falls back to a query")
     func fallbackIsScopedToRenamedSlots() async throws {
-        let definition = paymentDefinition(views: [AggregateView(name: "daily", groupBy: "product", bucket: .day)])
+        let definition = paymentDefinition(views: [AggregateView(name: "by_product", groupBy: "product")])
         let aggregator = GridAggregator(database: database)
 
         try await aggregator.record(payments(["app"]), using: definition)
@@ -96,7 +96,7 @@ struct GridWritesTests {
 
     @Test("An update that leaves a min view's value where it stands touches no slot")
     func unchangedMinSkipsTheSlot() async throws {
-        let definition = paymentDefinition(views: [AggregateView(name: "cheapest", bucket: .lifetime, min: "amount")])
+        let definition = paymentDefinition(views: [AggregateView(name: "cheapest", min: "amount")])
         let stored = payment(amount: 5)
         try await GridAggregator(database: database).record([stored], using: definition)
         database.resetRequests()
@@ -110,7 +110,7 @@ struct GridWritesTests {
 
     @Test("An update that lowers a min view's value still writes the slot")
     func loweredMinWritesTheSlot() async throws {
-        let definition = paymentDefinition(views: [AggregateView(name: "cheapest", bucket: .lifetime, min: "amount")])
+        let definition = paymentDefinition(views: [AggregateView(name: "cheapest", min: "amount")])
         let stored = payment(amount: 5)
         try await GridAggregator(database: database).record([stored], using: definition)
         database.resetRequests()
@@ -123,7 +123,7 @@ struct GridWritesTests {
 
     @Test("A slot another writer moved on is folded again over the server copy")
     func staleSlotRetriesOverTheServerCopy() async throws {
-        let definition = paymentDefinition(views: [AggregateView(name: "revenue", bucket: .lifetime, sum: "amount")])
+        let definition = paymentDefinition(views: [AggregateView(name: "revenue", sum: "amount")])
         let aggregator = GridAggregator(database: database)
         try await aggregator.record(payments(["app"]), using: definition)
 
@@ -141,7 +141,7 @@ struct GridWritesTests {
 
     @Test("A cached slot deleted on the server is written again from scratch")
     func vanishedSlotIsRebuilt() async throws {
-        let definition = paymentDefinition(views: [AggregateView(name: "revenue", bucket: .lifetime, sum: "amount")])
+        let definition = paymentDefinition(views: [AggregateView(name: "revenue", sum: "amount")])
         let aggregator = GridAggregator(database: database)
         try await aggregator.record(payments(["app"]), using: definition)
 

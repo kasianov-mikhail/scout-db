@@ -12,25 +12,14 @@ import Foundation
 extension PerfScenarios {
     static var aggregates: [PerfScenario] {
         [
-            PerfScenario("Aggregation", "totals(daily) over 30 days", sql: 1, writes: false) { world, _ in
-                let window = world.window(days: 30)
-                _ = try await world.store.query(PerfSchema.order).totals(by: "product", bucket: .day, from: window.from, to: window.to)
-            },
-            PerfScenario("Aggregation", "totals(daily) over 18 months", sql: 1, writes: false) { world, _ in
-                _ = try await world.store.query(PerfSchema.order).totals(by: "product", bucket: .day)
-            },
-            PerfScenario("Aggregation", "series(daily) over 90 days", sql: 1, writes: false) { world, _ in
-                let window = world.window(days: 90)
-                _ = try await GridQuery(world.store, entity: PerfSchema.order, view: "daily", from: window.from, to: window.to).series()
+            PerfScenario("Aggregation", "totals by product", sql: 1, writes: false) { world, _ in
+                _ = try await world.store.query(PerfSchema.order).totals("total", by: "product")
             },
             PerfScenario("Aggregation", "totals(revenue)", sql: 1, writes: false) { world, _ in
                 _ = try await GridQuery(world.store, entity: PerfSchema.order, view: "revenue").totals()
             },
-            PerfScenario("Aggregation", "totals(peak) with a predicate", sql: 1, writes: false) { world, _ in
-                _ = try await GridQuery(world.store, entity: PerfSchema.order, view: "peak").totals() { $0.count > 10 }
-            },
-            PerfScenario("Aggregation", "percentile(0.95) from a histogram", sql: 1, writes: false) { world, _ in
-                _ = try await GridQuery(world.store, entity: PerfSchema.order, view: "spend").percentile(0.95)
+            PerfScenario("Aggregation", "totals(peak)", sql: 1, writes: false) { world, _ in
+                _ = try await GridQuery(world.store, entity: PerfSchema.order, view: "peak").totals()
             },
             PerfScenario("Aggregation", "distinct(product)", sql: 1, writes: false) { world, _ in
                 _ = try await world.store.distinct(entity: PerfSchema.order, field: "product")
