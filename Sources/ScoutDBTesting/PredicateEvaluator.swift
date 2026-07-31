@@ -6,7 +6,6 @@
 // https://opensource.org/licenses/MIT.
 
 import CloudKit
-import CoreLocation
 import Foundation
 
 package enum PredicateEvaluator {
@@ -177,8 +176,6 @@ package enum PredicateEvaluator {
             return order(lhs, rhs)
         case (let lhs as Data, let rhs as Data):
             return order(lhs, rhs)
-        case (let lhs as CLLocation, let rhs as CLLocation):
-            return order(lhs, rhs)
         case (let lhs as [Any], let rhs as [Any]):
             return order(lhs, rhs)
 
@@ -211,14 +208,12 @@ package enum PredicateEvaluator {
             2
         case is Data:
             3
-        case is CLLocation:
-            4
         case is CKRecord.Reference:
-            5
+            4
         case is [Any]:
-            6
+            5
         default:
-            7
+            6
         }
     }
 
@@ -227,11 +222,6 @@ package enum PredicateEvaluator {
             return order(lhs.count, rhs.count)
         }
         return order(mismatch.0, mismatch.1)
-    }
-
-    private static func order(_ lhs: CLLocation, _ rhs: CLLocation) -> ComparisonResult {
-        let latitude = order(lhs.coordinate.latitude, rhs.coordinate.latitude)
-        return latitude == .orderedSame ? order(lhs.coordinate.longitude, rhs.coordinate.longitude) : latitude
     }
 
     private static func order(_ lhs: [Any], _ rhs: [Any]) -> ComparisonResult {

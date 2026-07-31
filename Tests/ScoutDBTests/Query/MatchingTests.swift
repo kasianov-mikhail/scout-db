@@ -53,12 +53,11 @@ struct MatchingTests {
                 entity: "shot",
                 fields: [
                     FieldDefinition(name: "blob", type: .bytes, storage: .slot(.bytes, "b_00")),
-                    FieldDefinition(name: "spot", type: .location, storage: .slot(.location, "g_00")),
                     FieldDefinition(name: "tags", type: .stringList, storage: .slot(.stringList, "ls_00")),
                 ]))
         let definition = try await registry.definition(for: "shot")
 
-        for field in ["blob", "spot", "tags"] {
+        for field in ["blob", "tags"] {
             #expect(throws: SchemaError.invalidValue(field)) {
                 _ = try store.serverSort([EntityStore.Sort(field: field)], using: definition)
             }
