@@ -13,19 +13,17 @@ struct CellDelta {
     var squares: Double?
     var removed: (kind: Metric, total: Double)?
 
-    func merging(_ other: CellDelta) -> CellDelta {
-        var merged = self
-        merged.count += other.count
+    mutating func merge(_ other: CellDelta) {
+        count += other.count
         if let squares = other.squares {
-            merged.squares = (merged.squares ?? 0) + squares
+            self.squares = (self.squares ?? 0) + squares
         }
         if let (kind, total) = other.value {
-            merged.value = (kind, merged.value.map { kind.combine($0.total, total) } ?? total)
+            value = (kind, value.map { kind.combine($0.total, total) } ?? total)
         }
         if let (kind, total) = other.removed {
-            merged.removed = (kind, merged.removed.map { kind.combine($0.total, total) } ?? total)
+            removed = (kind, removed.map { kind.combine($0.total, total) } ?? total)
         }
-        return merged
     }
 
     func isNoop(recomputing: Bool) -> Bool {
