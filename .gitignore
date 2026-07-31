@@ -1,5 +1,6 @@
 .build/
 .DS_Store
+.swiftpm/
 xcuserdata/
 Tests/ScoutDBTestHost/ScoutDBTestHost.xcodeproj/
 Tests/ScoutDBTestHost/Info.plist

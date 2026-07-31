@@ -7,7 +7,7 @@
 
 import Foundation
 
-/// A typed façade over one entity — the shape `@Entity` derives.
+/// A typed façade over one entity.
 public protocol EntityRepresentable: Sendable {
     static var entityName: String { get }
     /// The schema field behind a stored property's key path, nil for key paths
