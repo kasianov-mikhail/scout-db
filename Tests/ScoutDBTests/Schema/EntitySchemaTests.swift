@@ -64,17 +64,6 @@ struct EntitySchemaTests {
         #expect(schema.unique == ["product_id", "date"])
     }
 
-    @Test("An encrypted field reads back as sealed")
-    func encryptedField() async throws {
-        try await store.schema("secret")
-            .field("token", .string, .payload, .encrypted)
-            .keyID("k1")
-            .create()
-
-        let schema = try await registry.schema(for: "secret")
-        #expect(try #require(schema.fields.first).encrypted)
-    }
-
     @Test("A closed field leaves the schema")
     func closedFieldDropsOut() async throws {
         try await store.schema("purchase")

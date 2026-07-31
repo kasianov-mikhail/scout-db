@@ -101,15 +101,14 @@ extension RecordValue {
 
 /// The record metadata a `CloudDatabase` double stamps for itself.
 ///
-/// CloudKit assigns a change tag, a modification date and a creator on the
-/// server, and `CKRecord` exposes all three read-only. A double has no server
-/// to assign them, so it stores its own here and the library reads them where
-/// it would read CloudKit's. Nothing in ScoutDB writes them — the double does,
-/// through the accessors `ScoutDBTesting` puts on top of this.
+/// CloudKit assigns a change tag and a modification date on the server, and
+/// `CKRecord` exposes both read-only. A double has no server to assign them, so
+/// it stores its own here and the library reads them where it would read
+/// CloudKit's. Nothing in ScoutDB writes them — the double does, through the
+/// accessors `ScoutDBTesting` puts on top of this.
 ///
 package struct RecordOverrides: Sendable {
     package var modificationDate: Date?
-    package var creator: String?
     package var changeTag: String?
 }
 
@@ -119,10 +118,6 @@ extension CKRecord {
     package var overrides: RecordOverrides {
         get { objc_getAssociatedObject(self, &overridesKey) as? RecordOverrides ?? RecordOverrides() }
         set { objc_setAssociatedObject(self, &overridesKey, newValue, .OBJC_ASSOCIATION_RETAIN) }
-    }
-
-    var creatorName: String? {
-        overrides.creator ?? creatorUserRecordID?.recordName
     }
 
     /// A copy that keeps the overrides `copy()` leaves behind.

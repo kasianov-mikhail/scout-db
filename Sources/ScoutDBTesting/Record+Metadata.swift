@@ -15,12 +15,6 @@ extension CKRecord {
         overrides.modificationDate ?? modificationDate
     }
 
-    /// The name of the user record that wrote the record, or the one the
-    /// double stamped.
-    public var recordCreator: String? {
-        overrides.creator ?? creatorUserRecordID?.recordName
-    }
-
     /// The tag a conditional save compares against, or the one the double
     /// stamped.
     public var recordVersionTag: String? {
@@ -30,11 +24,6 @@ extension CKRecord {
     /// Stamps the modification date a query on `modificationDate` reads.
     public func overrideModificationDate(_ date: Date) {
         overrides.modificationDate = date
-    }
-
-    /// Stamps the writer a trusted-writer check reads.
-    public func overrideCreator(_ name: String) {
-        overrides.creator = name
     }
 
     /// Stamps the version a conditional save compares against, standing in for

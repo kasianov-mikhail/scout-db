@@ -151,8 +151,7 @@ extension SchemaBuilder {
             version: version,
             fields: fields,
             unique: unique ?? previous?.unique,
-            views: views.isEmpty ? nil : views,
-            keyID: keyID ?? previous?.keyID
+            views: views.isEmpty ? nil : views
         )
         try await registry.publish(definition)
     }

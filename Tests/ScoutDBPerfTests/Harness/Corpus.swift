@@ -104,7 +104,7 @@ enum CorpusBuilder {
     static func build(_ size: DatasetSize) async throws -> Corpus {
         let database = InMemoryDatabase()
         let registry = SchemaRegistry(database: database)
-        let store = EntityStore(database: database, registry: registry, keyProvider: PerfKeyProvider())
+        let store = EntityStore(database: database, registry: registry)
         for definition in PerfSchema.definitions {
             try await registry.publish(definition)
         }

@@ -22,7 +22,7 @@ extension EntityStore {
             return
         }
         let definition = try await registry.definition(for: entity)
-        let coder = EntityCoder(keyProvider: keyProvider)
+        let coder = EntityCoder()
         var targets: [String] = []
         var seen: Set<String> = []
         for uuid in uuids where seen.insert(uuid).inserted {
@@ -68,7 +68,7 @@ extension EntityStore {
         entity: String, any branches: [[Filter]], maxRetry: Int = 3, transform: (inout EntityRecord) throws -> Void
     ) async throws -> Int {
         let definition = try await registry.definition(for: entity)
-        let coder = EntityCoder(keyProvider: keyProvider)
+        let coder = EntityCoder()
         var seen: Set<String> = []
         var applied = 0
         var unresolved: CKRecord?

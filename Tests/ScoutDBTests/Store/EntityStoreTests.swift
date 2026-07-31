@@ -6,23 +6,11 @@
 // https://opensource.org/licenses/MIT.
 
 import CloudKit
-import CryptoKit
 import Foundation
 import ScoutDBTesting
 import Testing
 
 @testable import ScoutDB
-
-struct StaticKeyProvider: EncryptionKeyProvider {
-    let keys: [String: SymmetricKey]
-
-    func key(for keyID: String) throws -> SymmetricKey {
-        guard let key = keys[keyID] else {
-            throw SchemaError.missingKey(keyID)
-        }
-        return key
-    }
-}
 
 @Suite("EntityStore")
 struct EntityStoreTests {
@@ -335,112 +323,5 @@ struct EntityStoreTests {
         #expect(grids.count == 1)
         #expect(grids.first?.cellCount == 2)
         #expect(grids.first?.cellValue == 4.0)
-    }
-
-    @Test("Encrypted fields hide plaintext but keep the surrogate filterable")
-    func encryption() async throws {
-        let provider = StaticKeyProvider(keys: ["k1": SymmetricKey(size: .bits256)])
-        let secure = EntityStore(database: database, registry: registry, keyProvider: provider)
-        try await registry.publish(
-            makeDefinition(
-                entity: "account",
-                fields: [
-                    FieldDefinition(name: "email", type: .string, storage: .payload, encrypted: true),
-                    FieldDefinition(name: "email_hash", type: .string, storage: .slot(.string, "s_00"), derived: Derivation(source: "email", transform: .hmac)),
-                ], keyID: "k1"))
-
-        try await secure.write(["email": .string("alice@example.com")], entity: "account", uuid: "a-1")
-        try await secure.write(["email": .string("bob@example.com")], entity: "account", uuid: "a-2")
-
-        for data in database.records.compactMap({ $0["payload"] as Data? }) {
-            #expect(!String(decoding: data, as: UTF8.self).contains("alice@"))
-        }
-
-        let records = try await secure.read(entity: "account")
-        let alice = try #require(records.first { $0.uuid == "a-1" })
-        #expect(alice.values["email"] == .string("alice@example.com"))
-
-        let hash = try #require(alice.values["email_hash"])
-        let filtered = try await secure.read(entity: "account", filters: [EntityStore.Filter(field: "email_hash", op: .equals, value: hash)])
-        #expect(filtered.map(\.uuid) == ["a-1"])
-
-        let blind = try await store.read(entity: "account")
-        #expect(blind.first { $0.uuid == "a-1" }?.values["email"] == nil)
-    }
-
-    @Test("A keyless update preserves the ciphertext of encrypted fields it cannot read")
-    func keylessUpdateKeepsCiphertext() async throws {
-        let provider = StaticKeyProvider(keys: ["k1": SymmetricKey(size: .bits256)])
-        let secure = EntityStore(database: database, registry: registry, keyProvider: provider)
-        try await registry.publish(
-            makeDefinition(
-                entity: "account",
-                fields: [
-                    FieldDefinition(name: "email", type: .string, storage: .payload, encrypted: true),
-                    FieldDefinition(name: "status", type: .string, storage: .slot(.string, "s_00")),
-                ], keyID: "k1"))
-
-        try await secure.write(["email": .string("alice@example.com"), "status": .string("new")], entity: "account", uuid: "a-1")
-
-        try await store.update(entity: "account", uuid: "a-1") { $0.values["status"] = .string("active") }
-
-        let reread = try #require(try await secure.read(entity: "account").first { $0.uuid == "a-1" })
-        #expect(reread.values["status"] == .string("active"))
-        #expect(reread.values["email"] == .string("alice@example.com"))
-    }
-
-    @Test("A keyless updateAll preserves the ciphertext of encrypted fields it cannot read")
-    func keylessUpdateAllKeepsCiphertext() async throws {
-        let provider = StaticKeyProvider(keys: ["k1": SymmetricKey(size: .bits256)])
-        let secure = EntityStore(database: database, registry: registry, keyProvider: provider)
-        try await registry.publish(
-            makeDefinition(
-                entity: "account",
-                fields: [
-                    FieldDefinition(name: "email", type: .string, storage: .payload, encrypted: true),
-                    FieldDefinition(name: "status", type: .string, storage: .slot(.string, "s_00")),
-                ], keyID: "k1"))
-
-        try await secure.write(["email": .string("alice@example.com"), "status": .string("new")], entity: "account", uuid: "a-1")
-
-        try await store.updateAll(entity: "account", any: [[]]) { $0.values["status"] = .string("active") }
-
-        let reread = try #require(try await secure.read(entity: "account").first { $0.uuid == "a-1" })
-        #expect(reread.values["status"] == .string("active"))
-        #expect(reread.values["email"] == .string("alice@example.com"))
-    }
-
-    @Test("A keyed update can clear an encrypted field instead of resurrecting it")
-    func keyedUpdateClearsEncryptedField() async throws {
-        let provider = StaticKeyProvider(keys: ["k1": SymmetricKey(size: .bits256)])
-        let secure = EntityStore(database: database, registry: registry, keyProvider: provider)
-        try await registry.publish(
-            makeDefinition(
-                entity: "account",
-                fields: [
-                    FieldDefinition(name: "email", type: .string, storage: .payload, encrypted: true),
-                    FieldDefinition(name: "status", type: .string, storage: .slot(.string, "s_00")),
-                ], keyID: "k1"))
-
-        try await secure.write(["email": .string("alice@example.com"), "status": .string("new")], entity: "account", uuid: "a-1")
-
-        try await secure.update(entity: "account", uuid: "a-1") { $0.values["email"] = nil }
-
-        let reread = try #require(try await secure.read(entity: "account").first { $0.uuid == "a-1" })
-        #expect(reread.values["email"] == nil)
-        #expect(reread.values["status"] == .string("new"))
-    }
-
-    @Test("Writing an encrypted entity without a key fails")
-    func encryptionWithoutKey() async throws {
-        try await registry.publish(
-            makeDefinition(
-                entity: "secret",
-                fields: [
-                    FieldDefinition(name: "token", type: .string, storage: .payload, encrypted: true)
-                ], keyID: "k9"))
-        await #expect(throws: SchemaError.missingKey("k9")) {
-            try await store.write(["token": .string("shh")], entity: "secret")
-        }
     }
 }

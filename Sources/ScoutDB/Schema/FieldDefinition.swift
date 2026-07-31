@@ -30,15 +30,13 @@ struct FieldDefinition: Codable, Equatable, Sendable {
 
     var derived: Derivation?
 
-    var encrypted: Bool?
-
     var pattern: String?
 
     var ungrouped: Bool?
 
     init(
         name: String, type: FieldType, storage: Storage, since: Int? = nil, until: Int? = nil, required: Bool? = nil, defaultValue: RecordValue? = nil,
-        allowed: [String]? = nil, min: Double? = nil, max: Double? = nil, derived: Derivation? = nil, encrypted: Bool? = nil, pattern: String? = nil,
+        allowed: [String]? = nil, min: Double? = nil, max: Double? = nil, derived: Derivation? = nil, pattern: String? = nil,
         ungrouped: Bool? = nil
     ) {
         self.name = name
@@ -52,13 +50,12 @@ struct FieldDefinition: Codable, Equatable, Sendable {
         self.min = min
         self.max = max
         self.derived = derived
-        self.encrypted = encrypted
         self.pattern = pattern
         self.ungrouped = ungrouped
     }
 
     private enum CodingKeys: String, CodingKey {
-        case name, type, storage, since, until, required, allowed, derived, encrypted, pattern, ungrouped
+        case name, type, storage, since, until, required, allowed, derived, pattern, ungrouped
         case min = "minimum"
         case max = "maximum"
         case defaultValue = "default"

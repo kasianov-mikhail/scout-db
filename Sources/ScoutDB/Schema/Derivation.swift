@@ -9,12 +9,11 @@ import Foundation
 
 /// The transforms a derived field can apply to its source.
 ///
-/// `lowercase` and `fold` serve normalized comparisons, `hour`, `day`, `week`
-/// and `month` truncate a timestamp to group by it, and `hmac` keeps an
-/// encrypted field filterable through a keyed digest.
+/// `lowercase` and `fold` serve normalized comparisons, and `hour`, `day`,
+/// `week` and `month` truncate a timestamp to group by it.
 ///
 public enum FieldTransform: String, Codable, Sendable {
-    case lowercase, fold, hour, day, week, month, hmac
+    case lowercase, fold, hour, day, week, month
 }
 
 struct Derivation: Codable, Equatable, Sendable {

@@ -6,7 +6,6 @@
 // https://opensource.org/licenses/MIT.
 
 import CloudKit
-import CryptoKit
 import Foundation
 
 @testable import ScoutDB
@@ -16,8 +15,6 @@ enum PerfSchema {
     static let order = "order"
     static let item = "item"
     static let session = "session"
-
-    static let keyID = "perf-key"
 
     static let products = [
         "sku-air", "sku-pro", "sku-max", "sku-mini", "sku-studio", "sku-ultra",
@@ -83,17 +80,11 @@ enum PerfSchema {
                 FieldDefinition(name: "device", type: .string, storage: .slot(.string, "s_01"), required: true, allowed: devices),
                 FieldDefinition(name: "started", type: .timestamp, storage: .slot(.timestamp, "t_00"), required: true),
                 FieldDefinition(name: "seconds", type: .int, storage: .slot(.int, "i_00")),
-                FieldDefinition(name: "token", type: .string, storage: .payload, encrypted: true),
-            ], views: nil, keyID: keyID)
+                FieldDefinition(name: "token", type: .string, storage: .payload),
+            ])
     }
 
     static var definitions: [EntityDefinition] {
         [customerDefinition, orderDefinition, itemDefinition, sessionDefinition]
-    }
-}
-
-struct PerfKeyProvider: EncryptionKeyProvider {
-    func key(for keyID: String) throws -> SymmetricKey {
-        SymmetricKey(data: Data(repeating: 7, count: 32))
     }
 }
