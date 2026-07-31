@@ -40,7 +40,7 @@ struct GridWritesTests {
     }
 
     private var slots: [CKRecord] {
-        database.records.filter { $0.recordType == Aggregate.recordType }
+        database.records.filter { $0.recordType == GridSlot.recordType }
     }
 
     @Test("Every slot a batch touches is read and written in one request each")
@@ -145,7 +145,7 @@ struct GridWritesTests {
         let aggregator = GridAggregator(database: database)
         try await aggregator.record(payments(["app"]), using: definition)
 
-        database.records.removeAll { $0.recordType == Aggregate.recordType }
+        database.records.removeAll { $0.recordType == GridSlot.recordType }
         database.writeErrors = [CKError(.unknownItem)]
 
         try await aggregator.record(payments(["pro"]), using: definition)

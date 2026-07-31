@@ -946,7 +946,7 @@ private final class GridQueries: CloudDatabase, @unchecked Sendable {
     }
 
     var grid: [(query: CKQuery, keys: [CKRecord.FieldKey]?, matched: Int)] {
-        lock.withLock { log.filter { $0.query.recordType == Aggregate.recordType } }
+        lock.withLock { log.filter { $0.query.recordType == GridSlot.recordType } }
     }
 
     func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> QueryPage {

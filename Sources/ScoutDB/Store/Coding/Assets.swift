@@ -76,43 +76,6 @@ extension EntityCoder {
     }
 }
 
-private final class StagedFiles: @unchecked Sendable {
-    private let lock = NSLock()
-    private var holds: [String: Int] = [:]
-    private var retired: Set<String> = []
-
-    fileprivate func retain(_ url: URL) {
-        lock.withLock { holds[url.standardizedFileURL.path, default: 0] += 1 }
-    }
-
-    func release(_ url: URL, retiring: Bool) {
-        let path = url.standardizedFileURL.path
-        lock.withLock {
-            if retiring {
-                retired.insert(path)
-            }
-            let remaining = (holds[path] ?? 0) - 1
-            guard remaining <= 0 else {
-                holds[path] = remaining
-                return
-            }
-            holds[path] = nil
-            guard retired.remove(path) != nil else {
-                return
-            }
-            try? FileManager.default.removeItem(at: url)
-        }
-    }
-
-    func forget(_ url: URL) {
-        let path = url.standardizedFileURL.path
-        lock.withLock {
-            holds[path] = nil
-            retired.remove(path)
-        }
-    }
-}
-
 extension EntityStore {
     /// The directory asset bytes are staged into before their write uploads them.
     package static var assetStagingDirectory: URL {

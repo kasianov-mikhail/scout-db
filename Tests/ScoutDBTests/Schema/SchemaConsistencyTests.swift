@@ -5,6 +5,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
 import Foundation
 import Testing
 
@@ -60,8 +61,8 @@ struct SchemaConsistencyTests {
         let fields = Self.fields(of: "Aggregate")
         #expect(fields.filter { $0.name.hasPrefix("c_") }.count == 64)
 
-        let buckets = 0..<Aggregate.valueCellCount
-        let expected = Set(buckets.map(Aggregate.valueCell) + buckets.map(Aggregate.squareCell))
+        let buckets = 0..<CKRecord.valueCellCount
+        let expected = Set(buckets.map(CKRecord.valueCell) + buckets.map(CKRecord.squareCell))
         #expect(Set(fields.map(\.name).filter { $0.hasPrefix("f_") }) == expected)
         let names = Set(fields.map(\.name))
         for field in ["entity", "view", "group_key", "date", "schema_version"] {

@@ -14,7 +14,7 @@ import Testing
 @Suite("Slot cache")
 struct SlotCacheTests {
     private func slot(_ name: String) -> CKRecord {
-        CKRecord(recordType: Aggregate.recordType, recordID: CKRecord.ID(recordName: name))
+        CKRecord(recordType: GridSlot.recordType, recordID: CKRecord.ID(recordName: name))
     }
 
     @Test("Eviction sheds the whole overflow at once, least recently used first")

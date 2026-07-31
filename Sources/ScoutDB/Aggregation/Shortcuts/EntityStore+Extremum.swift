@@ -8,7 +8,7 @@
 import Foundation
 
 extension EntityStore {
-    func extremum(in range: GridAggregator.CellRange, using definition: EntityDefinition) async throws -> Double? {
+    func extremum(in range: CellRange, using definition: EntityDefinition) async throws -> Double? {
         guard let metric = range.view.metric, metric.kind != .sum else {
             return nil
         }
@@ -40,30 +40,5 @@ extension EntityStore {
         }
 
         return metric.kind == .min ? scalars.min() : scalars.max()
-    }
-}
-
-extension GridAggregator.CellRange {
-    fileprivate var window: (from: Date, to: Date)? {
-        let calendar = EntityCoder.calendar
-        let unit: Calendar.Component
-
-        switch view.bucket ?? .hour {
-        case .hour:
-            unit = .hour
-        case .weekday, .day:
-            unit = .day
-        case .lifetime:
-            return nil
-        }
-
-        guard let from = calendar.date(byAdding: unit, value: index, to: period) else {
-            return nil
-        }
-        guard let to = calendar.date(byAdding: unit, value: 1, to: from) else {
-            return nil
-        }
-
-        return (from, to)
     }
 }
