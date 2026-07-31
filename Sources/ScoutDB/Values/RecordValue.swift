@@ -8,7 +8,7 @@
 import Foundation
 
 /// A coordinate pair, as carried by a `location` field.
-public struct GeoPoint: Equatable, Sendable, Codable {
+public struct GeoPoint: Hashable, Sendable, Codable {
     /// Degrees north of the equator.
     public let latitude: Double
 
@@ -27,7 +27,7 @@ public struct GeoPoint: Equatable, Sendable, Codable {
 /// which converts to and from the Swift types; match on the cases only when
 /// the field's type is not known ahead of time.
 ///
-public enum RecordValue: Equatable, Sendable {
+public enum RecordValue: Hashable, Sendable {
     /// Text, behind both the `string` and the `text` field types.
     case string(String)
 

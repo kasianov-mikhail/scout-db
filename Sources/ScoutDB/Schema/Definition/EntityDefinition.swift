@@ -89,20 +89,7 @@ struct EntityDefinition: Codable, Equatable, Sendable {
         if let bucket {
             return candidates.first { ($0.bucket ?? .hour) == bucket }
         }
-        return candidates.min { Self.resolution($0) < Self.resolution($1) }
-    }
-
-    private static func resolution(_ view: AggregateView) -> Int {
-        switch view.bucket ?? .hour {
-        case .hour:
-            0
-        case .day:
-            1
-        case .weekday:
-            2
-        case .lifetime:
-            3
-        }
+        return candidates.min { ($0.bucket ?? .hour) < ($1.bucket ?? .hour) }
     }
 
     var claimedKeys: [[String]] {

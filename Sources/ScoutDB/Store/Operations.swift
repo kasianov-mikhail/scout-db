@@ -13,6 +13,15 @@ public struct EntityPage: Equatable, Sendable {
     public let cursor: EntityCursor?
 }
 
+extension EntityPage: RandomAccessCollection {
+    public var startIndex: Int { records.startIndex }
+    public var endIndex: Int { records.endIndex }
+
+    public subscript(position: Int) -> EntityRecord {
+        records[position]
+    }
+}
+
 public struct EntityCursor: Codable, Equatable, Sendable {
     public let date: Date
     public let uuid: String
@@ -27,6 +36,15 @@ public struct EntityCursor: Codable, Equatable, Sendable {
 public struct FieldPage: Equatable, Sendable {
     public let records: [EntityRecord]
     public let cursor: FieldCursor?
+}
+
+extension FieldPage: RandomAccessCollection {
+    public var startIndex: Int { records.startIndex }
+    public var endIndex: Int { records.endIndex }
+
+    public subscript(position: Int) -> EntityRecord {
+        records[position]
+    }
 }
 
 /// Continuation token of a field-ordered keyset read: the last served value
@@ -103,8 +121,6 @@ extension EntityStore {
 
         EntityCoder.discardStagedAssets(in: applied.map(\.record))
         try await settle(rewritten: applied, owning: owned, using: definition)
-        if applied.count > 0 {
-        }
         if let unresolved {
             throw RecordConflictError(serverRecord: unresolved)
         }
@@ -352,7 +368,7 @@ extension EntityStore {
                 do {
                     repeat {
                         let page = try await read(entity: entity, any: branches, fields: fields, limit: pageSize, after: cursor, createdBy: creator)
-                        for record in page.records {
+                        for record in page {
                             continuation.yield(record)
                         }
                         cursor = page.cursor

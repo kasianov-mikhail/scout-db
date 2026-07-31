@@ -234,10 +234,10 @@ extension EntityStore {
         case .greaterThan, .greaterThanOrEquals, .lessThan, .lessThanOrEquals:
             return comparisonMatcher(for: filter)
         case .in:
-            let options = filter.value.members ?? [filter.value]
+            let options = Set(filter.value.members ?? [filter.value])
             return { $0.values[field].map(options.contains) ?? false }
         case .notIn:
-            let options = filter.value.members ?? [filter.value]
+            let options = Set(filter.value.members ?? [filter.value])
             return { record in record.values[field].map { !options.contains($0) } ?? false }
         case .beginsWith:
             guard case .string(let prefix) = filter.value else {

@@ -8,7 +8,7 @@
 import Foundation
 
 /// A typed façade over one entity — the shape `@Entity` derives.
-public protocol EntityRepresentable {
+public protocol EntityRepresentable: Sendable {
     static var entityName: String { get }
     /// The schema field behind a stored property's key path, nil for key paths
     /// outside the schema.
@@ -19,8 +19,8 @@ public protocol EntityRepresentable {
 }
 
 /// One key-path predicate, built with the operator sugar: `\Purchase.quantity > 2`.
-public struct TypedFilter<T: EntityRepresentable> {
-    let keyPath: PartialKeyPath<T>
+public struct TypedFilter<T: EntityRepresentable>: Sendable {
+    let keyPath: any PartialKeyPath<T> & Sendable
     let op: EntityStore.Match
     let value: RecordValue
 
@@ -32,32 +32,32 @@ public struct TypedFilter<T: EntityRepresentable> {
     }
 }
 
-public func == <T, V: RecordValueConvertible>(keyPath: KeyPath<T, V?>, value: V) -> TypedFilter<T> {
+public func == <T, V: RecordValueConvertible>(keyPath: any KeyPath<T, V?> & Sendable, value: V) -> TypedFilter<T> {
     TypedFilter(keyPath: keyPath, op: .equals, value: value.recordValue)
 }
 
-public func != <T, V: RecordValueConvertible>(keyPath: KeyPath<T, V?>, value: V) -> TypedFilter<T> {
+public func != <T, V: RecordValueConvertible>(keyPath: any KeyPath<T, V?> & Sendable, value: V) -> TypedFilter<T> {
     TypedFilter(keyPath: keyPath, op: .notEquals, value: value.recordValue)
 }
 
-public func > <T, V: RecordValueConvertible>(keyPath: KeyPath<T, V?>, value: V) -> TypedFilter<T> {
+public func > <T, V: RecordValueConvertible>(keyPath: any KeyPath<T, V?> & Sendable, value: V) -> TypedFilter<T> {
     TypedFilter(keyPath: keyPath, op: .greaterThan, value: value.recordValue)
 }
 
-public func >= <T, V: RecordValueConvertible>(keyPath: KeyPath<T, V?>, value: V) -> TypedFilter<T> {
+public func >= <T, V: RecordValueConvertible>(keyPath: any KeyPath<T, V?> & Sendable, value: V) -> TypedFilter<T> {
     TypedFilter(keyPath: keyPath, op: .greaterThanOrEquals, value: value.recordValue)
 }
 
-public func < <T, V: RecordValueConvertible>(keyPath: KeyPath<T, V?>, value: V) -> TypedFilter<T> {
+public func < <T, V: RecordValueConvertible>(keyPath: any KeyPath<T, V?> & Sendable, value: V) -> TypedFilter<T> {
     TypedFilter(keyPath: keyPath, op: .lessThan, value: value.recordValue)
 }
 
-public func <= <T, V: RecordValueConvertible>(keyPath: KeyPath<T, V?>, value: V) -> TypedFilter<T> {
+public func <= <T, V: RecordValueConvertible>(keyPath: any KeyPath<T, V?> & Sendable, value: V) -> TypedFilter<T> {
     TypedFilter(keyPath: keyPath, op: .lessThanOrEquals, value: value.recordValue)
 }
 
 /// A chainable typed query; every terminal returns the entity struct, not records.
-public struct TypedQueryBuilder<T: EntityRepresentable> {
+public struct TypedQueryBuilder<T: EntityRepresentable>: Sendable {
     private var builder: QueryBuilder
 
     init(builder: QueryBuilder) {
@@ -116,17 +116,15 @@ public struct TypedQueryBuilder<T: EntityRepresentable> {
     ///
     public func paginate(size: Int, after cursor: EntityCursor? = nil) async throws -> TypedPage<T> {
         let page = try await builder.paginate(size: size, after: cursor)
-        return TypedPage(items: page.records.map(T.init(record:)), cursor: page.cursor)
+        return TypedPage(items: page.map(T.init(record:)), cursor: page.cursor)
     }
 
     /// Returns one keyset page ordered by the builder's single sort clause.
     public func page(size: Int, after cursor: FieldCursor? = nil) async throws -> TypedFieldPage<T> {
         let page = try await builder.page(size: size, after: cursor)
-        return TypedFieldPage(items: page.records.map(T.init(record:)), cursor: page.cursor)
+        return TypedFieldPage(items: page.map(T.init(record:)), cursor: page.cursor)
     }
-}
 
-extension TypedQueryBuilder where T: Sendable {
     /// Streams every matching value page by page.
     public func stream(pageSize: Int = 100) -> AsyncThrowingStream<T, any Error> {
         let base = builder.stream(pageSize: pageSize)
@@ -144,23 +142,36 @@ extension TypedQueryBuilder where T: Sendable {
             continuation.onTermination = { _ in task.cancel() }
         }
     }
-
-    /// Re-runs the query on every local mutation of the entity, yielding fresh
-    /// decoded results; the first element is the current result.
-    ///
-    /// Mutations landing while a pass runs coalesce into one trailing pass; see
 }
 
 /// One keyset page of decoded values in envelope-date order.
-public struct TypedPage<T: EntityRepresentable> {
+public struct TypedPage<T: EntityRepresentable>: Sendable {
     public let items: [T]
     public let cursor: EntityCursor?
 }
 
+extension TypedPage: RandomAccessCollection {
+    public var startIndex: Int { items.startIndex }
+    public var endIndex: Int { items.endIndex }
+
+    public subscript(position: Int) -> T {
+        items[position]
+    }
+}
+
 /// One keyset page of decoded values in field order.
-public struct TypedFieldPage<T: EntityRepresentable> {
+public struct TypedFieldPage<T: EntityRepresentable>: Sendable {
     public let items: [T]
     public let cursor: FieldCursor?
+}
+
+extension TypedFieldPage: RandomAccessCollection {
+    public var startIndex: Int { items.startIndex }
+    public var endIndex: Int { items.endIndex }
+
+    public subscript(position: Int) -> T {
+        items[position]
+    }
 }
 
 extension EntityStore {

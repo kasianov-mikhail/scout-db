@@ -104,3 +104,22 @@ public enum AggregateBucket: String, Codable, Sendable {
     /// counter. The only bucket that works without an envelope date.
     case lifetime
 }
+
+extension AggregateBucket: Comparable {
+    public static func < (lhs: Self, rhs: Self) -> Bool {
+        lhs.resolution < rhs.resolution
+    }
+
+    private var resolution: Int {
+        switch self {
+        case .hour:
+            0
+        case .day:
+            1
+        case .weekday:
+            2
+        case .lifetime:
+            3
+        }
+    }
+}

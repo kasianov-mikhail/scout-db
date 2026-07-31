@@ -90,6 +90,10 @@ enum PerfReport {
             default: "super"
             }
         }
+
+        static func steepest(_ lhs: Projection, _ rhs: Projection) -> Bool {
+            (lhs.exponent, lhs.base) > (rhs.exponent, rhs.base)
+        }
     }
 
     static let levels = [100_000, 1_000_000, 10_000_000]
@@ -174,7 +178,7 @@ enum PerfReport {
             String(repeating: "-", count: width(of: columns)),
         ]
         var growth: String?
-        for projection in projections.sorted(by: { ($0.exponent, $0.base) > ($1.exponent, $1.base) }) {
+        for projection in projections.sorted(by: Projection.steepest) {
             if let growth, growth != projection.growth {
                 lines.append("")
             }
@@ -209,7 +213,7 @@ enum PerfReport {
 
         let columns = projectionColumns(sample: sample, projected: fitted)
         if fitted {
-            let grew = projections.filter { $0.exponent >= 0.15 }.sorted { ($0.exponent, $0.base) > ($1.exponent, $1.base) }
+            let grew = projections.filter { $0.exponent >= 0.15 }.sorted(by: Projection.steepest)
             if grew.count > 0 {
                 lines += block(
                     "Scenarios that grew", note: "work whose cost per call rises with what the database holds", columns: columns, rows: grew)
