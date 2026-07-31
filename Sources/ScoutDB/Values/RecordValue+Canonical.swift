@@ -28,10 +28,6 @@ extension RecordValue {
             "d[\(value.map { "\($0)" }.joined(separator: ","))]"
         case .dates(let value):
             "t[\(value.map { String($0.millisecondsSince1970) }.joined(separator: ","))]"
-        case .locations(let value):
-            "g[\(value.map { "\($0.latitude);\($0.longitude)" }.joined(separator: ","))]"
-        case .location(let latitude, let longitude):
-            "g\(latitude),\(longitude)"
         case .reference(let value):
             "r\(value)"
         }
@@ -72,8 +68,6 @@ extension RecordValue {
         case .doubles(let value):
             value.isEmpty
         case .dates(let value):
-            value.isEmpty
-        case .locations(let value):
             value.isEmpty
         default:
             false

@@ -210,25 +210,18 @@ struct EntityStoreTests {
         #expect(matched.map(\.uuid) == ["s-1"])
     }
 
-    @Test("Reference scalar and location list round-trip")
+    @Test("A reference scalar round-trips")
     func exoticTypes() async throws {
         try await registry.publish(
             makeDefinition(
                 entity: "graph",
                 fields: [
-                    FieldDefinition(name: "parent", type: .reference, storage: .slot(.reference, "r_00")),
-                    FieldDefinition(name: "route", type: .locationList, storage: .slot(.locationList, "lg_00")),
+                    FieldDefinition(name: "parent", type: .reference, storage: .slot(.reference, "r_00"))
                 ]))
-        let route = [GeoPoint(latitude: 1, longitude: 2), GeoPoint(latitude: 3, longitude: 4)]
-        try await store.write(
-            [
-                "parent": .reference("node-9"),
-                "route": .locations(route),
-            ], entity: "graph", uuid: "g-1")
+        try await store.write(["parent": .reference("node-9")], entity: "graph", uuid: "g-1")
 
         let record = try #require(try await store.read(entity: "graph").first)
         #expect(record.values["parent"] == .reference("node-9"))
-        #expect(record.values["route"] == .locations(route))
     }
 
     @Test("A scalar bytes field lives in its own slot")

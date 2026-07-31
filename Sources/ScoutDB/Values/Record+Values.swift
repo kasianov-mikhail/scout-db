@@ -6,7 +6,6 @@
 // https://opensource.org/licenses/MIT.
 
 import CloudKit
-import CoreLocation
 import ObjectiveC
 
 extension CKRecord {
@@ -28,8 +27,6 @@ extension RecordValue {
             self = .date(value)
         case let value as Data:
             self = .bytes(value)
-        case let value as CLLocation:
-            self = .location(latitude: value.coordinate.latitude, longitude: value.coordinate.longitude)
         case let value as CKRecord.Reference:
             self = .reference(value.recordID.recordName)
         case let value as [String]:
@@ -42,8 +39,6 @@ extension RecordValue {
             } else {
                 self = .ints(value.map(\.int64Value))
             }
-        case let value as [CLLocation]:
-            self = .locations(value.map { GeoPoint(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude) })
         case let value as NSNumber where CFNumberIsFloatType(value):
             self = .double(value.doubleValue)
         case let value as NSNumber:
@@ -73,10 +68,6 @@ extension RecordValue {
             value
         case .dates(let value):
             value
-        case .locations(let value):
-            value.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
-        case .location(let latitude, let longitude):
-            CLLocation(latitude: latitude, longitude: longitude)
         case .reference(let value):
             CKRecord.Reference(recordID: CKRecord.ID(recordName: value), action: .none)
         }
@@ -102,10 +93,6 @@ extension RecordValue {
             value as NSArray
         case .dates(let value):
             value as NSArray
-        case .locations(let value):
-            value.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) } as NSArray
-        case .location(let latitude, let longitude):
-            CLLocation(latitude: latitude, longitude: longitude)
         case .reference(let value):
             CKRecord.Reference(recordID: CKRecord.ID(recordName: value), action: .none)
         }

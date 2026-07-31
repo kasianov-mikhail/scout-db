@@ -7,20 +7,6 @@
 
 import Foundation
 
-/// A coordinate pair, as carried by a `location` field.
-public struct GeoPoint: Hashable, Sendable, Codable {
-    /// Degrees north of the equator.
-    public let latitude: Double
-
-    /// Degrees east of the prime meridian.
-    public let longitude: Double
-
-    public init(latitude: Double, longitude: Double) {
-        self.latitude = latitude
-        self.longitude = longitude
-    }
-}
-
 /// A value as a record carries it, one case per `FieldType`.
 ///
 /// Reading and writing usually goes through `EntityRecord`'s typed subscript,
@@ -43,9 +29,6 @@ public enum RecordValue: Hashable, Sendable {
     /// An opaque blob, stored inline with the record.
     case bytes(Data)
 
-    /// A coordinate pair.
-    case location(latitude: Double, longitude: Double)
-
     /// The uuid of another record, stored as a CloudKit reference.
     case reference(String)
 
@@ -60,15 +43,12 @@ public enum RecordValue: Hashable, Sendable {
 
     /// A list of points in time.
     case dates([Date])
-
-    /// A list of coordinate pairs.
-    case locations([GeoPoint])
 }
 
 extension RecordValue: Codable {
     private enum CodingKeys: String, CodingKey {
-        case string, int, double, date, bytes, location, reference
-        case strings, ints, doubles, dates, locations
+        case string, int, double, date, bytes, reference
+        case strings, ints, doubles, dates
     }
 
     public init(from decoder: any Decoder) throws {
@@ -92,10 +72,6 @@ extension RecordValue: Codable {
             self = .doubles(value)
         } else if let value = try container.decodeIfPresent([Int64].self, forKey: .dates) {
             self = .dates(value.map(Date.init(millisecondsSince1970:)))
-        } else if let value = try container.decodeIfPresent([GeoPoint].self, forKey: .locations) {
-            self = .locations(value)
-        } else if let value = try container.decodeIfPresent([Double].self, forKey: .location), value.count == 2 {
-            self = .location(latitude: value[0], longitude: value[1])
         } else if let value = try container.decodeIfPresent(String.self, forKey: .reference) {
             self = .reference(value)
         } else {
@@ -125,10 +101,6 @@ extension RecordValue: Codable {
             try container.encode(value, forKey: .doubles)
         case .dates(let value):
             try container.encode(value.map(\.millisecondsSince1970), forKey: .dates)
-        case .locations(let value):
-            try container.encode(value, forKey: .locations)
-        case .location(let latitude, let longitude):
-            try container.encode([latitude, longitude], forKey: .location)
         case .reference(let value):
             try container.encode(value, forKey: .reference)
         }

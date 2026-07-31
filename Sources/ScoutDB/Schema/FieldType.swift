@@ -14,14 +14,12 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
     case double
     case timestamp
     case bytes
-    case location
     case reference
 
     case stringList
     case intList
     case doubleList
     case timestampList
-    case locationList
 
     var slotPrefix: String {
         switch self {
@@ -37,8 +35,6 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
             "t"
         case .bytes:
             "b"
-        case .location:
-            "g"
         case .reference:
             "r"
         case .stringList:
@@ -49,8 +45,6 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
             "ld"
         case .timestampList:
             "lt"
-        case .locationList:
-            "lg"
         }
     }
 
@@ -86,7 +80,7 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
 
     var isList: Bool {
         switch self {
-        case .stringList, .intList, .doubleList, .timestampList, .locationList:
+        case .stringList, .intList, .doubleList, .timestampList:
             true
         default:
             false
@@ -103,8 +97,6 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
             .doubles([])
         case .timestampList:
             .dates([])
-        case .locationList:
-            .locations([])
         default:
             nil
         }
@@ -113,9 +105,8 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
     func matches(_ value: RecordValue) -> Bool {
         switch (self, value) {
         case (.string, .string), (.text, .string), (.int, .int), (.double, .double),
-            (.timestamp, .date), (.bytes, .bytes), (.location, .location), (.reference, .reference),
-            (.stringList, .strings), (.intList, .ints), (.doubleList, .doubles), (.timestampList, .dates),
-            (.locationList, .locations):
+            (.timestamp, .date), (.bytes, .bytes), (.reference, .reference),
+            (.stringList, .strings), (.intList, .ints), (.doubleList, .doubles), (.timestampList, .dates):
             true
         default:
             false
