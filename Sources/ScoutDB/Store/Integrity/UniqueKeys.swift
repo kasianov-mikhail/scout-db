@@ -43,7 +43,7 @@ extension EntityStore {
         try await claim(try keyGroups(keys, of: records), using: definition)
     }
 
-    func claimExclusivity(of records: [EntityRecord], using definition: EntityDefinition, fields: [FieldDefinition]? = nil) async throws {
+    func claimExclusivity(of records: [EntityRecord], using definition: EntityDefinition, fields: [FieldDefinition]?) async throws {
         try await claim(try exclusivityGroups(of: records, using: definition, fields: fields), using: definition)
     }
 

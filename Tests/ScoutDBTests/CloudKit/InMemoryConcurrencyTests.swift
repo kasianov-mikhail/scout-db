@@ -10,8 +10,6 @@ import Foundation
 import ScoutDBTesting
 import Testing
 
-@testable import ScoutDB
-
 @Suite("InMemory concurrency")
 struct InMemoryConcurrencyTests {
     let database = InMemoryDatabase()
