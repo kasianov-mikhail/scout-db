@@ -29,7 +29,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func count() async throws -> Int {
-        if creator == nil, let counted = try await store.viewCount(entity: entity, any: alternatives) {
+        if creator == nil, let counted = try await store.count(entity: entity, any: alternatives) {
             return Swift.min(counted, ceiling ?? Int.max)
         }
         return try await store.read(
