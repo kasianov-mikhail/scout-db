@@ -206,20 +206,18 @@ struct OperationsTests {
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                 ],
                 uniqueKeys: [["code"]],
-                views: [AggregateView(name: "total", sum: "amount")],
-                audited: true))
+                views: [AggregateView(name: "total", sum: "amount")]))
         let counting = CountingFetches(backing: database)
-        let audited = EntityStore(database: counting, registry: registry)
-        try await audited.write(["code": .string("gold"), "amount": .double(1)], entity: "badge", uuid: "b-1")
+        let claimed = EntityStore(database: counting, registry: registry)
+        try await claimed.write(["code": .string("gold"), "amount": .double(1)], entity: "badge", uuid: "b-1")
 
         counting.reset()
-        try await audited.update(entity: "badge", uuid: "b-1") { record in
+        try await claimed.update(entity: "badge", uuid: "b-1") { record in
             record.values["code"] = .string("silver")
             record.values["amount"] = .double(2)
         }
 
-        #expect(counting.peakInFlight == 3)
-        #expect(try await audited.history(entity: "badge", uuid: "b-1").map { $0.values["code"] } == [.string("gold")])
+        #expect(counting.peakInFlight == 2)
         #expect(database.records.first { $0.recordType == "Aggregate" }?["f_00"] as? Double == 2)
         #expect(database.records.filter { $0.recordType == "UniqueClaim" }.count == 1)
     }
@@ -475,69 +473,6 @@ struct OperationsTests {
         #expect(try await store.read(entity: "purchase").map(\.uuid) == ["t-1"])
     }
 
-    @Test("An audited entity appends a revision on every update and delete")
-    func revisionLog() async throws {
-        var audited = makePurchaseDefinition()
-        audited.audited = true
-        try await registry.publish(audited)
-
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        try await store.update(entity: "purchase", uuid: "p-1") { record in
-            record.values["quantity"] = .int(9)
-        }
-        try await store.updateAll(entity: "purchase", any: [[]]) { record in
-            record.values["quantity"] = .int(11)
-        }
-        try await store.delete(entity: "purchase", uuid: "p-1")
-
-        let history = try await store.history(entity: "purchase", uuid: "p-1")
-        #expect(history.map { $0.values["quantity"] } == [.int(3), .int(9), .int(11)])
-        #expect(history.allSatisfy { $0.uuid == "p-1" })
-
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
-        var plain = makePurchaseDefinition()
-        plain.audited = nil
-        try await registry.publish(plain)
-        try await store.delete(entity: "purchase", uuid: "p-2")
-        #expect(try await store.history(entity: "purchase", uuid: "p-2").isEmpty)
-    }
-
-    @Test("Compaction trims the revision log to a window, by entity or across all")
-    func compactRevisions() async throws {
-        var audited = makePurchaseDefinition()
-        audited.audited = true
-        try await registry.publish(audited)
-
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        try await store.update(entity: "purchase", uuid: "p-1") { record in
-            record.values["quantity"] = .int(9)
-        }
-        let horizon = Date()
-        try await store.update(entity: "purchase", uuid: "p-1") { record in
-            record.values["quantity"] = .int(11)
-        }
-
-        #expect(try await store.compactRevisions(olderThan: horizon, of: "invoice") == 0)
-        #expect(try await store.compactRevisions(olderThan: horizon) == 1)
-        #expect(try await store.history(entity: "purchase", uuid: "p-1").map { $0.values["quantity"] } == [.int(9)])
-        #expect(try await store.compactRevisions(olderThan: Date().addingTimeInterval(60)) == 1)
-        #expect(try await store.history(entity: "purchase", uuid: "p-1").isEmpty)
-    }
-
-    @Test("Revisions sharing a millisecond order deterministically by revision id")
-    func revisionTieBreak() async throws {
-        let date = Date(timeIntervalSince1970: 1_000)
-        func revision(uuid: String, tag: String) throws -> EntityWrite {
-            let snapshot = try JSONEncoder().encode(EntityRecord(entity: "doc", uuid: "d-1", schemaVersion: 1, values: ["p": .string(tag)]))
-            return EntityWrite(
-                values: ["entity": .string("doc"), "record_uuid": .string("d-1"), "date": .date(date), "snapshot": .bytes(snapshot)], uuid: uuid)
-        }
-        try await store.write([revision(uuid: "rev-b", tag: "b"), revision(uuid: "rev-a", tag: "a")], entity: EntityStore.revisionEntity)
-
-        #expect(try await store.history(entity: "doc", uuid: "d-1").map { $0.values["p"] } == [.string("a"), .string("b")])
-        #expect(try await store.history(entity: "doc", uuid: "d-1").map { $0.values["p"] } == [.string("a"), .string("b")])
-    }
-
     @Test("Reads scope to a creator, the public-database pattern")
     func createdByScope() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
@@ -786,155 +721,6 @@ struct OperationsTests {
         let deleted = try await store.deleteAll(entity: "purchase", any: [[filter]])
         #expect(deleted == 1)
         #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-2"])
-    }
-
-    @Test("Transaction applies every step and commits")
-    func transaction() async throws {
-        let txn = try await store.transaction { draft in
-            draft.write(makePurchase(uuid: "p-1").values, entity: "purchase", uuid: "p-1")
-            draft.write(makePurchase(uuid: "p-2").values, entity: "purchase", uuid: "p-2")
-        }
-
-        #expect(try await store.read(entity: "purchase").count == 2)
-        let committed = try await store.read(entity: EntityStore.transactionEntity)
-        #expect(committed.map(\.uuid) == [txn])
-        #expect(committed.first?.values["status"] == .string("committed"))
-    }
-
-    @Test("A transaction mixes writes and deletes in order")
-    func transactionDeletes() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-
-        try await store.transaction { draft in
-            draft.write(makePurchase().values, entity: "purchase", uuid: "p-2")
-            draft.delete(entity: "purchase", uuid: "p-1")
-        }
-
-        #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-2"])
-        let committed = try await store.read(entity: EntityStore.transactionEntity)
-        guard case .bytes(let data)? = committed.first?.values["steps"] else {
-            Issue.record("missing steps")
-            return
-        }
-        let steps = try JSONDecoder().decode([TransactionStep].self, from: data)
-        #expect(steps.map(\.kind) == [.write, .delete])
-    }
-
-    @Test("Interleaved entities and grouped deletes land the same records")
-    func transactionBatching() async throws {
-        try await registry.publish(makeSeatDefinition())
-
-        try await store.transaction { draft in
-            draft.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-            draft.write(["row": .string("a"), "number": .int(1)], entity: "seat", uuid: "s-1")
-            draft.write(makePurchase().values, entity: "purchase", uuid: "p-2")
-            draft.write(["row": .string("a"), "number": .int(2)], entity: "seat", uuid: "s-2")
-            var repeated = makePurchase().values
-            repeated["quantity"] = .int(9)
-            draft.write(repeated, entity: "purchase", uuid: "p-1")
-        }
-        #expect(try await store.read(entity: "purchase").map(\.uuid).sorted() == ["p-1", "p-2"])
-        #expect(try await store.read(entity: "seat").map(\.uuid).sorted() == ["s-1", "s-2"])
-        #expect(try await store.fetch(entity: "purchase", uuids: ["p-1"]).first?.values["quantity"] == .int(9))
-
-        try await store.transaction { draft in
-            draft.delete(entity: "purchase", uuid: "p-1")
-            draft.delete(entity: "purchase", uuid: "p-2")
-            draft.delete(entity: "seat", uuid: "s-1")
-        }
-        #expect(try await store.read(entity: "purchase").isEmpty)
-        #expect(try await store.read(entity: "seat").map(\.uuid) == ["s-2"])
-    }
-
-    @Test("A transaction patches existing records with update steps")
-    func transactionUpdates() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-
-        try await store.transaction { draft in
-            draft.update(["quantity": .int(9)], entity: "purchase", uuid: "p-1")
-        }
-
-        let patched = try #require(try await store.read(entity: "purchase").first)
-        #expect(patched.values["quantity"] == .int(9))
-        #expect(patched.values["product_id"] == .string("sku-42"))
-
-        await #expect(throws: SchemaError.notFound("ghost")) {
-            try await store.transaction { draft in
-                draft.update(["quantity": .int(1)], entity: "purchase", uuid: "ghost")
-            }
-        }
-        let pending = try await store.read(
-            entity: EntityStore.transactionEntity, filters: [.init(field: "status", op: .equals, value: .string("pending"))])
-        #expect(pending.count == 1)
-    }
-
-    @Test("A run of update steps lands as one batch, the last patch of a record winning")
-    func transactionUpdateBatching() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
-
-        try await registry.publish(makeSeatDefinition())
-        try await store.write(["row": .string("a"), "number": .int(1)], entity: "seat", uuid: "s-1")
-
-        try await store.transaction { draft in
-            draft.update(["quantity": .int(1)], entity: "purchase", uuid: "p-1")
-            draft.update(["label": .string("aisle")], entity: "seat", uuid: "s-1")
-            draft.update(["quantity": .int(2)], entity: "purchase", uuid: "p-2")
-            draft.update(["quantity": .int(9), "product_id": .string("sku-9")], entity: "purchase", uuid: "p-1")
-        }
-
-        let patched = try await store.fetch(entity: "purchase", uuids: ["p-1", "p-2"])
-        #expect(patched.map { $0.values["quantity"] } == [.int(9), .int(2)])
-        #expect(patched.first?.values["product_id"] == .string("sku-9"))
-        #expect(try await store.fetch(entity: "seat", uuids: ["s-1"]).first?.values["label"] == .string("aisle"))
-
-        await #expect(throws: SchemaError.notFound("ghost")) {
-            try await store.transaction { draft in
-                draft.update(["quantity": .int(5)], entity: "purchase", uuid: "p-2")
-                draft.update(["quantity": .int(5)], entity: "purchase", uuid: "ghost")
-            }
-        }
-        #expect(try await store.fetch(entity: "purchase", uuids: ["p-2"]).first?.values["quantity"] == .int(2))
-    }
-
-    @Test("Compaction drops committed transaction envelopes and leaves pending ones")
-    func compactTransactions() async throws {
-        try await store.transaction { draft in
-            draft.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        }
-        let steps = try JSONEncoder().encode([TransactionStep(entity: "purchase", uuid: "p-2", values: makePurchase().values)])
-        try await store.write(
-            ["status": .string("pending"), "date": .date(Date(timeIntervalSince1970: 1_000)), "steps": .bytes(steps)], entity: EntityStore.transactionEntity,
-            uuid: "t-pending")
-
-        #expect(try await store.compactTransactions(olderThan: Date(timeIntervalSince1970: 0)) == 0)
-        #expect(try await store.compactTransactions(olderThan: Date().addingTimeInterval(60)) == 1)
-        #expect(try await store.read(entity: EntityStore.transactionEntity).map(\.uuid) == ["t-pending"])
-        #expect(try await store.repairTransactions() == 1)
-        #expect(try await store.read(entity: "purchase").map(\.uuid).sorted() == ["p-1", "p-2"])
-    }
-
-    @Test("Steps persisted before deletes existed decode as writes")
-    func legacyStepDecoding() throws {
-        let legacy = Data(#"{"entity":"purchase","uuid":"p-1","values":{}}"#.utf8)
-        let step = try JSONDecoder().decode(TransactionStep.self, from: legacy)
-        #expect(step.kind == .write)
-    }
-
-    @Test("Repair completes an interrupted transaction")
-    func repair() async throws {
-        let steps = try JSONEncoder().encode([TransactionStep(entity: "purchase", uuid: "p-9", values: makePurchase().values)])
-        try await store.write(
-            ["status": .string("pending"), "date": .date(Date(timeIntervalSince1970: 1_000)), "steps": .bytes(steps)], entity: EntityStore.transactionEntity,
-            uuid: "t-1")
-
-        let repaired = try await store.repairTransactions()
-        #expect(repaired == 1)
-        #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-9"])
-
-        let committed = try await store.read(entity: EntityStore.transactionEntity)
-        #expect(committed.first?.values["status"] == .string("committed"))
-        #expect(try await store.repairTransactions() == 0)
     }
 
     @Test("Preload warms the cache for every published entity")

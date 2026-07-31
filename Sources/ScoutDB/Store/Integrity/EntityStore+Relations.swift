@@ -205,8 +205,7 @@ extension EntityStore {
 
         try await settle(
             removed: victims,
-            using: child,
-            auditing: false
+            using: child
         )
 
         try await cascadeDelete(

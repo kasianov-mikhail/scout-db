@@ -85,7 +85,7 @@ enum PerfSchema {
                 FieldDefinition(name: "started", type: .timestamp, storage: .slot(.timestamp, "t_00"), required: true),
                 FieldDefinition(name: "seconds", type: .int, storage: .slot(.int, "i_00")),
                 FieldDefinition(name: "token", type: .string, storage: .payload, encrypted: true),
-            ], views: nil, keyID: keyID, audited: true)
+            ], views: nil, keyID: keyID)
     }
 
     static var definitions: [EntityDefinition] {

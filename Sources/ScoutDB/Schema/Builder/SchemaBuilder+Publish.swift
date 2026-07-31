@@ -153,8 +153,7 @@ extension SchemaBuilder {
             unique: unique ?? previous?.unique,
             uniqueKeys: uniqueKeys ?? previous.flatMap { $0.claimedKeys.isEmpty ? nil : $0.claimedKeys },
             views: views.isEmpty ? nil : views,
-            keyID: keyID ?? previous?.keyID,
-            audited: audited ?? previous?.audited
+            keyID: keyID ?? previous?.keyID
         )
         try await registry.publish(definition)
     }

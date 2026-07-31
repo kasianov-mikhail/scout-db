@@ -40,35 +40,6 @@ extension PerfScenarios {
         ]
     }
 
-    static var revisions: [PerfScenario] {
-        [
-            PerfScenario("Revisions", "update an audited record", sql: 2) { world, iteration in
-                try await world.store.update(entity: PerfSchema.session, uuid: world.session(iteration)) { record in
-                    record.values["seconds"] = .int(Int64(iteration &+ 1) &* 60)
-                }
-            },
-            PerfScenario(
-                "Revisions", "history of a record", sql: 1, writes: false,
-                setUp: { world in
-                    for iteration in 0..<world.repeats {
-                        let uuid = world.session(iteration)
-                        for step in 0..<3 {
-                            try await world.store.update(entity: PerfSchema.session, uuid: uuid) { record in
-                                record.values["seconds"] = .int(Int64(step))
-                            }
-                        }
-                        world.stage.uuids.append(uuid)
-                    }
-                }
-            ) { world, iteration in
-                _ = try await world.store.history(entity: PerfSchema.session, uuid: world.stage.uuids[iteration])
-            },
-            PerfScenario("Revisions", "compact the revision log", sql: 1, iterations: 2) { world, _ in
-                _ = try await world.store.compactRevisions(olderThan: Date().addingTimeInterval(60))
-            },
-        ]
-    }
-
     static var assets: [PerfScenario] {
         [
             PerfScenario("Assets", "write a record carrying an asset", sql: 1) { world, iteration in
