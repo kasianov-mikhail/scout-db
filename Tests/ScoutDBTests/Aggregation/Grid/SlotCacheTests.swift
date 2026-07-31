@@ -46,12 +46,4 @@ struct SlotCacheTests {
         }
         #expect(await cache.record(CKRecord.ID(recordName: "k-4")) != nil)
     }
-
-    @Test("A forgotten slot is gone from the cache")
-    func forget() async {
-        let cache = SlotCache(limit: 2)
-        await cache.keep(slot("a"))
-        await cache.forget(CKRecord.ID(recordName: "a"))
-        #expect(await cache.record(CKRecord.ID(recordName: "a")) == nil)
-    }
 }

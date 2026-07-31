@@ -112,18 +112,11 @@ struct GridAggregator {
                     case .success(let saved):
                         await slots.keep(saved)
                     case .failure(let error):
-                        guard let slot = pending[id]?.slot else {
+                        guard let conflict = RecordConflictError(error) else {
                             throw error
                         }
-                        if let conflict = RecordConflictError(error) {
-                            await slots.keep(conflict.serverRecord)
-                            retry[id] = conflict.serverRecord
-                        } else if Self.vanished(error) {
-                            await slots.forget(id)
-                            retry[id] = slot.blank(named: id)
-                        } else {
-                            throw error
-                        }
+                        await slots.keep(conflict.serverRecord)
+                        retry[id] = conflict.serverRecord
                     }
                 }
             }
@@ -201,10 +194,6 @@ struct GridAggregator {
                 ServerFilter(field: "date", op: .equals, value: .date(GridSlot.date)),
             ])
         return try await database.allRecords(matching: query).first
-    }
-
-    private static func vanished(_ error: any Error) -> Bool {
-        (error as? CKError)?.code == .unknownItem
     }
 }
 

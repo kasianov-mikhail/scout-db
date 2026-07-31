@@ -32,11 +32,6 @@ actor SlotCache {
         evict()
     }
 
-    func forget(_ id: CKRecord.ID) {
-        records[id] = nil
-        usage[id] = nil
-    }
-
     private func touch(_ id: CKRecord.ID) {
         clock += 1
         usage[id] = clock
