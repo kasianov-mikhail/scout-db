@@ -19,12 +19,16 @@ extension EntityStore {
                 guard victims.count > 0 else {
                     return
                 }
-                try await database.delete(records: victims.map { CKRecord.ID(recordName: $0.uuid) })
-                try await settle(removed: victims, using: definition)
+                try await remove(victims, using: definition)
                 removed += victims.count
             }
         }
         return removed
+    }
+
+    func remove(_ removed: [EntityRecord], using definition: EntityDefinition) async throws {
+        try await database.delete(records: removed.map { CKRecord.ID(recordName: $0.uuid) })
+        try await settle(removed: removed, using: definition)
     }
 
     func settle(removed: [EntityRecord], using definition: EntityDefinition) async throws {

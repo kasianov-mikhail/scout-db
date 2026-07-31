@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct GridFold: Equatable, Sendable {
+struct GridFold: Sendable {
     var count = 0
     var value: Double?
 }

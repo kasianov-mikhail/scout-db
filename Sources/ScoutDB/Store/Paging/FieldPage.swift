@@ -10,12 +10,3 @@ public struct FieldPage: Equatable, Sendable {
     public let records: [EntityRecord]
     public let cursor: FieldCursor?
 }
-
-extension FieldPage: RandomAccessCollection {
-    public var startIndex: Int { records.startIndex }
-    public var endIndex: Int { records.endIndex }
-
-    public subscript(position: Int) -> EntityRecord {
-        records[position]
-    }
-}

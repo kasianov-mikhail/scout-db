@@ -53,12 +53,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func sum(_ field: String) async throws -> Double {
-        try await FoldQuery(
-            store: store,
-            entity: entity,
-            branches: alternatives
-        )
-        .value(fold: .sum, field: field) ?? 0
+        try await foldQuery.value(fold: .sum, field: field) ?? 0
     }
 
     /// The smallest value of a numeric field across the matching records.
@@ -74,12 +69,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func min(_ field: String) async throws -> Double? {
-        try await FoldQuery(
-            store: store,
-            entity: entity,
-            branches: alternatives
-        )
-        .value(fold: .min, field: field)
+        try await foldQuery.value(fold: .min, field: field)
     }
 
     /// The largest value of a numeric field across the matching records.
@@ -95,12 +85,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func max(_ field: String) async throws -> Double? {
-        try await FoldQuery(
-            store: store,
-            entity: entity,
-            branches: alternatives
-        )
-        .value(fold: .max, field: field)
+        try await foldQuery.value(fold: .max, field: field)
     }
 
     /// The mean of a numeric field across the matching records.
@@ -116,12 +101,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func average(_ field: String) async throws -> Double? {
-        try await FoldQuery(
-            store: store,
-            entity: entity,
-            branches: alternatives
-        )
-        .value(fold: .average, field: field)
+        try await foldQuery.value(fold: .average, field: field)
     }
 
     /// Sums a numeric field per distinct value of the grouping field.
@@ -138,12 +118,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func sum(_ field: String, by group: String) async throws -> [String: Double] {
-        try await FoldQuery(
-            store: store,
-            entity: entity,
-            branches: alternatives
-        )
-        .values(fold: .sum, field: field, group: group)
+        try await foldQuery.values(fold: .sum, field: field, group: group)
     }
 
     /// The smallest value of a numeric field per distinct value of the grouping
@@ -158,12 +133,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func min(_ field: String, by group: String) async throws -> [String: Double] {
-        try await FoldQuery(
-            store: store,
-            entity: entity,
-            branches: alternatives
-        )
-        .values(fold: .min, field: field, group: group)
+        try await foldQuery.values(fold: .min, field: field, group: group)
     }
 
     /// The largest value of a numeric field per distinct value of the grouping
@@ -178,12 +148,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func max(_ field: String, by group: String) async throws -> [String: Double] {
-        try await FoldQuery(
-            store: store,
-            entity: entity,
-            branches: alternatives
-        )
-        .values(fold: .max, field: field, group: group)
+        try await foldQuery.values(fold: .max, field: field, group: group)
     }
 
     /// The mean of a numeric field per distinct value of the grouping field.
@@ -197,12 +162,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func average(_ field: String, by group: String) async throws -> [String: Double] {
-        try await FoldQuery(
-            store: store,
-            entity: entity,
-            branches: alternatives
-        )
-        .values(fold: .average, field: field, group: group)
+        try await foldQuery.values(fold: .average, field: field, group: group)
     }
 
     /// Counts the matching records per distinct value of the grouping field.
@@ -218,12 +178,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func count(by group: String) async throws -> [String: Int] {
-        try await FoldQuery(
-            store: store,
-            entity: entity,
-            branches: alternatives
-        )
-        .counts(group: group)
+        try await foldQuery.counts(group: group)
     }
 
     /// One total per group, folded across every record the grid counts.
@@ -266,6 +221,12 @@ extension GridQuery {
             view: view.name,
             group: try query.narrowing(to: group)
         )
+    }
+}
+
+extension QueryBuilder {
+    fileprivate var foldQuery: FoldQuery {
+        FoldQuery(store: store, entity: entity, branches: alternatives)
     }
 }
 

@@ -176,6 +176,7 @@ extension EntityStore {
                 continue
             }
             try await remove(victims, using: target.child)
+            try await cascadeDelete(entity: target.child.entity, uuids: victims.map(\.uuid))
         }
     }
 
@@ -190,20 +191,6 @@ extension EntityStore {
             any: branches
         )
         .sorted { $0.uuid < $1.uuid }
-    }
-
-    private func remove(_ victims: [EntityRecord], using child: EntityDefinition) async throws {
-        try await database.delete(records: victims.map { CKRecord.ID(recordName: $0.uuid) })
-
-        try await settle(
-            removed: victims,
-            using: child
-        )
-
-        try await cascadeDelete(
-            entity: child.entity,
-            uuids: victims.map(\.uuid)
-        )
     }
 
     private func detach(entity: String, field: String, uuids: [String]) async throws {

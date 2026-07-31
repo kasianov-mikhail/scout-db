@@ -154,8 +154,7 @@ public struct EntityStore: Sendable {
         }
         let definition = try await registry.definition(for: entity)
         let removed = try decode(try await items(entity: entity, uuids: targets), using: definition)
-        try await database.delete(records: targets.map { CKRecord.ID(recordName: $0) })
-        try await settle(removed: removed, using: definition)
+        try await remove(removed, using: definition)
     }
 
     fileprivate func liveRecords(entity: String, uuids: [String], using definition: EntityDefinition) async throws -> [EntityRecord] {
