@@ -57,7 +57,7 @@ extension EntityStore {
             return nil
         }
 
-        let records = try await gridRecords(
+        let records = try await grid(
             entity: entity,
             view: view.name,
             group: query.serverGroup,
