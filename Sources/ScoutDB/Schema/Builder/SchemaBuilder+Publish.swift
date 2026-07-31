@@ -11,12 +11,10 @@ extension SchemaBuilder {
     /// Publishes version 1 of the entity, over a grid it builds itself.
     ///
     /// Every groupable field — a scalar string, reference, int or double in a
-    /// slot — gets a `lifetime` view counting its values, and an entity with an
-    /// envelope date also gets a `day` view counting its records. So `count`,
-    /// `count(by:)` and `distinct` are answered from the grid without anyone
-    /// declaring anything; ``sum(_:by:bucket:shards:)`` and its siblings remain
-    /// for the shapes nobody can guess, like a metric, a histogram or a coarser
-    /// bucket.
+    /// slot — gets a view counting its values. So `count`, `count(by:)` and
+    /// `distinct` are answered from the grid without anyone declaring
+    /// anything; ``sum(_:by:shards:)`` and its siblings remain for the shapes
+    /// nobody can guess, like a metric over a field.
     ///
     /// The grid costs the writes it saves the reads: an entity carrying one
     /// reads its records before it rewrites them and rewrites its cells after,
@@ -29,7 +27,6 @@ extension SchemaBuilder {
     ///     .field("product_id", .string, .required)
     ///     .field("amount", .double)
     ///     .field("date", .timestamp)
-    ///     .envelopeDate("date")
     ///     .create()
     /// ```
     ///
@@ -40,11 +37,7 @@ extension SchemaBuilder {
             try resolve($0, allocator: &allocator, since: nil)
         }
 
-        let grid = Self.grid(
-            over: fields,
-            declaring: views,
-            envelopeDate: envelopeDate
-        )
+        let grid = Self.grid(over: fields, declaring: views)
 
         try await publish(
             fields: fields,
@@ -76,7 +69,6 @@ extension SchemaBuilder {
     ///     .field("product_id", .string, .required)
     ///     .field("status", .string)
     ///     .field("date", .timestamp)
-    ///     .envelopeDate("date")
     ///     .update()
     /// // ["status"]
     /// ```
@@ -154,12 +146,10 @@ extension SchemaBuilder {
     }
 
     func publish(fields: [FieldDefinition], version: Int, inheriting previous: EntityDefinition?, publishing views: [AggregateView]) async throws {
-        let envelope = envelopeDate ?? previous?.envelopeDate
         let definition = EntityDefinition(
             entity: entity,
             version: version,
             fields: fields,
-            envelopeDate: envelope,
             unique: unique ?? previous?.unique,
             uniqueKeys: uniqueKeys ?? previous.flatMap { $0.claimedKeys.isEmpty ? nil : $0.claimedKeys },
             views: views.isEmpty ? nil : views,

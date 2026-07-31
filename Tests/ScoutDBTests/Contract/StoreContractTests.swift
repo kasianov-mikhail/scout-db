@@ -53,7 +53,7 @@ struct StoreContractTests {
                 fields: [
                     FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_00")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
-                ], envelopeDate: "date", unique: ["user"])
+                ], unique: ["user"])
             try await f.store.write(["user": .string("u1"), "date": .date(Date())], entity: entity)
             try await f.store.write(["user": .string("u1"), "date": .date(Date())], entity: entity)
 
@@ -150,11 +150,11 @@ struct StoreContractTests {
             }
             try await eventually { try await f.store.read(entity: entity).count == 5 }
 
-            let first = try await f.store.read(entity: entity, limit: 2)
+            let first = try await f.store.read(entity: entity, orderedBy: "date", limit: 2)
             #expect(first.records.map(\.uuid) == ["p-0", "p-1"])
-            let second = try await f.store.read(entity: entity, limit: 2, after: first.cursor)
+            let second = try await f.store.read(entity: entity, orderedBy: "date", limit: 2, after: first.cursor)
             #expect(second.records.map(\.uuid) == ["p-2", "p-3"])
-            let last = try await f.store.read(entity: entity, limit: 2, after: second.cursor)
+            let last = try await f.store.read(entity: entity, orderedBy: "date", limit: 2, after: second.cursor)
             #expect(last.records.map(\.uuid) == ["p-4"])
             #expect(last.cursor == nil)
         }

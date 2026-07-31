@@ -22,9 +22,6 @@ public struct EntitySchema: Sendable, Equatable {
     /// The fields a write may carry, closed ones left out.
     public let fields: [Field]
 
-    /// The timestamp field that orders paged reads, if the entity names one.
-    public let envelopeDate: String?
-
     /// The fields whose values derive a record's id, turning writes into
     /// upserts.
     public let unique: [String]?
@@ -89,7 +86,6 @@ extension EntitySchema {
     init(_ definition: EntityDefinition) {
         entity = definition.entity
         fields = definition.fields(at: definition.version).map(Field.init)
-        envelopeDate = definition.envelopeDate
         unique = definition.unique
         uniqueKeys = definition.claimedKeys
         audited = definition.audited == true

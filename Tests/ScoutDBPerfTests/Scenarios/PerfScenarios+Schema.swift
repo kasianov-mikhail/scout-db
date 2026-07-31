@@ -31,12 +31,12 @@ extension PerfScenarios {
                         fields: [
                             FieldDefinition(name: "label", type: .string, storage: .slot(.string, "s_00"), required: true),
                             FieldDefinition(name: "at", type: .timestamp, storage: .slot(.timestamp, "t_00"), required: true),
-                        ], envelopeDate: "at"))
+                        ]))
             },
             PerfScenario("Schema", "publish a second version", sql: 1, setUp: { world in try await stageEntities(world, prefix: "ver") }) {
                 world, iteration in
                 try await world.registry.publish(
-                    EntityDefinition(entity: world.stage.entities[iteration], version: 2, fields: fields(at: 2), envelopeDate: "at"))
+                    EntityDefinition(entity: world.stage.entities[iteration], version: 2, fields: fields(at: 2)))
             },
             PerfScenario("Schema", "retire an entity", sql: 1, setUp: { world in try await stageEntities(world, prefix: "ret") }) { world, iteration in
                 try await world.registry.retire(entity: world.stage.entities[iteration])
@@ -47,7 +47,7 @@ extension PerfScenarios {
     private static func stageEntities(_ world: PerfWorld, prefix: String) async throws {
         for iteration in 0..<world.repeats {
             let entity = world.fresh(prefix, iteration)
-            try await world.registry.publish(EntityDefinition(entity: entity, version: 1, fields: fields(at: 1), envelopeDate: "at"))
+            try await world.registry.publish(EntityDefinition(entity: entity, version: 1, fields: fields(at: 1)))
             world.stage.entities.append(entity)
         }
     }

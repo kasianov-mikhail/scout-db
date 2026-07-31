@@ -70,26 +70,6 @@ struct EntityDefinitionTests {
         try definition.validate()
     }
 
-    @Test("Validation rejects an envelope date inactive at the current version")
-    func envelopeDateClosedAtVersion() {
-        let definition = makeDefinition(
-            entity: "e", version: 2,
-            fields: [
-                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
-                FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00"), until: 2),
-            ], envelopeDate: "date")
-        #expect(throws: SchemaError.self) { try definition.validate() }
-    }
-
-    @Test("Validation accepts an envelope date active at the current version")
-    func envelopeDateActiveAtVersion() throws {
-        let definition = makeDefinition(
-            entity: "e", version: 2,
-            fields: [FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00"), since: 1)],
-            envelopeDate: "date")
-        try definition.validate()
-    }
-
     @Test("Validation accepts a text field in the searchable pool")
     func textSlot() throws {
         let definition = makeDefinition(fields: [
@@ -156,24 +136,6 @@ struct EntityDefinitionTests {
         #expect(throws: SchemaError.self) { try list.validate() }
     }
 
-    @Test("Validation rejects a non-timestamp envelope date")
-    func envelopeDateType() {
-        let definition = makeDefinition(
-            fields: [
-                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
-            ], envelopeDate: "name")
-        #expect(throws: SchemaError.self) { try definition.validate() }
-    }
-
-    @Test("Validation rejects a view without an envelope date")
-    func viewWithoutDate() {
-        let definition = makeDefinition(
-            fields: [
-                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
-            ], views: [AggregateView(name: "hourly")])
-        #expect(throws: SchemaError.self) { try definition.validate() }
-    }
-
     @Test("Validation rejects a slot beyond the pool capacity")
     func slotBeyondCapacity() {
         let definition = makeDefinition(fields: [
@@ -205,7 +167,7 @@ struct EntityDefinitionTests {
             fields: [
                 FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
-            ], envelopeDate: "date", views: [AggregateView(name: "hourly", sum: "name")])
+            ], views: [AggregateView(name: "total", sum: "name")])
         #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
@@ -281,10 +243,10 @@ struct EntityDefinitionTests {
 }
 
 func makeDefinition(
-    entity: String = "purchase", version: Int = 2, fields: [FieldDefinition], envelopeDate: String? = nil, unique: [String]? = nil,
+    entity: String = "purchase", version: Int = 2, fields: [FieldDefinition], unique: [String]? = nil,
     views: [AggregateView]? = nil, keyID: String? = nil
 ) -> EntityDefinition {
-    EntityDefinition(entity: entity, version: version, fields: fields, envelopeDate: envelopeDate, unique: unique, views: views, keyID: keyID)
+    EntityDefinition(entity: entity, version: version, fields: fields, unique: unique, views: views, keyID: keyID)
 }
 
 func makeSeatDefinition() -> EntityDefinition {
@@ -307,5 +269,5 @@ func makePurchaseDefinition() -> EntityDefinition {
             FieldDefinition(name: "quantity", type: .int, storage: .slot(.int, "i_01"), since: 2),
             FieldDefinition(name: "total", type: .double, storage: .slot(.double, "d_00"), since: 2),
             FieldDefinition(name: "comment", type: .string, storage: .payload),
-        ], envelopeDate: "date")
+        ])
 }

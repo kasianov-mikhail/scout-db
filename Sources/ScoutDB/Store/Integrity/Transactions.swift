@@ -71,7 +71,7 @@ extension EntityDefinition {
                 FieldDefinition(name: "status", type: .string, storage: .slot(.string, "s_00"), required: true, allowed: ["pending", "committed"]),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00"), required: true),
                 FieldDefinition(name: "steps", type: .bytes, storage: .payload, required: true),
-            ], envelopeDate: "date")
+            ])
     }
 }
 

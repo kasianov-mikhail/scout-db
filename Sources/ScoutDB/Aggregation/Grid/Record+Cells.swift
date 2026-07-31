@@ -9,46 +9,31 @@ import CloudKit
 import Foundation
 
 extension CKRecord {
-    static let cellCount = 64
-    static let squareOffset = 32
-    static let valueCellCount = 31
+    static let countCell = "c_00"
+    static let valueCell = "f_00"
+    static let squareCell = "f_32"
 
-    private static let countCells = (0..<cellCount).map { String(format: "c_%02d", $0) }
-    private static let valueCells = (0..<cellCount).map { String(format: "f_%02d", $0) }
-
-    static func countCell(_ index: Int) -> String {
-        countCells[index]
+    var cellCount: Int64 {
+        self[Self.countCell] as? Int64 ?? 0
     }
 
-    static func valueCell(_ index: Int) -> String {
-        valueCells[index]
+    var cellValue: Double? {
+        self[Self.valueCell] as? Double
     }
 
-    static func squareCell(_ index: Int) -> String {
-        valueCells[index + squareOffset]
+    var cellSquare: Double? {
+        self[Self.squareCell] as? Double
     }
 
-    func count(at index: Int) -> Int64 {
-        self[Self.countCell(index)] as? Int64 ?? 0
+    func setCellCount(_ count: Int64) {
+        self[Self.countCell] = count
     }
 
-    func value(at index: Int) -> Double? {
-        self[Self.valueCell(index)] as? Double
+    func setCellValue(_ value: Double?) {
+        self[Self.valueCell] = value
     }
 
-    func square(at index: Int) -> Double? {
-        self[Self.squareCell(index)] as? Double
-    }
-
-    func setCount(_ count: Int64, at index: Int) {
-        self[Self.countCell(index)] = count
-    }
-
-    func setValue(_ value: Double?, at index: Int) {
-        self[Self.valueCell(index)] = value
-    }
-
-    func setSquare(_ square: Double, at index: Int) {
-        self[Self.squareCell(index)] = square
+    func setCellSquare(_ square: Double) {
+        self[Self.squareCell] = square
     }
 }

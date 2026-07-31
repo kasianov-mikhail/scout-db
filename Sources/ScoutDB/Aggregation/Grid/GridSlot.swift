@@ -11,14 +11,20 @@ import Foundation
 struct GridSlot: Hashable {
     static let recordType = "Aggregate"
 
+    /// The date every grid record carries.
+    ///
+    /// The grid keeps one running cell per group rather than a row of them over
+    /// time, so the column the record type declares holds the same value
+    /// throughout.
+    static let date = Date(timeIntervalSince1970: 0)
+
     let entity: String
     let view: String
     let group: String
-    let day: Date
     let shard: Int?
 
     private var components: [String] {
-        var components = [entity, view, group, "\(day.millisecondsSince1970)"]
+        var components = [entity, view, group, "\(Self.date.millisecondsSince1970)"]
         if let shard, shard > 0 {
             components.append("shard-\(shard)")
         }
@@ -38,7 +44,7 @@ struct GridSlot: Hashable {
         record["entity"] = entity
         record["view"] = view
         record["group_key"] = group
-        record["date"] = day
+        record["date"] = Self.date
         return record
     }
 }
