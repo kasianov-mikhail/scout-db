@@ -15,9 +15,8 @@ extension QueryBuilder {
     /// enough records are in hand, and the call costs what it returns however
     /// much the entity grows. A ``limit(_:)`` already on the builder still
     /// stands — the smaller of the two wins. To read past the bound, walk the
-    /// query with ``paginate(size:after:)``, ``page(size:after:)`` or
-    /// ``stream(pageSize:)``, which hand back a cursor instead of a tail the
-    /// caller cannot see.
+    /// query with ``page(size:after:)``, which hands back a cursor instead of a
+    /// tail the caller cannot see.
     ///
     /// ```swift
     /// let recent = try await store.query("purchase")
@@ -56,39 +55,10 @@ extension QueryBuilder {
         try await records(limit: Swift.min(1, ceiling ?? 1)).first
     }
 
-    /// Returns one page of results ordered by the envelope date.
-    ///
-    /// Keyset pagination is ordered by the envelope date alone, so combining it
-    /// with ``sort(_:_:)`` throws instead of silently ignoring the clause.
-    ///
-    /// ```swift
-    /// var cursor: EntityCursor?
-    /// repeat {
-    ///     let page = try await store.query("purchase").paginate(size: 100, after: cursor)
-    ///     render(page.records)
-    ///     cursor = page.cursor
-    /// } while cursor != nil
-    /// ```
-    ///
-    public func paginate(size: Int, after cursor: EntityCursor? = nil) async throws -> EntityPage {
-        guard sorts.isEmpty else {
-            throw SchemaError.invalidDefinition("Pagination is ordered by the envelope date and cannot honor sort clauses")
-        }
-        return try await store.read(
-            entity: entity,
-            any: alternatives,
-            fields: projection,
-            limit: size,
-            after: cursor,
-            createdBy: creator
-        )
-    }
-
     /// Returns one keyset page ordered by the builder's sort clause.
     ///
     /// Requires exactly one `sort(_:_:)` clause on a slot-backed scalar field;
-    /// disjunctions are honored. Envelope-date pages stay with
-    /// `paginate(size:after:)`.
+    /// disjunctions are honored.
     ///
     /// ```swift
     /// let first = try await store.query("purchase").sort("amount").page(size: 50)
@@ -107,28 +77,6 @@ extension QueryBuilder {
             descending: !sort.ascending,
             limit: size,
             after: cursor,
-            createdBy: creator
-        )
-    }
-
-    /// Streams every matching record, a page at a time.
-    ///
-    /// The stream follows the query's cursor, so it holds one page rather than
-    /// the whole result and walks an entity of any size. Ordered by the envelope
-    /// date, like ``paginate(size:after:)``.
-    ///
-    /// ```swift
-    /// for try await purchase in store.query("purchase").stream(pageSize: 200) {
-    ///     try await archive(purchase)
-    /// }
-    /// ```
-    ///
-    public func stream(pageSize: Int = 100) -> AsyncThrowingStream<EntityRecord, any Error> {
-        store.stream(
-            entity: entity,
-            any: alternatives,
-            fields: projection,
-            pageSize: pageSize,
             createdBy: creator
         )
     }

@@ -29,7 +29,6 @@ struct EntitySchemaTests {
             .field("email_lower", .string, .derived(from: "email", .lowercase))
             .field("comment", .string, .payload)
             .field("date", .timestamp)
-            .envelopeDate("date")
             .unique(on: "product_id", "date")
             .uniqueKey(on: "email")
             .create()
@@ -64,7 +63,6 @@ struct EntitySchemaTests {
     func entitySettings() async throws {
         let schema = try await registry.schema(for: "purchase")
         #expect(schema.entity == "purchase")
-        #expect(schema.envelopeDate == "date")
         #expect(schema.unique == ["product_id", "date"])
         #expect(schema.uniqueKeys == [["email"]])
     }
@@ -85,7 +83,6 @@ struct EntitySchemaTests {
         try await store.schema("purchase")
             .field("product_id", .string, .required)
             .field("date", .timestamp)
-            .envelopeDate("date")
             .update()
 
         let schema = try await registry.schema(for: "purchase")

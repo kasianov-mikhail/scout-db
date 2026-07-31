@@ -57,6 +57,6 @@ extension PerfScenarios {
     private static func publishItemVersion(_ world: PerfWorld, field: FieldDefinition) async throws {
         var fields = PerfSchema.itemDefinition.fields
         fields.append(field)
-        try await world.registry.publish(EntityDefinition(entity: PerfSchema.item, version: 2, fields: fields, envelopeDate: "added"))
+        try await world.registry.publish(EntityDefinition(entity: PerfSchema.item, version: 2, fields: fields))
     }
 }

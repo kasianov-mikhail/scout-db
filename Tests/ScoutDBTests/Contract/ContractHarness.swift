@@ -66,10 +66,10 @@ final class ContractFixture {
     }
 
     @discardableResult func publish(
-        _ name: String, fields: [FieldDefinition], envelopeDate: String? = nil, unique: [String]? = nil, views: [AggregateView]? = nil
+        _ name: String, fields: [FieldDefinition], unique: [String]? = nil, views: [AggregateView]? = nil
     ) async throws -> String {
         let entity = entity(name)
-        try await registry.publish(EntityDefinition(entity: entity, version: 1, fields: fields, envelopeDate: envelopeDate, unique: unique, views: views))
+        try await registry.publish(EntityDefinition(entity: entity, version: 1, fields: fields, unique: unique, views: views))
         published.append(entity)
         return entity
     }
@@ -83,7 +83,7 @@ final class ContractFixture {
                 FieldDefinition(name: "total", type: .double, storage: .slot(.double, "d_00")),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 FieldDefinition(name: "note", type: .string, storage: .payload),
-            ], envelopeDate: "date", views: views)
+            ], views: views)
     }
 
     func tearDown() async {

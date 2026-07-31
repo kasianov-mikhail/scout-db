@@ -12,20 +12,17 @@ import Foundation
 extension PerfScenarios {
     static var pagination: [PerfScenario] {
         [
-            PerfScenario("Pagination", "one envelope page of 100", sql: 1, writes: false) { world, _ in
-                _ = try await world.store.query(PerfSchema.order).paginate(size: 100)
-            },
             PerfScenario("Pagination", "one field page of 100 by total", sql: 1, writes: false) { world, _ in
                 _ = try await world.store.query(PerfSchema.order).sort("total", .descending).page(size: 100)
             },
-            PerfScenario("Pagination", "stream 500 records", sql: 5, writes: false, iterations: 2) { world, _ in
+            PerfScenario("Pagination", "walk 500 records by total", sql: 5, writes: false, iterations: 2) { world, _ in
+                var cursor: FieldCursor?
                 var seen = 0
-                for try await _ in world.store.query(PerfSchema.order).stream(pageSize: 100) {
-                    seen += 1
-                    if seen == 500 {
-                        return
-                    }
-                }
+                repeat {
+                    let page = try await world.store.query(PerfSchema.order).sort("total").page(size: 100, after: cursor)
+                    seen += page.records.count
+                    cursor = page.cursor
+                } while cursor != nil && seen < 500
             },
         ]
     }

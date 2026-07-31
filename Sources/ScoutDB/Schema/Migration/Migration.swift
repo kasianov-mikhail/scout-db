@@ -15,7 +15,6 @@ import Foundation
 ///         try await store.schema("purchase")
 ///             .field("product_id", .string, .required)
 ///             .field("date", .timestamp)
-///             .envelopeDate("date")
 ///             .create()
 ///     }
 /// }

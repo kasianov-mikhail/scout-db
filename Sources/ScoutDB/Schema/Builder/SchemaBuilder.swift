@@ -15,7 +15,6 @@ import Foundation
 ///     .field("amount", .double)
 ///     .field("date", .timestamp)
 ///     .field("comment", .string, .payload)
-///     .envelopeDate("date")
 ///     .unique(on: "product_id", "date")
 ///     .create()
 /// ```
@@ -29,7 +28,6 @@ public struct SchemaBuilder {
     let registry: SchemaRegistry
 
     var declarations: [Declaration] = []
-    var envelopeDate: String?
     var unique: [String]?
     var uniqueKeys: [[String]]?
     var views: [AggregateView] = []
@@ -38,25 +36,6 @@ public struct SchemaBuilder {
     init(entity: String, registry: SchemaRegistry) {
         self.entity = entity
         self.registry = registry
-    }
-
-    /// Names the timestamp field that dates every record of the entity.
-    ///
-    /// It is what keyset pagination orders by, what a `stream` walks, and what
-    /// buckets every aggregate finer than `lifetime` — an entity without one
-    /// can still be counted, but not paged or charted over time.
-    ///
-    /// ```swift
-    /// try await store.schema("purchase")
-    ///     .field("date", .timestamp)
-    ///     .envelopeDate("date")
-    ///     .create()
-    /// ```
-    ///
-    public func envelopeDate(_ field: String) -> Self {
-        var builder = self
-        builder.envelopeDate = field
-        return builder
     }
 
     /// Derives the record id from the named fields, turning writes into
@@ -149,7 +128,6 @@ extension EntityStore {
     /// try await store.schema("purchase")
     ///     .field("product_id", .string, .required)
     ///     .field("date", .timestamp)
-    ///     .envelopeDate("date")
     ///     .create()
     /// ```
     ///

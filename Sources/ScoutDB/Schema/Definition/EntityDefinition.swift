@@ -11,7 +11,6 @@ struct EntityDefinition: Codable, Equatable, Sendable {
     let entity: String
     let version: Int
     let fields: [FieldDefinition]
-    var envelopeDate: String?
     var unique: [String]?
     var uniqueKeys: [[String]]?
     var enforcedKeys: [[String]]?
@@ -20,13 +19,12 @@ struct EntityDefinition: Codable, Equatable, Sendable {
     private let index = FieldIndex()
 
     init(
-        entity: String, version: Int, fields: [FieldDefinition], envelopeDate: String? = nil, unique: [String]? = nil,
+        entity: String, version: Int, fields: [FieldDefinition], unique: [String]? = nil,
         uniqueKeys: [[String]]? = nil, enforcedKeys: [[String]]? = nil, views: [AggregateView]? = nil, keyID: String? = nil
     ) {
         self.entity = entity
         self.version = version
         self.fields = fields
-        self.envelopeDate = envelopeDate
         self.unique = unique
         self.uniqueKeys = uniqueKeys
         self.enforcedKeys = enforcedKeys
@@ -35,14 +33,13 @@ struct EntityDefinition: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case entity, version, fields, envelopeDate, unique, uniqueKeys, enforcedKeys, views, keyID
+        case entity, version, fields, unique, uniqueKeys, enforcedKeys, views, keyID
     }
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.entity == rhs.entity
             && lhs.version == rhs.version
             && lhs.fields == rhs.fields
-            && lhs.envelopeDate == rhs.envelopeDate
             && lhs.unique == rhs.unique
             && lhs.uniqueKeys == rhs.uniqueKeys
             && lhs.enforcedKeys == rhs.enforcedKeys
@@ -66,15 +63,9 @@ struct EntityDefinition: Codable, Equatable, Sendable {
         views?.first { $0.name == name }
     }
 
-    func view(grouping group: String?, folding field: String?, histogram: Bool = false, bucket: AggregateBucket? = nil) -> AggregateView? {
-        let candidates = (views ?? []).filter { view in
+    func view(grouping group: String?, folding field: String?) -> AggregateView? {
+        (views ?? []).first { view in
             guard view.groupBy == group else {
-                return false
-            }
-            guard !histogram else {
-                return view.histogram?.field == field
-            }
-            guard view.histogram == nil else {
                 return false
             }
             guard let field else {
@@ -82,10 +73,6 @@ struct EntityDefinition: Codable, Equatable, Sendable {
             }
             return view.metric?.field == field
         }
-        if let bucket {
-            return candidates.first { ($0.bucket ?? .hour) == bucket }
-        }
-        return candidates.min { ($0.bucket ?? .hour) < ($1.bucket ?? .hour) }
     }
 
     var claimedKeys: [[String]] {
@@ -156,11 +143,6 @@ struct EntityDefinition: Codable, Equatable, Sendable {
                 }
             }
         }
-        if let envelopeDate {
-            guard field(named: envelopeDate, at: version)?.type == .timestamp else {
-                throw SchemaError.invalidDefinition("Envelope date '\(envelopeDate)' is not an active timestamp field at version \(version)")
-            }
-        }
         for key in unique ?? [] where !names.contains(key) {
             throw SchemaError.invalidDefinition("Unique key '\(key)' is not a field")
         }
@@ -173,15 +155,10 @@ struct EntityDefinition: Codable, Equatable, Sendable {
             }
         }
         for view in views ?? [] {
-            if view.bucket != .lifetime || view.histogram != nil {
-                guard envelopeDate != nil else {
-                    throw SchemaError.invalidDefinition("View '\(view.name)' requires an envelope date")
-                }
-            }
             if let groupBy = view.groupBy, !names.contains(groupBy) {
                 throw SchemaError.invalidDefinition("View '\(view.name)' groups by unknown '\(groupBy)'")
             }
-            let metrics = [view.sum, view.min, view.max, view.stats, view.histogram?.field].compactMap { $0 }
+            let metrics = [view.sum, view.min, view.max, view.stats].compactMap { $0 }
             guard metrics.count <= 1 else {
                 throw SchemaError.invalidDefinition("View '\(view.name)' declares more than one metric")
             }
@@ -204,14 +181,6 @@ struct EntityDefinition: Codable, Equatable, Sendable {
                     guard let field = field(named: groupBy, at: version), case .slot = field.storage, field.encrypted != true else {
                         throw SchemaError.invalidDefinition("View '\(view.name)' can only keep an extremum exact when it groups by a filterable field")
                     }
-                }
-            }
-            if let histogram = view.histogram {
-                guard histogram.bounds.count > 0, histogram.bounds.count < 64, histogram.bounds == histogram.bounds.sorted() else {
-                    throw SchemaError.invalidDefinition("View '\(view.name)' has invalid histogram bounds")
-                }
-                guard view.bucket == nil else {
-                    throw SchemaError.invalidDefinition("View '\(view.name)' cannot combine a histogram with a time bucket")
                 }
             }
         }

@@ -26,7 +26,7 @@ extension EntityStore {
     {
         let definition = try await registry.definition(for: entity)
 
-        guard definition.views?.isEmpty == false, var query = CountQuery(any: branches, envelopeDate: definition.envelopeDate) else {
+        guard definition.views?.isEmpty == false, var query = CountQuery(any: branches) else {
             return nil
         }
 
@@ -57,40 +57,30 @@ extension EntityStore {
             return nil
         }
 
-        let covers = view.cellFilter(from: query.from, to: query.to)
-        let cells = 0..<CKRecord.squareOffset
-
         let records = try await gridRecords(
             entity: entity,
             view: view.name,
             group: query.serverGroup,
-            from: view.gridStart(from: query.from),
-            to: query.to,
-            counts: cells,
-            values: field == nil ? nil : cells
+            values: field != nil
         )
 
         var folded: [String: GridFold] = [:]
         for record in records {
-            guard let start = record["date"] as? Date, let key = record["group_key"] as? String, query.covers(key) else {
+            guard let key = record["group_key"] as? String, query.covers(key) else {
                 continue
             }
 
-            var bucketed = folded[group == nil ? "" : key] ?? GridFold()
-            for index in cells where covers(start, index) {
-                let count = Int(record.count(at: index))
-                guard count != 0 else {
-                    continue
-                }
-                bucketed.count += count
-                if let cell = record.value(at: index) {
-                    bucketed.value = bucketed.value.map { kind.combine($0, cell) } ?? cell
-                }
+            let count = Int(record.cellCount)
+            guard count > 0 else {
+                continue
             }
 
-            if bucketed.count > 0 {
-                folded[group == nil ? "" : key] = bucketed
+            var entry = folded[group == nil ? "" : key] ?? GridFold()
+            entry.count += count
+            if let cell = record.cellValue {
+                entry.value = entry.value.map { kind.combine($0, cell) } ?? cell
             }
+            folded[group == nil ? "" : key] = entry
         }
         return folded
     }

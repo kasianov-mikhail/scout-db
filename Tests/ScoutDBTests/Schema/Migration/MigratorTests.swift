@@ -154,14 +154,14 @@ struct MigratorTests {
             fields: [
                 FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00")),
                 FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
-            ], views: [AggregateView(name: "all_time", bucket: .lifetime)])
+            ], views: [AggregateView(name: "all_time")])
         try await registry.publish(definition)
         let store = EntityStore(database: database, registry: registry)
         try await store.write(["product": .string("app"), "amount": .double(10)], entity: "sale")
         try await store.write(["product": .string("app"), "amount": .double(5)], entity: "sale")
         try await store.write(["product": .string("book"), "amount": .double(2)], entity: "sale")
 
-        definition.views? += [AggregateView(name: "by_product", groupBy: "product", bucket: .lifetime, sum: "amount")]
+        definition.views? += [AggregateView(name: "by_product", groupBy: "product", sum: "amount")]
         try await registry.publish(definition)
         #expect(try await GridQuery(store, entity: "sale", view: "by_product").totals().isEmpty)
 

@@ -32,7 +32,7 @@ schema freely — the CloudKit [schema](Schema) is uploaded once and never touch
 | | | |
 |:-:|-|-|
 | 🗂 | **Schema** | Declare fields, constraints, defaults, and unique keys with a chainable schema builder, then rename, retype, add, or remove fields as new schema versions — old records stay readable forever, nothing is ever re-imported. |
-| 🔍 | **Queries** | Filters, sorting, pagination, streaming, full-text search, geo radius, and batch update/delete through a query builder, plus counters, sums, extremes, deviation, and percentiles maintained on write so reads never scan raw records. |
+| 🔍 | **Queries** | Filters, sorting, keyset pagination, full-text search, geo radius, and batch update/delete through a query builder, plus counters, sums, extremes, and deviation maintained on write so reads never scan raw records. |
 | 🔐 | **Security** | Client-side field encryption with key rotation, filterable hashed surrogates, and trusted-writer filtering for public databases. |
 | 📎 | **Records** | Assets up to 50 MB per field, entity references with cascading delete, and a soft-delete lifecycle. |
 | 📡 | **Sync** | Push-triggered reads over per-entity subscriptions, and projected push payloads that decode without a fetch. |
@@ -88,7 +88,6 @@ try await store.schema("purchase")
     .field("amount", .double)
     .field("date", .timestamp)
     .field("comment", .string, .payload)
-    .envelopeDate("date")
     .create()
 ```
 

@@ -206,7 +206,7 @@ struct OperationsTests {
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                 ],
                 uniqueKeys: [["code"]],
-                views: [AggregateView(name: "total", bucket: .lifetime, sum: "amount")]))
+                views: [AggregateView(name: "total", sum: "amount")]))
         let counting = CountingFetches(backing: database)
         let claimed = EntityStore(database: counting, registry: registry)
         try await claimed.write(["code": .string("gold"), "amount": .double(1)], entity: "badge", uuid: "b-1")
@@ -237,11 +237,11 @@ struct OperationsTests {
             try await store.write(values, entity: "purchase", uuid: "p-\(index)")
         }
 
-        let first = try await store.read(entity: "purchase", limit: 2)
+        let first = try await store.read(entity: "purchase", orderedBy: "date", limit: 2)
         #expect(first.records.map(\.uuid) == ["p-1", "p-2"])
         let cursor = try #require(first.cursor)
 
-        let second = try await store.read(entity: "purchase", limit: 2, after: cursor)
+        let second = try await store.read(entity: "purchase", orderedBy: "date", limit: 2, after: cursor)
         #expect(second.records.map(\.uuid) == ["p-0"])
         #expect(second.cursor == nil)
     }
@@ -515,13 +515,7 @@ struct OperationsTests {
         #expect(try await mine.sum("quantity", by: "product_id") == ["sku-42": 12])
         #expect(try await mine.count(by: "product_id") == ["sku-42": 2])
 
-        #expect(Set(try await mine.paginate(size: 10).records.map(\.uuid)) == ["p-1", "p-3"])
         #expect(try await mine.sort("quantity").page(size: 10).records.map(\.uuid) == ["p-1", "p-3"])
-        var streamed: Set<String> = []
-        for try await record in mine.stream(pageSize: 1) {
-            streamed.insert(record.uuid)
-        }
-        #expect(streamed == ["p-1", "p-3"])
 
         #expect(
             try await mine.update { record in
@@ -648,28 +642,13 @@ struct OperationsTests {
 
         let filter = EntityStore.Filter(field: "comment", op: .contains, value: .string("gif"))
         var uuids: [String] = []
-        var cursor: EntityCursor?
+        var cursor: FieldCursor?
         repeat {
-            let page = try await store.read(entity: "purchase", any: [[filter]], limit: 1, after: cursor)
+            let page = try await store.read(entity: "purchase", any: [[filter]], orderedBy: "date", limit: 1, after: cursor)
             uuids += page.records.map(\.uuid)
             cursor = page.cursor
         } while cursor != nil
         #expect(uuids == ["p-0", "p-2"])
-    }
-
-    @Test("Stream pages through every record in order")
-    func stream() async throws {
-        for index in 0..<5 {
-            var values = makePurchase().values
-            values["date"] = .date(Date(timeIntervalSince1970: TimeInterval(index * 1_000)))
-            try await store.write(values, entity: "purchase", uuid: "p-\(index)")
-        }
-
-        var uuids: [String] = []
-        for try await record in store.stream(entity: "purchase", any: [[]], pageSize: 2) {
-            uuids.append(record.uuid)
-        }
-        #expect(uuids == ["p-0", "p-1", "p-2", "p-3", "p-4"])
     }
 
     @Test("updateAll rewrites every matching record")
@@ -906,7 +885,7 @@ struct OperationsTests {
                     FieldDefinition(name: "author_id", type: .string, storage: .slot(.string, "s_00"), references: "author"),
                     FieldDefinition(name: "editor_id", type: .string, storage: .slot(.string, "s_01"), references: "author"),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
-                ], envelopeDate: "date", views: [AggregateView(name: "total", bucket: .lifetime)]))
+                ], views: [AggregateView(name: "total")]))
 
         try await store.write(["name": .string("Twain")], entity: "author", uuid: "a-1")
         try await store.write(
@@ -915,8 +894,7 @@ struct OperationsTests {
         try await store.delete(entity: "author", uuid: "a-1", cascade: true)
         #expect(try await store.read(entity: "note").isEmpty)
 
-        let counts = database.records.filter { $0.recordType == "Aggregate" }
-            .flatMap { record in (0..<CKRecord.cellCount).map { record.count(at: $0) } }
+        let counts = database.records.filter { $0.recordType == "Aggregate" }.map(\.cellCount)
         #expect(counts.allSatisfy { $0 >= 0 })
         #expect(counts.reduce(0, +) == 0)
     }
