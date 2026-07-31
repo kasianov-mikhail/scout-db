@@ -709,7 +709,7 @@ struct OperationsTests {
         var uuids: [String] = []
         var cursor: FieldCursor?
         repeat {
-            let page = try await store.read(entity: "purchase", filters: [filter], orderedBy: "date", limit: 1, after: cursor)
+            let page = try await store.read(entity: "purchase", any: [[filter]], orderedBy: "date", limit: 1, after: cursor)
             uuids += page.records.map(\.uuid)
             cursor = page.cursor
         } while cursor != nil

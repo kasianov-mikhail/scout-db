@@ -121,7 +121,7 @@ struct PaginationTests {
         try await writePurchases(3)
 
         let filters = [EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-42"))]
-        let page = try await store.read(entity: "purchase", filters: filters, fields: ["total"], orderedBy: "quantity", limit: 2)
+        let page = try await store.read(entity: "purchase", any: [filters], fields: ["total"], orderedBy: "quantity", limit: 2)
         #expect(page.records.count == 2)
         #expect(page.records.allSatisfy { $0.values["total"] != nil })
         #expect(page.records.allSatisfy { $0.values["quantity"] != nil })
