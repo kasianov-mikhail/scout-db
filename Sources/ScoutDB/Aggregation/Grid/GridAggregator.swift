@@ -11,13 +11,13 @@ import Foundation
 struct GridAggregator {
     let database: any CloudDatabase
     let slots: SlotCache
-    let recompute: (@Sendable (GridCell, EntityDefinition) async throws -> Double?)?
+    let recompute: (@Sendable (AggregateView, String, EntityDefinition) async throws -> Double?)?
     let maxRetry = 3
     let maxBatch = 400
 
     init(
         database: any CloudDatabase, slots: SlotCache = SlotCache(),
-        recompute: (@Sendable (GridCell, EntityDefinition) async throws -> Double?)? = nil
+        recompute: (@Sendable (AggregateView, String, EntityDefinition) async throws -> Double?)? = nil
     ) {
         self.database = database
         self.slots = slots
@@ -146,7 +146,7 @@ struct GridAggregator {
             guard let removed = entry.delta.removed, let stored = entry.record.cellValue, stored == removed.total else {
                 continue
             }
-            exact[id] = try await recompute(GridCell(view: view, group: entry.slot.group), definition)
+            exact[id] = try await recompute(view, entry.slot.group, definition)
             pending[id]?.delta.value = nil
             pending[id]?.delta.removed = nil
         }

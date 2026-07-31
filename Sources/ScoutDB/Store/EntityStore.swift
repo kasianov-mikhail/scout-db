@@ -39,8 +39,8 @@ public struct EntityStore: Sendable {
     let slots = SlotCache()
 
     var aggregator: GridAggregator {
-        GridAggregator(database: database, slots: slots) { cell, definition in
-            try await extremum(in: cell, using: definition)
+        GridAggregator(database: database, slots: slots) { view, group, definition in
+            try await extremum(in: view, group: group, using: definition)
         }
     }
 
