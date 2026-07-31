@@ -46,21 +46,3 @@ actor RequestGate {
         limit
     }
 }
-
-/// How ScoutDB paces the requests it sends.
-public enum RequestPolicy {
-    /// Sets how many requests ScoutDB keeps in flight at once; eight by default.
-    ///
-    /// Raise it when the work is latency-bound and the container is quiet,
-    /// lower it when a long pass keeps meeting rate limits. Values below one
-    /// are clamped.
-    ///
-    public static func setMaxConcurrentRequests(_ count: Int) async {
-        await RequestGate.shared.setLimit(count)
-    }
-
-    /// How many requests ScoutDB keeps in flight at once.
-    public static var maxConcurrentRequests: Int {
-        get async { await RequestGate.shared.currentLimit }
-    }
-}

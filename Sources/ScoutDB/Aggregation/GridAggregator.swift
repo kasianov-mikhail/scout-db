@@ -36,7 +36,7 @@ struct GridAggregator {
         for (slot, delta) in merged where !delta.isNoop() {
             live[slot] = delta
         }
-        try await apply(live, using: definition)
+        try await apply(live)
     }
 
     private func deltas(for batch: [EntityRecord], using definition: EntityDefinition, adding: Bool) -> [GridSlot: CellDelta] {
@@ -71,12 +71,11 @@ struct GridAggregator {
     }
 
     private struct Pending {
-        let slot: GridSlot
         var record: CKRecord
         var delta: CellDelta
     }
 
-    private func apply(_ deltas: [GridSlot: CellDelta], using definition: EntityDefinition) async throws {
+    private func apply(_ deltas: [GridSlot: CellDelta]) async throws {
         guard deltas.count > 0 else {
             return
         }
@@ -121,7 +120,7 @@ struct GridAggregator {
         for (slot, delta) in deltas {
             let id = slot.recordID
             if let cached = await slots.record(id) {
-                pending[id] = Pending(slot: slot, record: cached, delta: delta)
+                pending[id] = Pending(record: cached, delta: delta)
             } else {
                 cold.append((id, slot, delta))
             }
@@ -141,7 +140,7 @@ struct GridAggregator {
                 record = try await adopt(entry.slot)
             }
             let resolved = record ?? entry.slot.blank(named: entry.id)
-            pending[resolved.recordID] = Pending(slot: entry.slot, record: resolved, delta: entry.delta)
+            pending[resolved.recordID] = Pending(record: resolved, delta: entry.delta)
         }
         return pending
     }
