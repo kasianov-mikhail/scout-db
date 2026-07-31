@@ -92,7 +92,7 @@ struct StoreContractTests {
             let above = try await f.store.read(entity: entity, filters: [.init(field: "quantity", op: .greaterThan, value: .int(4))])
             #expect(Set(above.map(\.uuid)) == ["q-1", "q-2"])
 
-            let middle = try await f.store.query(entity).filter(.between("quantity", .int(2), .int(9))).take(100)
+            let middle = try await f.store.query(entity).filter("quantity" >= 2 && "quantity" < 9).take(100)
             #expect(middle.map(\.uuid) == ["q-1"])
         }
     }
