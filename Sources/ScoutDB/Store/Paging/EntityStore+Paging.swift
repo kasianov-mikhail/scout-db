@@ -9,20 +9,8 @@ import Foundation
 
 extension EntityStore {
     func read(
-        entity: String, filters: [Filter] = [], fields: [String]? = nil, limit: Int, after cursor: EntityCursor? = nil, createdBy creator: String? = nil
-    ) async throws -> EntityPage {
-        try await read(
-            entity: entity,
-            any: [filters],
-            fields: fields,
-            limit: limit,
-            after: cursor,
-            createdBy: creator
-        )
-    }
-
-    func read(
-        entity: String, any branches: [[Filter]], fields: [String]? = nil, limit: Int, after cursor: EntityCursor? = nil, createdBy creator: String? = nil
+        entity: String, any branches: [[Filter]] = [[]], fields: [String]? = nil, limit: Int, after cursor: EntityCursor? = nil,
+        createdBy creator: String? = nil
     ) async throws -> EntityPage {
         let definition = try await registry.definition(for: entity)
 
@@ -50,7 +38,7 @@ extension EntityStore {
 
         var seen: Set<String> = []
         let records = pages.flatMap { $0 }
-            .sorted { Self.pageKey($0, dateField) < Self.pageKey($1, dateField) }
+            .sorted { pageKey($0, dateField) < pageKey($1, dateField) }
             .filter { seen.insert($0.uuid).inserted }
             .prefix(limit)
 
@@ -58,7 +46,7 @@ extension EntityStore {
             records.count == limit
             ? records.last.map {
                 EntityCursor(
-                    date: Self.pageKey($0, dateField).0,
+                    date: pageKey($0, dateField).0,
                     uuid: $0.uuid
                 )
             } : nil
@@ -81,7 +69,7 @@ extension EntityStore {
             )
         }
 
-        let sort = try serverSort([Sort(field: dateField)], using: definition) + [Self.uuidSort]
+        let sort = try serverSort([Sort(field: dateField)], using: definition) + [uuidSort]
 
         let (query, included) = try liveQuery(
             pageFilters,
@@ -110,34 +98,18 @@ extension EntityStore {
             guard let cursor else {
                 return true
             }
-            return Self.pageKey(record, dateField) > (cursor.date, cursor.uuid)
+            return pageKey(record, dateField) > (cursor.date, cursor.uuid)
         }
 
         return Array(
             collected.sorted {
-                Self.pageKey($0, dateField) < Self.pageKey($1, dateField)
+                pageKey($0, dateField) < pageKey($1, dateField)
             }
             .prefix(limit))
     }
 
     func read(
-        entity: String, filters: [Filter] = [], fields: [String]? = nil, orderedBy field: String, descending: Bool = false, limit: Int,
-        after cursor: FieldCursor? = nil, createdBy creator: String? = nil
-    ) async throws -> FieldPage {
-        try await read(
-            entity: entity,
-            any: [filters],
-            fields: fields,
-            orderedBy: field,
-            descending: descending,
-            limit: limit,
-            after: cursor,
-            createdBy: creator
-        )
-    }
-
-    func read(
-        entity: String, any branches: [[Filter]], fields: [String]? = nil, orderedBy field: String, descending: Bool = false, limit: Int,
+        entity: String, any branches: [[Filter]] = [[]], fields: [String]? = nil, orderedBy field: String, descending: Bool = false, limit: Int,
         after cursor: FieldCursor? = nil, createdBy creator: String? = nil
     ) async throws -> FieldPage {
         let definition = try await registry.definition(for: entity)
@@ -174,7 +146,7 @@ extension EntityStore {
         var seen: Set<String> = []
         let records = Array(
             pages.flatMap { $0 }
-                .sorted { Self.ordered($0, $1, by: field, descending: descending) }
+                .sorted { precedes($0, $1, by: field, descending: descending) }
                 .filter { seen.insert($0.uuid).inserted }
                 .prefix(limit))
 
@@ -206,7 +178,7 @@ extension EntityStore {
             try serverSort(
                 [Sort(field: field, ascending: !descending)],
                 using: definition
-            ) + [Self.uuidSort]
+            ) + [uuidSort]
 
         let (query, included) = try liveQuery(
             pageFilters,
@@ -235,41 +207,41 @@ extension EntityStore {
             guard let cursor else {
                 return true
             }
-            return Self.beyond(record, field, cursor, descending: descending)
+            return beyond(record, field, cursor, descending: descending)
         }
 
         return Array(
             collected.sorted {
-                Self.ordered($0, $1, by: field, descending: descending)
+                precedes($0, $1, by: field, descending: descending)
             }
             .prefix(limit))
     }
+}
 
-    private static func beyond(_ record: EntityRecord, _ field: String, _ cursor: FieldCursor, descending: Bool) -> Bool {
-        switch rank(record.values[field], cursor.value) {
-        case .orderedSame:
-            record.uuid > cursor.uuid
-        case .orderedAscending:
-            descending
-        case .orderedDescending:
-            !descending
-        }
+private func beyond(_ record: EntityRecord, _ field: String, _ cursor: FieldCursor, descending: Bool) -> Bool {
+    switch EntityStore.rank(record.values[field], cursor.value) {
+    case .orderedSame:
+        record.uuid > cursor.uuid
+    case .orderedAscending:
+        descending
+    case .orderedDescending:
+        !descending
     }
+}
 
-    private static func ordered(_ lhs: EntityRecord, _ rhs: EntityRecord, by field: String, descending: Bool) -> Bool {
-        let order = rank(lhs.values[field], rhs.values[field])
-        guard order != .orderedSame else {
-            return lhs.uuid < rhs.uuid
-        }
-        return descending ? order == .orderedDescending : order == .orderedAscending
+private func precedes(_ lhs: EntityRecord, _ rhs: EntityRecord, by field: String, descending: Bool) -> Bool {
+    let order = EntityStore.rank(lhs.values[field], rhs.values[field])
+    guard order != .orderedSame else {
+        return lhs.uuid < rhs.uuid
     }
+    return descending ? order == .orderedDescending : order == .orderedAscending
+}
 
-    private static let uuidSort = ServerSort(field: "uuid", ascending: true)
+private let uuidSort = ServerSort(field: "uuid", ascending: true)
 
-    private static func pageKey(_ record: EntityRecord, _ dateField: String) -> (Date, String) {
-        guard case .date(let date)? = record.values[dateField] else {
-            return (.distantPast, record.uuid)
-        }
-        return (date, record.uuid)
+private func pageKey(_ record: EntityRecord, _ dateField: String) -> (Date, String) {
+    guard case .date(let date)? = record.values[dateField] else {
+        return (.distantPast, record.uuid)
     }
+    return (date, record.uuid)
 }
