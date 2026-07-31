@@ -219,7 +219,6 @@ struct OperationsTests {
                     FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
                     FieldDefinition(name: "score", type: .int, storage: .payload),
                     FieldDefinition(name: "tags", type: .stringList, storage: .payload),
-                    FieldDefinition(name: "spot", type: .location, storage: .payload),
                 ]))
         try await store.write(["name": .string("Ada"), "score": .int(10), "tags": .strings(["swift", "db"])], entity: "profile", uuid: "u-1")
         try await store.write(["name": .string("Bo"), "score": .int(5), "tags": .strings(["db"])], entity: "profile", uuid: "u-2")

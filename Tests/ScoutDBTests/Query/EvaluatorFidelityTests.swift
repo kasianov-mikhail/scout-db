@@ -6,7 +6,6 @@
 // https://opensource.org/licenses/MIT.
 
 import CloudKit
-import CoreLocation
 import Foundation
 import ScoutDBTesting
 import Testing
@@ -27,22 +26,16 @@ struct EvaluatorFidelityTests {
                 entity: "pin",
                 fields: [
                     FieldDefinition(name: "owner", type: .reference, storage: .slot(.reference, "r_00")),
-                    FieldDefinition(name: "spot", type: .location, storage: .slot(.location, "g_00")),
-                    FieldDefinition(name: "corners", type: .locationList, storage: .slot(.locationList, "lg_00")),
                     FieldDefinition(name: "blob", type: .bytes, storage: .slot(.bytes, "b_00")),
                 ]))
         try await store.write(
             [
                 "owner": .reference("u-1"),
-                "spot": .location(latitude: 10, longitude: 20),
-                "corners": .locations([GeoPoint(latitude: 1, longitude: 2)]),
                 "blob": .bytes(Data([0x01])),
             ], entity: "pin", uuid: "p-1")
         try await store.write(
             [
                 "owner": .reference("u-2"),
-                "spot": .location(latitude: 30, longitude: 40),
-                "corners": .locations([GeoPoint(latitude: 3, longitude: 4)]),
                 "blob": .bytes(Data([0x02])),
             ], entity: "pin", uuid: "p-2")
     }
@@ -56,18 +49,6 @@ struct EvaluatorFidelityTests {
         #expect(try await read(EntityStore.Filter(field: "owner", op: .equals, value: .reference("u-1"))) == ["p-1"])
         #expect(try await read(EntityStore.Filter(field: "owner", op: .notEquals, value: .reference("u-1"))) == ["p-2"])
         #expect(try await read(EntityStore.Filter(field: "owner", op: .in, value: .strings(["u-2"]))) == ["p-2"])
-    }
-
-    @Test("A location field answers equality")
-    func locationEquality() async throws {
-        #expect(try await read(EntityStore.Filter(field: "spot", op: .equals, value: .location(latitude: 10, longitude: 20))) == ["p-1"])
-        #expect(try await read(EntityStore.Filter(field: "spot", op: .notEquals, value: .location(latitude: 10, longitude: 20))) == ["p-2"])
-    }
-
-    @Test("A location list answers membership")
-    func locationMembership() async throws {
-        let filter = EntityStore.Filter(field: "corners", op: .contains, value: .location(latitude: 3, longitude: 4))
-        #expect(try await read(filter) == ["p-2"])
     }
 
     @Test("Byte ordering is a strict weak ordering")

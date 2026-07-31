@@ -34,13 +34,11 @@ struct SchemaConsistencyTests {
             case .double: "DOUBLE QUERYABLE SORTABLE"
             case .timestamp: "TIMESTAMP QUERYABLE SORTABLE"
             case .bytes: "BYTES QUERYABLE"
-            case .location: "LOCATION QUERYABLE"
             case .reference: "REFERENCE QUERYABLE"
             case .stringList: "LIST<STRING> QUERYABLE"
             case .intList: "LIST<INT64> QUERYABLE"
             case .doubleList: "LIST<DOUBLE> QUERYABLE"
             case .timestampList: "LIST<TIMESTAMP> QUERYABLE"
-            case .locationList: "LIST<LOCATION> QUERYABLE"
             }
         let slots = Self.fields(of: "Entity").filter { $0.name.hasPrefix("\(pool.slotPrefix)_") }
         #expect(slots.allSatisfy { $0.spec == expected })
