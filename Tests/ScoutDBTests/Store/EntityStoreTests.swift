@@ -282,11 +282,11 @@ struct EntityStoreTests {
         )
 
         let first = try await store.write(
-            [EntityWrite(values: ["user_id": .string("alice"), "score": .int(1)])], entity: "profile")
+            [EntityWrite(values: ["user_id": .string("alice"), "score": .int(1)], uuid: nil)], entity: "profile")
         let second = try await store.write(
-            [EntityWrite(values: ["user_id": .string("alice"), "score": .int(2)])], entity: "profile")
+            [EntityWrite(values: ["user_id": .string("alice"), "score": .int(2)], uuid: nil)], entity: "profile")
         let other = try await store.write(
-            [EntityWrite(values: ["user_id": .string("bob"), "score": .int(3)])], entity: "profile")
+            [EntityWrite(values: ["user_id": .string("bob"), "score": .int(3)], uuid: nil)], entity: "profile")
         #expect(first == second)
         #expect(first != other)
 
@@ -332,8 +332,10 @@ struct EntityStoreTests {
         )
 
         let date = Date(timeIntervalSince1970: 36_000)
-        try await store.write([EntityWrite(values: ["name": .string("open"), "date": .date(date)])], entity: "tap")
-        try await store.write([EntityWrite(values: ["name": .string("open"), "date": .date(date)])], entity: "tap")
+        try await store.write(
+            [EntityWrite(values: ["name": .string("open"), "date": .date(date)], uuid: nil)], entity: "tap")
+        try await store.write(
+            [EntityWrite(values: ["name": .string("open"), "date": .date(date)], uuid: nil)], entity: "tap")
 
         let grids = database.records.filter { $0.recordType == "Aggregate" }
         #expect(grids.count == 1)
@@ -355,8 +357,10 @@ struct EntityStoreTests {
         )
 
         let date = Date(timeIntervalSince1970: 36_000)
-        try await store.write([EntityWrite(values: ["amount": .double(2.5), "date": .date(date)])], entity: "payment")
-        try await store.write([EntityWrite(values: ["amount": .double(1.5), "date": .date(date)])], entity: "payment")
+        try await store.write(
+            [EntityWrite(values: ["amount": .double(2.5), "date": .date(date)], uuid: nil)], entity: "payment")
+        try await store.write(
+            [EntityWrite(values: ["amount": .double(1.5), "date": .date(date)], uuid: nil)], entity: "payment")
 
         let grids = database.records.filter { $0.recordType == "Aggregate" }
         #expect(grids.count == 1)

@@ -113,10 +113,11 @@ struct MigratorTests {
         try await registry.publish(definition)
         let store = EntityStore(database: database, registry: registry)
         try await store.write(
-            [EntityWrite(values: ["product": .string("app"), "amount": .double(10)])], entity: "sale")
-        try await store.write([EntityWrite(values: ["product": .string("app"), "amount": .double(5)])], entity: "sale")
+            [EntityWrite(values: ["product": .string("app"), "amount": .double(10)], uuid: nil)], entity: "sale")
         try await store.write(
-            [EntityWrite(values: ["product": .string("book"), "amount": .double(2)])], entity: "sale")
+            [EntityWrite(values: ["product": .string("app"), "amount": .double(5)], uuid: nil)], entity: "sale")
+        try await store.write(
+            [EntityWrite(values: ["product": .string("book"), "amount": .double(2)], uuid: nil)], entity: "sale")
 
         definition.views? += [AggregateView(name: "by_product", groupBy: "product", sum: "amount")]
         try await registry.publish(definition)
