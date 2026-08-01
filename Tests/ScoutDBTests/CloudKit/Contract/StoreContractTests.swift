@@ -25,8 +25,8 @@ struct StoreContractTests {
                         uuid: "r-1")
                 ], entity: entity)
 
-            try await eventually { try await f.store.read(entity: entity).count == 1 }
-            let record = try #require(try await f.store.read(entity: entity).first)
+            try await eventually { try await BranchReader(store: f.store, entity: entity).read().count == 1 }
+            let record = try #require(try await BranchReader(store: f.store, entity: entity).read().first)
             #expect(record.uuid == "r-1")
             #expect(record.values["product"] == .string("sku-9"))
             #expect(record.values["quantity"] == .int(4))
@@ -44,7 +44,7 @@ struct StoreContractTests {
             try await f.store.write([EntityWrite(values: orderValues(quantity: 7), uuid: "u-1")], entity: entity)
 
             try await eventually {
-                let records = try await f.store.read(entity: entity)
+                let records = try await BranchReader(store: f.store, entity: entity).read()
                 return records.count == 1 && records.first?.values["quantity"] == .int(7)
             }
         }
@@ -66,7 +66,7 @@ struct StoreContractTests {
             try await f.store.write(
                 [EntityWrite(values: ["user": .string("u1"), "date": .date(Date())])], entity: entity)
 
-            try await eventually { try await f.store.read(entity: entity).count == 1 }
+            try await eventually { try await BranchReader(store: f.store, entity: entity).read().count == 1 }
         }
     }
 
@@ -81,18 +81,14 @@ struct StoreContractTests {
                             values: orderValues(product: "sku-\(quantity)", quantity: quantity), uuid: "q-\(index)")
                     ], entity: entity)
             }
-            try await eventually { try await f.store.read(entity: entity).count == 3 }
+            try await eventually { try await BranchReader(store: f.store, entity: entity).read().count == 3 }
 
-            let exact = try await f.store.read(
-                entity: entity,
-                any: [[.init(field: "product", op: .equals, value: .string("sku-5"))]]
-            )
+            let exact = try await BranchReader(store: f.store, entity: entity)
+                .read(any: [[.init(field: "product", op: .equals, value: .string("sku-5"))]])
             #expect(exact.map(\.uuid) == ["q-1"])
 
-            let above = try await f.store.read(
-                entity: entity,
-                any: [[.init(field: "quantity", op: .greaterThan, value: .int(4))]]
-            )
+            let above = try await BranchReader(store: f.store, entity: entity)
+                .read(any: [[.init(field: "quantity", op: .greaterThan, value: .int(4))]])
             #expect(Set(above.map(\.uuid)) == ["q-1", "q-2"])
 
             let middle = try await f.store.query(entity).filter("quantity" >= 2 && "quantity" < 9).take(100)
@@ -108,12 +104,10 @@ struct StoreContractTests {
                 try await f.store.write(
                     [EntityWrite(values: orderValues(product: product), uuid: "in-\(product)")], entity: entity)
             }
-            try await eventually { try await f.store.read(entity: entity).count == 3 }
+            try await eventually { try await BranchReader(store: f.store, entity: entity).read().count == 3 }
 
-            let picked = try await f.store.read(
-                entity: entity,
-                any: [[.init(field: "product", op: .in, value: .strings(["a", "c"]))]]
-            )
+            let picked = try await BranchReader(store: f.store, entity: entity)
+                .read(any: [[.init(field: "product", op: .in, value: .strings(["a", "c"]))]])
             #expect(Set(picked.map(\.uuid)) == ["in-a", "in-c"])
         }
     }
@@ -125,12 +119,10 @@ struct StoreContractTests {
             try await f.store.write(
                 [EntityWrite(values: orderValues(product: "deluxe-bundle"), uuid: "s-1")], entity: entity)
             try await f.store.write([EntityWrite(values: orderValues(product: "basic"), uuid: "s-2")], entity: entity)
-            try await eventually { try await f.store.read(entity: entity).count == 2 }
+            try await eventually { try await BranchReader(store: f.store, entity: entity).read().count == 2 }
 
-            let matched = try await f.store.read(
-                entity: entity,
-                any: [[.init(field: "product", op: .contains, value: .string("uxe-bun"))]]
-            )
+            let matched = try await BranchReader(store: f.store, entity: entity)
+                .read(any: [[.init(field: "product", op: .contains, value: .string("uxe-bun"))]])
             #expect(matched.map(\.uuid) == ["s-1"])
         }
     }
@@ -143,11 +135,15 @@ struct StoreContractTests {
                 try await f.store.write(
                     [EntityWrite(values: orderValues(quantity: quantity), uuid: "o-\(index)")], entity: entity)
             }
-            try await eventually { try await f.store.read(entity: entity).count == 3 }
+            try await eventually { try await BranchReader(store: f.store, entity: entity).read().count == 3 }
 
-            let ascending = try await f.store.read(entity: entity, sort: [.init(field: "quantity")])
+            let ascending = try await BranchReader(
+                store: f.store, entity: entity, sort: [.init(field: "quantity")]
+            ).read()
             #expect(ascending.map(\.uuid) == ["o-1", "o-0", "o-2"])
-            let descending = try await f.store.read(entity: entity, sort: [.init(field: "quantity", ascending: false)])
+            let descending = try await BranchReader(
+                store: f.store, entity: entity, sort: [.init(field: "quantity", ascending: false)]
+            ).read()
             #expect(descending.map(\.uuid) == ["o-2", "o-0", "o-1"])
         }
     }
@@ -164,7 +160,7 @@ struct StoreContractTests {
                             values: orderValues(date: base.addingTimeInterval(Double(index) * 60)), uuid: "p-\(index)")
                     ], entity: entity)
             }
-            try await eventually { try await f.store.read(entity: entity).count == 5 }
+            try await eventually { try await BranchReader(store: f.store, entity: entity).read().count == 5 }
 
             let first = try await f.store.read(entity: entity, orderedBy: "date", limit: 2)
             #expect(first.records.map(\.uuid) == ["p-0", "p-1"])
@@ -184,7 +180,7 @@ struct StoreContractTests {
                 try await f.store.write(
                     [EntityWrite(values: orderValues(total: total), uuid: "fs-\(index)")], entity: entity)
             }
-            try await eventually { try await f.store.read(entity: entity).count == 3 }
+            try await eventually { try await BranchReader(store: f.store, entity: entity).read().count == 3 }
 
             #expect(try await f.store.query(entity).sum("total") == 20)
             #expect(try await f.store.query(entity).max("total") == 10)
@@ -199,7 +195,7 @@ struct StoreContractTests {
                 try await f.store.write(
                     [EntityWrite(values: orderValues(product: product), uuid: "cg-\(index)")], entity: entity)
             }
-            try await eventually { try await f.store.read(entity: entity).count == 3 }
+            try await eventually { try await BranchReader(store: f.store, entity: entity).read().count == 3 }
 
             #expect(try await f.store.query(entity).count(by: "product") == ["a": 2, "b": 1])
         }

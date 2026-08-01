@@ -98,7 +98,7 @@ public struct Migrator: Sendable {
         ) { page in
             for chunk in page.chunked(into: batchSize) {
                 let decoded = try chunk.map { try coder.decode($0, using: definition) }
-                try await aggregator.record(decoded, using: scoped)
+                try await aggregator.rebalance(removing: [], adding: decoded, using: scoped)
                 counted += decoded.count
             }
         }

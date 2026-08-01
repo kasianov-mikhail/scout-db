@@ -25,16 +25,8 @@ extension QueryBuilder {
     /// ```
     ///
     public func take(_ count: Int) async throws -> [EntityRecord] {
-        try await records(limit: Swift.min(count, ceiling ?? count))
-    }
-
-    func records(limit: Int?) async throws -> [EntityRecord] {
-        try await store.read(
-            entity: entity,
-            any: alternatives,
-            sort: sorts,
-            limit: limit
-        )
+        try await BranchReader(store: store, entity: entity, sort: sorts, limit: Swift.min(count, ceiling ?? count))
+            .read(any: alternatives)
     }
 
     /// Runs the query and returns the first matching record, if any.
@@ -50,7 +42,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func first() async throws -> EntityRecord? {
-        try await records(limit: Swift.min(1, ceiling ?? 1)).first
+        try await take(1).first
     }
 
     /// Returns one keyset page ordered by the builder's sort clause.

@@ -12,10 +12,6 @@ public struct EntityStore: Sendable {
     let registry: SchemaRegistry
     let slots = GridCache()
 
-    var aggregator: GridAggregator {
-        GridAggregator(database: database, slots: slots)
-    }
-
     /// Creates a store backed by any `CloudDatabase` implementation.
     public init(database: any CloudDatabase, registry: SchemaRegistry) {
         self.database = database
