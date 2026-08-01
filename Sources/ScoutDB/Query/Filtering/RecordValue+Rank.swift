@@ -11,17 +11,24 @@ extension RecordValue {
     static func rank(_ lhs: RecordValue?, _ rhs: RecordValue?) -> ComparisonResult {
         switch (lhs, rhs) {
         case (nil, nil):
-            return .orderedSame
+            .orderedSame
         case (nil, _):
-            return .orderedAscending
+            .orderedAscending
         case (_, nil):
-            return .orderedDescending
-        case (.string(let lhs)?, .string(let rhs)?):
+            .orderedDescending
+        case (let lhs?, let rhs?):
+            rank(lhs, rhs)
+        }
+    }
+
+    private static func rank(_ lhs: RecordValue, _ rhs: RecordValue) -> ComparisonResult {
+        switch (lhs, rhs) {
+        case (.string(let lhs), .string(let rhs)):
             return order(lhs, rhs)
-        case (.date(let lhs)?, .date(let rhs)?):
+        case (.date(let lhs), .date(let rhs)):
             return order(lhs, rhs)
         default:
-            guard let lhs = lhs?.scalar, let rhs = rhs?.scalar else {
+            guard let lhs = lhs.scalar, let rhs = rhs.scalar else {
                 return .orderedSame
             }
             return order(lhs, rhs)
