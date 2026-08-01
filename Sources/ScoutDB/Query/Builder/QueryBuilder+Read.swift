@@ -69,3 +69,21 @@ extension QueryBuilder {
         )
     }
 }
+
+/// One keyset page ordered by an arbitrary field.
+public struct FieldPage: Equatable, Sendable {
+    public let records: [EntityRecord]
+    public let cursor: FieldCursor?
+}
+
+/// Continuation token of a field-ordered keyset read: the last served value
+/// and the uuid that breaks its ties.
+public struct FieldCursor: Codable, Equatable, Sendable {
+    public let value: RecordValue
+    public let uuid: String
+
+    public init(value: RecordValue, uuid: String) {
+        self.value = value
+        self.uuid = uuid
+    }
+}
