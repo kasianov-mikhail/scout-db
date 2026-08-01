@@ -13,20 +13,21 @@ struct EntityWriter: Sendable {
     let aggregator: GridAggregator
     let entity: String
     let definition: EntityDefinition
-    let coder = EntityCoder()
+    let coder: EntityCoder
+
+    init(database: any CloudDatabase, aggregator: GridAggregator, entity: String, definition: EntityDefinition) {
+        self.database = database
+        self.aggregator = aggregator
+        self.entity = entity
+        self.definition = definition
+        self.coder = EntityCoder(definition: definition)
+    }
 
     func write(_ batch: [EntityWrite]) async throws -> [String] {
         var stored: Set<String> = []
         let records = try batch.map { entry in
-            let resolved = try coder.resolve(
-                entry.values,
-                at: definition.version,
-                using: definition
-            )
-            let natural = try coder.naturalUUID(
-                for: resolved,
-                using: definition
-            )
+            let resolved = try coder.resolve(entry.values, at: definition.version)
+            let natural = try coder.naturalUUID(for: resolved)
             let assigned = natural ?? entry.uuid
             let uuid = assigned ?? UUID().uuidString
 
@@ -45,7 +46,7 @@ struct EntityWriter: Sendable {
         let (removedFromViews, addedToViews) = try await rebalance(records, stored: stored)
 
         let encoded = try records.map {
-            try coder.encode($0, using: definition)
+            try coder.encode($0)
         }
 
         try await database.write(records: encoded)
@@ -75,7 +76,7 @@ struct EntityWriter: Sendable {
         let live = try await database.fetchRecords(ids: ids, batchSize: 100)
             .filter { $0["entity"] as? String == definition.entity }
             .map {
-                try coder.decode($0, using: definition)
+                try coder.decode($0)
             }
 
         let liveByUUID = Dictionary(

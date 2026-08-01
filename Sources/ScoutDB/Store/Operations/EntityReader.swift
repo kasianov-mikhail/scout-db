@@ -13,7 +13,7 @@ struct EntityReader: Sendable {
     let sort: [EntityStore.Sort]
     let limit: Int?
     let definition: EntityDefinition
-    let coder = EntityCoder()
+    let coder: EntityCoder
 
     init(store: EntityStore, entity: String, sort: [EntityStore.Sort] = [], limit: Int? = nil) async throws {
         self.database = store.database
@@ -21,6 +21,7 @@ struct EntityReader: Sendable {
         self.sort = sort
         self.limit = limit
         self.definition = try await store.registry.definition(for: entity)
+        self.coder = EntityCoder(definition: definition)
     }
 
     func read(any branches: [[EntityStore.Filter]] = [[]]) async throws -> [EntityRecord] {
@@ -91,7 +92,7 @@ struct EntityReader: Sendable {
         }
         var collected: [EntityRecord] = []
         try await database.forEachPage(matching: query) { page in
-            collected += try page.map { try coder.decode($0, using: definition) }.filter(included)
+            collected += try page.map { try coder.decode($0) }.filter(included)
         }
         return collected
     }

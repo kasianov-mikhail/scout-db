@@ -45,11 +45,11 @@ public struct Migrator: Sendable {
                 ServerFilter(field: "schema_version", op: .lessThan, value: .int(Int64(definition.version))),
             ]
         )
-        let coder = EntityCoder()
+        let coder = EntityCoder(definition: definition)
         var migrated = 0
         try await database.forEachPage(matching: query) { page in
             let rewritten = try page.map { record in
-                try coder.rewrite(record, using: definition) { entityRecord in
+                try coder.rewrite(record) { entityRecord in
                     let previous = entityRecord
                     entityRecord = EntityRecord(
                         entity: entity,
@@ -85,7 +85,7 @@ public struct Migrator: Sendable {
 
         var scoped = definition
         scoped.views = [view]
-        let coder = EntityCoder()
+        let coder = EntityCoder(definition: definition)
         let aggregator = GridAggregator(database: database)
         var counted = 0
         try await database.forEachPage(
@@ -97,7 +97,7 @@ public struct Migrator: Sendable {
             )
         ) { page in
             for chunk in page.chunked(into: batchSize) {
-                let decoded = try chunk.map { try coder.decode($0, using: definition) }
+                let decoded = try chunk.map { try coder.decode($0) }
                 try await aggregator.rebalance(removing: [], adding: decoded, using: scoped)
                 counted += decoded.count
             }

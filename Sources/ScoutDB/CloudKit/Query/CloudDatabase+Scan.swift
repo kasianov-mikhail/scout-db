@@ -13,12 +13,12 @@ extension CloudDatabase {
         where included: (EntityRecord) -> Bool
     ) async throws -> [EntityRecord] {
         let ceiling = CKQueryOperation.maximumResults > 0 ? CKQueryOperation.maximumResults : Int.max
-        let coder = EntityCoder()
+        let coder = EntityCoder(definition: definition)
         var collected: [EntityRecord] = []
         var page = min(limit == Int.max ? limit : limit + 1, ceiling)
         var (batch, token) = try await records(matching: query, resultsLimit: page)
         while true {
-            collected += try batch.map { try coder.decode($0.1.get(), using: definition) }.filter(included)
+            collected += try batch.map { try coder.decode($0.1.get()) }.filter(included)
             guard collected.count < limit, let cursor = token else {
                 break
             }

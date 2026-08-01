@@ -13,12 +13,11 @@ import Testing
 
 @Suite("EntityCoder")
 struct EntityCoderTests {
-    let coder = EntityCoder()
-    let definition = makePurchaseDefinition()
+    let coder = EntityCoder(definition: makePurchaseDefinition())
 
     @Test("Encode packs the record into typed slots and the envelope")
     func encode() throws {
-        let record = try coder.encode(makePurchase(), using: definition)
+        let record = try coder.encode(makePurchase())
         #expect(record.recordType == "Entity")
         #expect(record.recordID.recordName == "p-1")
         #expect(record["entity"] == "purchase")
@@ -34,8 +33,8 @@ struct EntityCoderTests {
     @Test("Decode restores the encoded record")
     func roundTrip() throws {
         let purchase = makePurchase()
-        let record = try coder.encode(purchase, using: definition)
-        let decoded = try coder.decode(record, using: definition)
+        let record = try coder.encode(purchase)
+        let decoded = try coder.decode(record)
         #expect(decoded == purchase)
     }
 
@@ -50,8 +49,8 @@ struct EntityCoderTests {
                 "amount": .int(500),
             ]
         )
-        let record = try coder.encode(old, using: definition)
-        let decoded = try coder.decode(record, using: definition)
+        let record = try coder.encode(old)
+        let decoded = try coder.decode(record)
         #expect(decoded.schemaVersion == 1)
         #expect(decoded.values["amount"] == .int(500))
         #expect(decoded.values["quantity"] == nil)
@@ -62,7 +61,7 @@ struct EntityCoderTests {
         var purchase = makePurchase()
         purchase.values["quantity"] = .string("three")
         #expect(throws: SchemaError.typeMismatch("quantity")) {
-            try coder.resolve(purchase.values, at: purchase.schemaVersion, using: definition)
+            try coder.resolve(purchase.values, at: purchase.schemaVersion)
         }
     }
 
@@ -71,7 +70,7 @@ struct EntityCoderTests {
         var purchase = makePurchase()
         purchase.values["color"] = .string("red")
         #expect(throws: SchemaError.unknownField("color")) {
-            try coder.resolve(purchase.values, at: purchase.schemaVersion, using: definition)
+            try coder.resolve(purchase.values, at: purchase.schemaVersion)
         }
     }
 
@@ -82,89 +81,94 @@ struct EntityCoderTests {
         record["schema_version"] = Int64(3)
         record["uuid"] = "p-3"
         #expect(throws: SchemaError.staleSchema(entity: "purchase", version: 3)) {
-            try coder.decode(record, using: definition)
+            try coder.decode(record)
         }
     }
 
     @Test("Defaults fill missing values")
     func defaults() throws {
-        let definition = makeDefinition(
-            entity: "log",
-            fields: [
-                FieldDefinition(
-                    name: "level",
-                    type: .string,
-                    storage: .slot(.string, "s_00"),
-                    defaultValue: .string("info")
-                )
-            ]
-        )
-        let resolved = try coder.resolve([:], at: 2, using: definition)
+        let coder = EntityCoder(
+            definition: makeDefinition(
+                entity: "log",
+                fields: [
+                    FieldDefinition(
+                        name: "level",
+                        type: .string,
+                        storage: .slot(.string, "s_00"),
+                        defaultValue: .string("info")
+                    )
+                ]
+            ))
+        let resolved = try coder.resolve([:], at: 2)
         #expect(resolved["level"] == .string("info"))
     }
 
     @Test("Missing required field throws")
     func requiredField() {
-        let definition = makeDefinition(
-            entity: "log",
-            fields: [
-                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"), required: true)
-            ]
-        )
+        let coder = EntityCoder(
+            definition: makeDefinition(
+                entity: "log",
+                fields: [
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"), required: true)
+                ]
+            ))
         #expect(throws: SchemaError.missingField("name")) {
-            try coder.resolve([:], at: 2, using: definition)
+            try coder.resolve([:], at: 2)
         }
     }
 
     @Test("Value outside the enum domain throws")
     func allowedDomain() {
-        let definition = makeDefinition(
-            entity: "log",
-            fields: [
-                FieldDefinition(
-                    name: "level",
-                    type: .string,
-                    storage: .slot(.string, "s_00"),
-                    allowed: ["info", "error"]
-                )
-            ]
-        )
+        let coder = EntityCoder(
+            definition: makeDefinition(
+                entity: "log",
+                fields: [
+                    FieldDefinition(
+                        name: "level",
+                        type: .string,
+                        storage: .slot(.string, "s_00"),
+                        allowed: ["info", "error"]
+                    )
+                ]
+            ))
         #expect(throws: SchemaError.invalidValue("level")) {
-            try coder.resolve(["level": .string("debug")], at: 2, using: definition)
+            try coder.resolve(["level": .string("debug")], at: 2)
         }
     }
 
     @Test("Value below the minimum throws")
     func range() {
-        let definition = makeDefinition(
-            entity: "log",
-            fields: [
-                FieldDefinition(name: "count", type: .int, storage: .slot(.int, "i_00"), min: 0)
-            ]
-        )
+        let coder = EntityCoder(
+            definition: makeDefinition(
+                entity: "log",
+                fields: [
+                    FieldDefinition(name: "count", type: .int, storage: .slot(.int, "i_00"), min: 0)
+                ]
+            ))
         #expect(throws: SchemaError.invalidValue("count")) {
-            try coder.resolve(["count": .int(-1)], at: 2, using: definition)
+            try coder.resolve(["count": .int(-1)], at: 2)
         }
     }
 
     @Test("Empty typed lists in slots keep their declared kind through a round-trip")
     func emptyTypedLists() throws {
-        let definition = makeDefinition(
-            entity: "lists",
-            fields: [
-                FieldDefinition(name: "tags", type: .stringList, storage: .slot(.stringList, "ls_00")),
-                FieldDefinition(name: "counts", type: .intList, storage: .slot(.intList, "li_00")),
-                FieldDefinition(name: "ratios", type: .doubleList, storage: .slot(.doubleList, "ld_00")),
-                FieldDefinition(name: "times", type: .timestampList, storage: .slot(.timestampList, "lt_00")),
-            ]
-        )
+        let coder = EntityCoder(
+            definition: makeDefinition(
+                entity: "lists",
+                fields: [
+                    FieldDefinition(name: "tags", type: .stringList, storage: .slot(.stringList, "ls_00")),
+                    FieldDefinition(name: "counts", type: .intList, storage: .slot(.intList, "li_00")),
+                    FieldDefinition(name: "ratios", type: .doubleList, storage: .slot(.doubleList, "ld_00")),
+                    FieldDefinition(name: "times", type: .timestampList, storage: .slot(.timestampList, "lt_00")),
+                ]
+            ))
         let record = EntityRecord(
             entity: "lists",
             uuid: "l-1",
             schemaVersion: 2,
             values: ["tags": .strings([]), "counts": .ints([]), "ratios": .doubles([]), "times": .dates([])]
         )
-        let decoded = try coder.decode(try coder.encode(record, using: definition), using: definition)
+        let decoded = try coder.decode(try coder.encode(record))
         #expect(decoded.values["tags"] == .strings([]))
         #expect(decoded.values["counts"] == .ints([]))
         #expect(decoded.values["ratios"] == .doubles([]))
@@ -173,49 +177,52 @@ struct EntityCoderTests {
 
     @Test("allowed constrains every element of a string list")
     func allowedList() throws {
-        let definition = makeDefinition(
-            entity: "post",
-            fields: [
-                FieldDefinition(
-                    name: "tags",
-                    type: .stringList,
-                    storage: .slot(.stringList, "ls_00"),
-                    allowed: ["red", "green"]
-                )
-            ]
-        )
+        let coder = EntityCoder(
+            definition: makeDefinition(
+                entity: "post",
+                fields: [
+                    FieldDefinition(
+                        name: "tags",
+                        type: .stringList,
+                        storage: .slot(.stringList, "ls_00"),
+                        allowed: ["red", "green"]
+                    )
+                ]
+            ))
         #expect(throws: SchemaError.invalidValue("tags")) {
-            try coder.resolve(["tags": .strings(["red", "blue"])], at: 2, using: definition)
+            try coder.resolve(["tags": .strings(["red", "blue"])], at: 2)
         }
-        let ok = try coder.resolve(["tags": .strings(["red", "green"])], at: 2, using: definition)
+        let ok = try coder.resolve(["tags": .strings(["red", "green"])], at: 2)
         #expect(ok["tags"] == .strings(["red", "green"]))
     }
 
     @Test("Numeric bounds constrain every element of a number list")
     func boundedList() {
-        let definition = makeDefinition(
-            entity: "sample",
-            fields: [
-                FieldDefinition(name: "counts", type: .intList, storage: .slot(.intList, "li_00"), min: 0)
-            ]
-        )
+        let coder = EntityCoder(
+            definition: makeDefinition(
+                entity: "sample",
+                fields: [
+                    FieldDefinition(name: "counts", type: .intList, storage: .slot(.intList, "li_00"), min: 0)
+                ]
+            ))
         #expect(throws: SchemaError.invalidValue("counts")) {
-            try coder.resolve(["counts": .ints([1, -1, 2])], at: 2, using: definition)
+            try coder.resolve(["counts": .ints([1, -1, 2])], at: 2)
         }
     }
 
     @Test("Natural key produces a deterministic uuid")
     func naturalKey() throws {
-        let definition = makeDefinition(
-            entity: "profile",
-            fields: [
-                FieldDefinition(name: "user_id", type: .string, storage: .slot(.string, "s_00"))
-            ],
-            unique: ["user_id"]
-        )
-        let first = try coder.naturalUUID(for: ["user_id": .string("alice")], using: definition)
-        let second = try coder.naturalUUID(for: ["user_id": .string("alice")], using: definition)
-        let other = try coder.naturalUUID(for: ["user_id": .string("bob")], using: definition)
+        let coder = EntityCoder(
+            definition: makeDefinition(
+                entity: "profile",
+                fields: [
+                    FieldDefinition(name: "user_id", type: .string, storage: .slot(.string, "s_00"))
+                ],
+                unique: ["user_id"]
+            ))
+        let first = try coder.naturalUUID(for: ["user_id": .string("alice")])
+        let second = try coder.naturalUUID(for: ["user_id": .string("alice")])
+        let other = try coder.naturalUUID(for: ["user_id": .string("bob")])
         #expect(first != nil)
         #expect(first == second)
         #expect(first != other)
