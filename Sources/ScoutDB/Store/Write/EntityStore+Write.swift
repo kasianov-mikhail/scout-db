@@ -8,12 +8,6 @@
 import CloudKit
 
 extension EntityStore {
-    @discardableResult public func write(_ values: [String: RecordValue], entity: String, uuid: String? = nil)
-        async throws -> String
-    {
-        try await write([EntityWrite(values: values, uuid: uuid)], entity: entity)[0]
-    }
-
     @discardableResult public func write(_ batch: [EntityWrite], entity: String) async throws -> [String] {
         guard batch.count > 0 else {
             return []

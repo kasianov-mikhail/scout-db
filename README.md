@@ -93,12 +93,17 @@ Fields marked `.payload` skip server-side filtering — use it for everything yo
 ### Write and query
 
 ```swift
-try await store.write([
-    "product_id": .string("sku-42"),
-    "quantity": .int(3),
-    "amount": .double(29.97),
-    "date": .date(.now),
-], entity: "purchase")
+try await store.write(
+    [
+        EntityWrite(values: [
+            "product_id": .string("sku-42"),
+            "quantity": .int(3),
+            "amount": .double(29.97),
+            "date": .date(.now),
+        ])
+    ],
+    entity: "purchase"
+)
 
 let recent = try await store.query("purchase")
     .filter("quantity" > 1)

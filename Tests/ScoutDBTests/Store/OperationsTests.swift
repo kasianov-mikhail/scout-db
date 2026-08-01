@@ -26,7 +26,7 @@ struct OperationsTests {
 
     @Test("A fetch by uuid reads a record the query index has not caught up with")
     func fetchByUUIDSkipsTheIndex() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.write([EntityWrite(values: makePurchase().values, uuid: "p-1")], entity: "purchase")
         database.unindexed = [CKRecord.ID(recordName: "p-1", zoneID: .default)]
 
         #expect(try await store.read(entity: "purchase").isEmpty)
@@ -39,7 +39,7 @@ struct OperationsTests {
         for (index, seconds) in [3_000, 1_000, 2_000].enumerated() {
             var values = makePurchase().values
             values["date"] = .date(Date(timeIntervalSince1970: TimeInterval(seconds)))
-            try await store.write(values, entity: "purchase", uuid: "p-\(index)")
+            try await store.write([EntityWrite(values: values, uuid: "p-\(index)")], entity: "purchase")
         }
 
         let first = try await store.read(entity: "purchase", orderedBy: "date", limit: 2)
@@ -56,7 +56,7 @@ struct OperationsTests {
         for (index, quantity) in [3, 1, 2, 2].enumerated() {
             var values = makePurchase().values
             values["quantity"] = .int(Int64(quantity))
-            try await store.write(values, entity: "purchase", uuid: "p-\(index)")
+            try await store.write([EntityWrite(values: values, uuid: "p-\(index)")], entity: "purchase")
         }
 
         let first = try await store.read(entity: "purchase", orderedBy: "quantity", limit: 2)
@@ -94,9 +94,11 @@ struct OperationsTests {
                 ]
             )
         )
-        try await store.write(["name": .string("Ada"), "score": .int(10)], entity: "player", uuid: "u-1")
-        try await store.write(["name": .string("Bo"), "score": .int(5)], entity: "player", uuid: "u-2")
-        try await store.write(["name": .string("Cy")], entity: "player", uuid: "u-3")
+        try await store.write(
+            [EntityWrite(values: ["name": .string("Ada"), "score": .int(10)], uuid: "u-1")], entity: "player")
+        try await store.write(
+            [EntityWrite(values: ["name": .string("Bo"), "score": .int(5)], uuid: "u-2")], entity: "player")
+        try await store.write([EntityWrite(values: ["name": .string("Cy")], uuid: "u-3")], entity: "player")
 
         let ranked = try await store.read(entity: "player", sort: [.init(field: "score")])
         #expect(ranked.map(\.uuid) == ["u-3", "u-2", "u-1"])
@@ -123,16 +125,14 @@ struct OperationsTests {
             )
         )
         try await store.write(
-            ["name": .string("Ada"), "score": .int(10), "tags": .strings(["swift", "db"])],
-            entity: "profile",
-            uuid: "u-1"
-        )
+            [
+                EntityWrite(
+                    values: ["name": .string("Ada"), "score": .int(10), "tags": .strings(["swift", "db"])], uuid: "u-1")
+            ], entity: "profile")
         try await store.write(
-            ["name": .string("Bo"), "score": .int(5), "tags": .strings(["db"])],
-            entity: "profile",
-            uuid: "u-2"
-        )
-        try await store.write(["name": .string("Cy")], entity: "profile", uuid: "u-3")
+            [EntityWrite(values: ["name": .string("Bo"), "score": .int(5), "tags": .strings(["db"])], uuid: "u-2")],
+            entity: "profile")
+        try await store.write([EntityWrite(values: ["name": .string("Cy")], uuid: "u-3")], entity: "profile")
 
         func uuids(_ filters: [EntityStore.Filter]) async throws -> [String] {
             try await store.read(entity: "profile", filters: filters).map(\.uuid).sorted()
@@ -171,7 +171,7 @@ struct OperationsTests {
         database.writeErrors = [CKError(.partialFailure)]
 
         do {
-            try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+            try await store.write([EntityWrite(values: makePurchase().values, uuid: "p-1")], entity: "purchase")
             Issue.record("Expected a CKError")
         } catch let error as CKError {
             #expect(error.code == .partialFailure)
@@ -182,7 +182,7 @@ struct OperationsTests {
     func writeClaimsUnwritten() async throws {
         #expect(try await store.fetch(entity: "purchase", uuids: ["t-1"]).isEmpty)
 
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "t-1")
+        try await store.write([EntityWrite(values: makePurchase().values, uuid: "t-1")], entity: "purchase")
         #expect(try await store.read(entity: "purchase").map(\.uuid) == ["t-1"])
     }
 
@@ -209,23 +209,25 @@ struct OperationsTests {
         )
 
         try await store.write(
-            ["email": .string("ada@example.com"), "codes": .strings(["ABC", "XYZ"])],
-            entity: "account",
-            uuid: "a-1"
-        )
+            [
+                EntityWrite(
+                    values: ["email": .string("ada@example.com"), "codes": .strings(["ABC", "XYZ"])], uuid: "a-1")
+            ], entity: "account")
 
         await #expect(throws: SchemaError.invalidValue("email")) {
-            try await store.write(["email": .string("not-an-email")], entity: "account", uuid: "a-2")
+            try await store.write(
+                [EntityWrite(values: ["email": .string("not-an-email")], uuid: "a-2")], entity: "account")
         }
         await #expect(throws: SchemaError.invalidValue("codes")) {
             try await store.write(
-                ["email": .string("bo@example.com"), "codes": .strings(["ABC", "nope"])],
-                entity: "account",
-                uuid: "a-3"
-            )
+                [
+                    EntityWrite(
+                        values: ["email": .string("bo@example.com"), "codes": .strings(["ABC", "nope"])], uuid: "a-3")
+                ], entity: "account")
         }
         await #expect(throws: SchemaError.invalidValue("email")) {
-            try await store.write(["email": .string("ada@example.com !!")], entity: "account", uuid: "a-4")
+            try await store.write(
+                [EntityWrite(values: ["email": .string("ada@example.com !!")], uuid: "a-4")], entity: "account")
         }
 
         let numeric = makeDefinition(fields: [
@@ -242,7 +244,7 @@ struct OperationsTests {
 
     @Test("Fetch by identifier resolves the entity from the record")
     func fetchByUUID() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.write([EntityWrite(values: makePurchase().values, uuid: "p-1")], entity: "purchase")
 
         let record = try await store.fetch(uuid: "p-1")
 
@@ -262,8 +264,8 @@ struct OperationsTests {
             )
         )
 
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "shared")
-        try await store.write(["label": .string("t")], entity: "ticket", uuid: "shared")
+        try await store.write([EntityWrite(values: makePurchase().values, uuid: "shared")], entity: "purchase")
+        try await store.write([EntityWrite(values: ["label": .string("t")], uuid: "shared")], entity: "ticket")
 
         #expect(try await store.fetch(entity: "purchase", uuids: ["shared"]).isEmpty)
         #expect(try await store.fetch(entity: "ticket", uuids: ["shared"]).map(\.uuid) == ["shared"])
@@ -271,7 +273,7 @@ struct OperationsTests {
 
     @Test("Projection fetches only the requested fields")
     func projection() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.write([EntityWrite(values: makePurchase().values, uuid: "p-1")], entity: "purchase")
 
         let slim = try await store.read(entity: "purchase", fields: ["product_id"])
         #expect(slim.first?.values["product_id"] == .string("sku-42"))
@@ -284,7 +286,7 @@ struct OperationsTests {
 
     @Test("Projection auto-includes filtered fields")
     func projectionWithFilter() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.write([EntityWrite(values: makePurchase().values, uuid: "p-1")], entity: "purchase")
         let filter = EntityStore.Filter(field: "comment", op: .contains, value: .string("gif"))
         let records = try await store.read(entity: "purchase", filters: [filter], fields: ["product_id"])
         #expect(records.map(\.uuid) == ["p-1"])
@@ -313,7 +315,7 @@ struct OperationsTests {
             var values = makePurchase().values
             values["date"] = .date(Date(timeIntervalSince1970: TimeInterval(index * 1_000)))
             values["comment"] = .string(index % 2 == 0 ? "gift" : "other")
-            try await store.write(values, entity: "purchase", uuid: "p-\(index)")
+            try await store.write([EntityWrite(values: values, uuid: "p-\(index)")], entity: "purchase")
         }
 
         let filter = EntityStore.Filter(field: "comment", op: .contains, value: .string("gif"))

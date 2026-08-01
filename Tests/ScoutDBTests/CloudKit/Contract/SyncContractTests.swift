@@ -17,7 +17,7 @@ struct SyncContractTests {
     func staleConditionalSave() async throws {
         try await withContract { f in
             let entity = try await f.publishOrder()
-            try await f.store.write(orderValues(product: "base"), entity: entity, uuid: "cas-1")
+            try await f.store.write([EntityWrite(values: orderValues(product: "base"), uuid: "cas-1")], entity: entity)
             try await eventually { try await f.store.read(entity: entity).count == 1 }
 
             let id = CKRecord.ID(recordName: "cas-1")
