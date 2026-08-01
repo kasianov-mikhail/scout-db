@@ -53,11 +53,9 @@ extension EntityStore.Filter {
             guard case .string(let needle) = value else {
                 return { _ in false }
             }
-            let needles = needle.lowercased().split {
-                !$0.isLetter && !$0.isNumber
-            }
+            let needles = needle.searchTokens
             return Self.stringMatcher(field) { text in
-                let tokens = Set(text.lowercased().split { !$0.isLetter && !$0.isNumber })
+                let tokens = Set(text.searchTokens)
                 return needles.allSatisfy(tokens.contains)
             }
         }
@@ -90,5 +88,12 @@ extension EntityStore.Filter {
             }
             return predicate(text)
         }
+    }
+}
+
+extension String {
+    /// The lowercased alphanumeric runs a full-text search matches on.
+    fileprivate var searchTokens: [Substring] {
+        lowercased().split { !$0.isLetter && !$0.isNumber }
     }
 }

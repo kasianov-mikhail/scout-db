@@ -59,10 +59,6 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
         }
     }
 
-    func slotName(_ index: Int) -> String {
-        "\(slotPrefix)_\(String(format: "%02d", index))"
-    }
-
     func slotIndex(_ slot: String) -> Int? {
         guard slot.hasPrefix("\(slotPrefix)_"), let index = Int(slot.dropFirst(slotPrefix.count + 1)), index >= 0 else {
             return nil

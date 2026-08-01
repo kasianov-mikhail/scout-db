@@ -37,7 +37,7 @@ struct AggregateQuery {
         var totals: [String: AggregateTotal] = [:]
 
         for record in records {
-            guard let key = record["group_key"] as? String else {
+            guard let key = record[CKRecord.groupCell] as? String else {
                 continue
             }
 
@@ -53,17 +53,10 @@ struct AggregateQuery {
             totals[key] = AggregateTotal(
                 group: key,
                 count: (merged?.count ?? 0) + count,
-                value: combined(merged?.value, value, kind)
+                value: kind?.accumulate(merged?.value, value) ?? merged?.value
             )
         }
 
         return totals.values.sorted()
     }
-}
-
-private func combined(_ lhs: Double?, _ rhs: Double?, _ kind: Metric?) -> Double? {
-    guard let rhs else {
-        return lhs
-    }
-    return (kind ?? .sum).combine(lhs, rhs)
 }

@@ -146,7 +146,7 @@ struct SlotAllocator {
 
     mutating func next(in pool: FieldType) throws -> String {
         for index in 0..<pool.capacity {
-            let slot = pool.slotName(index)
+            let slot = "\(pool.slotPrefix)_\(String(format: "%02d", index))"
             if used[pool, default: []].contains(slot) {
                 continue
             }

@@ -68,6 +68,16 @@ enum Metric: Equatable, Sendable {
         lhs.map { combine($0, rhs) } ?? rhs
     }
 
+    /// The same fold with either side possibly missing.
+    ///
+    /// An absent `lhs` is seeded by `rhs`; an absent `rhs` leaves `lhs` as it
+    /// was. Kept apart from ``combine(_:_:)-(Double?,Double)`` by name rather
+    /// than by overload: the two are ambiguous wherever the result flows into
+    /// an optional.
+    func accumulate(_ lhs: Double?, _ rhs: Double?) -> Double? {
+        rhs.map { combine(lhs, $0) } ?? lhs
+    }
+
     /// Whether a value already folded in can be taken back out.
     ///
     /// Only a sum can: dropping a term from a running minimum or maximum needs
