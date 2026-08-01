@@ -74,13 +74,12 @@ extension EntityStore {
             latest[record.uuid] = record
         }
 
-        let live = try await items(
-            entity: definition.entity,
-            uuids: latest.keys.filter(stored.contains)
-        )
-        .map {
-            try EntityCoder().decode($0, using: definition)
-        }
+        let ids = latest.keys.filter(stored.contains).map { CKRecord.ID(recordName: $0) }
+        let live = try await database.fetchRecords(ids: ids, batchSize: 100)
+            .filter { $0["entity"] as? String == definition.entity }
+            .map {
+                try EntityCoder().decode($0, using: definition)
+            }
 
         let liveByUUID = Dictionary(
             live.map { ($0.uuid, $0) },
