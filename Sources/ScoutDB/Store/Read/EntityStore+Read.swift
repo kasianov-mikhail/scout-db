@@ -21,12 +21,13 @@ extension EntityStore {
             }
             return Array(ranked.prefix(limit))
         }
-        let (query, included) = try liveQuery(
+        let query = try liveQuery(
             filters,
             entity: entity,
             sort: try serverSort(sort, using: definition),
             using: definition
         )
+        let included = try liveFilter(filters, entity: entity, using: definition)
         let keys = try fields.map { try desiredKeys($0 + filters.map(\.field), using: definition) }
         if let limit {
             return Array(
