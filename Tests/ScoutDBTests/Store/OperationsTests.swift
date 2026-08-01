@@ -271,27 +271,6 @@ struct OperationsTests {
         #expect(try await store.fetch(entity: "ticket", uuids: ["shared"]).map(\.uuid) == ["shared"])
     }
 
-    @Test("Projection fetches only the requested fields")
-    func projection() async throws {
-        try await store.write([EntityWrite(values: makePurchase().values, uuid: "p-1")], entity: "purchase")
-
-        let slim = try await store.read(entity: "purchase", fields: ["product_id"])
-        #expect(slim.first?.values["product_id"] == .string("sku-42"))
-        #expect(slim.first?.values["quantity"] == nil)
-        #expect(slim.first?.values["comment"] == nil)
-
-        let withPayload = try await store.read(entity: "purchase", fields: ["comment"])
-        #expect(withPayload.first?.values["comment"] == .string("gift"))
-    }
-
-    @Test("Projection auto-includes filtered fields")
-    func projectionWithFilter() async throws {
-        try await store.write([EntityWrite(values: makePurchase().values, uuid: "p-1")], entity: "purchase")
-        let filter = EntityStore.Filter(field: "comment", op: .contains, value: .string("gif"))
-        let records = try await store.read(entity: "purchase", filters: [filter], fields: ["product_id"])
-        #expect(records.map(\.uuid) == ["p-1"])
-    }
-
     @Test("A query splits into server predicates, client matchers and slot sorts")
     func queryPlanning() async throws {
         let filters = [

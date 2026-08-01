@@ -8,13 +8,12 @@
 import Foundation
 
 extension EntityStore {
-    func read(entity: String, filters: [Filter] = [], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil)
+    func read(entity: String, filters: [Filter] = [], sort: [Sort] = [], limit: Int? = nil)
         async throws -> [EntityRecord]
     {
         let definition = try await registry.definition(for: entity)
         if try clientRanked(sort, using: definition) {
-            let projection = fields.map { $0 + sort.map(\.field) }
-            let ranked = try await read(entity: entity, filters: filters, fields: projection)
+            let ranked = try await read(entity: entity, filters: filters)
                 .sorted { Self.ordered($0, $1, by: sort) }
             guard let limit else {
                 return ranked
@@ -28,12 +27,10 @@ extension EntityStore {
             using: definition
         )
         let included = try liveFilter(filters, entity: entity, using: definition)
-        let keys = try fields.map { try desiredKeys($0 + filters.map(\.field), using: definition) }
         if let limit {
             return Array(
                 try await boundedRecords(
                     matching: query,
-                    desiredKeys: keys,
                     limit: limit,
                     using: definition,
                     where: included
@@ -42,19 +39,18 @@ extension EntityStore {
         }
         let coder = EntityCoder()
         var collected: [EntityRecord] = []
-        try await database.forEachPage(matching: query, desiredKeys: keys) { page in
+        try await database.forEachPage(matching: query) { page in
             collected += try page.map { try coder.decode($0, using: definition) }.filter(included)
         }
         return collected
     }
 
-    func read(entity: String, any branches: [[Filter]], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil)
+    func read(entity: String, any branches: [[Filter]], sort: [Sort] = [], limit: Int? = nil)
         async throws -> [EntityRecord]
     {
         if branches.count == 1 {
-            return try await read(entity: entity, filters: branches[0], sort: sort, fields: fields, limit: limit)
+            return try await read(entity: entity, filters: branches[0], sort: sort, limit: limit)
         }
-        let branchFields = fields.map { $0 + sort.map(\.field) }
         if let limit, sort.isEmpty {
             var seen: Set<String> = []
             var union: [EntityRecord] = []
@@ -62,7 +58,6 @@ extension EntityStore {
                 let page: [EntityRecord] = try await read(
                     entity: entity,
                     filters: branch,
-                    fields: branchFields,
                     limit: limit
                 )
                 for record in page where seen.insert(record.uuid).inserted {
@@ -80,7 +75,6 @@ extension EntityStore {
                 entity: entity,
                 filters: branch,
                 sort: bounded ? sort : [],
-                fields: branchFields,
                 limit: bounded ? limit : nil
             )
         }

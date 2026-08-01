@@ -593,26 +593,6 @@ struct AggregatesTests {
         #expect(ungrouped.matched == 2)
     }
 
-    @Test("A grid read projects the cells it folds, and nothing more")
-    func gridReadProjection() async throws {
-        try await publishLedger()
-        let watched = GridQueries(backing: database)
-        let reader = EntityStore(database: watched, registry: registry)
-
-        _ = try await reader.query("ledger").count()
-        var keys = try #require(watched.grid.last?.keys)
-        #expect(keys.contains(CKRecord.countCell))
-        #expect(keys.contains { $0.hasPrefix("f_") } == false)
-
-        _ = try await reader.query("ledger").sum("amount")
-        keys = try #require(watched.grid.last?.keys)
-        #expect(keys.contains(CKRecord.valueCell))
-
-        _ = try await AggregateQuery(reader, entity: "ledger", view: "by_product").totals()
-        keys = try #require(watched.grid.last?.keys)
-        #expect(Set(keys).isSuperset(of: ["group_key", CKRecord.countCell, CKRecord.valueCell]))
-    }
-
     @Test("A fold with no covering view scans")
     func foldWithoutCoveringView() async throws {
         try await registry.publish(
@@ -646,28 +626,24 @@ struct AggregatesTests {
 private final class GridQueries: CloudDatabase, @unchecked Sendable {
     private let backing: InMemoryDatabase
     private let lock = NSLock()
-    private var log: [(query: CKQuery, keys: [CKRecord.FieldKey]?, matched: Int)] = []
+    private var log: [(query: CKQuery, matched: Int)] = []
 
     init(backing: InMemoryDatabase) {
         self.backing = backing
     }
 
-    var grid: [(query: CKQuery, keys: [CKRecord.FieldKey]?, matched: Int)] {
+    var grid: [(query: CKQuery, matched: Int)] {
         lock.withLock { log.filter { $0.query.recordType == GridSlot.recordType } }
     }
 
-    func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws
-        -> QueryPage
-    {
-        let response = try await backing.records(matching: query, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
-        lock.withLock { log.append((query, desiredKeys, response.matchResults.count)) }
+    func records(matching query: CKQuery, resultsLimit: Int) async throws -> QueryPage {
+        let response = try await backing.records(matching: query, resultsLimit: resultsLimit)
+        lock.withLock { log.append((query, response.matchResults.count)) }
         return response
     }
 
-    func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int)
-        async throws -> QueryPage
-    {
-        try await backing.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+    func records(continuingMatchFrom cursor: QueryCursor, resultsLimit: Int) async throws -> QueryPage {
+        try await backing.records(continuingMatchFrom: cursor, resultsLimit: resultsLimit)
     }
 
     func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {

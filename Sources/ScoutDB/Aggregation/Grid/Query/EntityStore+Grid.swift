@@ -9,16 +9,7 @@ import CloudKit
 import Foundation
 
 extension EntityStore {
-    func grid(entity: String, view: String, group: String?, values: Bool = false) async throws -> [CKRecord] {
-        var keys = ["group_key", CKRecord.countCell]
-
-        if values {
-            keys.append(CKRecord.valueCell)
-        }
-
-        return try await database.allRecords(
-            matching: .grid(entity: entity, view: view, group: group),
-            desiredKeys: keys
-        )
+    func grid(entity: String, view: String, group: String?) async throws -> [CKRecord] {
+        try await database.allRecords(matching: .grid(entity: entity, view: view, group: group))
     }
 }

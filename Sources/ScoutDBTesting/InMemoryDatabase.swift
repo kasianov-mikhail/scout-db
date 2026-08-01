@@ -167,24 +167,19 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
 
     public init() {}
 
-    public func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws
-        -> QueryPage
-    {
+    public func records(matching query: CKQuery, resultsLimit: Int) async throws -> QueryPage {
         try counting(.query, carrying: { $0.matchResults.count }) {
             try popErrorLocked(writing: false)
-            return pageLocked(query: query, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+            return pageLocked(query: query, resultsLimit: resultsLimit)
         }
     }
 
-    public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int)
-        async throws -> QueryPage
-    {
+    public func records(continuingMatchFrom cursor: QueryCursor, resultsLimit: Int) async throws -> QueryPage {
         try counting(.continuation, carrying: { $0.matchResults.count }) {
             try popErrorLocked(writing: false)
             let resumed = LocalQuery.resume(
                 indexedLocked(),
                 from: cursor,
-                desiredKeys: desiredKeys,
                 resultsLimit: resultsLimit,
                 pageLimit: state.pageLimit
             )
@@ -208,11 +203,10 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         throw error
     }
 
-    private func pageLocked(query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) -> QueryPage {
+    private func pageLocked(query: CKQuery, resultsLimit: Int) -> QueryPage {
         LocalQuery.page(
             indexedLocked(),
             matching: query,
-            desiredKeys: desiredKeys,
             resultsLimit: resultsLimit,
             pageLimit: state.pageLimit
         )
@@ -292,20 +286,20 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         guard stored.recordVersionTag != record.recordVersionTag else {
             return nil
         }
-        return project(stored, keys: nil)
+        return stored.duplicate()
     }
 
     public func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
         try counting(.fetch, carrying: { $0 == nil ? 0 : 1 }) {
             try popErrorLocked(writing: false)
-            return state.table.record(id: id).map { project($0, keys: nil) }
+            return state.table.record(id: id).map { $0.duplicate() }
         }
     }
 
     public func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
         try counting(.fetch, carrying: { $0.count }) {
             try popErrorLocked(writing: false)
-            return ids.compactMap { state.table.record(id: $0).map { project($0, keys: nil) } }
+            return ids.compactMap { state.table.record(id: $0)?.duplicate() }
         }
     }
 
@@ -313,9 +307,5 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         state.table.put(record)
         record.overrideModificationDate(Date())
         record.overrideChangeTag(UUID().uuidString)
-    }
-
-    private func project(_ record: CKRecord, keys: [CKRecord.FieldKey]?) -> CKRecord {
-        LocalQuery.project(record, keys: keys)
     }
 }

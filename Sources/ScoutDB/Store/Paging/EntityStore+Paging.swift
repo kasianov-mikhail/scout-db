@@ -88,7 +88,6 @@ extension EntityStore {
 
         let collected = try await boundedRecords(
             matching: query,
-            desiredKeys: nil,
             limit: limit,
             using: definition
         ) { record in

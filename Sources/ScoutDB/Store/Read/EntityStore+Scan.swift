@@ -23,32 +23,14 @@ extension EntityStore {
         return { record in matchers.allSatisfy { $0(record) } }
     }
 
-    func desiredKeys(_ fields: [String], using definition: EntityDefinition) throws -> [String] {
-        var keys = EntityCoder.envelopeKeys
-        for name in Set(fields) {
-            guard let field = definition.field(named: name, at: definition.version) else {
-                throw SchemaError.unknownField(name)
-            }
-            switch field.storage {
-            case .slot(_, let slot):
-                keys.append(slot)
-            case .payload:
-                if !keys.contains("payload") {
-                    keys.append("payload")
-                }
-            }
-        }
-        return keys
-    }
-
     func boundedRecords(
-        matching query: CKQuery, desiredKeys: [String]?, limit: Int, using definition: EntityDefinition,
+        matching query: CKQuery, limit: Int, using definition: EntityDefinition,
         where included: (EntityRecord) -> Bool
     ) async throws -> [EntityRecord] {
         let coder = EntityCoder()
         var collected: [EntityRecord] = []
         var page = Self.cappedPage(limit == Int.max ? limit : limit + 1)
-        var (batch, token) = try await database.records(matching: query, desiredKeys: desiredKeys, resultsLimit: page)
+        var (batch, token) = try await database.records(matching: query, resultsLimit: page)
         while true {
             collected += try batch.map { try coder.decode($0.1.get(), using: definition) }.filter(included)
             guard collected.count < limit, let cursor = token else {
@@ -57,7 +39,6 @@ extension EntityStore {
             page = page < Int.max / 2 ? Self.cappedPage(page * 2) : page
             (batch, token) = try await database.records(
                 continuingMatchFrom: cursor,
-                desiredKeys: desiredKeys,
                 resultsLimit: page
             )
         }

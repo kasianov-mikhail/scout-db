@@ -20,11 +20,9 @@ public protocol CloudDatabase: Sendable {
     /// The first page of records matching `query`, and the cursor that
     /// continues the read when more remain.
     ///
-    /// `desiredKeys` names the fields to carry back: `nil` brings them all, an
-    /// empty array only the system ones — what a scan that needs nothing but
-    /// record IDs should ask for. `resultsLimit` caps the page, but the server
-    /// may return fewer and still hand back a cursor, so a short page means a
-    /// page, never the end.
+    /// Every page carries whole records. `resultsLimit` caps the page, but the
+    /// server may return fewer and still hand back a cursor, so a short page
+    /// means a page, never the end.
     ///
     /// A record type the schema has not published yet reads as an empty page
     /// rather than an error, and a query only matches on fields CloudKit has
@@ -35,19 +33,17 @@ public protocol CloudDatabase: Sendable {
     /// Per-record failures ride inside the page — each match carries a
     /// `Result`, and one unreadable record leaves the rest of the page intact.
     ///
-    func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws
-        -> QueryPage
+    func records(matching query: CKQuery, resultsLimit: Int) async throws -> QueryPage
 
     /// The next page of the query the cursor came from.
     ///
     /// The cursor stands in for the whole query, so this call repeats neither
-    /// the predicate nor the sort — only `desiredKeys` and `resultsLimit`, and
-    /// both are worth passing exactly as the first page did. A cursor belongs
-    /// to the database that minted it: handing `CKDatabase` a `local` one, or
-    /// a double a `cloudKit` one, throws `CKError.invalidArguments`.
+    /// the predicate nor the sort — only `resultsLimit`, worth passing exactly
+    /// as the first page did. A cursor belongs to the database that minted it:
+    /// handing `CKDatabase` a `local` one, or a double a `cloudKit` one, throws
+    /// `CKError.invalidArguments`.
     ///
-    func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int)
-        async throws -> QueryPage
+    func records(continuingMatchFrom cursor: QueryCursor, resultsLimit: Int) async throws -> QueryPage
 
     /// Saves and deletes in one atomic request: either every change lands or
     /// none of them does.

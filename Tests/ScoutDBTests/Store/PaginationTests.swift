@@ -30,32 +30,18 @@ struct PaginationTests {
         let query = CKQuery(recordType: "Item", predicate: NSPredicate(value: true))
         query.sortDescriptors = [NSSortDescriptor(key: "rank", ascending: true)]
 
-        var (batch, cursor) = try await database.records(matching: query, desiredKeys: nil, resultsLimit: 2)
+        var (batch, cursor) = try await database.records(matching: query, resultsLimit: 2)
         #expect(batch.map(\.0.recordName) == ["i-0", "i-1"])
 
         var names = batch.map(\.0.recordName)
         var pages = 1
         while let token = cursor {
-            (batch, cursor) = try await database.records(continuingMatchFrom: token, desiredKeys: nil, resultsLimit: 2)
+            (batch, cursor) = try await database.records(continuingMatchFrom: token, resultsLimit: 2)
             names += batch.map(\.0.recordName)
             pages += 1
         }
         #expect(names == ["i-0", "i-1", "i-2", "i-3", "i-4"])
         #expect(pages == 3)
-    }
-
-    @Test("Continuation pages keep the projection")
-    func projectionAcrossPages() async throws {
-        let database = makeItemDatabase(count: 4)
-        let query = CKQuery(recordType: "Item", predicate: NSPredicate(value: true))
-
-        let (_, cursor) = try await database.records(matching: query, desiredKeys: ["name"], resultsLimit: 2)
-        let token = try #require(cursor)
-        let (batch, _) = try await database.records(continuingMatchFrom: token, desiredKeys: ["name"], resultsLimit: 2)
-
-        let record = try #require(try batch.first?.1.get())
-        #expect(record["name"] as? String == "n-2")
-        #expect(record["rank"] == nil)
     }
 
     @Test("A continuation serves the matched order without re-running the query")
@@ -64,7 +50,7 @@ struct PaginationTests {
         let query = CKQuery(recordType: "Item", predicate: NSPredicate(value: true))
         query.sortDescriptors = [NSSortDescriptor(key: "rank", ascending: true)]
 
-        var (batch, cursor) = try await database.records(matching: query, desiredKeys: nil, resultsLimit: 2)
+        var (batch, cursor) = try await database.records(matching: query, resultsLimit: 2)
         #expect(batch.map(\.0.recordName) == ["i-0", "i-1"])
 
         database.records.removeAll { $0.recordID.recordName == "i-3" }
@@ -74,7 +60,7 @@ struct PaginationTests {
 
         var names = batch.map(\.0.recordName)
         while let token = cursor {
-            (batch, cursor) = try await database.records(continuingMatchFrom: token, desiredKeys: nil, resultsLimit: 2)
+            (batch, cursor) = try await database.records(continuingMatchFrom: token, resultsLimit: 2)
             names += batch.map(\.0.recordName)
         }
         #expect(names == ["i-0", "i-1", "i-2", "i-4", "i-5"])
@@ -85,11 +71,11 @@ struct PaginationTests {
         let database = makeItemDatabase(count: 4)
         let query = CKQuery(recordType: "Item", predicate: NSPredicate(value: true))
 
-        let (_, cursor) = try await database.records(matching: query, desiredKeys: nil, resultsLimit: 2)
+        let (_, cursor) = try await database.records(matching: query, resultsLimit: 2)
         let token = try #require(cursor)
         database.errors = [CKError(.networkFailure)]
         await #expect(throws: CKError.self) {
-            try await database.records(continuingMatchFrom: token, desiredKeys: nil, resultsLimit: 2)
+            try await database.records(continuingMatchFrom: token, resultsLimit: 2)
         }
     }
 

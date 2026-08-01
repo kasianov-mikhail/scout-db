@@ -17,8 +17,7 @@ extension QueryBuilder {
     /// answered from the grid too when the field's `min` and `max` bound it to
     /// a domain the range can name value by value; a strict threshold counts as
     /// the half-open one it equals, so `> 15` reads as `>= 16`. Every other
-    /// query scans, fetching only the envelope and the filtered fields rather
-    /// than full payloads.
+    /// query scans the matching records.
     ///
     /// ```swift
     /// let paid = try await store.query("purchase")
@@ -35,7 +34,6 @@ extension QueryBuilder {
             entity: entity,
             any: alternatives,
             sort: sorts,
-            fields: [],
             limit: ceiling
         )
         .count
@@ -44,8 +42,8 @@ extension QueryBuilder {
     /// Sums a numeric field across the matching records.
     ///
     /// The fold is answered from an aggregate's grid when one covers the query
-    /// and reads records otherwise, fetching that field alone. Records missing
-    /// the field contribute nothing; with no match at all the sum is zero.
+    /// and reads records otherwise. Records missing the field contribute
+    /// nothing; with no match at all the sum is zero.
     ///
     /// ```swift
     /// let revenue = try await store.query("purchase")
@@ -109,7 +107,7 @@ extension QueryBuilder {
     ///
     /// One entry per value the grouping field takes among the matching records.
     /// An aggregate grouped by that field answers it without reading records;
-    /// otherwise the query scans, fetching the two fields it folds.
+    /// otherwise the query scans the matching records.
     ///
     /// ```swift
     /// let byProduct = try await store.query("purchase")

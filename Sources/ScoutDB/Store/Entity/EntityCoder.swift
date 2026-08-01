@@ -12,8 +12,6 @@ struct EntityCoder {
     let jsonEncoder = JSONEncoder()
     let jsonDecoder = JSONDecoder()
 
-    static let envelopeKeys = ["entity", "schema_version", "uuid"]
-
     private static let patterns = PatternCache()
 
     func resolve(_ values: [String: RecordValue], at version: Int, using definition: EntityDefinition) throws
