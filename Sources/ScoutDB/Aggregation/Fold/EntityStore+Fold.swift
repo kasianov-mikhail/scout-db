@@ -35,7 +35,7 @@ extension EntityStore {
     }
 
     private func gridFold(
-        _ query: FilterPlan, of field: String?, folding kind: Metric = .sum, by group: String?, entity: String,
+        _ query: FilterPlan, of field: String?, folding kind: Metric, by group: String?, entity: String,
         in definition: EntityDefinition
     ) async throws -> [String: GridFold]? {
         guard group == nil || query.groupField == nil || query.groupField == group else {

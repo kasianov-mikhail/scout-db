@@ -115,7 +115,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     }
 
     private func counting<R>(
-        _ kind: RequestTally.Kind, carrying carried: (R) -> Int = { _ in 0 }, _ body: () throws -> R
+        _ kind: RequestTally.Kind, carrying carried: (R) -> Int, _ body: () throws -> R
     ) rethrows -> R {
         lock.lock()
         defer { lock.unlock() }

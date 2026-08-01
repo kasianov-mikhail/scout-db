@@ -8,7 +8,7 @@
 import CloudKit
 
 extension EntityStore {
-    func liveQuery(_ filters: [Filter], entity: String, sort: [ServerSort] = [], using definition: EntityDefinition)
+    func liveQuery(_ filters: [Filter], entity: String, sort: [ServerSort], using definition: EntityDefinition)
         throws -> CKQuery
     {
         let (server, _) = try split(filters, entity: entity, using: definition)

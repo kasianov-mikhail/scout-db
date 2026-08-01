@@ -119,7 +119,7 @@ extension FilterExpression {
     }
 
     private static func homogeneous<Element: RecordListElement>(
-        _ values: [RecordValue], of type: Element.Type
+        _ values: [RecordValue], of _: Element.Type
     ) -> RecordValue? {
         let members = values.compactMap(Element.init(recordValue:))
         return members.count == values.count ? Element.list(members) : nil
