@@ -35,11 +35,6 @@ extension SchemaDescriptorEntry: Comparable {
 }
 
 extension [SchemaDescriptorEntry] {
-    /// The highest-versioned entry decoded into the definition it carries.
-    ///
-    /// Nothing to decode answers `nil`; a definition that fails validation
-    /// throws rather than being served.
-    ///
     var latest: EntityDefinition? {
         get throws {
             guard let entry = max() else {
@@ -53,7 +48,6 @@ extension [SchemaDescriptorEntry] {
 }
 
 extension CKQuery {
-    /// The active descriptors of one entity, newest version included.
     convenience init(activeSchemasOf entity: String) {
         self.init(
             recordType: SchemaDescriptorEntry.recordType,
