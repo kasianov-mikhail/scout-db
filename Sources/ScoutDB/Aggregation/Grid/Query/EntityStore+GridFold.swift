@@ -54,6 +54,6 @@ extension CountQuery {
     }
 
     func covers(_ key: String) -> Bool {
-        groupKeys.isEmpty || groupKeys.contains(key)
+        groupField == nil || groupKeys.contains(key)
     }
 }
