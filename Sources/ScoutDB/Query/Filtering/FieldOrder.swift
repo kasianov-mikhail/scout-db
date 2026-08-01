@@ -32,7 +32,7 @@ struct FieldOrder: SortComparator, Hashable, Sendable {
     }
 
     func compare(_ lhs: EntityRecord, _ rhs: EntityRecord) -> ComparisonResult {
-        let result = EntityStore.rank(value(of: lhs), value(of: rhs))
+        let result = RecordValue.rank(value(of: lhs), value(of: rhs))
         guard order == .reverse else {
             return result
         }

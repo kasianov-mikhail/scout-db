@@ -12,7 +12,7 @@ extension EntityStore {
         async throws -> [EntityRecord]
     {
         let definition = try await registry.definition(for: entity)
-        if try clientRanked(sort, using: definition) {
+        if try definition.clientRanked(sort) {
             let ranked = try await read(entity: entity, filters: filters)
                 .sorted(using: sort.map(FieldOrder.init))
             guard let limit else {
@@ -22,14 +22,14 @@ extension EntityStore {
         }
         let query = CKQuery(
             recordType: "Entity",
-            filters: try serverFilters(filters, entity: entity, using: definition),
-            sort: try serverSort(sort, using: definition)
+            filters: try definition.serverFilters(filters),
+            sort: try definition.serverSort(sort)
         )
-        let matchers = try Self.matchers(for: clientFilters(filters, using: definition))
+        let matchers = try definition.clientFilters(filters).map { $0.matcher() }
         let included = { (record: EntityRecord) in matchers.allSatisfy { $0(record) } }
         if let limit {
             return Array(
-                try await boundedRecords(
+                try await database.boundedRecords(
                     matching: query,
                     limit: limit,
                     using: definition,
@@ -95,21 +95,9 @@ extension EntityStore {
             return true
         }
         let definition = try await registry.definition(for: entity)
-        if (try? clientRanked(sort, using: definition)) == true {
+        if (try? definition.clientRanked(sort)) == true {
             return true
         }
-        return (try? serverSort(sort, using: definition)) != nil
-    }
-
-    private func clientRanked(_ sort: [Sort], using definition: EntityDefinition) throws -> Bool {
-        try sort.contains { clause in
-            guard let field = definition.field(named: clause.field, at: definition.version) else {
-                throw SchemaError.unknownField(clause.field)
-            }
-            guard case .payload = field.storage else {
-                return false
-            }
-            return true
-        }
+        return (try? definition.serverSort(sort)) != nil
     }
 }

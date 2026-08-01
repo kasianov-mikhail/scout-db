@@ -82,7 +82,7 @@ struct FoldQuery {
 
 extension FoldQuery {
     private func gridCounts(group: String) async throws -> [String: Int]? {
-        guard try await store.alwaysPresent(group, entity: entity) else {
+        guard try await store.registry.alwaysPresent(group, entity: entity) else {
             return nil
         }
         guard let folded = try await store.fold(of: nil, by: group, entity: entity, any: branches) else {
@@ -92,10 +92,10 @@ extension FoldQuery {
     }
 
     private func gridCells(fold: Fold, field: String, group: String? = nil) async throws -> [String: GridFold]? {
-        if fold == .average, try await store.alwaysPresent(field, entity: entity) == false {
+        if fold == .average, try await store.registry.alwaysPresent(field, entity: entity) == false {
             return nil
         }
-        if let group, try await store.alwaysPresent(group, entity: entity) == false {
+        if let group, try await store.registry.alwaysPresent(group, entity: entity) == false {
             return nil
         }
 
