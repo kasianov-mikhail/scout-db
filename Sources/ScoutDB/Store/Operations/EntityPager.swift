@@ -7,7 +7,7 @@
 
 import CloudKit
 
-struct FieldPager: Sendable {
+struct EntityPager: Sendable {
     let database: any CloudDatabase
     let entity: String
     let field: String
