@@ -41,7 +41,7 @@ extension QueryBuilder {
     ///     .take(20)
     /// ```
     ///
-    public func filter(_ field: String, _ method: EntityStore.Match, _ value: RecordValue) -> Self {
+    public func filter(_ field: String, _ method: Operator, _ value: RecordValue) -> Self {
         let filter = EntityStore.Filter(field: field, op: method, value: value)
         var builder = self
         builder.alternatives = alternatives.map { $0 + [filter] }
@@ -88,7 +88,7 @@ extension QueryBuilder {
     ///     .take(20)
     /// ```
     ///
-    public func exclude(_ field: String, _ method: EntityStore.Match, _ value: RecordValue) -> Self {
+    public func exclude(_ field: String, _ method: Operator, _ value: RecordValue) -> Self {
         var negated = EntityStore.Filter(field: field, op: method, value: value)
         negated.negated = true
         var builder = self

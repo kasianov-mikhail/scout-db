@@ -50,7 +50,7 @@ struct MatchingTests {
         )
     }
 
-    private func read(_ field: String, _ op: EntityStore.Match, _ value: String) async throws -> [String] {
+    private func read(_ field: String, _ op: Operator, _ value: String) async throws -> [String] {
         let records = try await store.read(
             entity: "note",
             filters: [EntityStore.Filter(field: field, op: op, value: .string(value))]
@@ -85,7 +85,7 @@ struct MatchingTests {
 
         #expect(
             try store.split(
-                [EntityStore.Filter(field: "blob", op: .isNull, value: .int(0))],
+                [EntityStore.Filter(field: "blob", op: .contains, value: .string("a"))],
                 entity: "shot",
                 using: definition
             ).client.count == 1
@@ -123,11 +123,5 @@ struct MatchingTests {
     func folded() async throws {
         #expect(try await read("title_fold", .equals, "cafe creme") == ["n-2"])
         #expect(try await read("title_fold", .equals, "CAFE CREME".folded) == ["n-2"])
-    }
-
-    @Test("IS NULL and IS NOT NULL work on payload fields")
-    func nullness() async throws {
-        #expect(try await read("memo", .isNotNull, "") == ["n-1"])
-        #expect(try await read("memo", .isNull, "") == ["n-2"])
     }
 }

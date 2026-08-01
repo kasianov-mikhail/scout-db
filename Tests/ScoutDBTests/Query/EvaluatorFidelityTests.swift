@@ -68,8 +68,8 @@ struct EvaluatorFidelityTests {
         #expect(PredicateEvaluator.compare(low, low) == .orderedSame)
     }
 
-    @Test("Every server filter the store can emit is decidable locally", arguments: ServerFilter.Operator.allCases)
-    func serverFiltersStayExpressible(op: ServerFilter.Operator) {
+    @Test("Every server filter the store can emit is decidable locally", arguments: Operator.allCases)
+    func serverFiltersStayExpressible(op: Operator) {
         let value: RecordValue =
             switch op {
             case .in, .notIn: .strings(["a", "b"])
