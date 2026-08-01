@@ -7,13 +7,13 @@
 
 import Foundation
 
-struct CellDelta {
+struct GridDelta {
     var count: Int64 = 0
     var kind: Metric?
     var value: Double?
     var removed: Double?
 
-    mutating func merge(_ other: CellDelta) {
+    mutating func merge(_ other: GridDelta) {
         count += other.count
 
         guard let kind = other.kind else {

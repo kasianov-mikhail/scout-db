@@ -11,15 +11,15 @@ import Testing
 
 @testable import ScoutDB
 
-@Suite("Slot cache")
-struct SlotCacheTests {
+@Suite("Grid cache")
+struct GridCacheTests {
     private func slot(_ name: String) -> CKRecord {
         CKRecord(recordType: GridSlot.recordType, recordID: CKRecord.ID(recordName: name))
     }
 
     @Test("Eviction sheds the whole overflow at once, least recently used first")
     func evictionOrder() async {
-        let cache = SlotCache(limit: 2)
+        let cache = GridCache(limit: 2)
         for name in ["a", "b", "c"] {
             await cache.keep(slot(name))
         }
@@ -34,7 +34,7 @@ struct SlotCacheTests {
 
     @Test("Eviction waits for ten percent overflow, then sheds back to the limit")
     func evictionHysteresis() async {
-        let cache = SlotCache(limit: 20)
+        let cache = GridCache(limit: 20)
         for index in 0..<22 {
             await cache.keep(slot("k-\(index)"))
         }
