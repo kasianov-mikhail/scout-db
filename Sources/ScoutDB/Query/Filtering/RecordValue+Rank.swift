@@ -28,15 +28,6 @@ extension RecordValue {
         }
     }
 
-    static func comparable(_ lhs: RecordValue, _ rhs: RecordValue) -> Bool {
-        switch (lhs, rhs) {
-        case (.string, .string), (.date, .date):
-            true
-        default:
-            lhs.scalar != nil && rhs.scalar != nil
-        }
-    }
-
     private static func order<T: Comparable>(_ lhs: T, _ rhs: T) -> ComparisonResult {
         lhs == rhs ? .orderedSame : (lhs < rhs ? .orderedAscending : .orderedDescending)
     }

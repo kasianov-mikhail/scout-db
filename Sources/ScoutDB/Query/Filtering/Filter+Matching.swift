@@ -63,7 +63,7 @@ extension EntityStore.Filter {
 
     private func comparisonMatcher() -> (EntityRecord) -> Bool {
         { record in
-            guard let stored = record.values[field], RecordValue.comparable(stored, value) else {
+            guard let stored = record.values[field], Self.comparable(stored, value) else {
                 return false
             }
             return switch (op, RecordValue.rank(stored, value)) {
@@ -76,6 +76,15 @@ extension EntityStore.Filter {
             default:
                 false
             }
+        }
+    }
+
+    private static func comparable(_ lhs: RecordValue, _ rhs: RecordValue) -> Bool {
+        switch (lhs, rhs) {
+        case (.string, .string), (.date, .date):
+            true
+        default:
+            lhs.scalar != nil && rhs.scalar != nil
         }
     }
 
