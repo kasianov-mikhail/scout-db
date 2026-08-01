@@ -29,7 +29,7 @@ struct OperationsTests {
         try await store.write([EntityWrite(values: makePurchase().values, uuid: "p-1")], entity: "purchase")
         database.unindexed = [CKRecord.ID(recordName: "p-1", zoneID: .default)]
 
-        #expect(try await BranchReader(store: store, entity: "purchase").read().isEmpty)
+        #expect(try await EntityReader(store: store, entity: "purchase").read().isEmpty)
         #expect(try await store.fetch(uuid: "p-1")?.uuid == "p-1")
         #expect(try await store.fetch(uuid: "p-9") == nil)
     }
@@ -100,17 +100,17 @@ struct OperationsTests {
             [EntityWrite(values: ["name": .string("Bo"), "score": .int(5)], uuid: "u-2")], entity: "player")
         try await store.write([EntityWrite(values: ["name": .string("Cy")], uuid: "u-3")], entity: "player")
 
-        let ranked = try await BranchReader(store: store, entity: "player", sort: [.init(field: "score")]).read()
+        let ranked = try await EntityReader(store: store, entity: "player", sort: [.init(field: "score")]).read()
         #expect(ranked.map(\.uuid) == ["u-3", "u-2", "u-1"])
 
-        let top = try await BranchReader(
+        let top = try await EntityReader(
             store: store, entity: "player", sort: [.init(field: "score", ascending: false)], limit: 2
         ).read()
         #expect(top.map(\.uuid) == ["u-1", "u-2"])
         #expect(try await store.query("player").sort("score", .descending).first()?.uuid == "u-1")
 
         await #expect(throws: SchemaError.unknownField("ghost")) {
-            _ = try await BranchReader(store: store, entity: "player", sort: [.init(field: "ghost")]).read()
+            _ = try await EntityReader(store: store, entity: "player", sort: [.init(field: "ghost")]).read()
         }
     }
 
@@ -137,7 +137,7 @@ struct OperationsTests {
         try await store.write([EntityWrite(values: ["name": .string("Cy")], uuid: "u-3")], entity: "profile")
 
         func uuids(_ filters: [EntityStore.Filter]) async throws -> [String] {
-            try await BranchReader(store: store, entity: "profile").read(any: [filters]).map(\.uuid).sorted()
+            try await EntityReader(store: store, entity: "profile").read(any: [filters]).map(\.uuid).sorted()
         }
 
         #expect(try await uuids([.init(field: "score", op: .equals, value: .int(10))]) == ["u-1"])
@@ -153,7 +153,7 @@ struct OperationsTests {
     func retireEntity() async throws {
         try await registry.retire(entity: "purchase")
         await #expect(throws: SchemaError.unknownEntity("purchase")) {
-            _ = try await BranchReader(store: store, entity: "purchase").read()
+            _ = try await EntityReader(store: store, entity: "purchase").read()
         }
 
         let fresh = SchemaRegistry(database: database)
@@ -161,7 +161,7 @@ struct OperationsTests {
         #expect(await fresh.schemas().isEmpty)
 
         try await registry.publish(makePurchaseDefinition())
-        #expect(try await BranchReader(store: store, entity: "purchase").read().isEmpty)
+        #expect(try await EntityReader(store: store, entity: "purchase").read().isEmpty)
 
         await #expect(throws: SchemaError.unknownEntity("ghost")) {
             try await registry.retire(entity: "ghost")
@@ -185,7 +185,7 @@ struct OperationsTests {
         #expect(try await store.fetch(entity: "purchase", uuids: ["t-1"]).isEmpty)
 
         try await store.write([EntityWrite(values: makePurchase().values, uuid: "t-1")], entity: "purchase")
-        #expect(try await BranchReader(store: store, entity: "purchase").read().map(\.uuid) == ["t-1"])
+        #expect(try await EntityReader(store: store, entity: "purchase").read().map(\.uuid) == ["t-1"])
     }
 
     @Test("A pattern constraint gates writes by a whole-string regex")

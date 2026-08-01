@@ -25,7 +25,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func take(_ count: Int) async throws -> [EntityRecord] {
-        try await BranchReader(store: store, entity: entity, sort: sorts, limit: Swift.min(count, ceiling ?? count))
+        try await EntityReader(store: store, entity: entity, sort: sorts, limit: Swift.min(count, ceiling ?? count))
             .read(any: alternatives)
     }
 

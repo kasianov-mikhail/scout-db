@@ -84,7 +84,7 @@ struct PaginationTests {
         try await writePurchases(5)
         database.pageLimit = 2
 
-        let records = try await BranchReader(store: store, entity: "purchase").read()
+        let records = try await EntityReader(store: store, entity: "purchase").read()
         #expect(records.map(\.uuid).sorted() == ["p-0", "p-1", "p-2", "p-3", "p-4"])
     }
 
@@ -98,7 +98,7 @@ struct PaginationTests {
         }
 
         let filter = EntityStore.Filter(field: "comment", op: .contains, value: .string("gif"))
-        let records = try await BranchReader(
+        let records = try await EntityReader(
             store: store, entity: "purchase", sort: [EntityStore.Sort(field: "date")], limit: 2
         ).read(any: [[filter]])
         #expect(records.map(\.uuid) == ["p-0", "p-2"])

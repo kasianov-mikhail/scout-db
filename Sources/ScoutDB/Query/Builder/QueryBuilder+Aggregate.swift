@@ -32,7 +32,7 @@ extension QueryBuilder {
             let counted = folded.values.reduce(0) { $0 + $1.count }
             return Swift.min(counted, ceiling ?? Int.max)
         }
-        return try await BranchReader(store: store, entity: entity, sort: sorts, limit: ceiling)
+        return try await EntityReader(store: store, entity: entity, sort: sorts, limit: ceiling)
             .read(any: alternatives)
             .count
     }
