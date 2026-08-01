@@ -84,9 +84,6 @@ struct EntityDefinition: Codable, Equatable, Sendable {
                     )
                 }
             }
-            if let derived = field.derived, !names.contains(derived.source) {
-                throw SchemaError.invalidDefinition("Field '\(field.name)' derives from unknown '\(derived.source)'")
-            }
             if let pattern = field.pattern {
                 guard [.string, .text, .stringList].contains(field.type) else {
                     throw SchemaError.invalidDefinition(

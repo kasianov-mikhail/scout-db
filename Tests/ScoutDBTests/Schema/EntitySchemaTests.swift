@@ -26,7 +26,6 @@ struct EntitySchemaTests {
             .field("status", .string, .allowed(["placed", "paid"]), .defaultValue(.string("placed")))
             .field("quantity", .int, .min(1), .max(20))
             .field("email", .string, .matches("^.+@.+$"))
-            .field("email_lower", .string, .derived(from: "email", .lowercase))
             .field("comment", .string, .payload)
             .field("date", .timestamp)
             .unique(on: "product_id", "date")
@@ -51,8 +50,6 @@ struct EntitySchemaTests {
         #expect(quantity.max == 20)
 
         #expect(try #require(byName["email"]).pattern == "^.+@.+$")
-        #expect(try #require(byName["email_lower"]).transform == .lowercase)
-        #expect(try #require(byName["email_lower"]).derivedFrom == "email")
         #expect(try #require(byName["comment"]).payload)
         #expect(try #require(byName["date"]).payload == false)
     }

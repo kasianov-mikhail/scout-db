@@ -147,39 +147,6 @@ struct EntityCoderTests {
         }
     }
 
-    @Test("Derived fields are materialized by the coder")
-    func derived() throws {
-        let definition = makeDefinition(
-            entity: "log",
-            fields: [
-                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
-                FieldDefinition(
-                    name: "name_lower",
-                    type: .string,
-                    storage: .slot(.string, "s_01"),
-                    derived: Derivation(source: "name", transform: .lowercase)
-                ),
-                FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
-                FieldDefinition(
-                    name: "day",
-                    type: .timestamp,
-                    storage: .slot(.timestamp, "t_01"),
-                    derived: Derivation(source: "date", transform: .day)
-                ),
-            ]
-        )
-        let resolved = try coder.resolve(
-            [
-                "name": .string("Sign Up"),
-                "date": .date(Date(timeIntervalSince1970: 108_123)),
-            ],
-            at: 2,
-            using: definition
-        )
-        #expect(resolved["name_lower"] == .string("sign up"))
-        #expect(resolved["day"] == .date(Date(timeIntervalSince1970: 86_400)))
-    }
-
     @Test("Empty typed lists in slots keep their declared kind through a round-trip")
     func emptyTypedLists() throws {
         let definition = makeDefinition(
@@ -202,31 +169,6 @@ struct EntityCoderTests {
         #expect(decoded.values["counts"] == .ints([]))
         #expect(decoded.values["ratios"] == .doubles([]))
         #expect(decoded.values["times"] == .dates([]))
-    }
-
-    @Test("A derivation whose source is a later-declared derivation still resolves")
-    func chainedDerivations() throws {
-        let definition = makeDefinition(
-            entity: "log",
-            fields: [
-                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
-                FieldDefinition(
-                    name: "name_lower",
-                    type: .string,
-                    storage: .slot(.string, "s_02"),
-                    derived: Derivation(source: "name_folded", transform: .lowercase)
-                ),
-                FieldDefinition(
-                    name: "name_folded",
-                    type: .string,
-                    storage: .slot(.string, "s_01"),
-                    derived: Derivation(source: "name", transform: .fold)
-                ),
-            ]
-        )
-        let resolved = try coder.resolve(["name": .string("CAFÉ")], at: 2, using: definition)
-        #expect(resolved["name_folded"] == .string("cafe"))
-        #expect(resolved["name_lower"] == .string("cafe"))
     }
 
     @Test("allowed constrains every element of a string list")
