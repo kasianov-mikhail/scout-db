@@ -49,6 +49,11 @@ extension EntityStore {
     }
 }
 
+struct GridFold: Sendable {
+    var count = 0
+    var value: Double?
+}
+
 extension FilterPlan {
     var serverGroup: String? {
         groupKeys.count == 1 ? groupKeys.first : nil
