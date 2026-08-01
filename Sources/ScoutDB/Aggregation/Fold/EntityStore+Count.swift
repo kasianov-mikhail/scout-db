@@ -12,7 +12,7 @@ extension EntityStore {
     func count(entity: String, any branches: [[Filter]]) async throws -> Int? {
         let definition = try await registry.definition(for: entity)
 
-        guard definition.views?.isEmpty == false, var query = CountQuery(any: branches) else {
+        guard definition.views?.isEmpty == false, var query = FilterPlan(any: branches) else {
             return nil
         }
 

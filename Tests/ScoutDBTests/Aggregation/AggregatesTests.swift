@@ -72,7 +72,7 @@ struct AggregatesTests {
         try await writePayments([1], product: group)
 
         #expect(database.records.filter { $0.recordType == "Aggregate" }.count == 1)
-        #expect(try await GridQuery(store, entity: "payment", view: "by_product").totals().map(\.count) == [6])
+        #expect(try await AggregateQuery(store, entity: "payment", view: "by_product").totals().map(\.count) == [6])
     }
 
     @Test("A unique-key upsert counts once in aggregate views")
@@ -93,7 +93,7 @@ struct AggregatesTests {
         try await store.write(["user": .string("u1"), "date": .date(noon)], entity: "visit")
 
         #expect(try await store.read(entity: "visit").count == 1)
-        #expect(try await GridQuery(store, entity: "visit", view: "by_all").totals().map(\.count) == [1])
+        #expect(try await AggregateQuery(store, entity: "visit", view: "by_all").totals().map(\.count) == [1])
     }
 
     @Test("A unique-key upsert with a changed value rebalances a sum view")
@@ -115,7 +115,7 @@ struct AggregatesTests {
         try await store.write(["user": .string("u1"), "amount": .double(25), "date": .date(noon)], entity: "meter")
 
         #expect(try await store.read(entity: "meter").count == 1)
-        let totals = try await GridQuery(store, entity: "meter", view: "revenue").totals()
+        let totals = try await AggregateQuery(store, entity: "meter", view: "revenue").totals()
         #expect(totals.first?.count == 1)
         #expect(totals.first?.value == 25)
     }
@@ -134,13 +134,13 @@ struct AggregatesTests {
         #expect(shards.count > 1)
         #expect(database.records.filter { $0.recordType == "Aggregate" }.count == shards.count)
 
-        let totals = try await GridQuery(store, entity: "payment", view: "revenue").totals()
+        let totals = try await AggregateQuery(store, entity: "payment", view: "revenue").totals()
         #expect(totals.count == 1)
         #expect(totals.first?.count == 6)
         #expect(totals.first?.value == 21)
 
         try await store.delete(entity: "payment", uuid: "p-3")
-        #expect(try await GridQuery(store, entity: "payment", view: "revenue").totals().map(\.count) == [5])
+        #expect(try await AggregateQuery(store, entity: "payment", view: "revenue").totals().map(\.count) == [5])
         #expect(try await store.query("payment").count() == 5)
 
         let invalid = makeDefinition(
@@ -167,7 +167,7 @@ struct AggregatesTests {
 
         try await store.delete(entity: "payment", uuid: "p1")
 
-        let totals = try await GridQuery(store, entity: "payment", view: "revenue").totals()
+        let totals = try await AggregateQuery(store, entity: "payment", view: "revenue").totals()
         #expect(totals.first?.count == 1)
         #expect(totals.first?.value == 3)
     }
@@ -183,7 +183,7 @@ struct AggregatesTests {
 
         try await store.update(entity: "payment", uuid: "p1") { $0.values["amount"] = .double(10) }
 
-        let totals = try await GridQuery(store, entity: "payment", view: "revenue").totals()
+        let totals = try await AggregateQuery(store, entity: "payment", view: "revenue").totals()
         #expect(totals.first?.count == 1)
         #expect(totals.first?.value == 10)
     }
@@ -204,7 +204,7 @@ struct AggregatesTests {
 
         try await store.delete(entity: "payment", uuid: "p1")
 
-        let totals = try await GridQuery(store, entity: "payment", view: "low").totals()
+        let totals = try await AggregateQuery(store, entity: "payment", view: "low").totals()
         #expect(totals.first?.count == 1)
         #expect(totals.first?.value == 2)
     }
@@ -225,7 +225,7 @@ struct AggregatesTests {
 
         try await store.update(entity: "payment", uuid: "p1") { $0.values["amount"] = .double(6) }
 
-        let totals = try await GridQuery(store, entity: "payment", view: "low").totals()
+        let totals = try await AggregateQuery(store, entity: "payment", view: "low").totals()
         #expect(totals.first?.count == 2)
         #expect(totals.first?.value == 2)
     }
@@ -235,7 +235,7 @@ struct AggregatesTests {
         try await publishPayment(views: [AggregateView(name: "low", min: "amount")])
         try await writePayments([5, 2, 8])
 
-        let totals = try await GridQuery(store, entity: "payment", view: "low").totals()
+        let totals = try await AggregateQuery(store, entity: "payment", view: "low").totals()
         #expect(totals.count == 1)
         #expect(totals.first?.count == 3)
         #expect(totals.first?.value == 2)
@@ -246,7 +246,7 @@ struct AggregatesTests {
         try await publishPayment(views: [AggregateView(name: "high", max: "amount")])
         try await writePayments([5, 2, 8])
 
-        let totals = try await GridQuery(store, entity: "payment", view: "high").totals()
+        let totals = try await AggregateQuery(store, entity: "payment", view: "high").totals()
         #expect(totals.first?.value == 8)
     }
 
@@ -255,7 +255,7 @@ struct AggregatesTests {
         try await publishPayment(views: [AggregateView(name: "revenue", sum: "amount")])
         try await writePayments([2.5, 1.5])
 
-        let total = try #require(try await GridQuery(store, entity: "payment", view: "revenue").totals().first)
+        let total = try #require(try await AggregateQuery(store, entity: "payment", view: "revenue").totals().first)
         #expect(total.value == 4)
         #expect(total.average == 2)
     }
@@ -266,7 +266,7 @@ struct AggregatesTests {
         try await writePayments([1, 2, 3], product: "app")
         try await writePayments([10], product: "bundle")
 
-        let totals = try await GridQuery(store, entity: "payment", view: "revenue").totals()
+        let totals = try await AggregateQuery(store, entity: "payment", view: "revenue").totals()
         #expect(totals.map(\.group) == ["app", "bundle"])
         #expect(totals.map(\.count) == [3, 1])
         #expect(totals.first?.value == 6)
@@ -278,11 +278,13 @@ struct AggregatesTests {
         try await writePayments([10, 5], product: "app")
         try await writePayments([2], product: "book")
 
-        let totals = try await GridQuery(store, entity: "payment", view: "revenue", group: "book").totals()
+        let totals = try await AggregateQuery(store, entity: "payment", view: "revenue", group: "book").totals()
         #expect(totals.map(\.group) == ["book"])
         #expect(totals.first?.value == 2)
         #expect(
-            try await GridQuery(store, entity: "payment", view: "revenue", group: "app").totals().map(\.value) == [15]
+            try await AggregateQuery(store, entity: "payment", view: "revenue", group: "app")
+                .totals()
+                .map(\.value) == [15]
         )
     }
 
@@ -311,7 +313,7 @@ struct AggregatesTests {
             entity: "payment"
         )
 
-        let totals = try await GridQuery(store, entity: "payment", view: "revenue").totals()
+        let totals = try await AggregateQuery(store, entity: "payment", view: "revenue").totals()
 
         #expect(totals.count == 2)
         #expect(totals.first { $0.group == "app" }?.count == 2)
@@ -329,7 +331,7 @@ struct AggregatesTests {
             entity: "payment"
         )
 
-        let totals = try await GridQuery(store, entity: "payment", view: "low").totals()
+        let totals = try await AggregateQuery(store, entity: "payment", view: "low").totals()
         #expect(totals.count == 1)
         #expect(totals.first?.count == 3)
         #expect(totals.first?.value == 2)
@@ -365,14 +367,14 @@ struct AggregatesTests {
         try await store.write(["product": .string("app"), "amount": .double(5)], entity: "sale")
         try await store.write(["product": .string("book"), "amount": .double(2)], entity: "sale")
 
-        var totals = try await GridQuery(store, entity: "sale", view: "by_product").totals()
+        var totals = try await AggregateQuery(store, entity: "sale", view: "by_product").totals()
         #expect(totals.first { $0.group == "app" }?.count == 2)
         #expect(totals.first { $0.group == "app" }?.value == 15)
         #expect(totals.first { $0.group == "book" }?.value == 2)
         #expect(database.records.filter { $0.recordType == "Aggregate" }.count == 2)
 
         try await store.delete(entity: "sale", uuid: first)
-        totals = try await GridQuery(store, entity: "sale", view: "by_product").totals()
+        totals = try await AggregateQuery(store, entity: "sale", view: "by_product").totals()
         #expect(totals.first { $0.group == "app" }?.count == 1)
         #expect(totals.first { $0.group == "app" }?.value == 5)
     }
@@ -654,7 +656,7 @@ struct AggregatesTests {
         keys = try #require(watched.grid.last?.keys)
         #expect(keys.contains(CKRecord.valueCell))
 
-        _ = try await GridQuery(reader, entity: "ledger", view: "by_product").totals()
+        _ = try await AggregateQuery(reader, entity: "ledger", view: "by_product").totals()
         keys = try #require(watched.grid.last?.keys)
         #expect(Set(keys).isSuperset(of: ["group_key", CKRecord.countCell, CKRecord.valueCell]))
     }

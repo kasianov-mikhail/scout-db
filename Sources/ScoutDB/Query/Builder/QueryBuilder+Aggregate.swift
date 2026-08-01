@@ -196,11 +196,11 @@ extension QueryBuilder {
     /// ```
     ///
     public func totals(_ field: String? = nil, by group: String? = nil) async throws -> [AggregateTotal] {
-        try await GridQuery(self, field: field, group: group).totals()
+        try await AggregateQuery(self, field: field, group: group).totals()
     }
 }
 
-extension GridQuery {
+extension AggregateQuery {
     fileprivate init(_ query: QueryBuilder, field: String?, group: String?) async throws {
         let store = query.store
         let definition = try await store.registry.definition(for: query.entity)

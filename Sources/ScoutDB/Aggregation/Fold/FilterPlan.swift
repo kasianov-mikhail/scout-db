@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct CountQuery {
+struct FilterPlan {
     var groupField: String?
     var groupKeys: Set<String> = []
     var numericField: String?
@@ -15,12 +15,12 @@ struct CountQuery {
     var numericLT: Double?
 
     init?(any branches: [[EntityStore.Filter]]) {
-        guard let first = branches.first, var merged = CountQuery(first) else {
+        guard let first = branches.first, var merged = FilterPlan(first) else {
             return nil
         }
 
         for branch in branches.dropFirst() {
-            guard let query = CountQuery(branch) else {
+            guard let query = FilterPlan(branch) else {
                 return nil
             }
             guard query.groupField == merged.groupField else {
@@ -96,7 +96,7 @@ struct CountQuery {
     }
 }
 
-extension CountQuery {
+extension FilterPlan {
     private init?(_ filters: [EntityStore.Filter]) {
         for filter in filters {
             guard !filter.negated else {
