@@ -394,9 +394,10 @@ struct AggregatesTests {
             try await FoldQuery(
                 store: store,
                 entity: "ticket",
-                branches: [[EntityStore.Filter(field: "kind", op: .in, value: .strings(["b", "c"]))]]
+                branches: [[EntityStore.Filter(field: "kind", op: .in, value: .strings(["b", "c"]))]],
+                group: "kind"
             )
-            .counts(group: "kind")
+            .counts()
                 == ["b": 41, "c": 1]
         )
         #expect(try await store.query("ticket").filter("kind", .in, .strings(["a", "b"])).sum("price") == 115)

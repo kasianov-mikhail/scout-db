@@ -26,15 +26,21 @@ extension QueryBuilder {
     /// ```
     ///
     public func count() async throws -> Int {
-        if let folder = try await store.folder(entity: entity, any: alternatives),
-            let folded = try await folder.fold(of: nil, by: nil)
-        {
-            let counted = folded.values.reduce(0) { $0 + $1.count }
-            return Swift.min(counted, ceiling ?? Int.max)
+        if let folded = try await store.folder(entity: entity, any: alternatives)?.fold(of: nil, by: nil) {
+            return Swift.min(
+                folded.values.reduce(0) { $0 + $1.count },
+                ceiling ?? Int.max
+            )
         }
-        return try await EntityReader(store: store, entity: entity, sort: sorts, limit: ceiling)
-            .read(any: alternatives)
-            .count
+
+        return try await EntityReader(
+            store: store,
+            entity: entity,
+            sort: sorts,
+            limit: ceiling
+        )
+        .read(any: alternatives)
+        .count
     }
 
     /// Sums a numeric field across the matching records.
@@ -50,7 +56,13 @@ extension QueryBuilder {
     /// ```
     ///
     public func sum(_ field: String) async throws -> Double {
-        try await foldQuery.value(fold: .sum, field: field) ?? 0
+        try await FoldQuery(
+            store: store,
+            entity: entity,
+            branches: alternatives,
+            field: field
+        )
+        .value(fold: .sum) ?? 0
     }
 
     /// The smallest value of a numeric field across the matching records.
@@ -66,7 +78,13 @@ extension QueryBuilder {
     /// ```
     ///
     public func min(_ field: String) async throws -> Double? {
-        try await foldQuery.value(fold: .min, field: field)
+        try await FoldQuery(
+            store: store,
+            entity: entity,
+            branches: alternatives,
+            field: field
+        )
+        .value(fold: .min)
     }
 
     /// The largest value of a numeric field across the matching records.
@@ -82,7 +100,13 @@ extension QueryBuilder {
     /// ```
     ///
     public func max(_ field: String) async throws -> Double? {
-        try await foldQuery.value(fold: .max, field: field)
+        try await FoldQuery(
+            store: store,
+            entity: entity,
+            branches: alternatives,
+            field: field
+        )
+        .value(fold: .max)
     }
 
     /// The mean of a numeric field across the matching records.
@@ -98,7 +122,13 @@ extension QueryBuilder {
     /// ```
     ///
     public func average(_ field: String) async throws -> Double? {
-        try await foldQuery.value(fold: .average, field: field)
+        try await FoldQuery(
+            store: store,
+            entity: entity,
+            branches: alternatives,
+            field: field
+        )
+        .value(fold: .average)
     }
 
     /// Sums a numeric field per distinct value of the grouping field.
@@ -115,7 +145,14 @@ extension QueryBuilder {
     /// ```
     ///
     public func sum(_ field: String, by group: String) async throws -> [String: Double] {
-        try await foldQuery.values(fold: .sum, field: field, group: group)
+        try await FoldQuery(
+            store: store,
+            entity: entity,
+            branches: alternatives,
+            field: field,
+            group: group
+        )
+        .values(fold: .sum)
     }
 
     /// The smallest value of a numeric field per distinct value of the grouping
@@ -130,7 +167,14 @@ extension QueryBuilder {
     /// ```
     ///
     public func min(_ field: String, by group: String) async throws -> [String: Double] {
-        try await foldQuery.values(fold: .min, field: field, group: group)
+        try await FoldQuery(
+            store: store,
+            entity: entity,
+            branches: alternatives,
+            field: field,
+            group: group
+        )
+        .values(fold: .min)
     }
 
     /// The largest value of a numeric field per distinct value of the grouping
@@ -145,7 +189,14 @@ extension QueryBuilder {
     /// ```
     ///
     public func max(_ field: String, by group: String) async throws -> [String: Double] {
-        try await foldQuery.values(fold: .max, field: field, group: group)
+        try await FoldQuery(
+            store: store,
+            entity: entity,
+            branches: alternatives,
+            field: field,
+            group: group
+        )
+        .values(fold: .max)
     }
 
     /// The mean of a numeric field per distinct value of the grouping field.
@@ -159,7 +210,14 @@ extension QueryBuilder {
     /// ```
     ///
     public func average(_ field: String, by group: String) async throws -> [String: Double] {
-        try await foldQuery.values(fold: .average, field: field, group: group)
+        try await FoldQuery(
+            store: store,
+            entity: entity,
+            branches: alternatives,
+            field: field,
+            group: group
+        )
+        .values(fold: .average)
     }
 
     /// Counts the matching records per distinct value of the grouping field.
@@ -175,73 +233,12 @@ extension QueryBuilder {
     /// ```
     ///
     public func count(by group: String) async throws -> [String: Int] {
-        try await foldQuery.counts(group: group)
-    }
-
-    /// One total per group, folded across every record the grid counts.
-    ///
-    /// One row per group: the count, the metric's value, and the `average`
-    /// derived from them. Without a `field` the rows count alone. The only
-    /// clause a grid read can honor is an
-    /// equality filter on the grouping field, which narrows it to that group
-    /// server-side; any other filter throws rather than being quietly dropped.
-    ///
-    /// ```swift
-    /// let revenue = try await store.query("purchase")
-    ///     .totals("amount", by: "product_id")
-    /// // [AggregateTotal(group: "sku-42", count: 48211, value: 481628.9), ...]
-    /// ```
-    ///
-    public func totals(_ field: String? = nil, by group: String? = nil) async throws -> [AggregateTotal] {
-        try await AggregateQuery(self, field: field, group: group).totals()
-    }
-}
-
-extension AggregateQuery {
-    fileprivate init(_ query: QueryBuilder, field: String?, group: String?) async throws {
-        let store = query.store
-        let definition = try await store.registry.definition(for: query.entity)
-
-        guard let view = definition.view(grouping: group, folding: field) else {
-            let shape = [
-                group.map { "grouped by '\($0)'" },
-                field.map { "folding '\($0)'" },
-            ]
-            throw SchemaError.invalidDefinition(
-                "Entity '\(query.entity)' keeps no aggregate \(shape.compactMap { $0 }.joined(separator: ", "))"
-            )
-        }
-
-        self.init(
-            store,
-            entity: query.entity,
-            view: view.name,
-            group: try query.narrowing(to: group)
+        try await FoldQuery(
+            store: store,
+            entity: entity,
+            branches: alternatives,
+            group: group
         )
-    }
-}
-
-extension QueryBuilder {
-    fileprivate var foldQuery: FoldQuery {
-        FoldQuery(store: store, entity: entity, branches: alternatives)
-    }
-}
-
-extension QueryBuilder {
-    fileprivate func narrowing(to group: String?) throws -> String? {
-        guard let flat else {
-            throw SchemaError.invalidDefinition("An aggregate reads the grid and cannot honor a disjunction")
-        }
-
-        var narrowed: String?
-        for filter in flat {
-            guard let group, filter.field == group, filter.op == .equals else {
-                throw SchemaError.invalidDefinition(
-                    "An aggregate reads the grid and can only be filtered by an equal '\(group ?? "group")'"
-                )
-            }
-            narrowed = filter.value.canonical
-        }
-        return narrowed
+        .counts()
     }
 }

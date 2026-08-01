@@ -60,3 +60,46 @@ struct AggregateQuery {
         return totals.values.sorted()
     }
 }
+
+extension AggregateQuery {
+    init(_ query: QueryBuilder, field: String?, group: String?) async throws {
+        let store = query.store
+        let definition = try await store.registry.definition(for: query.entity)
+
+        guard let view = definition.view(grouping: group, folding: field) else {
+            let shape = [
+                group.map { "grouped by '\($0)'" },
+                field.map { "folding '\($0)'" },
+            ]
+            throw SchemaError.invalidDefinition(
+                "Entity '\(query.entity)' keeps no aggregate \(shape.compactMap { $0 }.joined(separator: ", "))"
+            )
+        }
+
+        self.init(
+            store,
+            entity: query.entity,
+            view: view.name,
+            group: try query.narrowing(to: group)
+        )
+    }
+}
+
+extension QueryBuilder {
+    fileprivate func narrowing(to group: String?) throws -> String? {
+        guard let flat else {
+            throw SchemaError.invalidDefinition("An aggregate reads the grid and cannot honor a disjunction")
+        }
+
+        var narrowed: String?
+        for filter in flat {
+            guard let group, filter.field == group, filter.op == .equals else {
+                throw SchemaError.invalidDefinition(
+                    "An aggregate reads the grid and can only be filtered by an equal '\(group ?? "group")'"
+                )
+            }
+            narrowed = filter.value.canonical
+        }
+        return narrowed
+    }
+}
