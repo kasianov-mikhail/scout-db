@@ -26,12 +26,6 @@ struct MatchingTests {
                 entity: "note",
                 fields: [
                     FieldDefinition(name: "title", type: .string, storage: .slot(.string, "s_00")),
-                    FieldDefinition(
-                        name: "title_fold",
-                        type: .string,
-                        storage: .slot(.string, "s_02"),
-                        derived: Derivation(source: "title", transform: .fold)
-                    ),
                     FieldDefinition(name: "body", type: .text, storage: .slot(.text, "x_00")),
                     FieldDefinition(name: "summary", type: .text, storage: .slot(.text, "x_01")),
                     FieldDefinition(name: "memo", type: .string, storage: .payload),
@@ -117,11 +111,5 @@ struct MatchingTests {
         await #expect(throws: SchemaError.invalidValue("title")) {
             _ = try await read("title", .search, "hello")
         }
-    }
-
-    @Test("Case- and diacritic-insensitive match through the folded shadow")
-    func folded() async throws {
-        #expect(try await read("title_fold", .equals, "cafe creme") == ["n-2"])
-        #expect(try await read("title_fold", .equals, "CAFE CREME".folded) == ["n-2"])
     }
 }

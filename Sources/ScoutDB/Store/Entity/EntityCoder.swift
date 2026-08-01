@@ -16,17 +16,6 @@ struct EntityCoder {
 
     private static let patterns = PatternCache()
 
-    static let calendar: Calendar = {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
-        calendar.firstWeekday = 1
-        return calendar
-    }()
-
-    static func periodStart(of component: Calendar.Component, for date: Date) -> Date {
-        calendar.dateInterval(of: component, for: date)?.start ?? date
-    }
-
     func resolve(_ values: [String: RecordValue], at version: Int, using definition: EntityDefinition) throws
         -> [String: RecordValue]
     {
@@ -35,23 +24,6 @@ struct EntityCoder {
 
         for field in fields where resolved[field.name] == nil {
             resolved[field.name] = field.defaultValue
-        }
-        let derivations = fields.filter { $0.derived != nil }
-        for _ in 0...derivations.count {
-            var changed = false
-            for field in derivations {
-                guard let derived = field.derived else {
-                    continue
-                }
-                let value = derive(derived, from: resolved[derived.source])
-                if value != resolved[field.name] {
-                    resolved[field.name] = value
-                    changed = true
-                }
-            }
-            if !changed {
-                break
-            }
         }
         for field in fields {
             guard let value = resolved[field.name] else {
@@ -169,25 +141,6 @@ struct EntityCoder {
 
         return EntityRecord(entity: definition.entity, uuid: uuid, schemaVersion: Int(version), values: values)
     }
-
-    private func derive(_ derivation: Derivation, from source: RecordValue?) -> RecordValue? {
-        switch (derivation.transform, source) {
-        case (.lowercase, .string(let value)?):
-            .string(value.lowercased())
-        case (.fold, .string(let value)?):
-            .string(value.folded)
-        case (.hour, .date(let value)?):
-            .date(Self.periodStart(of: .hour, for: value))
-        case (.day, .date(let value)?):
-            .date(Self.periodStart(of: .day, for: value))
-        case (.week, .date(let value)?):
-            .date(Self.periodStart(of: .weekOfYear, for: value))
-        case (.month, .date(let value)?):
-            .date(Self.periodStart(of: .month, for: value))
-        default:
-            nil
-        }
-    }
 }
 
 private final class PatternCache: @unchecked Sendable {
@@ -203,11 +156,5 @@ private final class PatternCache: @unchecked Sendable {
             compiled[pattern] = regex
             return regex
         }
-    }
-}
-
-extension String {
-    var folded: String {
-        folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
     }
 }

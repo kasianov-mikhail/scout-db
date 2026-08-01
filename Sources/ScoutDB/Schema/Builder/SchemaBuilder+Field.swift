@@ -21,7 +21,7 @@ extension SchemaBuilder {
     ///
     public enum FieldConstraint: Sendable {
         /// Rejects a write that leaves the field without a value, once the
-        /// default and the derivation have been applied.
+        /// default has been applied.
         case required
 
         /// Keeps the field out of the pools, in the record's payload blob:
@@ -39,10 +39,6 @@ extension SchemaBuilder {
 
         /// The inclusive upper bound every numeric scalar must stay under.
         case max(Double)
-
-        /// Makes the field a shadow of another one, recomputed from its source
-        /// on every write rather than supplied by the caller.
-        case derived(from: String, FieldTransform)
 
         /// A regular expression every value of the field must match whole.
         case matches(String)
@@ -127,8 +123,6 @@ extension SchemaBuilder {
                 field.min = value
             case .max(let value):
                 field.max = value
-            case .derived(let source, let transform):
-                field.derived = Derivation(source: source, transform: transform)
             case .matches(let pattern):
                 field.pattern = pattern
             case .ungrouped:

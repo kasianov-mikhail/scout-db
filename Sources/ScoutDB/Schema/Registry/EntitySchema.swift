@@ -55,13 +55,6 @@ public struct EntitySchema: Sendable, Equatable {
 
         /// A whole-string regular expression every value must match.
         public let pattern: String?
-
-        /// The field this one shadows — a derived field is recomputed on every
-        /// write rather than supplied.
-        public let derivedFrom: String?
-
-        /// What a derived field makes of the value it shadows.
-        public let transform: FieldTransform?
     }
 }
 
@@ -84,7 +77,5 @@ extension EntitySchema.Field {
         min = field.min
         max = field.max
         pattern = field.pattern
-        derivedFrom = field.derived?.source
-        transform = field.derived?.transform
     }
 }
