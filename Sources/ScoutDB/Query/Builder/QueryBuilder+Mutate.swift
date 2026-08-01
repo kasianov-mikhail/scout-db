@@ -29,23 +29,4 @@ extension QueryBuilder {
             transform: transform
         )
     }
-
-    /// Deletes every matching record, and returns how many were removed.
-    ///
-    /// The record leaves the database outright, releasing the grid cells it
-    /// counted into. The sweep pages through the query the way ``update(_:)``
-    /// does.
-    ///
-    /// ```swift
-    /// let dropped = try await store.query("purchase")
-    ///     .filter("date" < cutoff)
-    ///     .delete()
-    /// ```
-    ///
-    @discardableResult public func delete() async throws -> Int {
-        try await store.deleteAll(
-            entity: entity,
-            any: alternatives
-        )
-    }
 }

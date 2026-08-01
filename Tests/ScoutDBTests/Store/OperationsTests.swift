@@ -257,10 +257,6 @@ struct OperationsTests {
 
     @Test("Retiring an entity hides its schema; a republish revives it")
     func retireEntity() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
-
-        #expect(try await store.deleteAll(entity: "purchase", any: [[]]) == 2)
         try await registry.retire(entity: "purchase")
         await #expect(throws: SchemaError.unknownEntity("purchase")) {
             _ = try await store.read(entity: "purchase")
@@ -290,11 +286,8 @@ struct OperationsTests {
         }
     }
 
-    @Test("Mutations treat a deleted record as absent, and its uuid is free again")
-    func mutationsSkipDeleted() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "t-1")
-        try await store.delete(entity: "purchase", uuid: "t-1")
-
+    @Test("Mutations treat an unwritten uuid as absent, and a write claims it")
+    func mutationsSkipUnwritten() async throws {
         await #expect(throws: SchemaError.notFound("t-1")) {
             try await store.update(entity: "purchase", uuid: "t-1") { $0.values["quantity"] = .int(1) }
         }
@@ -366,14 +359,6 @@ struct OperationsTests {
         #expect(record?.entity == "purchase")
         #expect(record?.values["quantity"] == makePurchase().values["quantity"])
         #expect(try await store.fetch(uuid: "ghost") == nil)
-    }
-
-    @Test("Fetch by identifier misses a deleted record")
-    func fetchByUUIDDeleted() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        try await store.delete(entity: "purchase", uuid: "p-1")
-
-        #expect(try await store.fetch(uuid: "p-1") == nil)
     }
 
     @Test("Fetching by uuid stays scoped to the asked-for entity")
@@ -522,19 +507,6 @@ struct OperationsTests {
             }
         }
         #expect(try await store.fetch(entity: "purchase", uuids: ["p-1"]).first?.values["quantity"] == .int(3))
-    }
-
-    @Test("deleteAll removes every matching record")
-    func deleteAll() async throws {
-        try await store.write(makePurchase(uuid: "p-1").values, entity: "purchase", uuid: "p-1")
-        var other = makePurchase(uuid: "p-2").values
-        other["product_id"] = .string("sku-7")
-        try await store.write(other, entity: "purchase", uuid: "p-2")
-
-        let filter = EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-42"))
-        let deleted = try await store.deleteAll(entity: "purchase", any: [[filter]])
-        #expect(deleted == 1)
-        #expect(try await store.read(entity: "purchase").map(\.uuid) == ["p-2"])
     }
 
     @Test("A bulk load warms the cache for every published entity")

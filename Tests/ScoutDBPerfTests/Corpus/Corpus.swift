@@ -59,10 +59,6 @@ enum DatasetSize: String, CaseIterable, Sendable {
         }
     }
 
-    var deletions: Int {
-        Swift.max(8, sessions / 20)
-    }
-
     static var selected: [DatasetSize] {
         guard let raw = ProcessInfo.processInfo.environment["SCOUTDB_PERF_SIZES"] else {
             return allCases
@@ -113,11 +109,7 @@ enum CorpusBuilder {
         let customers = try await writeCustomers(size, store: store, generator: &generator)
         let orders = try await writeOrders(size, customers: customers, store: store, generator: &generator)
         let items = try await writeItems(size, orders: orders, store: store, generator: &generator)
-        let sessions = try await writeSessions(size, customers: customers, store: store, generator: &generator)
-
-        for index in 0..<size.deletions {
-            try await store.delete(entity: PerfSchema.session, uuid: sessions[sessions.count - 1 - index])
-        }
+        _ = try await writeSessions(size, customers: customers, store: store, generator: &generator)
 
         return Corpus(
             size: size,

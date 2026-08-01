@@ -23,10 +23,6 @@ struct GridAggregator {
         try await rebalance(removing: [], adding: batch, using: definition)
     }
 
-    func remove(_ batch: [EntityRecord], using definition: EntityDefinition) async throws {
-        try await rebalance(removing: batch, adding: [], using: definition)
-    }
-
     func rebalance(removing old: [EntityRecord], adding new: [EntityRecord], using definition: EntityDefinition)
         async throws
     {

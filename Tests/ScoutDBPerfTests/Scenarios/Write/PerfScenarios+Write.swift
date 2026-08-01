@@ -61,9 +61,6 @@ extension PerfScenarios {
                     record.values["status"] = .string("paid")
                 }
             },
-            PerfScenario("Records", "delete one order", sql: 1) { world, iteration in
-                try await world.store.delete(entity: PerfSchema.order, uuid: world.order(iteration))
-            },
         ]
     }
 

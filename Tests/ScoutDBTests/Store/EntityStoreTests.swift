@@ -288,14 +288,6 @@ struct EntityStoreTests {
         #expect(records.first?.values["score"] == .int(2))
     }
 
-    @Test("Deleted records disappear from reads")
-    func deletedRecordsVanish() async throws {
-        try await store.write(makePurchase(uuid: "p-1").values, entity: "purchase", uuid: "p-1")
-        try await store.delete(entity: "purchase", uuid: "p-1")
-        let records = try await store.read(entity: "purchase")
-        #expect(records.count == 0)
-    }
-
     @Test("List fields support server-side contains filters")
     func tags() async throws {
         try await registry.publish(

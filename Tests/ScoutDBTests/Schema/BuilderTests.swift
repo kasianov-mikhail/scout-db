@@ -287,15 +287,13 @@ struct BuilderTests {
         #expect(branches.contains { $0.contains { $0.value == .string("sku-0") } })
     }
 
-    @Test("Builder update and delete rewrite matching records")
+    @Test("Builder update rewrites matching records")
     func mutation() async throws {
         try await store.query("purchase").filter("quantity" > 1).update { record in
             record.values["quantity"] = .int(9)
         }
         #expect(try await store.query("purchase").filter("quantity", .equals, 9).count() == 2)
-
-        try await store.query("purchase").filter("quantity", .equals, 9).delete()
-        #expect(try await store.query("purchase").count() == 1)
+        #expect(try await store.query("purchase").count() == 3)
     }
 
     @Test("Exclude negates a predicate and keeps records without the field")
@@ -370,7 +368,7 @@ struct BuilderTests {
         #expect(count == 1)
     }
 
-    @Test("Builder update and delete honor a disjunction")
+    @Test("Builder update honors a disjunction")
     func groupMutation() async throws {
         try await store.query("purchase")
             .filter("product_id" == "sku-0" || "product_id" == "sku-2")
@@ -379,11 +377,8 @@ struct BuilderTests {
             }
         #expect(try await store.query("purchase").filter("quantity", .equals, 9).count() == 2)
 
-        try await store.query("purchase")
-            .filter("product_id" == "sku-0" || "product_id" == "sku-2")
-            .delete()
-        let remaining = try await store.query("purchase").take(100)
-        #expect(remaining.map(\.uuid) == ["p-1"])
+        let untouched = try await store.query("purchase").exclude("quantity", .equals, 9).take(100)
+        #expect(untouched.map(\.uuid) == ["p-1"])
     }
 
     @Test("Folds compute over a single projected field")
