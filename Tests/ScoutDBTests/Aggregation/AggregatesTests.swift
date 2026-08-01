@@ -282,7 +282,9 @@ struct AggregatesTests {
         #expect(totals.map(\.group) == ["book"])
         #expect(totals.first?.value == 2)
         #expect(
-            try await AggregateQuery(store, entity: "payment", view: "revenue", group: "app").totals().map(\.value) == [15]
+            try await AggregateQuery(store, entity: "payment", view: "revenue", group: "app")
+                .totals()
+                .map(\.value) == [15]
         )
     }
 
