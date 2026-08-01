@@ -41,11 +41,12 @@ extension EntityStore {
         matching query: CKQuery, desiredKeys: [String]?, limit: Int, using definition: EntityDefinition,
         where included: (EntityRecord) -> Bool
     ) async throws -> [EntityRecord] {
+        let coder = EntityCoder()
         var collected: [EntityRecord] = []
         var page = Self.cappedPage(limit == Int.max ? limit : limit + 1)
         var (batch, token) = try await database.records(matching: query, desiredKeys: desiredKeys, resultsLimit: page)
         while true {
-            collected += try decode(batch.map { try $0.1.get() }, using: definition).filter(included)
+            collected += try batch.map { try coder.decode($0.1.get(), using: definition) }.filter(included)
             guard collected.count < limit, let cursor = token else {
                 break
             }

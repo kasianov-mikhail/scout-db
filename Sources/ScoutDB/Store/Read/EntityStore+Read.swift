@@ -39,9 +39,10 @@ extension EntityStore {
                 ).prefix(limit)
             )
         }
+        let coder = EntityCoder()
         var collected: [EntityRecord] = []
         try await database.forEachPage(matching: query, desiredKeys: keys) { page in
-            collected += try decode(page, using: definition).filter(included)
+            collected += try page.map { try coder.decode($0, using: definition) }.filter(included)
         }
         return collected
     }

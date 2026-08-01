@@ -53,10 +53,9 @@ extension EntityStore {
         }
         var latest: [String: EntityRecord] = [:]
         for record in records { latest[record.uuid] = record }
-        let live = try decode(
-            try await items(entity: definition.entity, uuids: latest.keys.filter(stored.contains)),
-            using: definition
-        )
+        let coder = EntityCoder()
+        let live = try await items(entity: definition.entity, uuids: latest.keys.filter(stored.contains))
+            .map { try coder.decode($0, using: definition) }
         let liveByUUID = Dictionary(live.map { ($0.uuid, $0) }, uniquingKeysWith: { first, _ in first })
         return (Array(liveByUUID.values), Array(latest.values))
     }
