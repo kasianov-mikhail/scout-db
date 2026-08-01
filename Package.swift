@@ -30,9 +30,5 @@ let package = Package(
             name: "ScoutDBTests",
             dependencies: ["ScoutDB", "ScoutDBTesting"]
         ),
-        .testTarget(
-            name: "ScoutDBPerfTests",
-            dependencies: ["ScoutDB", "ScoutDBTesting"]
-        ),
     ]
 )
