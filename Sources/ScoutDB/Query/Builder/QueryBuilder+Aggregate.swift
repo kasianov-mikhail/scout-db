@@ -26,7 +26,9 @@ extension QueryBuilder {
     /// ```
     ///
     public func count() async throws -> Int {
-        if let folded = try await store.fold(of: nil, by: nil, entity: entity, any: alternatives) {
+        if let folder = try await store.folder(entity: entity, any: alternatives),
+            let folded = try await folder.fold(of: nil, by: nil)
+        {
             let counted = folded.values.reduce(0) { $0 + $1.count }
             return Swift.min(counted, ceiling ?? Int.max)
         }

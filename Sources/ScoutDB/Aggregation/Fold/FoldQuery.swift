@@ -85,7 +85,10 @@ extension FoldQuery {
         guard try await store.registry.alwaysPresent(group, entity: entity) else {
             return nil
         }
-        guard let folded = try await store.fold(of: nil, by: group, entity: entity, any: branches) else {
+        guard let folder = try await store.folder(entity: entity, any: branches) else {
+            return nil
+        }
+        guard let folded = try await folder.fold(of: nil, by: group) else {
             return nil
         }
         return folded.mapValues(\.count)
@@ -99,13 +102,10 @@ extension FoldQuery {
             return nil
         }
 
-        return try await store.fold(
-            of: field,
-            folding: fold.metric,
-            by: group,
-            entity: entity,
-            any: branches
-        )
+        guard let folder = try await store.folder(entity: entity, any: branches) else {
+            return nil
+        }
+        return try await folder.fold(of: field, folding: fold.metric, by: group)
     }
 }
 

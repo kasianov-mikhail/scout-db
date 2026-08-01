@@ -10,12 +10,10 @@ import CloudKit
 struct GridFolder: Sendable {
     let database: any CloudDatabase
     let entity: String
-    let field: String?
-    let kind: Metric
-    let group: String?
     let definition: EntityDefinition
+    let query: FilterPlan
 
-    func fold(matching query: FilterPlan) async throws -> [String: GridFold]? {
+    func fold(of field: String?, folding kind: Metric = .sum, by group: String?) async throws -> [String: GridFold]? {
         guard group == nil || query.groupField == nil || query.groupField == group else {
             return nil
         }
