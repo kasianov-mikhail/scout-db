@@ -209,7 +209,7 @@ struct StoreContractTests {
             try await f.store.write([EntityWrite(values: orderValues(total: 3), uuid: "v-2")], entity: entity)
 
             try await eventually {
-                let totals = try await AggregateQuery(f.store, entity: entity, view: "revenue").totals()
+                let totals = try await EntityAggregator(f.store, entity: entity, view: "revenue").totals()
                 return totals.first?.count == 2 && totals.first?.value == 5
             }
         }

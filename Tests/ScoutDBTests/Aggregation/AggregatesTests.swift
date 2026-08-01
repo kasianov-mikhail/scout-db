@@ -66,12 +66,12 @@ struct AggregatesTests {
         legacy["group_key"] = group
         legacy["date"] = period
         legacy["c_00"] = Int64(5)
-        try await database.write(records: [legacy])
+        try await database.modifyRecords(saving: [legacy], deleting: [])
 
         try await writePayments([1], product: group)
 
         #expect(database.records.filter { $0.recordType == "Aggregate" }.count == 1)
-        #expect(try await AggregateQuery(store, entity: "payment", view: "by_product").totals().map(\.count) == [6])
+        #expect(try await EntityAggregator(store, entity: "payment", view: "by_product").totals().map(\.count) == [6])
     }
 
     @Test("A unique-key upsert counts once in aggregate views")
@@ -92,7 +92,7 @@ struct AggregatesTests {
         try await store.write([EntityWrite(values: ["user": .string("u1"), "date": .date(noon)])], entity: "visit")
 
         #expect(try await EntityReader(store: store, entity: "visit").read().count == 1)
-        #expect(try await AggregateQuery(store, entity: "visit", view: "by_all").totals().map(\.count) == [1])
+        #expect(try await EntityAggregator(store, entity: "visit", view: "by_all").totals().map(\.count) == [1])
     }
 
     @Test("A unique-key upsert with a changed value rebalances a sum view")
@@ -116,7 +116,7 @@ struct AggregatesTests {
             [EntityWrite(values: ["user": .string("u1"), "amount": .double(25), "date": .date(noon)])], entity: "meter")
 
         #expect(try await EntityReader(store: store, entity: "meter").read().count == 1)
-        let totals = try await AggregateQuery(store, entity: "meter", view: "revenue").totals()
+        let totals = try await EntityAggregator(store, entity: "meter", view: "revenue").totals()
         #expect(totals.first?.count == 1)
         #expect(totals.first?.value == 25)
     }
@@ -136,7 +136,7 @@ struct AggregatesTests {
         #expect(shards.count > 1)
         #expect(database.records.filter { $0.recordType == "Aggregate" }.count == shards.count)
 
-        let totals = try await AggregateQuery(store, entity: "payment", view: "revenue").totals()
+        let totals = try await EntityAggregator(store, entity: "payment", view: "revenue").totals()
         #expect(totals.count == 1)
         #expect(totals.first?.count == 6)
         #expect(totals.first?.value == 21)
@@ -173,7 +173,7 @@ struct AggregatesTests {
         try await store.write(
             [EntityWrite(values: ["user": .string("u1"), "amount": .double(6), "date": .date(noon)])], entity: "meter")
 
-        let totals = try await AggregateQuery(store, entity: "meter", view: "low").totals()
+        let totals = try await EntityAggregator(store, entity: "meter", view: "low").totals()
         #expect(totals.first?.count == 2)
         #expect(totals.first?.value == 2)
     }
@@ -183,7 +183,7 @@ struct AggregatesTests {
         try await publishPayment(views: [AggregateView(name: "low", min: "amount")])
         try await writePayments([5, 2, 8])
 
-        let totals = try await AggregateQuery(store, entity: "payment", view: "low").totals()
+        let totals = try await EntityAggregator(store, entity: "payment", view: "low").totals()
         #expect(totals.count == 1)
         #expect(totals.first?.count == 3)
         #expect(totals.first?.value == 2)
@@ -194,7 +194,7 @@ struct AggregatesTests {
         try await publishPayment(views: [AggregateView(name: "high", max: "amount")])
         try await writePayments([5, 2, 8])
 
-        let totals = try await AggregateQuery(store, entity: "payment", view: "high").totals()
+        let totals = try await EntityAggregator(store, entity: "payment", view: "high").totals()
         #expect(totals.first?.value == 8)
     }
 
@@ -203,7 +203,7 @@ struct AggregatesTests {
         try await publishPayment(views: [AggregateView(name: "revenue", sum: "amount")])
         try await writePayments([2.5, 1.5])
 
-        let total = try #require(try await AggregateQuery(store, entity: "payment", view: "revenue").totals().first)
+        let total = try #require(try await EntityAggregator(store, entity: "payment", view: "revenue").totals().first)
         #expect(total.value == 4)
         #expect(total.average == 2)
     }
@@ -214,7 +214,7 @@ struct AggregatesTests {
         try await writePayments([1, 2, 3], product: "app")
         try await writePayments([10], product: "bundle")
 
-        let totals = try await AggregateQuery(store, entity: "payment", view: "revenue").totals()
+        let totals = try await EntityAggregator(store, entity: "payment", view: "revenue").totals()
         #expect(totals.map(\.group) == ["app", "bundle"])
         #expect(totals.map(\.count) == [3, 1])
         #expect(totals.first?.value == 6)
@@ -226,11 +226,11 @@ struct AggregatesTests {
         try await writePayments([10, 5], product: "app")
         try await writePayments([2], product: "book")
 
-        let totals = try await AggregateQuery(store, entity: "payment", view: "revenue", group: "book").totals()
+        let totals = try await EntityAggregator(store, entity: "payment", view: "revenue", group: "book").totals()
         #expect(totals.map(\.group) == ["book"])
         #expect(totals.first?.value == 2)
         #expect(
-            try await AggregateQuery(store, entity: "payment", view: "revenue", group: "app")
+            try await EntityAggregator(store, entity: "payment", view: "revenue", group: "app")
                 .totals()
                 .map(\.value) == [15]
         )
@@ -261,7 +261,7 @@ struct AggregatesTests {
             entity: "payment"
         )
 
-        let totals = try await AggregateQuery(store, entity: "payment", view: "revenue").totals()
+        let totals = try await EntityAggregator(store, entity: "payment", view: "revenue").totals()
 
         #expect(totals.count == 2)
         #expect(totals.first { $0.group == "app" }?.count == 2)
@@ -279,7 +279,7 @@ struct AggregatesTests {
             entity: "payment"
         )
 
-        let totals = try await AggregateQuery(store, entity: "payment", view: "low").totals()
+        let totals = try await EntityAggregator(store, entity: "payment", view: "low").totals()
         #expect(totals.count == 1)
         #expect(totals.first?.count == 3)
         #expect(totals.first?.value == 2)
@@ -317,7 +317,7 @@ struct AggregatesTests {
         try await store.write(
             [EntityWrite(values: ["product": .string("book"), "amount": .double(2)])], entity: "sale")
 
-        let totals = try await AggregateQuery(store, entity: "sale", view: "by_product").totals()
+        let totals = try await EntityAggregator(store, entity: "sale", view: "by_product").totals()
         #expect(totals.first { $0.group == "app" }?.count == 2)
         #expect(totals.first { $0.group == "app" }?.value == 15)
         #expect(totals.first { $0.group == "book" }?.value == 2)

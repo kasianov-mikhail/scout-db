@@ -120,20 +120,20 @@ struct MigratorTests {
 
         definition.views? += [AggregateView(name: "by_product", groupBy: "product", sum: "amount")]
         try await registry.publish(definition)
-        #expect(try await AggregateQuery(store, entity: "sale", view: "by_product").totals().isEmpty)
+        #expect(try await EntityAggregator(store, entity: "sale", view: "by_product").totals().isEmpty)
 
         #expect(try await migrator.backfill(view: "by_product", entity: "sale") == 3)
-        var totals = try await AggregateQuery(store, entity: "sale", view: "by_product").totals()
+        var totals = try await EntityAggregator(store, entity: "sale", view: "by_product").totals()
         #expect(totals.first { $0.group == "app" }?.count == 2)
         #expect(totals.first { $0.group == "app" }?.value == 15)
         #expect(totals.first { $0.group == "book" }?.count == 1)
-        #expect(try await AggregateQuery(store, entity: "sale", view: "all_time").totals().map(\.count) == [3])
+        #expect(try await EntityAggregator(store, entity: "sale", view: "all_time").totals().map(\.count) == [3])
 
         #expect(try await migrator.backfill(view: "by_product", entity: "sale") == 3)
-        totals = try await AggregateQuery(store, entity: "sale", view: "by_product").totals()
+        totals = try await EntityAggregator(store, entity: "sale", view: "by_product").totals()
         #expect(totals.first { $0.group == "app" }?.count == 2)
         #expect(totals.first { $0.group == "app" }?.value == 15)
-        #expect(try await AggregateQuery(store, entity: "sale", view: "all_time").totals().map(\.count) == [3])
+        #expect(try await EntityAggregator(store, entity: "sale", view: "all_time").totals().map(\.count) == [3])
 
         await #expect(throws: SchemaError.unknownField("ghost")) {
             try await migrator.backfill(view: "ghost", entity: "sale")
