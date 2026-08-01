@@ -9,20 +9,6 @@ import CloudKit
 import Foundation
 
 struct ServerFilter: Equatable, Sendable {
-    enum Operator: String, CaseIterable, Sendable {
-        case equals
-        case notEquals
-        case greaterThan
-        case greaterThanOrEquals
-        case lessThan
-        case lessThanOrEquals
-        case `in`
-        case notIn
-        case beginsWith
-        case contains
-        case search
-    }
-
     let field: String
     let op: Operator
     let value: RecordValue
