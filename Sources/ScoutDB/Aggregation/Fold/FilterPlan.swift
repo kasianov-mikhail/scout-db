@@ -14,7 +14,7 @@ struct FilterPlan {
     private var numericGTE: Double?
     private var numericLT: Double?
 
-    init?(any branches: [[EntityStore.Filter]]) {
+    init?(any branches: [[Filter]]) {
         guard let first = branches.first, var merged = FilterPlan(first) else {
             return nil
         }
@@ -97,7 +97,7 @@ struct FilterPlan {
 }
 
 extension FilterPlan {
-    private init?(_ filters: [EntityStore.Filter]) {
+    private init?(_ filters: [Filter]) {
         for filter in filters {
             switch (filter.op, filter.value) {
             case (.equals, let value):

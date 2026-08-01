@@ -9,15 +9,10 @@ import Foundation
 
 struct AggregateView: Codable, Equatable, Sendable {
     let name: String
-
     var groupBy: String?
-
     var sum: String?
-
     var min: String?
-
     var max: String?
-
     var shards: Int?
 
     var metricKind: Metric? {

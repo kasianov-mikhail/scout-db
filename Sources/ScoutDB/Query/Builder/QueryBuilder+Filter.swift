@@ -41,6 +41,6 @@ extension QueryBuilder {
     /// ```
     ///
     public func filter(_ field: String, _ method: Operator, _ value: RecordValue) -> Self {
-        filter(FilterExpression(EntityStore.Filter(field: field, op: method, value: value)))
+        filter(FilterExpression(Filter(field: field, op: method, value: value)))
     }
 }

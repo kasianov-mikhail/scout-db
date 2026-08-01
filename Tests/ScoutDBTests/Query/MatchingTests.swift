@@ -46,7 +46,7 @@ struct MatchingTests {
     }
 
     private func read(_ field: String, _ op: Operator, _ value: String) async throws -> [String] {
-        let filter = EntityStore.Filter(field: field, op: op, value: .string(value))
+        let filter = Filter(field: field, op: op, value: .string(value))
         let records = try await EntityReader(store: store, entity: "note").read(any: [[filter]])
         return records.map(\.uuid)
     }
@@ -77,7 +77,7 @@ struct MatchingTests {
         }
 
         #expect(
-            try definition.clientFilters([EntityStore.Filter(field: "blob", op: .contains, value: .string("a"))]).count
+            try definition.clientFilters([Filter(field: "blob", op: .contains, value: .string("a"))]).count
                 == 1
         )
     }

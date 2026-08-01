@@ -21,7 +21,7 @@ public struct QueryBuilder: Sendable {
     let entity: String
     let store: EntityStore
 
-    var alternatives: [[EntityStore.Filter]] = [[]]
+    var alternatives: [[Filter]] = [[]]
     var sorts: [EntityStore.Sort] = []
     var ceiling: Int?
 
@@ -30,7 +30,7 @@ public struct QueryBuilder: Sendable {
         case descending
     }
 
-    var flat: [EntityStore.Filter]? {
+    var flat: [Filter]? {
         alternatives.count == 1 ? alternatives[0] : nil
     }
 }

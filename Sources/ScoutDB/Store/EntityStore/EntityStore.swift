@@ -18,12 +18,6 @@ public struct EntityStore: Sendable {
         self.registry = registry
     }
 
-    struct Filter: Equatable, Sendable {
-        let field: String
-        let op: Operator
-        let value: RecordValue
-    }
-
     struct Sort: Equatable, Sendable {
         let field: String
         var ascending = true

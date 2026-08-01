@@ -25,7 +25,7 @@ infix operator =~ : ComparisonPrecedence
 /// ```
 ///
 public func == (field: String, value: RecordValue) -> FilterExpression {
-    FilterExpression(EntityStore.Filter(field: field, op: .equals, value: value))
+    FilterExpression(Filter(field: field, op: .equals, value: value))
 }
 
 /// Matches the records whose field holds anything but the value.
@@ -41,7 +41,7 @@ public func == (field: String, value: RecordValue) -> FilterExpression {
 /// ```
 ///
 public func != (field: String, value: RecordValue) -> FilterExpression {
-    FilterExpression(EntityStore.Filter(field: field, op: .notEquals, value: value))
+    FilterExpression(Filter(field: field, op: .notEquals, value: value))
 }
 
 /// Matches the records whose field is greater than the value.
@@ -57,7 +57,7 @@ public func != (field: String, value: RecordValue) -> FilterExpression {
 /// ```
 ///
 public func > (field: String, value: RecordValue) -> FilterExpression {
-    FilterExpression(EntityStore.Filter(field: field, op: .greaterThan, value: value))
+    FilterExpression(Filter(field: field, op: .greaterThan, value: value))
 }
 
 /// Matches the records whose field is greater than or equal to the value.
@@ -72,7 +72,7 @@ public func > (field: String, value: RecordValue) -> FilterExpression {
 /// ```
 ///
 public func >= (field: String, value: RecordValue) -> FilterExpression {
-    FilterExpression(EntityStore.Filter(field: field, op: .greaterThanOrEquals, value: value))
+    FilterExpression(Filter(field: field, op: .greaterThanOrEquals, value: value))
 }
 
 /// Matches the records whose field is less than the value.
@@ -84,7 +84,7 @@ public func >= (field: String, value: RecordValue) -> FilterExpression {
 /// ```
 ///
 public func < (field: String, value: RecordValue) -> FilterExpression {
-    FilterExpression(EntityStore.Filter(field: field, op: .lessThan, value: value))
+    FilterExpression(Filter(field: field, op: .lessThan, value: value))
 }
 
 /// Matches the records whose field is less than or equal to the value.
@@ -96,7 +96,7 @@ public func < (field: String, value: RecordValue) -> FilterExpression {
 /// ```
 ///
 public func <= (field: String, value: RecordValue) -> FilterExpression {
-    FilterExpression(EntityStore.Filter(field: field, op: .lessThanOrEquals, value: value))
+    FilterExpression(Filter(field: field, op: .lessThanOrEquals, value: value))
 }
 
 /// Matches a substring of a string field, or membership in a list field.
@@ -112,7 +112,7 @@ public func <= (field: String, value: RecordValue) -> FilterExpression {
 /// ```
 ///
 public func ~~ (field: String, value: RecordValue) -> FilterExpression {
-    FilterExpression(EntityStore.Filter(field: field, op: .contains, value: value))
+    FilterExpression(Filter(field: field, op: .contains, value: value))
 }
 
 /// Matches the records whose string field starts with the value.
@@ -126,7 +126,7 @@ public func ~~ (field: String, value: RecordValue) -> FilterExpression {
 /// ```
 ///
 public func =~ (field: String, value: RecordValue) -> FilterExpression {
-    FilterExpression(EntityStore.Filter(field: field, op: .beginsWith, value: value))
+    FilterExpression(Filter(field: field, op: .beginsWith, value: value))
 }
 
 extension RecordValue: ExpressibleByStringLiteral {

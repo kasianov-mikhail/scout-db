@@ -8,33 +8,6 @@
 import CloudKit
 import ObjectiveC
 
-extension RecordValue {
-    var predicateValue: CVarArg {
-        switch self {
-        case .string(let value):
-            value
-        case .int(let value):
-            NSNumber(value: value)
-        case .double(let value):
-            NSNumber(value: value)
-        case .date(let value):
-            value as NSDate
-        case .bytes(let value):
-            value as NSData
-        case .strings(let value):
-            value as NSArray
-        case .ints(let value):
-            value as NSArray
-        case .doubles(let value):
-            value as NSArray
-        case .dates(let value):
-            value as NSArray
-        case .reference(let value):
-            CKRecord.Reference(recordID: CKRecord.ID(recordName: value), action: .none)
-        }
-    }
-}
-
 /// The record metadata a `CloudDatabase` double stamps for itself.
 ///
 /// CloudKit assigns a change tag and a modification date on the server, and

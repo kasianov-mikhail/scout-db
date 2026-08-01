@@ -394,7 +394,7 @@ struct AggregatesTests {
             try await FoldQuery(
                 store: store,
                 entity: "ticket",
-                branches: [[EntityStore.Filter(field: "kind", op: .in, value: .strings(["b", "c"]))]],
+                branches: [[Filter(field: "kind", op: .in, value: .strings(["b", "c"]))]],
                 group: "kind"
             )
             .counts()
