@@ -235,7 +235,7 @@ struct StoreContractTests {
             try await f.store.write(orderValues(total: 3), entity: entity, uuid: "v-2")
 
             try await eventually {
-                let totals = try await GridQuery(f.store, entity: entity, view: "revenue").totals()
+                let totals = try await AggregateQuery(f.store, entity: entity, view: "revenue").totals()
                 return totals.first?.count == 2 && totals.first?.value == 5
             }
         }

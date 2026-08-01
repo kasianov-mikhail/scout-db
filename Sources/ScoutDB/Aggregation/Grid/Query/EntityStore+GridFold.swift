@@ -9,7 +9,7 @@ import Foundation
 
 extension EntityStore {
     func gridFold(
-        _ query: CountQuery, of field: String?, folding kind: Metric = .sum, by group: String?, entity: String,
+        _ query: FilterPlan, of field: String?, folding kind: Metric = .sum, by group: String?, entity: String,
         in definition: EntityDefinition
     ) async throws -> [String: GridFold]? {
         guard group == nil || query.groupField == nil || query.groupField == group else {
@@ -48,7 +48,7 @@ extension EntityStore {
     }
 }
 
-extension CountQuery {
+extension FilterPlan {
     var serverGroup: String? {
         groupKeys.count == 1 ? groupKeys.first : nil
     }

@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct GridQuery {
+struct AggregateQuery {
     let store: EntityStore
     let entity: String
     let view: String
