@@ -14,10 +14,20 @@ extension PerfScenarios {
     static var migrations: [PerfScenario] {
         [
             PerfScenario(
-                "Migrations", "backfill a new version", sql: 1, iterations: 1,
+                "Migrations",
+                "backfill a new version",
+                sql: 1,
+                iterations: 1,
                 setUp: { world in
                     try await publishItemVersion(
-                        world, field: FieldDefinition(name: "discount", type: .double, storage: .slot(.double, "d_01"), since: 2))
+                        world,
+                        field: FieldDefinition(
+                            name: "discount",
+                            type: .double,
+                            storage: .slot(.double, "d_01"),
+                            since: 2
+                        )
+                    )
                 }
             ) { world, _ in
                 _ = try await world.migrator.backfill(entity: PerfSchema.item) { record in
@@ -25,9 +35,15 @@ extension PerfScenarios {
                 }
             },
             PerfScenario(
-                "Migrations", "backfill against the previous record", sql: 1, iterations: 1,
+                "Migrations",
+                "backfill against the previous record",
+                sql: 1,
+                iterations: 1,
                 setUp: { world in
-                    try await publishItemVersion(world, field: FieldDefinition(name: "was", type: .double, storage: .slot(.double, "d_01"), since: 2))
+                    try await publishItemVersion(
+                        world,
+                        field: FieldDefinition(name: "was", type: .double, storage: .slot(.double, "d_01"), since: 2)
+                    )
                 }
             ) { world, _ in
                 _ = try await world.migrator.backfill(entity: PerfSchema.item) { record, previous in
@@ -35,9 +51,15 @@ extension PerfScenarios {
                 }
             },
             PerfScenario(
-                "Migrations", "rename a field's data", sql: 1, iterations: 1,
+                "Migrations",
+                "rename a field's data",
+                sql: 1,
+                iterations: 1,
                 setUp: { world in
-                    try await publishItemVersion(world, field: FieldDefinition(name: "code", type: .string, storage: .slot(.string, "s_02"), since: 2))
+                    try await publishItemVersion(
+                        world,
+                        field: FieldDefinition(name: "code", type: .string, storage: .slot(.string, "s_02"), since: 2)
+                    )
                 }
             ) { world, _ in
                 _ = try await world.migrator.rename(entity: PerfSchema.item, from: "sku", to: "code")

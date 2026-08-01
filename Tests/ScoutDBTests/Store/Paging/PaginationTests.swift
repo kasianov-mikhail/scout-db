@@ -112,7 +112,12 @@ struct PaginationTests {
         }
 
         let filter = EntityStore.Filter(field: "comment", op: .contains, value: .string("gif"))
-        let records = try await store.read(entity: "purchase", filters: [filter], sort: [EntityStore.Sort(field: "date")], limit: 2)
+        let records = try await store.read(
+            entity: "purchase",
+            filters: [filter],
+            sort: [EntityStore.Sort(field: "date")],
+            limit: 2
+        )
         #expect(records.map(\.uuid) == ["p-0", "p-2"])
     }
 

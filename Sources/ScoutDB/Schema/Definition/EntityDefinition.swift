@@ -16,8 +16,7 @@ struct EntityDefinition: Codable, Equatable, Sendable {
     private let index = FieldIndex()
 
     init(
-        entity: String, version: Int, fields: [FieldDefinition], unique: [String]? = nil,
-        views: [AggregateView]? = nil
+        entity: String, version: Int, fields: [FieldDefinition], unique: [String]? = nil, views: [AggregateView]? = nil
     ) {
         self.entity = entity
         self.version = version
@@ -72,13 +71,17 @@ struct EntityDefinition: Codable, Equatable, Sendable {
             if case .slot(let pool, let slot) = field.storage {
                 guard field.type == pool else {
                     throw SchemaError.invalidDefinition(
-                        "Field '\(field.name)' of type '\(field.type.rawValue)' cannot live in the '\(pool.rawValue)' pool")
+                        "Field '\(field.name)' of type '\(field.type.rawValue)' "
+                            + "cannot live in the '\(pool.rawValue)' pool"
+                    )
                 }
                 guard let index = pool.slotIndex(slot) else {
                     throw SchemaError.invalidDefinition("Slot '\(slot)' does not belong to the '\(pool.rawValue)' pool")
                 }
                 guard index < pool.capacity else {
-                    throw SchemaError.invalidDefinition("Slot '\(slot)' is beyond the '\(pool.rawValue)' pool capacity of \(pool.capacity)")
+                    throw SchemaError.invalidDefinition(
+                        "Slot '\(slot)' is beyond the '\(pool.rawValue)' pool capacity of \(pool.capacity)"
+                    )
                 }
             }
             if let derived = field.derived, !names.contains(derived.source) {
@@ -86,17 +89,23 @@ struct EntityDefinition: Codable, Equatable, Sendable {
             }
             if let pattern = field.pattern {
                 guard [.string, .text, .stringList].contains(field.type) else {
-                    throw SchemaError.invalidDefinition("Field '\(field.name)' of type '\(field.type.rawValue)' cannot constrain 'pattern'")
+                    throw SchemaError.invalidDefinition(
+                        "Field '\(field.name)' of type '\(field.type.rawValue)' cannot constrain 'pattern'"
+                    )
                 }
                 guard (try? Regex(pattern)) != nil else {
                     throw SchemaError.invalidDefinition("Field '\(field.name)' declares a malformed pattern")
                 }
             }
             if field.allowed != nil, ![.string, .text, .stringList].contains(field.type) {
-                throw SchemaError.invalidDefinition("Field '\(field.name)' of type '\(field.type.rawValue)' cannot constrain 'allowed'")
+                throw SchemaError.invalidDefinition(
+                    "Field '\(field.name)' of type '\(field.type.rawValue)' cannot constrain 'allowed'"
+                )
             }
             if field.min != nil || field.max != nil, ![.int, .double, .intList, .doubleList].contains(field.type) {
-                throw SchemaError.invalidDefinition("Field '\(field.name)' of type '\(field.type.rawValue)' cannot constrain 'minimum'/'maximum'")
+                throw SchemaError.invalidDefinition(
+                    "Field '\(field.name)' of type '\(field.type.rawValue)' cannot constrain 'minimum'/'maximum'"
+                )
             }
         }
         for lhs in fields {
@@ -108,7 +117,9 @@ struct EntityDefinition: Codable, Equatable, Sendable {
                     continue
                 }
                 if lhsSlot == rhsSlot, lhs.overlaps(rhs) {
-                    throw SchemaError.invalidDefinition("Fields '\(lhs.name)' and '\(rhs.name)' share slot '\(lhsSlot)'")
+                    throw SchemaError.invalidDefinition(
+                        "Fields '\(lhs.name)' and '\(rhs.name)' share slot '\(lhsSlot)'"
+                    )
                 }
             }
         }

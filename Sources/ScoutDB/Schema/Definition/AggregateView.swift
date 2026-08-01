@@ -20,7 +20,10 @@ struct AggregateView: Codable, Equatable, Sendable {
 
     var shards: Int?
 
-    init(name: String, groupBy: String? = nil, sum: String? = nil, min: String? = nil, max: String? = nil, shards: Int? = nil) {
+    init(
+        name: String, groupBy: String? = nil, sum: String? = nil, min: String? = nil, max: String? = nil,
+        shards: Int? = nil
+    ) {
         self.name = name
         self.groupBy = groupBy
         self.sum = sum

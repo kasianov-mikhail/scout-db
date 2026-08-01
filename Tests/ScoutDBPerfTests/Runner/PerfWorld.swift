@@ -58,8 +58,14 @@ final class PerfBench {
         backing.resetRequests()
 
         return PerfWorld(
-            corpus: corpus, database: backing, registry: registry, store: store,
-            runID: "r\(runs)", repeats: scenario.repeats(on: corpus.size), stage: PerfStage())
+            corpus: corpus,
+            database: backing,
+            registry: registry,
+            store: store,
+            runID: "r\(runs)",
+            repeats: scenario.repeats(on: corpus.size),
+            stage: PerfStage()
+        )
     }
 
     private func restore() {

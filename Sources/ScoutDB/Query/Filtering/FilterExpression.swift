@@ -51,7 +51,8 @@ public struct FilterExpression: Sendable {
             return FilterExpression(
                 negated.alternatives.flatMap { branch in
                     flipped.map { branch + $0 }
-                })
+                }
+            )
         }
     }
 }

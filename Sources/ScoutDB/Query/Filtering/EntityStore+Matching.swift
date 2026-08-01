@@ -60,7 +60,9 @@ extension EntityStore {
         }
     }
 
-    func split(_ filters: [Filter], entity: String, using definition: EntityDefinition) throws -> (server: [ServerFilter], client: [Filter]) {
+    func split(_ filters: [Filter], entity: String, using definition: EntityDefinition) throws -> (
+        server: [ServerFilter], client: [Filter]
+    ) {
         var server = [ServerFilter(field: "entity", op: .equals, value: .string(entity))]
         var client: [Filter] = []
         let byName = definition.fieldsByName(at: definition.version)
@@ -107,7 +109,10 @@ extension EntityStore {
 
     func serverSort(_ sort: [Sort], using definition: EntityDefinition) throws -> [ServerSort] {
         try sort.map { sort in
-            guard let field = definition.field(named: sort.field, at: definition.version), case .slot(let pool, let slot) = field.storage else {
+            guard let field = definition.field(named: sort.field, at: definition.version) else {
+                throw SchemaError.unknownField(sort.field)
+            }
+            guard case .slot(let pool, let slot) = field.storage else {
                 throw SchemaError.unknownField(sort.field)
             }
             guard pool.isSortable else {
@@ -195,7 +200,9 @@ extension EntityStore {
         }
     }
 
-    private static func stringMatcher(_ field: String, _ predicate: @escaping (String) -> Bool) -> (EntityRecord) -> Bool {
+    private static func stringMatcher(_ field: String, _ predicate: @escaping (String) -> Bool) -> (EntityRecord) ->
+        Bool
+    {
         { record in
             guard case .string(let text)? = record.values[field] else {
                 return false

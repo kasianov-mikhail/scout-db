@@ -37,7 +37,8 @@ struct SyncContractTests {
                         return false
                     }
                     return error is RecordConflictError || (error as? CKError)?.code == .serverRecordChanged
-                })
+                }
+            )
         }
     }
 }

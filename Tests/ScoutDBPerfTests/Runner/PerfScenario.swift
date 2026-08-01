@@ -19,7 +19,8 @@ struct PerfScenario: Sendable {
 
     init(
         _ feature: String, _ name: String, sql: Int, writes: Bool = true, iterations: Int? = nil,
-        setUp: (@Sendable (PerfWorld) async throws -> Void)? = nil, body: @escaping @Sendable (PerfWorld, Int) async throws -> Void
+        setUp: (@Sendable (PerfWorld) async throws -> Void)? = nil,
+        body: @escaping @Sendable (PerfWorld, Int) async throws -> Void
     ) {
         self.feature = feature
         self.name = name

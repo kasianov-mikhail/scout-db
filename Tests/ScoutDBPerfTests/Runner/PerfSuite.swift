@@ -27,7 +27,9 @@ struct PerfSuite {
             PerfReport.write(PerfReport.page(results), to: path)
         }
         for result in results where result.failure != nil {
-            Issue.record("\(result.feature)/\(result.scenario) [\(result.size.rawValue)] did not run: \(result.failure ?? "")")
+            Issue.record(
+                "\(result.feature)/\(result.scenario) [\(result.size.rawValue)] did not run: \(result.failure ?? "")"
+            )
         }
     }
 }

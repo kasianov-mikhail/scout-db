@@ -64,7 +64,8 @@ public struct EntitySchema: Sendable, Equatable {
             lhs.name == rhs.name && lhs.type == rhs.type && lhs.required == rhs.required
                 && lhs.payload == rhs.payload && lhs.allowed == rhs.allowed
                 && lhs.defaultValue == rhs.defaultValue && lhs.min == rhs.min && lhs.max == rhs.max
-                && lhs.pattern == rhs.pattern && lhs.derived?.source == rhs.derived?.source && lhs.derived?.transform == rhs.derived?.transform
+                && lhs.pattern == rhs.pattern && lhs.derived?.source == rhs.derived?.source
+                && lhs.derived?.transform == rhs.derived?.transform
         }
     }
 }

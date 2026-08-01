@@ -18,11 +18,14 @@ enum LocalQuery {
     }
 
     static func page(
-        _ records: [CKRecord], matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int, pageLimit: Int? = nil
+        _ records: [CKRecord], matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int,
+        pageLimit: Int? = nil
     ) -> QueryPage {
         let matched =
             records
-            .filter { $0.recordType == query.recordType && PredicateEvaluator.evaluate(query.predicate, record: $0) == true }
+            .filter {
+                $0.recordType == query.recordType && PredicateEvaluator.evaluate(query.predicate, record: $0) == true
+            }
             .sorted(by: query.sortDescriptors ?? [])
 
         let capacity = Swift.min(
@@ -42,7 +45,8 @@ enum LocalQuery {
     }
 
     static func resume(
-        _ records: [CKRecord], from cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int, pageLimit: Int? = nil
+        _ records: [CKRecord], from cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int,
+        pageLimit: Int? = nil
     ) -> QueryPage? {
         guard case .local(let token) = cursor, let scan = token as? Scan else {
             return nil

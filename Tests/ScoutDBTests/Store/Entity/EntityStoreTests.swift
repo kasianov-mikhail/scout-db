@@ -37,7 +37,9 @@ struct EntityStoreTests {
                 EntityWrite(values: makePurchase(uuid: "p-1").values, uuid: "p-1"),
                 EntityWrite(values: makePurchase(uuid: "p-2").values, uuid: "p-2"),
                 EntityWrite(values: makePurchase(uuid: "p-3").values, uuid: "p-3"),
-            ], entity: "purchase")
+            ],
+            entity: "purchase"
+        )
 
         #expect(uuids == ["p-1", "p-2", "p-3"])
         #expect(database.records.filter { $0.recordType == "Entity" }.count == 3)
@@ -97,7 +99,10 @@ struct EntityStoreTests {
         let ascending = try await store.read(entity: "purchase", sort: [EntityStore.Sort(field: "quantity")])
         #expect(ascending.map(\.uuid) == ["p-1", "p-2", "p-0"])
 
-        let descending = try await store.read(entity: "purchase", sort: [EntityStore.Sort(field: "quantity", ascending: false)])
+        let descending = try await store.read(
+            entity: "purchase",
+            sort: [EntityStore.Sort(field: "quantity", ascending: false)]
+        )
         #expect(descending.map(\.uuid) == ["p-0", "p-2", "p-1"])
     }
 
@@ -122,7 +127,11 @@ struct EntityStoreTests {
             [EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-3"))],
             [EntityStore.Filter(field: "quantity", op: .greaterThan, value: .int(2))],
         ]
-        let records = try await store.read(entity: "purchase", any: branches, sort: [EntityStore.Sort(field: "quantity")])
+        let records = try await store.read(
+            entity: "purchase",
+            any: branches,
+            sort: [EntityStore.Sort(field: "quantity")]
+        )
         #expect(records.map(\.uuid) == ["p-0", "p-2"])
     }
 
@@ -159,7 +168,9 @@ struct EntityStoreTests {
                 entity: "post",
                 fields: [
                     FieldDefinition(name: "tags", type: .stringList, storage: .slot(.stringList, "ls_00"))
-                ]))
+                ]
+            )
+        )
         try await store.write(["tags": .strings(["swift", "ios"])], entity: "post", uuid: "n-1")
         try await store.write(["tags": .strings(["swift", "server"])], entity: "post", uuid: "n-2")
         try await store.write(["tags": .strings(["android"])], entity: "post", uuid: "n-3")
@@ -180,10 +191,20 @@ struct EntityStoreTests {
                     FieldDefinition(name: "codes", type: .intList, storage: .slot(.intList, "li_00")),
                     FieldDefinition(name: "scores", type: .doubleList, storage: .slot(.doubleList, "ld_00")),
                     FieldDefinition(name: "times", type: .timestampList, storage: .slot(.timestampList, "lt_00")),
-                ]))
+                ]
+            )
+        )
         let t0 = Date(timeIntervalSince1970: 1_000)
-        try await store.write(["codes": .ints([1, 2, 3]), "scores": .doubles([9.5]), "times": .dates([t0])], entity: "sample", uuid: "s-1")
-        try await store.write(["codes": .ints([4, 5]), "scores": .doubles([1.0]), "times": .dates([])], entity: "sample", uuid: "s-2")
+        try await store.write(
+            ["codes": .ints([1, 2, 3]), "scores": .doubles([9.5]), "times": .dates([t0])],
+            entity: "sample",
+            uuid: "s-1"
+        )
+        try await store.write(
+            ["codes": .ints([4, 5]), "scores": .doubles([1.0]), "times": .dates([])],
+            entity: "sample",
+            uuid: "s-2"
+        )
 
         let record = try #require(try await store.read(entity: "sample").first { $0.uuid == "s-1" })
         #expect(record.values["codes"] == .ints([1, 2, 3]))
@@ -205,7 +226,9 @@ struct EntityStoreTests {
                 entity: "graph",
                 fields: [
                     FieldDefinition(name: "parent", type: .reference, storage: .slot(.reference, "r_00"))
-                ]))
+                ]
+            )
+        )
         try await store.write(["parent": .reference("node-9")], entity: "graph", uuid: "g-1")
 
         let record = try #require(try await store.read(entity: "graph").first)
@@ -219,7 +242,9 @@ struct EntityStoreTests {
                 entity: "blob",
                 fields: [
                     FieldDefinition(name: "digest", type: .bytes, storage: .slot(.bytes, "b_00"))
-                ]))
+                ]
+            )
+        )
         let payload = Data([0xDE, 0xAD])
         try await store.write(["digest": .bytes(payload)], entity: "blob", uuid: "b-1")
         let record = try #require(try await store.read(entity: "blob").first)
@@ -249,7 +274,10 @@ struct EntityStoreTests {
                 fields: [
                     FieldDefinition(name: "user_id", type: .string, storage: .slot(.string, "s_00")),
                     FieldDefinition(name: "score", type: .int, storage: .slot(.int, "i_00")),
-                ], unique: ["user_id"]))
+                ],
+                unique: ["user_id"]
+            )
+        )
 
         let first = try await store.write(["user_id": .string("alice"), "score": .int(1)], entity: "profile")
         let second = try await store.write(["user_id": .string("alice"), "score": .int(2)], entity: "profile")
@@ -276,8 +304,14 @@ struct EntityStoreTests {
                 fields: [
                     FieldDefinition(name: "title", type: .string, storage: .slot(.string, "s_00")),
                     FieldDefinition(name: "tags", type: .stringList, storage: .slot(.stringList, "ls_00")),
-                ]))
-        try await store.write(["title": .string("Intro"), "tags": .strings(["swift", "ios"])], entity: "post", uuid: "n-1")
+                ]
+            )
+        )
+        try await store.write(
+            ["title": .string("Intro"), "tags": .strings(["swift", "ios"])],
+            entity: "post",
+            uuid: "n-1"
+        )
         try await store.write(["title": .string("Server"), "tags": .strings(["vapor"])], entity: "post", uuid: "n-2")
 
         let filter = EntityStore.Filter(field: "tags", op: .contains, value: .string("swift"))
@@ -293,7 +327,10 @@ struct EntityStoreTests {
                 fields: [
                     FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
-                ], views: [AggregateView(name: "by_name", groupBy: "name")]))
+                ],
+                views: [AggregateView(name: "by_name", groupBy: "name")]
+            )
+        )
 
         let date = Date(timeIntervalSince1970: 36_000)
         try await store.write(["name": .string("open"), "date": .date(date)], entity: "tap")
@@ -313,7 +350,10 @@ struct EntityStoreTests {
                 fields: [
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
-                ], views: [AggregateView(name: "total", sum: "amount")]))
+                ],
+                views: [AggregateView(name: "total", sum: "amount")]
+            )
+        )
 
         let date = Date(timeIntervalSince1970: 36_000)
         try await store.write(["amount": .double(2.5), "date": .date(date)], entity: "payment")

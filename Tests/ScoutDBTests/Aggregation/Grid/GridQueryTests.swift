@@ -30,7 +30,10 @@ struct GridQueryTests {
             .create()
 
         for (product, amount) in [("app", 5.0), ("app", 15.0), ("pro", 25.0)] {
-            try await store.write(["product": .string(product), "amount": .double(amount), "date": .date(noon)], entity: "payment")
+            try await store.write(
+                ["product": .string(product), "amount": .double(amount), "date": .date(noon)],
+                entity: "payment"
+            )
         }
     }
 
@@ -51,7 +54,10 @@ struct GridQueryTests {
 
     @Test("An equality filter on the grouping field narrows to that group")
     func filterNarrowsToOneGroup() async throws {
-        let totals = try await store.query("payment").filter("product", .equals, .string("app")).totals("amount", by: "product")
+        let totals = try await store.query("payment").filter("product", .equals, .string("app")).totals(
+            "amount",
+            by: "product"
+        )
         #expect(totals.map(\.group) == ["app"])
     }
 

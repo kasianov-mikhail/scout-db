@@ -115,7 +115,9 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         lock.withLock { state.tally = RequestTally() }
     }
 
-    private func counting<R>(_ kind: RequestTally.Kind, carrying carried: (R) -> Int = { _ in 0 }, _ body: () throws -> R) rethrows -> R {
+    private func counting<R>(
+        _ kind: RequestTally.Kind, carrying carried: (R) -> Int = { _ in 0 }, _ body: () throws -> R
+    ) rethrows -> R {
         lock.lock()
         defer { lock.unlock() }
         do {
@@ -179,18 +181,27 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
 
     public init() {}
 
-    public func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> QueryPage {
+    public func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws
+        -> QueryPage
+    {
         try counting(.query, carrying: { $0.matchResults.count }) {
             try popErrorLocked(writing: false)
             return pageLocked(query: query, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
         }
     }
 
-    public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> QueryPage {
+    public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int)
+        async throws -> QueryPage
+    {
         try counting(.continuation, carrying: { $0.matchResults.count }) {
             try popErrorLocked(writing: false)
             let resumed = LocalQuery.resume(
-                indexedLocked(), from: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit, pageLimit: state.pageLimit)
+                indexedLocked(),
+                from: cursor,
+                desiredKeys: desiredKeys,
+                resultsLimit: resultsLimit,
+                pageLimit: state.pageLimit
+            )
             guard let page = resumed else {
                 throw CKError(.invalidArguments)
             }
@@ -204,14 +215,21 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     }
 
     private func popErrorLocked(writing: Bool) throws {
-        guard let error = writing ? state.writeErrors.popLast() ?? state.errors.popLast() : state.errors.popLast() else {
+        let error = writing ? state.writeErrors.popLast() ?? state.errors.popLast() : state.errors.popLast()
+        guard let error else {
             return
         }
         throw error
     }
 
     private func pageLocked(query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) -> QueryPage {
-        LocalQuery.page(indexedLocked(), matching: query, desiredKeys: desiredKeys, resultsLimit: resultsLimit, pageLimit: state.pageLimit)
+        LocalQuery.page(
+            indexedLocked(),
+            matching: query,
+            desiredKeys: desiredKeys,
+            resultsLimit: resultsLimit,
+            pageLimit: state.pageLimit
+        )
     }
 
     public func save(_ record: CKRecord) async throws -> CKRecord {
@@ -284,7 +302,9 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         return [.networkUnavailable, .networkFailure, .serviceUnavailable].contains(error.code)
     }
 
-    private func pendingConflictLocked(in batch: Set<CKRecord.ID>, queued: [CKRecord.ID: any Error]) -> RecordConflictError? {
+    private func pendingConflictLocked(in batch: Set<CKRecord.ID>, queued: [CKRecord.ID: any Error])
+        -> RecordConflictError?
+    {
         guard let next = (state.writeErrors.last ?? state.errors.last) as? RecordConflictError else {
             return nil
         }

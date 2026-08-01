@@ -46,7 +46,8 @@ extension EntityStore {
             pages.flatMap { $0 }
                 .sorted { precedes($0, $1, by: field, descending: descending) }
                 .filter { seen.insert($0.uuid).inserted }
-                .prefix(limit))
+                .prefix(limit)
+        )
 
         let next: FieldCursor? =
             records.count == limit
@@ -57,7 +58,8 @@ extension EntityStore {
     }
 
     private func fieldPage(
-        entity: String, filters: [Filter], field: String, descending: Bool, cursor: FieldCursor?, limit: Int, using definition: EntityDefinition
+        entity: String, filters: [Filter], field: String, descending: Bool, cursor: FieldCursor?, limit: Int,
+        using definition: EntityDefinition
     ) async throws -> [EntityRecord] {
         var pageFilters = filters
 
@@ -103,7 +105,8 @@ extension EntityStore {
             collected.sorted {
                 precedes($0, $1, by: field, descending: descending)
             }
-            .prefix(limit))
+            .prefix(limit)
+        )
     }
 }
 

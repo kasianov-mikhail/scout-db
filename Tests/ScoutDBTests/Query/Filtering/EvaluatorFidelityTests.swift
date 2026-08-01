@@ -27,17 +27,25 @@ struct EvaluatorFidelityTests {
                 fields: [
                     FieldDefinition(name: "owner", type: .reference, storage: .slot(.reference, "r_00")),
                     FieldDefinition(name: "blob", type: .bytes, storage: .slot(.bytes, "b_00")),
-                ]))
+                ]
+            )
+        )
         try await store.write(
             [
                 "owner": .reference("u-1"),
                 "blob": .bytes(Data([0x01])),
-            ], entity: "pin", uuid: "p-1")
+            ],
+            entity: "pin",
+            uuid: "p-1"
+        )
         try await store.write(
             [
                 "owner": .reference("u-2"),
                 "blob": .bytes(Data([0x02])),
-            ], entity: "pin", uuid: "p-2")
+            ],
+            entity: "pin",
+            uuid: "p-2"
+        )
     }
 
     private func read(_ filter: EntityStore.Filter) async throws -> [String] {
@@ -71,7 +79,10 @@ struct EvaluatorFidelityTests {
         record["s_00"] = "a"
 
         let filter = ServerFilter(field: "s_00", op: op, value: value)
-        #expect(PredicateEvaluator.evaluate(CKQuery(recordType: "Entity", filters: [filter]).predicate, record: record) != nil)
+        #expect(
+            PredicateEvaluator.evaluate(CKQuery(recordType: "Entity", filters: [filter]).predicate, record: record)
+                != nil
+        )
     }
 
     @Test("An inexpressible predicate is unknown, not false")

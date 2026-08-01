@@ -40,7 +40,8 @@ struct EntityDefinitionTests {
     func wrongPool() {
         let definition = makeDefinition(fields: [
             FieldDefinition(name: "count", type: .int, storage: .slot(.string, "s_00"))
-        ])
+        ]
+        )
         #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
@@ -48,7 +49,8 @@ struct EntityDefinitionTests {
     func wrongPrefix() {
         let definition = makeDefinition(fields: [
             FieldDefinition(name: "count", type: .int, storage: .slot(.int, "d_00"))
-        ])
+        ]
+        )
         #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
@@ -57,7 +59,8 @@ struct EntityDefinitionTests {
         let definition = makeDefinition(fields: [
             FieldDefinition(name: "first", type: .int, storage: .slot(.int, "i_00")),
             FieldDefinition(name: "second", type: .int, storage: .slot(.int, "i_00")),
-        ])
+        ]
+        )
         #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
@@ -66,7 +69,8 @@ struct EntityDefinitionTests {
         let definition = makeDefinition(fields: [
             FieldDefinition(name: "first", type: .int, storage: .slot(.int, "i_00"), until: 2),
             FieldDefinition(name: "second", type: .int, storage: .slot(.int, "i_00"), since: 2),
-        ])
+        ]
+        )
         try definition.validate()
     }
 
@@ -74,7 +78,8 @@ struct EntityDefinitionTests {
     func textSlot() throws {
         let definition = makeDefinition(fields: [
             FieldDefinition(name: "title", type: .text, storage: .slot(.text, "x_00"))
-        ])
+        ]
+        )
         try definition.validate()
     }
 
@@ -82,7 +87,8 @@ struct EntityDefinitionTests {
     func textInPlainPool() {
         let definition = makeDefinition(fields: [
             FieldDefinition(name: "title", type: .text, storage: .slot(.string, "s_00"))
-        ])
+        ]
+        )
         #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
@@ -90,7 +96,8 @@ struct EntityDefinitionTests {
     func slotBeyondCapacity() {
         let definition = makeDefinition(fields: [
             FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_99"))
-        ])
+        ]
+        )
         #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
@@ -100,7 +107,9 @@ struct EntityDefinitionTests {
             fields: [
                 FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
-            ], views: [AggregateView(name: "total", sum: "name")])
+            ],
+            views: [AggregateView(name: "total", sum: "name")]
+        )
         #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
@@ -109,7 +118,9 @@ struct EntityDefinitionTests {
         let definition = makeDefinition(
             fields: [
                 FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
-            ], unique: ["user_id"])
+            ],
+            unique: ["user_id"]
+        )
         #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
@@ -118,7 +129,8 @@ struct EntityDefinitionTests {
         let definition = makeDefinition(
             fields: [
                 FieldDefinition(name: "count", type: .int, storage: .slot(.int, "i_00"), allowed: ["1", "2"])
-            ])
+            ]
+        )
         #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
@@ -127,13 +139,15 @@ struct EntityDefinitionTests {
         let definition = makeDefinition(
             fields: [
                 FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"), min: 0)
-            ])
+            ]
+        )
         #expect(throws: SchemaError.self) { try definition.validate() }
     }
 }
 
 func makeDefinition(
-    entity: String = "purchase", version: Int = 2, fields: [FieldDefinition], unique: [String]? = nil, views: [AggregateView]? = nil
+    entity: String = "purchase", version: Int = 2, fields: [FieldDefinition], unique: [String]? = nil,
+    views: [AggregateView]? = nil
 ) -> EntityDefinition {
     EntityDefinition(entity: entity, version: version, fields: fields, unique: unique, views: views)
 }
@@ -147,5 +161,6 @@ func makePurchaseDefinition() -> EntityDefinition {
             FieldDefinition(name: "quantity", type: .int, storage: .slot(.int, "i_01"), since: 2),
             FieldDefinition(name: "total", type: .double, storage: .slot(.double, "d_00"), since: 2),
             FieldDefinition(name: "comment", type: .string, storage: .payload),
-        ])
+        ]
+    )
 }

@@ -13,7 +13,11 @@ extension PerfScenarios {
     static var writes: [PerfScenario] {
         [
             PerfScenario("Records", "write one order", sql: 1) { world, iteration in
-                try await world.store.write(world.newOrder(iteration), entity: PerfSchema.order, uuid: world.fresh("ord", iteration))
+                try await world.store.write(
+                    world.newOrder(iteration),
+                    entity: PerfSchema.order,
+                    uuid: world.fresh("ord", iteration)
+                )
             },
             PerfScenario("Records", "write one item, no views", sql: 1) { world, iteration in
                 try await world.store.write(
@@ -23,7 +27,10 @@ extension PerfScenarios {
                         "quantity": .int(2),
                         "price": .double(9.99),
                         "added": .date(world.corpus.now),
-                    ], entity: PerfSchema.item, uuid: world.fresh("itm", iteration))
+                    ],
+                    entity: PerfSchema.item,
+                    uuid: world.fresh("itm", iteration)
+                )
             },
             PerfScenario("Records", "batch of 400 items, one chunk", sql: 1, iterations: 2) { world, iteration in
                 try await world.store.write(itemBatch(world, iteration, count: 400), entity: PerfSchema.item)
@@ -49,7 +56,8 @@ extension PerfScenarios {
                 }
             },
             PerfScenario("Records", "update 50 records under CAS", sql: 2, iterations: 2) { world, iteration in
-                try await world.store.update(entity: PerfSchema.order, uuids: world.orders(50, from: iteration)) { record in
+                try await world.store.update(entity: PerfSchema.order, uuids: world.orders(50, from: iteration)) {
+                    record in
                     record.values["status"] = .string("paid")
                 }
             },

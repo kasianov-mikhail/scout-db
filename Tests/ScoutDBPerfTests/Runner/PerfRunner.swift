@@ -9,9 +9,10 @@ import Foundation
 import ScoutDBTesting
 
 enum PerfRunner {
-    static func sweep(_ scenarios: [PerfScenario], sizes: [DatasetSize] = DatasetSize.selected, onResult: (PerfResult) -> Void = { _ in }) async throws
-        -> [PerfResult]
-    {
+    static func sweep(
+        _ scenarios: [PerfScenario], sizes: [DatasetSize] = DatasetSize.selected,
+        onResult: (PerfResult) -> Void = { _ in }
+    ) async throws -> [PerfResult] {
         var results: [PerfResult] = []
         for size in sizes {
             let bench = PerfBench(corpus: try await CorpusCache.shared.corpus(for: size))
@@ -36,12 +37,24 @@ enum PerfRunner {
                 try await scenario.body(world, iteration)
             }
             return PerfResult(
-                feature: scenario.feature, scenario: scenario.name, size: bench.corpus.size, iterations: iterations, sql: scenario.sql,
-                requests: world.database.requests, failure: nil)
+                feature: scenario.feature,
+                scenario: scenario.name,
+                size: bench.corpus.size,
+                iterations: iterations,
+                sql: scenario.sql,
+                requests: world.database.requests,
+                failure: nil
+            )
         } catch {
             return PerfResult(
-                feature: scenario.feature, scenario: scenario.name, size: bench.corpus.size, iterations: iterations, sql: scenario.sql,
-                requests: RequestTally(), failure: "\(error)")
+                feature: scenario.feature,
+                scenario: scenario.name,
+                size: bench.corpus.size,
+                iterations: iterations,
+                sql: scenario.sql,
+                requests: RequestTally(),
+                failure: "\(error)"
+            )
         }
     }
 }
