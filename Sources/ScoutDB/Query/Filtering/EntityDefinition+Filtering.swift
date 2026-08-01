@@ -81,16 +81,4 @@ extension EntityDefinition {
             return ServerSort(field: slot, ascending: sort.ascending)
         }
     }
-
-    func clientRanked(_ sort: [EntityStore.Sort]) throws -> Bool {
-        try sort.contains { clause in
-            guard let field = field(named: clause.field, at: version) else {
-                throw SchemaError.unknownField(clause.field)
-            }
-            guard case .payload = field.storage else {
-                return false
-            }
-            return true
-        }
-    }
 }

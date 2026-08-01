@@ -65,7 +65,7 @@ struct EntityReader: Sendable {
     private func records(matching filters: [EntityStore.Filter], sort: [EntityStore.Sort] = [], limit: Int? = nil)
         async throws -> [EntityRecord]
     {
-        if try definition.clientRanked(sort) {
+        if try clientRanked(sort) {
             let ranked = try await records(matching: filters)
                 .sorted(using: sort.map(FieldOrder.init))
             guard let limit else {
@@ -97,11 +97,23 @@ struct EntityReader: Sendable {
         return collected
     }
 
+    private func clientRanked(_ sort: [EntityStore.Sort]) throws -> Bool {
+        try sort.contains { clause in
+            guard let field = definition.field(named: clause.field, at: definition.version) else {
+                throw SchemaError.unknownField(clause.field)
+            }
+            guard case .payload = field.storage else {
+                return false
+            }
+            return true
+        }
+    }
+
     private var rankable: Bool {
         guard sort.count > 0 else {
             return true
         }
-        if (try? definition.clientRanked(sort)) == true {
+        if (try? clientRanked(sort)) == true {
             return true
         }
         return (try? definition.serverSort(sort)) != nil
