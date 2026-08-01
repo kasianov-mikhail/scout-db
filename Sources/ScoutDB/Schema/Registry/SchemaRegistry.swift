@@ -63,11 +63,6 @@ public actor SchemaRegistry {
         EntitySchema(try await definition(for: entity))
     }
 
-    /// The schemas of every entity the registry has loaded so far.
-    public func schemas() -> [EntitySchema] {
-        cache.values.map(EntitySchema.init)
-    }
-
     func publish(_ definition: EntityDefinition) async throws {
         try definition.validate()
         let record = CKRecord(
