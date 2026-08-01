@@ -63,7 +63,9 @@ public struct Migrator: Sendable {
             guard rewritten.count > 0 else {
                 return
             }
-            try await database.write(records: rewritten)
+            for chunk in rewritten.chunked(into: maxBatchSize) {
+                try await database.modifyRecords(saving: chunk, deleting: [])
+            }
             migrated += rewritten.count
         }
         return migrated
