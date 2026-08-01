@@ -55,13 +55,16 @@ struct GridAggregator {
 
                 var delta = deltas[slot] ?? CellDelta()
                 delta.count += sign
-                if let (kind, field) = view.metric, let value = entityRecord.values[field]?.scalar {
+                if let kind = view.metricKind, let field = view.metricField,
+                    let value = entityRecord.values[field]?.scalar
+                {
+                    delta.kind = kind
                     if adding {
-                        delta.value = (kind, delta.value.map { kind.combine($0.total, value) } ?? value)
+                        delta.value = delta.value.map { kind.combine($0, value) } ?? value
                     } else if kind == .sum {
-                        delta.value = (.sum, (delta.value?.total ?? 0) - value)
+                        delta.value = (delta.value ?? 0) - value
                     } else {
-                        delta.removed = (kind, delta.removed.map { kind.combine($0.total, value) } ?? value)
+                        delta.removed = delta.removed.map { kind.combine($0, value) } ?? value
                     }
                 }
                 deltas[slot] = delta
@@ -166,7 +169,7 @@ struct GridAggregator {
 extension CKRecord {
     fileprivate func fold(_ delta: CellDelta) {
         setCellCount(cellCount + delta.count)
-        if let (kind, total) = delta.value {
+        if let kind = delta.kind, let total = delta.value {
             setCellValue(cellValue.map { kind.combine($0, total) } ?? total)
         }
     }

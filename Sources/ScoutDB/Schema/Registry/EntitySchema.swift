@@ -56,17 +56,12 @@ public struct EntitySchema: Sendable, Equatable {
         /// A whole-string regular expression every value must match.
         public let pattern: String?
 
-        /// The field this one shadows, and what it makes of that value — a
-        /// derived field is recomputed on every write rather than supplied.
-        public let derived: (source: String, transform: FieldTransform)?
+        /// The field this one shadows — a derived field is recomputed on every
+        /// write rather than supplied.
+        public let derivedFrom: String?
 
-        public static func == (lhs: Self, rhs: Self) -> Bool {
-            lhs.name == rhs.name && lhs.type == rhs.type && lhs.required == rhs.required
-                && lhs.payload == rhs.payload && lhs.allowed == rhs.allowed
-                && lhs.defaultValue == rhs.defaultValue && lhs.min == rhs.min && lhs.max == rhs.max
-                && lhs.pattern == rhs.pattern && lhs.derived?.source == rhs.derived?.source
-                && lhs.derived?.transform == rhs.derived?.transform
-        }
+        /// What a derived field makes of the value it shadows.
+        public let transform: FieldTransform?
     }
 }
 
@@ -89,6 +84,7 @@ extension EntitySchema.Field {
         min = field.min
         max = field.max
         pattern = field.pattern
-        derived = field.derived.map { ($0.source, $0.transform) }
+        derivedFrom = field.derived?.source
+        transform = field.derived?.transform
     }
 }

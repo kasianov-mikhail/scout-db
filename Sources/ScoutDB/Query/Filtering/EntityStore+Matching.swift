@@ -65,12 +65,14 @@ extension EntityStore {
     ) {
         var server = [ServerFilter(field: "entity", op: .equals, value: .string(entity))]
         var client: [Filter] = []
+
         let byName = definition.fieldsByName(at: definition.version)
 
         for filter in filters {
             guard let field = byName[filter.field] else {
                 throw SchemaError.unknownField(filter.field)
             }
+
             if filter.negated {
                 guard filter.op != .search else {
                     throw SchemaError.invalidValue(filter.field)
@@ -82,17 +84,21 @@ extension EntityStore {
                 }
                 continue
             }
+
             switch filter.op {
             case .isNull, .isNotNull:
                 client.append(filter)
+
             case .contains where !field.type.isList:
                 client.append(filter)
+
             case .search:
                 guard field.type == .text, case .slot(_, let slot) = field.storage else {
                     throw SchemaError.invalidValue(filter.field)
                 }
                 server.append(ServerFilter(field: slot, op: .search, value: filter.value))
                 client.append(filter)
+
             default:
                 guard let op = filter.op.serverOperator else {
                     throw SchemaError.unknownField(filter.field)
@@ -104,6 +110,7 @@ extension EntityStore {
                 server.append(ServerFilter(field: slot, op: op, value: filter.value))
             }
         }
+
         return (server, client)
     }
 
@@ -118,6 +125,7 @@ extension EntityStore {
             guard pool.isSortable else {
                 throw SchemaError.invalidValue(sort.field)
             }
+
             return ServerSort(field: slot, ascending: sort.ascending)
         }
     }
@@ -127,25 +135,33 @@ extension EntityStore {
         switch filter.op {
         case .isNull:
             return { $0.values[field] == nil }
+
         case .isNotNull:
             return { $0.values[field] != nil }
+
         case .equals:
             return { $0.values[field] == filter.value }
+
         case .notEquals:
             return { $0.values[field].map { $0 != filter.value } ?? false }
+
         case .greaterThan, .greaterThanOrEquals, .lessThan, .lessThanOrEquals:
             return comparisonMatcher(for: filter)
+
         case .in:
             let options = Set(filter.value.members ?? [filter.value])
             return { $0.values[field].map(options.contains) ?? false }
+
         case .notIn:
             let options = Set(filter.value.members ?? [filter.value])
             return { record in record.values[field].map { !options.contains($0) } ?? false }
+
         case .beginsWith:
             guard case .string(let prefix) = filter.value else {
                 return { _ in false }
             }
             return stringMatcher(field) { $0.hasPrefix(prefix) }
+
         case .contains:
             guard case .string(let needle) = filter.value else {
                 return { _ in false }
@@ -160,11 +176,14 @@ extension EntityStore {
                     false
                 }
             }
+
         case .search:
             guard case .string(let needle) = filter.value else {
                 return { _ in false }
             }
-            let needles = needle.lowercased().split { !$0.isLetter && !$0.isNumber }
+            let needles = needle.lowercased().split {
+                !$0.isLetter && !$0.isNumber
+            }
             return stringMatcher(field) { text in
                 let tokens = Set(text.lowercased().split { !$0.isLetter && !$0.isNumber })
                 return needles.allSatisfy(tokens.contains)
@@ -173,9 +192,8 @@ extension EntityStore {
     }
 
     private static func comparisonMatcher(for filter: Filter) -> (EntityRecord) -> Bool {
-        let field = filter.field
-        return { record in
-            guard let value = record.values[field], comparable(value, filter.value) else {
+        { record in
+            guard let value = record.values[filter.field], comparable(value, filter.value) else {
                 return false
             }
             return switch (filter.op, rank(value, filter.value)) {

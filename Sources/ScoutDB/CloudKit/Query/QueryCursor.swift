@@ -14,6 +14,7 @@ import CloudKit
 /// Real CloudKit pages carry the opaque cursor; a double mints `local`,
 /// carrying whatever token continues its own scan. ScoutDB hands either one
 /// back to the database that minted it and never reads inside.
+///
 public enum QueryCursor: @unchecked Sendable {
     case cloudKit(CKQueryOperation.Cursor)
     case local(any Sendable)
@@ -21,4 +22,8 @@ public enum QueryCursor: @unchecked Sendable {
 
 /// One page of a query: the matched records in order, and the cursor that
 /// continues the read when more remain.
-public typealias QueryPage = (matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?)
+///
+public typealias QueryPage = (
+    matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)],
+    queryCursor: QueryCursor?
+)

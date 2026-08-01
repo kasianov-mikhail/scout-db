@@ -268,7 +268,7 @@ struct OperationsTests {
 
         let fresh = SchemaRegistry(database: database)
         try await fresh.loadAll()
-        #expect(await fresh.definitions().isEmpty)
+        #expect(await fresh.schemas().isEmpty)
 
         try await registry.publish(makePurchaseDefinition())
         #expect(try await store.read(entity: "purchase").isEmpty)
@@ -559,7 +559,7 @@ struct OperationsTests {
         let fresh = SchemaRegistry(database: database)
         let loaded = try await fresh.loadAll()
         #expect(loaded == 3)
-        #expect(Set(await fresh.definitions().map(\.entity)) == ["purchase", "alpha", "beta"])
+        #expect(Set(await fresh.schemas().map(\.entity)) == ["purchase", "alpha", "beta"])
     }
 
     @Test("Typed lists round-trip through the record subscript")

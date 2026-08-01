@@ -61,7 +61,7 @@ struct EntityDefinition: Codable, Equatable, Sendable {
             guard let field else {
                 return true
             }
-            return view.metric?.field == field
+            return view.metricField == field
         }
     }
 
