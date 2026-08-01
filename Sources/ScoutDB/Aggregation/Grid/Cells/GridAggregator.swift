@@ -18,10 +18,6 @@ struct GridAggregator {
         self.slots = slots
     }
 
-    func record(_ batch: [EntityRecord], using definition: EntityDefinition) async throws {
-        try await rebalance(removing: [], adding: batch, using: definition)
-    }
-
     func rebalance(removing old: [EntityRecord], adding new: [EntityRecord], using definition: EntityDefinition)
         async throws
     {

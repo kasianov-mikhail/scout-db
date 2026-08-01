@@ -14,7 +14,7 @@ extension EntityStore {
         }
         let writer = EntityWriter(
             database: database,
-            aggregator: aggregator,
+            aggregator: GridAggregator(database: database, slots: slots),
             entity: entity,
             definition: try await registry.definition(for: entity)
         )

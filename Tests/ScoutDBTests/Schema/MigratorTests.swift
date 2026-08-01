@@ -33,7 +33,7 @@ struct MigratorTests {
         let migrated = try await migrator.backfill(entity: "profile")
         #expect(migrated == 1)
 
-        let records = try await store.read(entity: "profile")
+        let records = try await BranchReader(store: store, entity: "profile").read()
         #expect(records.map(\.schemaVersion) == [2])
         #expect(records.first?.values["user_id"] == .string("alice"))
     }
@@ -48,7 +48,7 @@ struct MigratorTests {
         try await migrator.backfill(entity: "profile")
 
         let filter = EntityStore.Filter(field: "user_id", op: .equals, value: .string("bob"))
-        let records = try await store.read(entity: "profile", any: [[filter]])
+        let records = try await BranchReader(store: store, entity: "profile").read(any: [[filter]])
         #expect(records.map(\.uuid) == ["u-2"])
     }
 
@@ -62,7 +62,7 @@ struct MigratorTests {
         let migrated = try await migrator.rename(entity: "member", from: "user", to: "handle")
         #expect(migrated == 1)
 
-        let records = try await store.read(entity: "member")
+        let records = try await BranchReader(store: store, entity: "member").read()
         #expect(records.map(\.schemaVersion) == [2])
         #expect(records.first?.values["handle"] == .string("dana"))
         #expect(records.first?.values["user"] == nil)
@@ -86,7 +86,7 @@ struct MigratorTests {
             record.values["amount"] = .double(Double(cents) / 100)
         }
 
-        let records = try await store.read(entity: "payment")
+        let records = try await BranchReader(store: store, entity: "payment").read()
         #expect(records.first?.values["amount"] == .double(5))
     }
 

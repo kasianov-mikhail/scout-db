@@ -25,7 +25,7 @@ struct FoldQuery {
             return fold.apply(values: values, count: count)
         }
 
-        let records = try await store.read(entity: entity, any: branches)
+        let records = try await BranchReader(store: store, entity: entity).read(any: branches)
         let scalars = records.compactMap { $0.values[field]?.scalar }
 
         return fold.apply(values: scalars, count: scalars.count)
@@ -43,7 +43,7 @@ struct FoldQuery {
             }
         }
 
-        let records = try await store.read(entity: entity, any: branches)
+        let records = try await BranchReader(store: store, entity: entity).read(any: branches)
 
         var buckets: [String: [Double]] = [:]
         for record in records {
@@ -67,7 +67,7 @@ struct FoldQuery {
             return gridded
         }
 
-        let records = try await store.read(entity: entity, any: branches)
+        let records = try await BranchReader(store: store, entity: entity).read(any: branches)
 
         var counts: [String: Int] = [:]
         for record in records {

@@ -91,7 +91,7 @@ struct AggregatesTests {
         try await store.write([EntityWrite(values: ["user": .string("u1"), "date": .date(noon)])], entity: "visit")
         try await store.write([EntityWrite(values: ["user": .string("u1"), "date": .date(noon)])], entity: "visit")
 
-        #expect(try await store.read(entity: "visit").count == 1)
+        #expect(try await BranchReader(store: store, entity: "visit").read().count == 1)
         #expect(try await AggregateQuery(store, entity: "visit", view: "by_all").totals().map(\.count) == [1])
     }
 
@@ -115,7 +115,7 @@ struct AggregatesTests {
         try await store.write(
             [EntityWrite(values: ["user": .string("u1"), "amount": .double(25), "date": .date(noon)])], entity: "meter")
 
-        #expect(try await store.read(entity: "meter").count == 1)
+        #expect(try await BranchReader(store: store, entity: "meter").read().count == 1)
         let totals = try await AggregateQuery(store, entity: "meter", view: "revenue").totals()
         #expect(totals.first?.count == 1)
         #expect(totals.first?.value == 25)

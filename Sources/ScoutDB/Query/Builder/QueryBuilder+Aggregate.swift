@@ -30,13 +30,9 @@ extension QueryBuilder {
             let counted = folded.values.reduce(0) { $0 + $1.count }
             return Swift.min(counted, ceiling ?? Int.max)
         }
-        return try await store.read(
-            entity: entity,
-            any: alternatives,
-            sort: sorts,
-            limit: ceiling
-        )
-        .count
+        return try await BranchReader(store: store, entity: entity, sort: sorts, limit: ceiling)
+            .read(any: alternatives)
+            .count
     }
 
     /// Sums a numeric field across the matching records.
