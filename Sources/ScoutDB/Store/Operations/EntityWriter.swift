@@ -49,7 +49,9 @@ struct EntityWriter: Sendable {
             try coder.encode($0)
         }
 
-        try await database.write(records: encoded)
+        for chunk in encoded.chunked(into: maxBatchSize) {
+            try await database.modifyRecords(saving: chunk, deleting: [])
+        }
 
         try await aggregator.rebalance(
             removing: removedFromViews,

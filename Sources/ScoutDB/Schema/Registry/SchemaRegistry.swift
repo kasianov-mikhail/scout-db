@@ -73,7 +73,7 @@ public actor SchemaRegistry {
         record["entity_version"] = Int64(definition.version)
         record["status"] = "active"
         record["definition"] = try JSONEncoder().encode(definition)
-        try await database.write(records: [record])
+        try await database.modifyRecords(saving: [record], deleting: [])
         cache[definition.entity] = definition
     }
 
