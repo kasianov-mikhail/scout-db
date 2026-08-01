@@ -13,8 +13,6 @@ public enum SchemaError: Error, Equatable {
     case typeMismatch(String)
     case missingField(String)
     case invalidValue(String)
-    case missingKey(String)
-    case notFound(String)
     case staleSchema(entity: String, version: Int)
     case invalidDefinition(String)
 }
@@ -32,10 +30,6 @@ extension SchemaError: LocalizedError {
             "Missing required field '\(name)'"
         case .invalidValue(let name):
             "Invalid value for field '\(name)'"
-        case .missingKey(let name):
-            "Missing key '\(name)'"
-        case .notFound(let name):
-            "Not found: '\(name)'"
         case .staleSchema(let entity, let version):
             "Stale schema for entity '\(entity)' at version \(version)"
         case .invalidDefinition(let message):

@@ -7,11 +7,12 @@
 
 import CloudKit
 
-extension CloudDatabase {
-    fileprivate static var maxBatchSize: Int { 400 }
+/// The most records CloudKit accepts in one request.
+let maxBatchSize = 400
 
+extension CloudDatabase {
     func write(records: [CKRecord]) async throws {
-        for chunk in records.chunked(into: Self.maxBatchSize) {
+        for chunk in records.chunked(into: maxBatchSize) {
             try await modifyRecords(saving: chunk, deleting: [])
         }
     }

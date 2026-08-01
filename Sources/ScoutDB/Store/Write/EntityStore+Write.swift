@@ -58,14 +58,6 @@ extension EntityStore {
             using: definition
         )
         let liveByUUID = Dictionary(live.map { ($0.uuid, $0) }, uniquingKeysWith: { first, _ in first })
-        var removing: [EntityRecord] = []
-        var adding: [EntityRecord] = []
-        for (uuid, record) in latest {
-            if let old = liveByUUID[uuid] {
-                removing.append(old)
-            }
-            adding.append(record)
-        }
-        return (removing, adding)
+        return (Array(liveByUUID.values), Array(latest.values))
     }
 }

@@ -23,9 +23,8 @@ extension QueryBuilder {
     /// ```
     ///
     public func filter(_ expression: FilterExpression) -> Self {
-        let added = expression.alternatives
         var builder = self
-        builder.alternatives = alternatives.flatMap { branch in added.map { branch + $0 } }
+        builder.alternatives = (FilterExpression(alternatives) && expression).alternatives
         return builder
     }
 
@@ -42,9 +41,6 @@ extension QueryBuilder {
     /// ```
     ///
     public func filter(_ field: String, _ method: Operator, _ value: RecordValue) -> Self {
-        let filter = EntityStore.Filter(field: field, op: method, value: value)
-        var builder = self
-        builder.alternatives = alternatives.map { $0 + [filter] }
-        return builder
+        filter(FilterExpression(EntityStore.Filter(field: field, op: method, value: value)))
     }
 }

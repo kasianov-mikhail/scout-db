@@ -41,7 +41,7 @@ extension EntityStore {
             var entry = folded[group == nil ? "" : key] ?? GridFold()
             entry.count += count
             if let cell = record[CKRecord.valueCell] as? Double {
-                entry.value = entry.value.map { kind.combine($0, cell) } ?? cell
+                entry.value = kind.combine(entry.value, cell)
             }
             folded[group == nil ? "" : key] = entry
         }

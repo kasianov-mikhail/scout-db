@@ -10,11 +10,6 @@ import CloudKit
 extension EntityStore {
     func decode(_ records: [CKRecord], using definition: EntityDefinition) throws -> [EntityRecord] {
         let coder = EntityCoder()
-        return try records.compactMap { try decode($0, with: coder, using: definition) }
-    }
-
-    func decode(_ record: CKRecord, with coder: EntityCoder, using definition: EntityDefinition) throws -> EntityRecord?
-    {
-        try coder.decode(record, using: definition)
+        return try records.map { try coder.decode($0, using: definition) }
     }
 }

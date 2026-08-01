@@ -31,10 +31,5 @@ public struct EntityStore: Sendable {
     struct Sort: Equatable, Sendable {
         let field: String
         var ascending = true
-
-        init(field: String, ascending: Bool = true) {
-            self.field = field
-            self.ascending = ascending
-        }
     }
 }

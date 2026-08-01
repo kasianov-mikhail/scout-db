@@ -48,3 +48,20 @@ struct GridSlot: Hashable {
         return record
     }
 }
+
+extension CKQuery {
+    /// The cells of one view, narrowed to a single group when one is named.
+    ///
+    /// The date column needs no filter of its own: every cell carries
+    /// ``GridSlot/date``, so matching on it would narrow nothing.
+    static func grid(entity: String, view: String, group: String? = nil) -> CKQuery {
+        var filters = [
+            ServerFilter(field: "entity", op: .equals, value: .string(entity)),
+            ServerFilter(field: "view", op: .equals, value: .string(view)),
+        ]
+        if let group {
+            filters.append(ServerFilter(field: "group_key", op: .equals, value: .string(group)))
+        }
+        return CKQuery(recordType: GridSlot.recordType, filters: filters)
+    }
+}

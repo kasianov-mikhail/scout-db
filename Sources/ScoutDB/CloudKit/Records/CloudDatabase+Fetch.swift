@@ -73,21 +73,8 @@ extension CloudDatabase {
         }
         let database = self
 
-        return try await withThrowingTaskGroup(of: IndexedBatch<CKRecord>.self) { group in
-            for (index, batch) in ids.chunked(into: batchSize).enumerated() {
-                group.addTask {
-                    try await IndexedBatch(
-                        index: index,
-                        items: database.fetchRecords(ids: batch)
-                    )
-                }
-            }
-
-            var batches: [IndexedBatch<CKRecord>] = []
-            for try await batch in group {
-                batches.append(batch)
-            }
-            return batches.ordered()
+        return try await ids.chunked(into: batchSize).orderedBatches { batch in
+            try await database.fetchRecords(ids: batch)
         }
     }
 }
