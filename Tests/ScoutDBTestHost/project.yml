@@ -20,7 +20,7 @@ targets:
     type: application
     platform: iOS
     deploymentTarget: "16.0"
-    sources: [Sources]
+    sources: [ScoutDBTestHostApp.swift]
     entitlements:
       path: ScoutDBTestHost.entitlements
       properties:
@@ -42,7 +42,7 @@ targets:
     sources:
       # The contract tests are shared by file reference with the SPM test
       # target — one set of assertions, two runners.
-      - path: ../ScoutDBTests/Contract
+      - path: ../ScoutDBTests/CloudKit/Contract
     dependencies:
       - target: ScoutDBTestHost
       - package: scout-db
