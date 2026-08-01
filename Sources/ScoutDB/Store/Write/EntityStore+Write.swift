@@ -53,9 +53,8 @@ extension EntityStore {
         }
         var latest: [String: EntityRecord] = [:]
         for record in records { latest[record.uuid] = record }
-        let live = try await liveRecords(
-            entity: definition.entity,
-            uuids: latest.keys.filter(stored.contains),
+        let live = try decode(
+            try await items(entity: definition.entity, uuids: latest.keys.filter(stored.contains)),
             using: definition
         )
         let liveByUUID = Dictionary(live.map { ($0.uuid, $0) }, uniquingKeysWith: { first, _ in first })
@@ -68,14 +67,5 @@ extension EntityStore {
             adding.append(record)
         }
         return (removing, adding)
-    }
-
-    private func liveRecords(entity: String, uuids: [String], using definition: EntityDefinition) async throws
-        -> [EntityRecord]
-    {
-        guard definition.views?.isEmpty == false else {
-            return []
-        }
-        return try decode(try await items(entity: entity, uuids: uuids), using: definition)
     }
 }
