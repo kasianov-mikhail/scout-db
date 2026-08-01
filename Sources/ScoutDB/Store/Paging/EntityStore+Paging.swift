@@ -5,7 +5,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-import Foundation
+import CloudKit
 
 extension EntityStore {
     func read(
@@ -90,20 +90,19 @@ private struct FieldPager: Sendable {
                 using: definition
             ) + [ServerSort(field: "uuid", ascending: true)]
 
-        let query = try store.liveQuery(
-            pageFilters,
-            entity: entity,
-            sort: sort,
-            using: definition
+        let query = CKQuery(
+            recordType: "Entity",
+            filters: try store.serverFilters(pageFilters, entity: entity, using: definition),
+            sort: sort
         )
-        let included = try store.liveFilter(pageFilters, using: definition)
+        let matchers = try EntityStore.matchers(for: store.clientFilters(pageFilters, using: definition))
 
         let collected = try await store.boundedRecords(
             matching: query,
             limit: limit,
             using: definition
         ) { record in
-            guard included(record), record.values[field] != nil else {
+            guard matchers.allSatisfy({ $0(record) }), record.values[field] != nil else {
                 return false
             }
             guard let cursor else {

@@ -8,21 +8,6 @@
 import CloudKit
 
 extension EntityStore {
-    func liveQuery(_ filters: [Filter], entity: String, sort: [ServerSort], using definition: EntityDefinition)
-        throws -> CKQuery
-    {
-        let server = try serverFilters(filters, entity: entity, using: definition)
-        return CKQuery(recordType: "Entity", filters: server, sort: sort)
-    }
-
-    func liveFilter(_ filters: [Filter], using definition: EntityDefinition)
-        throws -> (EntityRecord) -> Bool
-    {
-        let client = try clientFilters(filters, using: definition)
-        let matchers = try Self.matchers(for: client)
-        return { record in matchers.allSatisfy { $0(record) } }
-    }
-
     func boundedRecords(
         matching query: CKQuery, limit: Int, using definition: EntityDefinition,
         where included: (EntityRecord) -> Bool

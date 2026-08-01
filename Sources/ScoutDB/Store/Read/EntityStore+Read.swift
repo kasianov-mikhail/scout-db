@@ -5,7 +5,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-import Foundation
+import CloudKit
 
 extension EntityStore {
     func read(entity: String, filters: [Filter] = [], sort: [Sort] = [], limit: Int? = nil)
@@ -20,13 +20,13 @@ extension EntityStore {
             }
             return Array(ranked.prefix(limit))
         }
-        let query = try liveQuery(
-            filters,
-            entity: entity,
-            sort: try serverSort(sort, using: definition),
-            using: definition
+        let query = CKQuery(
+            recordType: "Entity",
+            filters: try serverFilters(filters, entity: entity, using: definition),
+            sort: try serverSort(sort, using: definition)
         )
-        let included = try liveFilter(filters, using: definition)
+        let matchers = try Self.matchers(for: clientFilters(filters, using: definition))
+        let included = { (record: EntityRecord) in matchers.allSatisfy { $0(record) } }
         if let limit {
             return Array(
                 try await boundedRecords(
