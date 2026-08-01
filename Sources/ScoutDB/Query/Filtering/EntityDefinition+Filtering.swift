@@ -8,7 +8,7 @@
 import Foundation
 
 extension EntityDefinition {
-    func serverFilters(_ filters: [EntityStore.Filter]) throws -> [ServerFilter] {
+    func serverFilters(_ filters: [Filter]) throws -> [ServerFilter] {
         var server = [ServerFilter(field: "entity", op: .equals, value: .string(entity))]
 
         let byName = fieldsByName(at: version)
@@ -39,7 +39,7 @@ extension EntityDefinition {
         return server
     }
 
-    func clientFilters(_ filters: [EntityStore.Filter]) throws -> [EntityStore.Filter] {
+    func clientFilters(_ filters: [Filter]) throws -> [Filter] {
         let byName = fieldsByName(at: version)
 
         return try filters.filter { filter in

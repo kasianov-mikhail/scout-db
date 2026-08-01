@@ -11,7 +11,7 @@ struct FoldQuery {
     let store: EntityStore
     let entity: String
 
-    var branches: [[EntityStore.Filter]]
+    var branches: [[Filter]]
     var field: String?
     var group: String?
 

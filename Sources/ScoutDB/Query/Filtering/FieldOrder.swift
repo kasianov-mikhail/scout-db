@@ -14,38 +14,23 @@ struct FieldOrder: SortComparator, Hashable, Sendable {
     }
 
     let key: Key
-    var order: SortOrder
-
-    static let uuid = FieldOrder(key: .uuid, order: .forward)
-
-    static func field(_ name: String, _ order: SortOrder = .forward) -> FieldOrder {
-        FieldOrder(key: .field(name), order: order)
-    }
+    var order: SortOrder = .forward
 
     func compare(_ lhs: EntityRecord, _ rhs: EntityRecord) -> ComparisonResult {
-        let result = RecordValue.rank(value(of: lhs), value(of: rhs))
-        guard order == .reverse else {
-            return result
-        }
-        return switch result {
-        case .orderedAscending: .orderedDescending
-        case .orderedDescending: .orderedAscending
-        case .orderedSame: .orderedSame
+        switch order {
+        case .forward:
+            rank(lhs, rhs)
+        case .reverse:
+            rank(rhs, lhs)
         }
     }
 
-    private func value(of record: EntityRecord) -> RecordValue? {
+    private func rank(_ lhs: EntityRecord, _ rhs: EntityRecord) -> ComparisonResult {
         switch key {
         case .field(let name):
-            record.values[name]
+            RecordValue.rank(lhs.values[name], rhs.values[name])
         case .uuid:
-            .string(record.uuid)
+            RecordValue.rank(.string(lhs.uuid), .string(rhs.uuid))
         }
-    }
-}
-
-extension FieldOrder {
-    init(_ sort: EntityStore.Sort) {
-        self.init(key: .field(sort.field), order: sort.ascending ? .forward : .reverse)
     }
 }

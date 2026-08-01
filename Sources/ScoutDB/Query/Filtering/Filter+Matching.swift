@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension EntityStore.Filter {
+extension Filter {
     func matcher() -> (EntityRecord) -> Bool {
         switch op {
         case .equals:

@@ -67,7 +67,7 @@ struct EntityStoreTests {
         other["product_id"] = .string("sku-7")
         try await store.write([EntityWrite(values: other, uuid: "p-2")], entity: "purchase")
 
-        let filter = EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-7"))
+        let filter = Filter(field: "product_id", op: .equals, value: .string("sku-7"))
         let records = try await EntityReader(store: store, entity: "purchase").read(any: [[filter]])
         #expect(records.map(\.uuid) == ["p-2"])
     }
@@ -80,9 +80,9 @@ struct EntityStoreTests {
         try await store.write([EntityWrite(values: cheap, uuid: "p-2")], entity: "purchase")
 
         let filters = [
-            EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-42")),
-            EntityStore.Filter(field: "quantity", op: .greaterThan, value: .int(1)),
-            EntityStore.Filter(field: "date", op: .greaterThan, value: .date(Date(timeIntervalSince1970: 500_000))),
+            Filter(field: "product_id", op: .equals, value: .string("sku-42")),
+            Filter(field: "quantity", op: .greaterThan, value: .int(1)),
+            Filter(field: "date", op: .greaterThan, value: .date(Date(timeIntervalSince1970: 500_000))),
         ]
         let records = try await EntityReader(store: store, entity: "purchase").read(any: [filters])
         #expect(records.map(\.uuid) == ["p-1"])
@@ -124,9 +124,9 @@ struct EntityStoreTests {
         }
 
         let branches = [
-            [EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-1"))],
-            [EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-3"))],
-            [EntityStore.Filter(field: "quantity", op: .greaterThan, value: .int(2))],
+            [Filter(field: "product_id", op: .equals, value: .string("sku-1"))],
+            [Filter(field: "product_id", op: .equals, value: .string("sku-3"))],
+            [Filter(field: "quantity", op: .greaterThan, value: .int(2))],
         ]
         let records = try await EntityReader(
             store: store, entity: "purchase", sort: [EntityStore.Sort(field: "quantity")]
@@ -141,7 +141,7 @@ struct EntityStoreTests {
         other["product_id"] = .string("sku-7")
         try await store.write([EntityWrite(values: other, uuid: "p-2")], entity: "purchase")
 
-        let filter = EntityStore.Filter(field: "product_id", op: .notIn, value: .strings(["sku-42"]))
+        let filter = Filter(field: "product_id", op: .notIn, value: .strings(["sku-42"]))
         let records = try await EntityReader(store: store, entity: "purchase").read(any: [[filter]])
         #expect(records.map(\.uuid) == ["p-2"])
     }
@@ -216,7 +216,7 @@ struct EntityStoreTests {
         let whole = try #require(samples.first { $0.uuid == "s-2" })
         #expect(whole.values["scores"] == .doubles([1.0]))
 
-        let filter = EntityStore.Filter(field: "codes", op: .contains, value: .int(2))
+        let filter = Filter(field: "codes", op: .contains, value: .int(2))
         let matched = try await EntityReader(store: store, entity: "sample").read(any: [[filter]])
         #expect(matched.map(\.uuid) == ["s-1"])
     }
@@ -255,7 +255,7 @@ struct EntityStoreTests {
 
     @Test("Filtering on an unknown field fails")
     func unknownFilter() async throws {
-        let filter = EntityStore.Filter(field: "ghost", op: .equals, value: .string("x"))
+        let filter = Filter(field: "ghost", op: .equals, value: .string("x"))
         await #expect(throws: SchemaError.unknownField("ghost")) {
             try await EntityReader(store: store, entity: "purchase").read(any: [[filter]])
         }
@@ -310,7 +310,7 @@ struct EntityStoreTests {
             [EntityWrite(values: ["title": .string("Server"), "tags": .strings(["vapor"])], uuid: "n-2")],
             entity: "post")
 
-        let filter = EntityStore.Filter(field: "tags", op: .contains, value: .string("swift"))
+        let filter = Filter(field: "tags", op: .contains, value: .string("swift"))
         let records = try await EntityReader(store: store, entity: "post").read(any: [[filter]])
         #expect(records.map(\.uuid) == ["n-1"])
     }

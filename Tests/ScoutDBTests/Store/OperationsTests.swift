@@ -130,7 +130,7 @@ struct OperationsTests {
             entity: "profile")
         try await store.write([EntityWrite(values: ["name": .string("Cy")], uuid: "u-3")], entity: "profile")
 
-        func uuids(_ filters: [EntityStore.Filter]) async throws -> [String] {
+        func uuids(_ filters: [Filter]) async throws -> [String] {
             try await EntityReader(store: store, entity: "profile").read(any: [filters]).map(\.uuid).sorted()
         }
 
@@ -251,8 +251,8 @@ struct OperationsTests {
     @Test("A query splits into server predicates, client matchers and slot sorts")
     func queryPlanning() async throws {
         let filters = [
-            EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-42")),
-            EntityStore.Filter(field: "comment", op: .contains, value: .string("gif")),
+            Filter(field: "product_id", op: .equals, value: .string("sku-42")),
+            Filter(field: "comment", op: .contains, value: .string("gif")),
         ]
         let definition = try await registry.definition(for: "purchase")
         let server = try definition.serverFilters(filters)

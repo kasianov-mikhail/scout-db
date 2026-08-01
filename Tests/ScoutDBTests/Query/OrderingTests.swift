@@ -15,20 +15,21 @@ struct OrderingTests {
     @Test("A forward order ranks by the named field and leads with the records missing it")
     func forwardRanksMissingFirst() {
         let records = [note("n-1", rank: 2), note("n-2", rank: nil), note("n-3", rank: 1)]
-        #expect(records.sorted(using: FieldOrder.field("rank")).map(\.uuid) == ["n-2", "n-3", "n-1"])
+        #expect(records.sorted(using: FieldOrder(key: .field("rank"))).map(\.uuid) == ["n-2", "n-3", "n-1"])
     }
 
     @Test("A reverse order flips the field along with the records missing it")
     func reverseFlipsMissingLast() {
         let records = [note("n-1", rank: 2), note("n-2", rank: nil), note("n-3", rank: 1)]
-        #expect(records.sorted(using: FieldOrder.field("rank", .reverse)).map(\.uuid) == ["n-1", "n-3", "n-2"])
+        let order = FieldOrder(key: .field("rank"), order: .reverse)
+        #expect(records.sorted(using: order).map(\.uuid) == ["n-1", "n-3", "n-2"])
     }
 
     @Test("A trailing uuid order breaks ties the field leaves behind, whichever way the field runs")
     func uuidBreaksTies() {
         let records = [note("n-3", rank: 1), note("n-1", rank: 1), note("n-2", rank: 1)]
-        let forward: [FieldOrder] = [.field("rank"), .uuid]
-        let reverse: [FieldOrder] = [.field("rank", .reverse), .uuid]
+        let forward = [FieldOrder(key: .field("rank")), FieldOrder(key: .uuid)]
+        let reverse = [FieldOrder(key: .field("rank"), order: .reverse), FieldOrder(key: .uuid)]
         #expect(records.sorted(using: forward).map(\.uuid) == ["n-1", "n-2", "n-3"])
         #expect(records.sorted(using: reverse).map(\.uuid) == ["n-1", "n-2", "n-3"])
     }
