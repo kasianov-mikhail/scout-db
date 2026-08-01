@@ -24,18 +24,33 @@ extension EntityStore {
             throw SchemaError.invalidValue(field)
         }
 
+        let pager = FieldPager(
+            store: self,
+            entity: entity,
+            field: field,
+            descending: descending,
+            limit: limit,
+            cursor: cursor,
+            definition: definition
+        )
+        return try await pager.page(any: branches)
+    }
+}
+
+private struct FieldPager: Sendable {
+    let store: EntityStore
+    let entity: String
+    let field: String
+    let descending: Bool
+    let limit: Int
+    let cursor: FieldCursor?
+    let definition: EntityDefinition
+
+    func page(any branches: [[EntityStore.Filter]]) async throws -> FieldPage {
         let pages = try await withThrowingTaskGroup(of: [EntityRecord].self) { group in
             for branch in branches {
                 group.addTask {
-                    try await self.fieldPage(
-                        entity: entity,
-                        filters: branch,
-                        field: field,
-                        descending: descending,
-                        cursor: cursor,
-                        limit: limit,
-                        using: definition
-                    )
+                    try await self.page(matching: branch)
                 }
             }
             return try await group.reduce(into: [EntityRecord]()) { $0 += $1 }
@@ -43,7 +58,7 @@ extension EntityStore {
 
         var seen: Set<String> = []
         let records = Array(
-            pages.sorted { precedes($0, $1, by: field, descending: descending) }
+            pages.sorted(by: precedes)
                 .filter { seen.insert($0.uuid).inserted }
                 .prefix(limit)
         )
@@ -56,15 +71,12 @@ extension EntityStore {
         return FieldPage(records: records, cursor: next)
     }
 
-    private func fieldPage(
-        entity: String, filters: [Filter], field: String, descending: Bool, cursor: FieldCursor?, limit: Int,
-        using definition: EntityDefinition
-    ) async throws -> [EntityRecord] {
+    private func page(matching filters: [EntityStore.Filter]) async throws -> [EntityRecord] {
         var pageFilters = filters
 
         if let cursor {
             pageFilters.append(
-                Filter(
+                EntityStore.Filter(
                     field: field,
                     op: descending ? .lessThanOrEquals : .greaterThanOrEquals,
                     value: cursor.value
@@ -73,20 +85,20 @@ extension EntityStore {
         }
 
         let sort =
-            try serverSort(
-                [Sort(field: field, ascending: !descending)],
+            try store.serverSort(
+                [EntityStore.Sort(field: field, ascending: !descending)],
                 using: definition
-            ) + [uuidSort]
+            ) + [ServerSort(field: "uuid", ascending: true)]
 
-        let query = try liveQuery(
+        let query = try store.liveQuery(
             pageFilters,
             entity: entity,
             sort: sort,
             using: definition
         )
-        let included = try liveFilter(pageFilters, entity: entity, using: definition)
+        let included = try store.liveFilter(pageFilters, entity: entity, using: definition)
 
-        let collected = try await boundedRecords(
+        let collected = try await store.boundedRecords(
             matching: query,
             limit: limit,
             using: definition
@@ -97,35 +109,28 @@ extension EntityStore {
             guard let cursor else {
                 return true
             }
-            return beyond(record, field, cursor, descending: descending)
+            return beyond(record, cursor)
         }
 
-        return Array(
-            collected.sorted {
-                precedes($0, $1, by: field, descending: descending)
-            }
-            .prefix(limit)
-        )
+        return Array(collected.sorted(by: precedes).prefix(limit))
+    }
+
+    private func beyond(_ record: EntityRecord, _ cursor: FieldCursor) -> Bool {
+        switch EntityStore.rank(record.values[field], cursor.value) {
+        case .orderedSame:
+            record.uuid > cursor.uuid
+        case .orderedAscending:
+            descending
+        case .orderedDescending:
+            !descending
+        }
+    }
+
+    private func precedes(_ lhs: EntityRecord, _ rhs: EntityRecord) -> Bool {
+        let order = EntityStore.rank(lhs.values[field], rhs.values[field])
+        guard order != .orderedSame else {
+            return lhs.uuid < rhs.uuid
+        }
+        return descending ? order == .orderedDescending : order == .orderedAscending
     }
 }
-
-private func beyond(_ record: EntityRecord, _ field: String, _ cursor: FieldCursor, descending: Bool) -> Bool {
-    switch EntityStore.rank(record.values[field], cursor.value) {
-    case .orderedSame:
-        record.uuid > cursor.uuid
-    case .orderedAscending:
-        descending
-    case .orderedDescending:
-        !descending
-    }
-}
-
-private func precedes(_ lhs: EntityRecord, _ rhs: EntityRecord, by field: String, descending: Bool) -> Bool {
-    let order = EntityStore.rank(lhs.values[field], rhs.values[field])
-    guard order != .orderedSame else {
-        return lhs.uuid < rhs.uuid
-    }
-    return descending ? order == .orderedDescending : order == .orderedAscending
-}
-
-private let uuidSort = ServerSort(field: "uuid", ascending: true)
