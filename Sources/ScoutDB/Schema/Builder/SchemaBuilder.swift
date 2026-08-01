@@ -31,11 +31,6 @@ public struct SchemaBuilder {
     var unique: [String]?
     var views: [AggregateView] = []
 
-    init(entity: String, registry: SchemaRegistry) {
-        self.entity = entity
-        self.registry = registry
-    }
-
     /// Derives the record id from the named fields, turning writes into
     /// upserts.
     ///
