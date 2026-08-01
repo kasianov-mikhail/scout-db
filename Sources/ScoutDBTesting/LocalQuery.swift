@@ -18,8 +18,7 @@ enum LocalQuery {
     }
 
     static func page(
-        _ records: [CKRecord], matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int,
-        pageLimit: Int? = nil
+        _ records: [CKRecord], matching query: CKQuery, resultsLimit: Int, pageLimit: Int? = nil
     ) -> QueryPage {
         let matched =
             records
@@ -33,7 +32,7 @@ enum LocalQuery {
             pageLimit ?? Int.max
         )
 
-        let page = matched.prefix(capacity).map { project($0, keys: desiredKeys) }
+        let page = matched.prefix(capacity).map { $0.duplicate() }
         let end = page.count
 
         let cursor: QueryCursor? =
@@ -45,8 +44,7 @@ enum LocalQuery {
     }
 
     static func resume(
-        _ records: [CKRecord], from cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int,
-        pageLimit: Int? = nil
+        _ records: [CKRecord], from cursor: QueryCursor, resultsLimit: Int, pageLimit: Int? = nil
     ) -> QueryPage? {
         guard case .local(let token) = cursor, let scan = token as? Scan else {
             return nil
@@ -61,8 +59,8 @@ enum LocalQuery {
 
         while index < remaining.count, served.count < capacity {
             if let record = byID[remaining[index]] {
-                let projected = project(record, keys: desiredKeys)
-                served.append((projected.recordID, .success(projected)))
+                let copy = record.duplicate()
+                served.append((copy.recordID, .success(copy)))
             }
             index += 1
         }
@@ -71,20 +69,6 @@ enum LocalQuery {
         let next: QueryCursor? = rest.isEmpty ? nil : .local(Scan(query: scan.query, remaining: Array(rest)))
 
         return (served, next)
-    }
-
-    static func project(_ record: CKRecord, keys: [CKRecord.FieldKey]?) -> CKRecord {
-        guard let keys else {
-            return record.duplicate()
-        }
-
-        let projected = CKRecord(recordType: record.recordType, recordID: record.recordID)
-        for key in record.allKeys() where keys.contains(key) {
-            projected[key] = record[key]
-        }
-
-        projected.overrides = record.overrides
-        return projected
     }
 }
 

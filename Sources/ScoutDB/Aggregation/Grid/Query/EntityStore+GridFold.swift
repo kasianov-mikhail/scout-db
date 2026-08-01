@@ -20,12 +20,7 @@ extension EntityStore {
             return nil
         }
 
-        let records = try await grid(
-            entity: entity,
-            view: view.name,
-            group: query.serverGroup,
-            values: field != nil
-        )
+        let records = try await grid(entity: entity, view: view.name, group: query.serverGroup)
 
         var folded: [String: GridFold] = [:]
         for record in records {

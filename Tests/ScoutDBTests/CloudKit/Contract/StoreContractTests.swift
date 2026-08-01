@@ -170,18 +170,6 @@ struct StoreContractTests {
         }
     }
 
-    @Test("A projected read serves the requested fields")
-    func projectionFields() async throws {
-        try await withContract { f in
-            let entity = try await f.publishOrder()
-            try await f.store.write(orderValues(product: "sku-2", quantity: 3), entity: entity, uuid: "f-1")
-            try await eventually { try await f.store.read(entity: entity).count == 1 }
-
-            let projected = try #require(try await f.store.read(entity: entity, fields: ["product"]).first)
-            #expect(projected.values["product"] == .string("sku-2"))
-        }
-    }
-
     @Test("Folds aggregate matching records")
     func foldSum() async throws {
         try await withContract { f in
