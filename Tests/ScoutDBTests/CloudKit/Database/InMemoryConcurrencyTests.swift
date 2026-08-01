@@ -23,7 +23,7 @@ struct InMemoryConcurrencyTests {
         try await withThrowingTaskGroup(of: Void.self) { group in
             for index in 0..<200 {
                 group.addTask {
-                    _ = try await self.database.save(self.makeRecord(index))
+                    _ = try await self.database.saveIfUnchanged([self.makeRecord(index)])
                 }
                 group.addTask {
                     try await self.database.modifyRecords(saving: [self.makeRecord(1_000 + index)], deleting: [])
@@ -41,7 +41,7 @@ struct InMemoryConcurrencyTests {
         try await withThrowingTaskGroup(of: Void.self) { group in
             for index in 0..<100 {
                 group.addTask {
-                    _ = try await self.database.save(self.makeRecord(index))
+                    _ = try await self.database.saveIfUnchanged([self.makeRecord(index)])
                 }
                 group.addTask {
                     _ = try await self.database.fetchRecords(ids: (0..<100).map { CKRecord.ID(recordName: "t-\($0)") })

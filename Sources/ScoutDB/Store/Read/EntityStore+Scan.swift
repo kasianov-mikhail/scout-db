@@ -63,24 +63,4 @@ extension EntityStore {
         let maximum = CKQueryOperation.maximumResults
         return maximum > 0 ? Swift.min(rows, maximum) : rows
     }
-
-    func forEachPage(
-        matching query: CKQuery, desiredKeys: [String]? = nil, using definition: EntityDefinition,
-        _ body: ([EntityRecord]) async throws -> Void
-    ) async throws {
-        try await database.forEachPage(matching: query, desiredKeys: desiredKeys) { page in
-            try await body(try decode(page, using: definition))
-        }
-    }
-
-    func forEachPage(entity: String, fields: [String]? = nil, _ body: ([EntityRecord]) async throws -> Void)
-        async throws
-    {
-        let definition = try await registry.definition(for: entity)
-        let (query, included) = try liveQuery([], entity: entity, using: definition)
-        let keys = try fields.map { try desiredKeys($0, using: definition) }
-        try await forEachPage(matching: query, desiredKeys: keys, using: definition) { page in
-            try await body(page.filter(included))
-        }
-    }
 }

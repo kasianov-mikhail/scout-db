@@ -17,7 +17,7 @@ public struct EntityRecord: Codable, Equatable, Sendable {
     /// The entity the record belongs to.
     public let entity: String
 
-    /// The record's logical identifier, stable across updates and derived from
+    /// The record's logical identifier, stable across rewrites and derived from
     /// the definition's `unique` fields when it declares them.
     public let uuid: String
 

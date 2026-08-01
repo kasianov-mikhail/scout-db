@@ -24,16 +24,6 @@ struct OperationsTests {
         try await registry.publish(makePurchaseDefinition())
     }
 
-    @Test("CAS update applies the transform to the stored record")
-    func update() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        try await store.update(entity: "purchase", uuid: "p-1") { record in
-            record.values["quantity"] = .int(7)
-        }
-        let records = try await store.read(entity: "purchase")
-        #expect(records.first?.values["quantity"] == .int(7))
-    }
-
     @Test("A fetch by uuid reads a record the query index has not caught up with")
     func fetchByUUIDSkipsTheIndex() async throws {
         try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
@@ -42,104 +32,6 @@ struct OperationsTests {
         #expect(try await store.read(entity: "purchase").isEmpty)
         #expect(try await store.fetch(uuid: "p-1")?.uuid == "p-1")
         #expect(try await store.fetch(uuid: "p-9") == nil)
-    }
-
-    @Test("CAS update retries after a conflict")
-    func updateConflict() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        let server = try #require(database.records.first { $0["uuid"] as? String == "p-1" })
-        database.writeErrors = [RecordConflictError(serverRecord: server)]
-        try await store.update(entity: "purchase", uuid: "p-1") { record in
-            record.values["quantity"] = .int(9)
-        }
-        let records = try await store.read(entity: "purchase")
-        #expect(records.first?.values["quantity"] == .int(9))
-    }
-
-    @Test("A transform that clears fields clears their stored slot and payload values")
-    func updateClears() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        try await store.update(entity: "purchase", uuid: "p-1") { record in
-            record.values["quantity"] = nil
-            record.values["comment"] = nil
-        }
-        let record = try #require(try await store.read(entity: "purchase").first)
-        #expect(record.values["quantity"] == nil)
-        #expect(record.values["comment"] == nil)
-        #expect(record.values["product_id"] == .string("sku-42"))
-    }
-
-    @Test("Bulk update retries records that lost their save race")
-    func updateAllConflict() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
-        let server = try #require(database.records.first { $0["uuid"] as? String == "p-1" })
-        database.writeErrors = [RecordConflictError(serverRecord: server)]
-
-        let updated = try await store.updateAll(entity: "purchase", any: [[]]) { record in
-            record.values["quantity"] = .int(9)
-        }
-
-        #expect(updated == 2)
-        let records = try await store.read(entity: "purchase")
-        #expect(records.allSatisfy { $0.values["quantity"] == .int(9) })
-    }
-
-    @Test("Bulk update surfaces a conflict that outlives the retries, keeping the saves that landed")
-    func updateAllConflictExhausted() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-2")
-        let server = try #require(database.records.first { $0["uuid"] as? String == "p-1" })
-        database.writeErrors = (0..<3).map { _ in RecordConflictError(serverRecord: server.copy() as! CKRecord) }
-
-        await #expect(throws: RecordConflictError.self) {
-            try await store.updateAll(entity: "purchase", any: [[]]) { record in
-                record.values["quantity"] = .int(9)
-            }
-        }
-
-        let records = try await store.read(entity: "purchase")
-        #expect(records.first { $0.uuid == "p-2" }?.values["quantity"] == .int(9))
-        #expect(records.first { $0.uuid == "p-1" }?.values["quantity"] != .int(9))
-    }
-
-    @Test("Non-overlapping edits merge on conflict without re-running the transform")
-    func conflictFieldMerge() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
-
-        let winner = try #require(try await database.fetchRecord(id: CKRecord.ID(recordName: "p-1")))
-        winner["s_00"] = "sku-99"
-        database.writeErrors = [RecordConflictError(serverRecord: winner)]
-        var runs = 0
-        try await store.update(entity: "purchase", uuid: "p-1") { record in
-            runs += 1
-            record.values["quantity"] = .int(9)
-        }
-        #expect(runs == 1)
-        let merged = try #require(try await store.read(entity: "purchase").first)
-        #expect(merged.values["quantity"] == .int(9))
-        #expect(merged.values["product_id"] == .string("sku-99"))
-
-        let overlap = try #require(try await database.fetchRecord(id: CKRecord.ID(recordName: "p-1")))
-        overlap["i_01"] = Int64(100)
-        database.writeErrors = [RecordConflictError(serverRecord: overlap)]
-        var reruns = 0
-        try await store.update(entity: "purchase", uuid: "p-1") { record in
-            reruns += 1
-            guard case .int(let quantity)? = record.values["quantity"] else {
-                return
-            }
-            record.values["quantity"] = .int(quantity + 1)
-        }
-        #expect(reruns == 2)
-        #expect(try await store.read(entity: "purchase").first?.values["quantity"] == .int(101))
-    }
-
-    @Test("CAS update of a missing record fails")
-    func updateMissing() async throws {
-        await #expect(throws: SchemaError.notFound("ghost")) {
-            try await store.update(entity: "purchase", uuid: "ghost") { _ in }
-        }
     }
 
     @Test("Keyset pagination walks records in date order")
@@ -286,11 +178,9 @@ struct OperationsTests {
         }
     }
 
-    @Test("Mutations treat an unwritten uuid as absent, and a write claims it")
-    func mutationsSkipUnwritten() async throws {
-        await #expect(throws: SchemaError.notFound("t-1")) {
-            try await store.update(entity: "purchase", uuid: "t-1") { $0.values["quantity"] = .int(1) }
-        }
+    @Test("A write claims a uuid nothing had written yet")
+    func writeClaimsUnwritten() async throws {
+        #expect(try await store.fetch(entity: "purchase", uuids: ["t-1"]).isEmpty)
 
         try await store.write(makePurchase().values, entity: "purchase", uuid: "t-1")
         #expect(try await store.read(entity: "purchase").map(\.uuid) == ["t-1"])
@@ -377,9 +267,6 @@ struct OperationsTests {
 
         #expect(try await store.fetch(entity: "purchase", uuids: ["shared"]).isEmpty)
         #expect(try await store.fetch(entity: "ticket", uuids: ["shared"]).map(\.uuid) == ["shared"])
-        await #expect(throws: SchemaError.self) {
-            try await store.update(entity: "purchase", uuid: "shared") { $0.values["quantity"] = .int(1) }
-        }
     }
 
     @Test("Projection fetches only the requested fields")
@@ -444,69 +331,6 @@ struct OperationsTests {
             cursor = page.cursor
         } while cursor != nil
         #expect(uuids == ["p-0", "p-2"])
-    }
-
-    @Test("updateAll rewrites every matching record")
-    func updateAll() async throws {
-        for index in 0..<3 {
-            try await store.write(makePurchase().values, entity: "purchase", uuid: "p-\(index)")
-        }
-        let filter = EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-42"))
-        let updated = try await store.updateAll(entity: "purchase", any: [[filter]]) { record in
-            record.values["quantity"] = .int(99)
-        }
-        #expect(updated == 3)
-
-        let records = try await store.read(entity: "purchase")
-        #expect(records.allSatisfy { $0.values["quantity"] == .int(99) })
-    }
-
-    @Test("updateAll patches across server pages and counts a uuid once across OR branches")
-    func updateAllAcrossPages() async throws {
-        for index in 0..<7 {
-            var values = makePurchase().values
-            values["quantity"] = .int(Int64(index))
-            try await store.write(values, entity: "purchase", uuid: "p-\(index)")
-        }
-        database.pageLimit = 2
-
-        let updated = try await store.updateAll(
-            entity: "purchase",
-            any: [
-                [EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-42"))],
-                [EntityStore.Filter(field: "quantity", op: .lessThan, value: .int(3))],
-            ]
-        ) { record in
-            record.values["comment"] = .string("swept")
-        }
-        #expect(updated == 7)
-
-        let records = try await store.read(entity: "purchase")
-        #expect(records.count == 7)
-        #expect(records.allSatisfy { $0.values["comment"] == .string("swept") })
-    }
-
-    @Test("A batched update patches every named record and rejects a missing one")
-    func updateBatch() async throws {
-        for index in 0..<3 {
-            try await store.write(makePurchase().values, entity: "purchase", uuid: "p-\(index)")
-        }
-
-        try await store.update(entity: "purchase", uuids: ["p-0", "p-2", "p-0"]) { record in
-            record.values["quantity"] = .int(record.uuid == "p-2" ? 20 : 10)
-        }
-        #expect(
-            try await store.fetch(entity: "purchase", uuids: ["p-0", "p-1", "p-2"]).map { $0.values["quantity"] } == [
-                .int(10), .int(3), .int(20),
-            ]
-        )
-
-        await #expect(throws: SchemaError.notFound("ghost")) {
-            try await store.update(entity: "purchase", uuids: ["p-1", "ghost"]) { record in
-                record.values["quantity"] = .int(99)
-            }
-        }
-        #expect(try await store.fetch(entity: "purchase", uuids: ["p-1"]).first?.values["quantity"] == .int(3))
     }
 
     @Test("A bulk load warms the cache for every published entity")

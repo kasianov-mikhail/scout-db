@@ -63,7 +63,7 @@ public struct Migrator: Sendable {
             guard rewritten.count > 0 else {
                 return
             }
-            try await database.write(records: rewritten.map(\.record))
+            try await database.write(records: rewritten)
             migrated += rewritten.count
         }
         return migrated

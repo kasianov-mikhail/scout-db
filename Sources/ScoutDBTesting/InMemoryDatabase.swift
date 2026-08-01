@@ -96,7 +96,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         var errors: [any Error] = []
         var writeErrors: [any Error] = []
         var pageLimit: Int?
-        var rawConflictErrors = false
         var unindexed: Set<CKRecord.ID> = []
         var tally = RequestTally()
     }
@@ -151,19 +150,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     public var pageLimit: Int? {
         get { lock.withLock { state.pageLimit } }
         set { lock.withLock { state.pageLimit = newValue } }
-    }
-
-    /// Reports a lost conditional save the way `CKDatabase` reports it — a raw
-    /// `CKError.serverRecordChanged` carrying the server record — rather than a
-    /// `RecordConflictError`.
-    ///
-    /// Both shapes reach `saveIfUnchanged` callers in production, so a test
-    /// double that only ever produces the friendlier one hides the paths that
-    /// match on the error's type.
-    ///
-    public var rawConflictErrors: Bool {
-        get { lock.withLock { state.rawConflictErrors } }
-        set { lock.withLock { state.rawConflictErrors = newValue } }
     }
 
     /// Record IDs the query index has not caught up with: absent from every
@@ -232,17 +218,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         )
     }
 
-    public func save(_ record: CKRecord) async throws -> CKRecord {
-        try counting(.save, carrying: { _ in 1 }) {
-            try popErrorLocked(writing: true)
-            if let server = conflictingServerLocked(for: record) {
-                throw RecordConflictError(serverRecord: server)
-            }
-            upsertLocked(record)
-            return record
-        }
-    }
-
     public func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {
         try counting(.modify, carrying: { _ in records.count + recordIDs.count }) {
             try popErrorLocked(writing: true)
@@ -277,19 +252,12 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
                     return (record.recordID, .failure(failure))
                 }
                 if let server = conflictingServerLocked(for: record) {
-                    return (record.recordID, .failure(Self.conflict(with: server, raw: state.rawConflictErrors)))
+                    return (record.recordID, .failure(RecordConflictError(serverRecord: server)))
                 }
                 upsertLocked(record)
                 return (record.recordID, .success(record))
             }
         }
-    }
-
-    private static func conflict(with server: CKRecord, raw: Bool) -> any Error {
-        guard raw else {
-            return RecordConflictError(serverRecord: server)
-        }
-        return CKError(.serverRecordChanged, userInfo: [CKRecordChangedErrorServerRecordKey: server])
     }
 
     private static func isTransport(_ error: any Error) -> Bool {

@@ -287,15 +287,6 @@ struct BuilderTests {
         #expect(branches.contains { $0.contains { $0.value == .string("sku-0") } })
     }
 
-    @Test("Builder update rewrites matching records")
-    func mutation() async throws {
-        try await store.query("purchase").filter("quantity" > 1).update { record in
-            record.values["quantity"] = .int(9)
-        }
-        #expect(try await store.query("purchase").filter("quantity", .equals, 9).count() == 2)
-        #expect(try await store.query("purchase").count() == 3)
-    }
-
     @Test("Exclude negates a predicate and keeps records without the field")
     func excludeFilters() async throws {
         let records = try await store.query("purchase")
@@ -366,19 +357,6 @@ struct BuilderTests {
             .filter("quantity" > 1 && "amount" < 25)
             .count()
         #expect(count == 1)
-    }
-
-    @Test("Builder update honors a disjunction")
-    func groupMutation() async throws {
-        try await store.query("purchase")
-            .filter("product_id" == "sku-0" || "product_id" == "sku-2")
-            .update { record in
-                record.values["quantity"] = .int(9)
-            }
-        #expect(try await store.query("purchase").filter("quantity", .equals, 9).count() == 2)
-
-        let untouched = try await store.query("purchase").exclude("quantity", .equals, 9).take(100)
-        #expect(untouched.map(\.uuid) == ["p-1"])
     }
 
     @Test("Folds compute over a single projected field")
@@ -460,20 +438,6 @@ struct BuilderTests {
         await #expect(throws: SchemaError.self) {
             _ = try await store.query("purchase").page(size: 1)
         }
-    }
-
-    @Test("A record matching several alternatives is transformed once")
-    func overlappingBranches() async throws {
-        try await store.query("purchase")
-            .filter("quantity" > 1 || "product_id" == "sku-0")
-            .update { record in
-                guard case .int(let quantity)? = record.values["quantity"] else {
-                    return
-                }
-                record.values["quantity"] = .int(quantity + 1)
-            }
-        let records = try await store.query("purchase").sort("date").take(100)
-        #expect(records.map { $0.values["quantity"] } == [.int(4), .int(1), .int(3)])
     }
 
     @Test("The schema builder's matches constraint lands in the definition")
