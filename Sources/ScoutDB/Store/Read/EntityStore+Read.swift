@@ -8,12 +8,57 @@
 import CloudKit
 
 extension EntityStore {
-    func read(entity: String, filters: [Filter] = [], sort: [Sort] = [], limit: Int? = nil)
+    func read(entity: String, any branches: [[Filter]] = [[]], sort: [Sort] = [], limit: Int? = nil)
+        async throws -> [EntityRecord]
+    {
+        if branches.count == 1 {
+            return try await records(entity: entity, matching: branches[0], sort: sort, limit: limit)
+        }
+        if let limit, sort.isEmpty {
+            var seen: Set<String> = []
+            var union: [EntityRecord] = []
+            for branch in branches {
+                let page: [EntityRecord] = try await records(
+                    entity: entity,
+                    matching: branch,
+                    limit: limit
+                )
+                for record in page where seen.insert(record.uuid).inserted {
+                    union.append(record)
+                    if union.count == limit {
+                        return union
+                    }
+                }
+            }
+            return union
+        }
+        let bounded = try await rankable(sort, entity: entity)
+        let results = try await branches.orderedBatches { branch in
+            try await self.records(
+                entity: entity,
+                matching: branch,
+                sort: bounded ? sort : [],
+                limit: bounded ? limit : nil
+            )
+        }
+        var seen: Set<String> = []
+        let union = results.filter { seen.insert($0.uuid).inserted }
+        guard sort.count > 0 else {
+            return union
+        }
+        let ranked = union.sorted(using: sort.map(FieldOrder.init))
+        guard let limit else {
+            return ranked
+        }
+        return Array(ranked.prefix(limit))
+    }
+
+    private func records(entity: String, matching filters: [Filter], sort: [Sort] = [], limit: Int? = nil)
         async throws -> [EntityRecord]
     {
         let definition = try await registry.definition(for: entity)
         if try definition.clientRanked(sort) {
-            let ranked = try await read(entity: entity, filters: filters)
+            let ranked = try await records(entity: entity, matching: filters)
                 .sorted(using: sort.map(FieldOrder.init))
             guard let limit else {
                 return ranked
@@ -43,51 +88,6 @@ extension EntityStore {
             collected += try page.map { try coder.decode($0, using: definition) }.filter(included)
         }
         return collected
-    }
-
-    func read(entity: String, any branches: [[Filter]], sort: [Sort] = [], limit: Int? = nil)
-        async throws -> [EntityRecord]
-    {
-        if branches.count == 1 {
-            return try await read(entity: entity, filters: branches[0], sort: sort, limit: limit)
-        }
-        if let limit, sort.isEmpty {
-            var seen: Set<String> = []
-            var union: [EntityRecord] = []
-            for branch in branches {
-                let page: [EntityRecord] = try await read(
-                    entity: entity,
-                    filters: branch,
-                    limit: limit
-                )
-                for record in page where seen.insert(record.uuid).inserted {
-                    union.append(record)
-                    if union.count == limit {
-                        return union
-                    }
-                }
-            }
-            return union
-        }
-        let bounded = try await rankable(sort, entity: entity)
-        let results = try await branches.orderedBatches { branch in
-            try await self.read(
-                entity: entity,
-                filters: branch,
-                sort: bounded ? sort : [],
-                limit: bounded ? limit : nil
-            )
-        }
-        var seen: Set<String> = []
-        let union = results.filter { seen.insert($0.uuid).inserted }
-        guard sort.count > 0 else {
-            return union
-        }
-        let ranked = union.sorted(using: sort.map(FieldOrder.init))
-        guard let limit else {
-            return ranked
-        }
-        return Array(ranked.prefix(limit))
     }
 
     private func rankable(_ sort: [Sort], entity: String) async throws -> Bool {

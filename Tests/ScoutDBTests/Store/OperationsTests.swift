@@ -135,7 +135,7 @@ struct OperationsTests {
         try await store.write([EntityWrite(values: ["name": .string("Cy")], uuid: "u-3")], entity: "profile")
 
         func uuids(_ filters: [EntityStore.Filter]) async throws -> [String] {
-            try await store.read(entity: "profile", filters: filters).map(\.uuid).sorted()
+            try await store.read(entity: "profile", any: [filters]).map(\.uuid).sorted()
         }
 
         #expect(try await uuids([.init(field: "score", op: .equals, value: .int(10))]) == ["u-1"])
