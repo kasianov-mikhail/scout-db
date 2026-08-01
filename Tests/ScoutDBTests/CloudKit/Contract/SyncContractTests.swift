@@ -18,7 +18,7 @@ struct SyncContractTests {
         try await withContract { f in
             let entity = try await f.publishOrder()
             try await f.store.write([EntityWrite(values: orderValues(product: "base"), uuid: "cas-1")], entity: entity)
-            try await eventually { try await f.store.read(entity: entity).count == 1 }
+            try await eventually { try await EntityReader(store: f.store, entity: entity).read().count == 1 }
 
             let id = CKRecord.ID(recordName: "cas-1")
             let fresh = try #require(try await f.database.fetchRecord(id: id))

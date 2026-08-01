@@ -15,7 +15,15 @@ struct EntityReader: Sendable {
     let definition: EntityDefinition
     let coder = EntityCoder()
 
-    func read(any branches: [[EntityStore.Filter]]) async throws -> [EntityRecord] {
+    init(store: EntityStore, entity: String, sort: [EntityStore.Sort] = [], limit: Int? = nil) async throws {
+        self.database = store.database
+        self.entity = entity
+        self.sort = sort
+        self.limit = limit
+        self.definition = try await store.registry.definition(for: entity)
+    }
+
+    func read(any branches: [[EntityStore.Filter]] = [[]]) async throws -> [EntityRecord] {
         if branches.count == 1 {
             return try await records(matching: branches[0], sort: sort, limit: limit)
         }
