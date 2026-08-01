@@ -32,17 +32,21 @@ struct AggregateView: Codable, Equatable, Sendable {
         self.shards = shards
     }
 
-    var metric: (kind: Metric, field: String)? {
-        if let sum {
-            return (.sum, sum)
+    var metricKind: Metric? {
+        if sum != nil {
+            return .sum
         }
-        if let min {
-            return (.min, min)
+        if min != nil {
+            return .min
         }
-        if let max {
-            return (.max, max)
+        if max != nil {
+            return .max
         }
         return nil
+    }
+
+    var metricField: String? {
+        sum ?? min ?? max
     }
 
     func answers(_ kind: Metric, of field: String) -> Bool {

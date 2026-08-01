@@ -25,6 +25,7 @@ public actor SchemaRegistry {
         if let inFlight = loading[entity] {
             return try await inFlight.value
         }
+
         let task = Task { () throws -> EntityDefinition in
             let entries = try await database.allRecords(matching: metaQuery(entity: entity)).map(
                 SchemaDescriptorEntry.init
@@ -34,15 +35,15 @@ public actor SchemaRegistry {
             }
             return definition
         }
+
         loading[entity] = task
-        defer { loading[entity] = nil }
+        defer {
+            loading[entity] = nil
+        }
+
         let definition = try await task.value
         cache[entity] = definition
         return definition
-    }
-
-    func definitions() -> [EntityDefinition] {
-        Array(cache.values)
     }
 
     /// The entity's schema as a caller sees it: the fields a write may carry
@@ -54,7 +55,7 @@ public actor SchemaRegistry {
 
     /// The schemas of every entity the registry has loaded so far.
     public func schemas() -> [EntitySchema] {
-        definitions().map(EntitySchema.init)
+        cache.values.map(EntitySchema.init)
     }
 
     @discardableResult func loadAll() async throws -> Int {
@@ -70,7 +71,7 @@ public actor SchemaRegistry {
                 cache[entity] = definition
             }
         }
-        return definitions().count
+        return cache.count
     }
 
     func retire(entity: String) async throws {

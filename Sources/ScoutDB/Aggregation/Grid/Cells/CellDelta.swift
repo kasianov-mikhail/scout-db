@@ -9,16 +9,23 @@ import Foundation
 
 struct CellDelta {
     var count: Int64 = 0
-    var value: (kind: Metric, total: Double)?
-    var removed: (kind: Metric, total: Double)?
+    var kind: Metric?
+    var value: Double?
+    var removed: Double?
 
     mutating func merge(_ other: CellDelta) {
         count += other.count
-        if let (kind, total) = other.value {
-            value = (kind, value.map { kind.combine($0.total, total) } ?? total)
+
+        guard let kind = other.kind else {
+            return
         }
-        if let (kind, total) = other.removed {
-            removed = (kind, removed.map { kind.combine($0.total, total) } ?? total)
+        self.kind = kind
+
+        if let total = other.value {
+            value = value.map { kind.combine($0, total) } ?? total
+        }
+        if let total = other.removed {
+            removed = removed.map { kind.combine($0, total) } ?? total
         }
     }
 
@@ -26,7 +33,7 @@ struct CellDelta {
         guard count == 0 else {
             return false
         }
-        guard let (kind, total) = value else {
+        guard let kind, let total = value else {
             return true
         }
         guard kind != .sum else {
@@ -35,6 +42,6 @@ struct CellDelta {
         guard let removed else {
             return false
         }
-        return kind.combine(removed.total, total) == removed.total
+        return kind.combine(removed, total) == removed
     }
 }

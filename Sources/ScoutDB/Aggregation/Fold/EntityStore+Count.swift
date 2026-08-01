@@ -16,7 +16,7 @@ extension EntityStore {
             return nil
         }
 
-        query.key(in: definition)
+        query.expandRange(in: definition)
 
         guard query.numericField == nil else {
             return nil

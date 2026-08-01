@@ -139,11 +139,11 @@ extension SchemaBuilder {
             if let replacement = byName[view.name] {
                 return replacement
             }
-            return view.metric == nil && superseded.contains(view.groupBy) ? nil : view
+            return view.metricField == nil && superseded.contains(view.groupBy) ? nil : view
         }
         merged += declared.filter { view in !inherited.contains { $0.name == view.name } }
         return merged.filter { view in
-            let fields = [view.groupBy, view.metric?.field].compactMap { $0 }
+            let fields = [view.groupBy, view.metricField].compactMap { $0 }
             return fields.allSatisfy(active.contains)
         }
     }

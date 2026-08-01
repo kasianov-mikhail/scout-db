@@ -51,8 +51,8 @@ struct EntitySchemaTests {
         #expect(quantity.max == 20)
 
         #expect(try #require(byName["email"]).pattern == "^.+@.+$")
-        #expect(try #require(byName["email_lower"]).derived?.transform == .lowercase)
-        #expect(try #require(byName["email_lower"]).derived?.source == "email")
+        #expect(try #require(byName["email_lower"]).transform == .lowercase)
+        #expect(try #require(byName["email_lower"]).derivedFrom == "email")
         #expect(try #require(byName["comment"]).payload)
         #expect(try #require(byName["date"]).payload == false)
     }

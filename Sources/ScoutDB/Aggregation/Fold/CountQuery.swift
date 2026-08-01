@@ -8,79 +8,17 @@
 import Foundation
 
 struct CountQuery {
-    private static let namedDomain = 1_024.0
-
     var groupField: String?
-    var groupKeys: Set<String>?
+    var groupKeys: Set<String> = []
     var numericField: String?
     var numericGTE: Double?
     var numericLT: Double?
-
-    init?(_ filters: [EntityStore.Filter]) {
-        for filter in filters {
-            guard !filter.negated else {
-                return nil
-            }
-
-            switch (filter.op, filter.value) {
-            case (.equals, let value):
-                guard groupField == nil else {
-                    return nil
-                }
-                groupField = filter.field
-                groupKeys = [value.canonical]
-
-            case (.in, let value):
-                guard groupField == nil, let keys = value.elementCanonicals else {
-                    return nil
-                }
-                groupField = filter.field
-                groupKeys = keys
-
-            case (.greaterThanOrEquals, let value):
-                guard let scalar = value.scalar, numericField == nil || numericField == filter.field else {
-                    return nil
-                }
-                guard numericGTE == nil else {
-                    return nil
-                }
-                numericField = filter.field
-                numericGTE = scalar
-
-            case (.lessThan, let value):
-                guard let scalar = value.scalar, numericField == nil || numericField == filter.field else {
-                    return nil
-                }
-                guard numericLT == nil else {
-                    return nil
-                }
-                numericField = filter.field
-                numericLT = scalar
-
-            case (.greaterThan, .int(let value)):
-                guard value < Int64.max, numericField == nil || numericField == filter.field, numericGTE == nil else {
-                    return nil
-                }
-                numericField = filter.field
-                numericGTE = Double(value + 1)
-
-            case (.lessThanOrEquals, .int(let value)):
-                guard value < Int64.max, numericField == nil || numericField == filter.field, numericLT == nil else {
-                    return nil
-                }
-                numericField = filter.field
-                numericLT = Double(value + 1)
-
-            default:
-                return nil
-            }
-        }
-    }
 
     init?(any branches: [[EntityStore.Filter]]) {
         guard let first = branches.first, var merged = CountQuery(first) else {
             return nil
         }
+
         for branch in branches.dropFirst() {
             guard let query = CountQuery(branch) else {
                 return nil
@@ -88,40 +26,36 @@ struct CountQuery {
             guard query.groupField == merged.groupField else {
                 return nil
             }
-            guard query.numericField == merged.numericField, query.numericGTE == merged.numericGTE else {
+            guard query.numericField == merged.numericField else {
+                return nil
+            }
+            guard query.numericGTE == merged.numericGTE else {
                 return nil
             }
             guard query.numericLT == merged.numericLT else {
                 return nil
             }
-            guard let keys = merged.groupKeys, let more = query.groupKeys else {
-                return nil
-            }
-            merged.groupKeys = keys.union(more)
+
+            merged.groupKeys.formUnion(query.groupKeys)
         }
+
         self = merged
     }
 
-    func matchesGrouping(of view: AggregateView) -> Bool {
-        groupField == nil || groupField == view.groupBy
-    }
-
     func foldPlan(
-        in definition: EntityDefinition, folding metric: (kind: Metric, field: String)?, grouping group: String?
+        in definition: EntityDefinition, folding kind: Metric, of field: String?, grouping group: String?
     ) -> AggregateView? {
-        for view in definition.views ?? [] where matchesGrouping(of: view) {
-            guard group == nil || view.groupBy == group else {
-                continue
+        let grouping = group ?? groupField
+
+        return (definition.views ?? []).first { view in
+            guard grouping == nil || view.groupBy == grouping else {
+                return false
             }
-            if let metric, !view.answers(metric.kind, of: metric.field) {
-                continue
-            }
-            return view
+            return field.map { view.answers(kind, of: $0) } ?? true
         }
-        return nil
     }
 
-    mutating func key(in definition: EntityDefinition) {
+    mutating func expandRange(in definition: EntityDefinition) {
         guard groupField == nil, let name = numericField else {
             return
         }
@@ -138,9 +72,16 @@ struct CountQuery {
             return
         }
 
-        let floor = max(lower.rounded(.up), numericGTE?.rounded(.up) ?? -.greatestFiniteMagnitude)
-        let ceiling = min(upper.rounded(.down), numericLT.map { $0.rounded(.up) - 1 } ?? .greatestFiniteMagnitude)
-        guard ceiling - floor < Self.namedDomain else {
+        let floor = max(
+            lower.rounded(.up),
+            numericGTE?.rounded(.up) ?? -.greatestFiniteMagnitude
+        )
+        let ceiling = min(
+            upper.rounded(.down),
+            numericLT.map { $0.rounded(.up) - 1 } ?? .greatestFiniteMagnitude
+        )
+
+        guard ceiling - floor < 1_024 else {
             return
         }
         guard let first = Int64(exactly: floor), let last = Int64(exactly: ceiling) else {
@@ -152,6 +93,90 @@ struct CountQuery {
         numericField = nil
         numericGTE = nil
         numericLT = nil
+    }
+}
+
+extension CountQuery {
+    private init?(_ filters: [EntityStore.Filter]) {
+        for filter in filters {
+            guard !filter.negated else {
+                return nil
+            }
+
+            switch (filter.op, filter.value) {
+            case (.equals, let value):
+                guard groupField == nil else {
+                    return nil
+                }
+                groupField = filter.field
+                groupKeys = [value.canonical]
+
+            case (.in, let value):
+                guard groupField == nil else {
+                    return nil
+                }
+                guard let keys = value.elementCanonicals else {
+                    return nil
+                }
+                groupField = filter.field
+                groupKeys = keys
+
+            case (.greaterThanOrEquals, let value):
+                guard let scalar = value.scalar else {
+                    return nil
+                }
+                guard numericField == nil || numericField == filter.field else {
+                    return nil
+                }
+                guard numericGTE == nil else {
+                    return nil
+                }
+                numericField = filter.field
+                numericGTE = scalar
+
+            case (.lessThan, let value):
+                guard let scalar = value.scalar else {
+                    return nil
+                }
+                guard numericField == nil || numericField == filter.field else {
+                    return nil
+                }
+                guard numericLT == nil else {
+                    return nil
+                }
+                numericField = filter.field
+                numericLT = scalar
+
+            case (.greaterThan, .int(let value)):
+                guard value < Int64.max else {
+                    return nil
+                }
+                guard numericField == nil || numericField == filter.field else {
+                    return nil
+                }
+                guard numericGTE == nil else {
+                    return nil
+                }
+                numericField = filter.field
+                numericGTE = Double(value + 1)
+
+            case (.lessThanOrEquals, .int(let value)):
+                guard value < Int64.max else {
+                    return nil
+                }
+                guard numericField == nil || numericField == filter.field else {
+                    return nil
+                }
+                guard numericLT == nil else {
+                    return nil
+                }
+                numericField = filter.field
+                numericLT = Double(value + 1)
+
+            default:
+                return nil
+            }
+        }
     }
 }
 

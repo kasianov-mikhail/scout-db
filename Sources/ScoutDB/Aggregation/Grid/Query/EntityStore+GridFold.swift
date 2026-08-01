@@ -15,7 +15,7 @@ extension EntityStore {
         guard group == nil || query.groupField == nil || query.groupField == group else {
             return nil
         }
-        guard let view = query.foldPlan(in: definition, folding: field.map { (kind, $0) }, grouping: group) else {
+        guard let view = query.foldPlan(in: definition, folding: kind, of: field, grouping: group) else {
             return nil
         }
 
@@ -50,10 +50,10 @@ extension EntityStore {
 
 extension CountQuery {
     var serverGroup: String? {
-        groupKeys?.count == 1 ? groupKeys?.first : nil
+        groupKeys.count == 1 ? groupKeys.first : nil
     }
 
     func covers(_ key: String) -> Bool {
-        groupKeys?.contains(key) ?? true
+        groupField == nil || groupKeys.contains(key)
     }
 }

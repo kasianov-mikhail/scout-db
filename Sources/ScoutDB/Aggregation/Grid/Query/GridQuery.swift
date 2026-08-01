@@ -27,7 +27,7 @@ struct GridQuery {
             throw SchemaError.unknownField(view)
         }
 
-        let kind = declared.metric?.kind
+        let kind = declared.metricKind
 
         let records = try await store.grid(
             entity: entity,
