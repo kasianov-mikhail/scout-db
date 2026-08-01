@@ -30,7 +30,7 @@ struct AggregateQuery {
 
         let kind = declared.metricKind
 
-        let records = try await store.grid(entity: entity, view: view, group: group)
+        let records = try await store.database.allRecords(matching: .grid(entity: entity, view: view, group: group))
 
         var totals: [String: AggregateTotal] = [:]
 

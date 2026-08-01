@@ -25,7 +25,7 @@ extension EntityStore {
         }
 
         let pager = FieldPager(
-            store: self,
+            database: database,
             entity: entity,
             field: field,
             descending: descending,
@@ -38,7 +38,7 @@ extension EntityStore {
 }
 
 private struct FieldPager: Sendable {
-    let store: EntityStore
+    let database: any CloudDatabase
     let entity: String
     let field: String
     let descending: Bool
@@ -89,19 +89,18 @@ private struct FieldPager: Sendable {
         }
 
         let sort =
-            try store.serverSort(
-                [EntityStore.Sort(field: field, ascending: !descending)],
-                using: definition
+            try definition.serverSort(
+                [EntityStore.Sort(field: field, ascending: !descending)]
             ) + [ServerSort(field: "uuid", ascending: true)]
 
         let query = CKQuery(
             recordType: "Entity",
-            filters: try store.serverFilters(pageFilters, entity: entity, using: definition),
+            filters: try definition.serverFilters(pageFilters),
             sort: sort
         )
-        let matchers = try EntityStore.matchers(for: store.clientFilters(pageFilters, using: definition))
+        let matchers = try definition.clientFilters(pageFilters).map { $0.matcher() }
 
-        let collected = try await store.boundedRecords(
+        let collected = try await database.boundedRecords(
             matching: query,
             limit: limit,
             using: definition
@@ -119,7 +118,7 @@ private struct FieldPager: Sendable {
     }
 
     private func beyond(_ record: EntityRecord, _ cursor: FieldCursor) -> Bool {
-        switch EntityStore.rank(record.values[field], cursor.value) {
+        switch RecordValue.rank(record.values[field], cursor.value) {
         case .orderedSame:
             record.uuid > cursor.uuid
         case .orderedAscending:
