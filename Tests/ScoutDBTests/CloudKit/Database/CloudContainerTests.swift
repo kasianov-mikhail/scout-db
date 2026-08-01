@@ -33,7 +33,7 @@ struct CloudContainerTests {
         let registry = SchemaRegistry(database: container.publicDatabase)
         try await registry.publish(makePurchaseDefinition())
         let store = EntityStore(database: container.publicDatabase, registry: registry)
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.write([EntityWrite(values: makePurchase().values, uuid: "p-1")], entity: "purchase")
 
         #expect((container.publicDatabase as? InMemoryDatabase)?.records.isEmpty == false)
     }

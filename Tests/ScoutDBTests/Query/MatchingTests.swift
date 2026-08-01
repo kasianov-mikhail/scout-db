@@ -33,15 +33,16 @@ struct MatchingTests {
             )
         )
         try await store.write(
-            ["title": .string("Hello World"), "body": .string("The quick brown fox"), "memo": .string("keep")],
-            entity: "note",
-            uuid: "n-1"
-        )
+            [
+                EntityWrite(
+                    values: [
+                        "title": .string("Hello World"), "body": .string("The quick brown fox"),
+                        "memo": .string("keep"),
+                    ], uuid: "n-1")
+            ], entity: "note")
         try await store.write(
-            ["title": .string("Café Crème"), "body": .string("Lazy dog sleeps")],
-            entity: "note",
-            uuid: "n-2"
-        )
+            [EntityWrite(values: ["title": .string("Café Crème"), "body": .string("Lazy dog sleeps")], uuid: "n-2")],
+            entity: "note")
     }
 
     private func read(_ field: String, _ op: Operator, _ value: String) async throws -> [String] {
@@ -95,10 +96,12 @@ struct MatchingTests {
     @Test("Search is scoped to the named field, not the whole record")
     func fieldScopedSearch() async throws {
         try await store.write(
-            ["title": .string("Notes"), "body": .string("nothing here"), "summary": .string("fox sighting")],
-            entity: "note",
-            uuid: "n-3"
-        )
+            [
+                EntityWrite(
+                    values: [
+                        "title": .string("Notes"), "body": .string("nothing here"), "summary": .string("fox sighting"),
+                    ], uuid: "n-3")
+            ], entity: "note")
         #expect(try await read("body", .search, "fox") == ["n-1"])
         #expect(try await read("summary", .search, "fox") == ["n-3"])
 

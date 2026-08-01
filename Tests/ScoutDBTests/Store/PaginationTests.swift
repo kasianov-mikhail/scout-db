@@ -108,7 +108,7 @@ struct PaginationTests {
             var values = makePurchase().values
             values["date"] = .date(Date(timeIntervalSince1970: TimeInterval(index * 1_000)))
             values["comment"] = .string(index % 2 == 0 ? "gift" : "other")
-            try await store.write(values, entity: "purchase", uuid: "p-\(index)")
+            try await store.write([EntityWrite(values: values, uuid: "p-\(index)")], entity: "purchase")
         }
 
         let filter = EntityStore.Filter(field: "comment", op: .contains, value: .string("gif"))
@@ -137,7 +137,8 @@ struct PaginationTests {
         for index in (0..<25).reversed() {
             var values = makePurchase().values
             values["quantity"] = .int(7)
-            try await store.write(values, entity: "purchase", uuid: String(format: "q-%02d", index))
+            try await store.write(
+                [EntityWrite(values: values, uuid: String(format: "q-%02d", index))], entity: "purchase")
         }
 
         var served: [String] = []
@@ -166,7 +167,7 @@ struct PaginationTests {
         for index in 0..<count {
             var values = makePurchase().values
             values["date"] = .date(Date(timeIntervalSince1970: TimeInterval(index * 1_000)))
-            try await store.write(values, entity: "purchase", uuid: "p-\(index)")
+            try await store.write([EntityWrite(values: values, uuid: "p-\(index)")], entity: "purchase")
         }
     }
 }

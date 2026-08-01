@@ -31,9 +31,8 @@ struct GridQueryTests {
 
         for (product, amount) in [("app", 5.0), ("app", 15.0), ("pro", 25.0)] {
             try await store.write(
-                ["product": .string(product), "amount": .double(amount), "date": .date(noon)],
-                entity: "payment"
-            )
+                [EntityWrite(values: ["product": .string(product), "amount": .double(amount), "date": .date(noon)])],
+                entity: "payment")
         }
     }
 

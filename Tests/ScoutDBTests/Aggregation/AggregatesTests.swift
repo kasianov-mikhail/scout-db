@@ -42,9 +42,8 @@ struct AggregatesTests {
     private func writePayments(_ amounts: [Double], product: String = "app") async throws {
         for amount in amounts {
             try await store.write(
-                ["product": .string(product), "amount": .double(amount), "date": .date(noon)],
-                entity: "payment"
-            )
+                [EntityWrite(values: ["product": .string(product), "amount": .double(amount), "date": .date(noon)])],
+                entity: "payment")
         }
     }
 
@@ -89,8 +88,8 @@ struct AggregatesTests {
             )
         )
 
-        try await store.write(["user": .string("u1"), "date": .date(noon)], entity: "visit")
-        try await store.write(["user": .string("u1"), "date": .date(noon)], entity: "visit")
+        try await store.write([EntityWrite(values: ["user": .string("u1"), "date": .date(noon)])], entity: "visit")
+        try await store.write([EntityWrite(values: ["user": .string("u1"), "date": .date(noon)])], entity: "visit")
 
         #expect(try await store.read(entity: "visit").count == 1)
         #expect(try await AggregateQuery(store, entity: "visit", view: "by_all").totals().map(\.count) == [1])
@@ -111,8 +110,10 @@ struct AggregatesTests {
             )
         )
 
-        try await store.write(["user": .string("u1"), "amount": .double(10), "date": .date(noon)], entity: "meter")
-        try await store.write(["user": .string("u1"), "amount": .double(25), "date": .date(noon)], entity: "meter")
+        try await store.write(
+            [EntityWrite(values: ["user": .string("u1"), "amount": .double(10), "date": .date(noon)])], entity: "meter")
+        try await store.write(
+            [EntityWrite(values: ["user": .string("u1"), "amount": .double(25), "date": .date(noon)])], entity: "meter")
 
         #expect(try await store.read(entity: "meter").count == 1)
         let totals = try await AggregateQuery(store, entity: "meter", view: "revenue").totals()
@@ -125,10 +126,11 @@ struct AggregatesTests {
         try await publishPayment(views: [AggregateView(name: "revenue", sum: "amount", shards: 3)])
         for index in 0..<6 {
             try await store.write(
-                ["product": .string("app"), "amount": .double(Double(index + 1)), "date": .date(noon)],
-                entity: "payment",
-                uuid: "p-\(index)"
-            )
+                [
+                    EntityWrite(
+                        values: ["product": .string("app"), "amount": .double(Double(index + 1)), "date": .date(noon)],
+                        uuid: "p-\(index)")
+                ], entity: "payment")
         }
         let shards = Set((0..<6).map { GridAggregator.shard(of: "p-\($0)", among: 3) })
         #expect(shards.count > 1)
@@ -164,9 +166,12 @@ struct AggregatesTests {
             )
         )
 
-        try await store.write(["user": .string("u1"), "amount": .double(2), "date": .date(noon)], entity: "meter")
-        try await store.write(["user": .string("u2"), "amount": .double(8), "date": .date(noon)], entity: "meter")
-        try await store.write(["user": .string("u1"), "amount": .double(6), "date": .date(noon)], entity: "meter")
+        try await store.write(
+            [EntityWrite(values: ["user": .string("u1"), "amount": .double(2), "date": .date(noon)])], entity: "meter")
+        try await store.write(
+            [EntityWrite(values: ["user": .string("u2"), "amount": .double(8), "date": .date(noon)])], entity: "meter")
+        try await store.write(
+            [EntityWrite(values: ["user": .string("u1"), "amount": .double(6), "date": .date(noon)])], entity: "meter")
 
         let totals = try await AggregateQuery(store, entity: "meter", view: "low").totals()
         #expect(totals.first?.count == 2)
@@ -306,9 +311,11 @@ struct AggregatesTests {
             )
         )
 
-        try await store.write(["product": .string("app"), "amount": .double(10)], entity: "sale")
-        try await store.write(["product": .string("app"), "amount": .double(5)], entity: "sale")
-        try await store.write(["product": .string("book"), "amount": .double(2)], entity: "sale")
+        try await store.write(
+            [EntityWrite(values: ["product": .string("app"), "amount": .double(10)])], entity: "sale")
+        try await store.write([EntityWrite(values: ["product": .string("app"), "amount": .double(5)])], entity: "sale")
+        try await store.write(
+            [EntityWrite(values: ["product": .string("book"), "amount": .double(2)])], entity: "sale")
 
         let totals = try await AggregateQuery(store, entity: "sale", view: "by_product").totals()
         #expect(totals.first { $0.group == "app" }?.count == 2)
@@ -329,9 +336,11 @@ struct AggregatesTests {
                 views: [AggregateView(name: "by_product", groupBy: "product")]
             )
         )
-        try await store.write(["product": .string("app"), "amount": .double(10)], entity: "sale")
-        try await store.write(["product": .string("app"), "amount": .double(5)], entity: "sale")
-        try await store.write(["product": .string("book"), "amount": .double(2)], entity: "sale")
+        try await store.write(
+            [EntityWrite(values: ["product": .string("app"), "amount": .double(10)])], entity: "sale")
+        try await store.write([EntityWrite(values: ["product": .string("app"), "amount": .double(5)])], entity: "sale")
+        try await store.write(
+            [EntityWrite(values: ["product": .string("book"), "amount": .double(2)])], entity: "sale")
 
         #expect(try await store.query("sale").count() == 3)
         #expect(try await store.query("sale").filter("product", .equals, "app").count() == 2)
@@ -361,10 +370,10 @@ struct AggregatesTests {
                 views: [AggregateView(name: "by_kind", groupBy: "kind", sum: "price")]
             )
         )
-        try await store.write(["kind": .string("a"), "price": .double(10)], entity: "ticket")
-        try await store.write(["kind": .string("a"), "price": .double(5)], entity: "ticket")
-        try await store.write(["kind": .string("b"), "price": .double(2)], entity: "ticket")
-        try await store.write(["kind": .string("c"), "price": .double(4)], entity: "ticket")
+        try await store.write([EntityWrite(values: ["kind": .string("a"), "price": .double(10)])], entity: "ticket")
+        try await store.write([EntityWrite(values: ["kind": .string("a"), "price": .double(5)])], entity: "ticket")
+        try await store.write([EntityWrite(values: ["kind": .string("b"), "price": .double(2)])], entity: "ticket")
+        try await store.write([EntityWrite(values: ["kind": .string("c"), "price": .double(4)])], entity: "ticket")
 
         let grid = try #require(
             database.records.first { $0.recordType == "Aggregate" && $0["group_key"] as? String == "b" }
@@ -418,7 +427,8 @@ struct AggregatesTests {
             )
         )
         for units: Int64 in [1, 5, 12, 16, 20] {
-            try await store.write(["units": .int(units), "weight": .int(units * 100)], entity: "crate")
+            try await store.write(
+                [EntityWrite(values: ["units": .int(units), "weight": .int(units * 100)])], entity: "crate")
         }
 
         let grid = try #require(
@@ -440,9 +450,11 @@ struct AggregatesTests {
         try await publishPayment(views: [AggregateView(name: "by_product", groupBy: "product")])
         try await writePayments([1, 2], product: "app")
         try await store.write(
-            ["product": .string("app"), "amount": .double(9), "date": .date(noon.addingTimeInterval(86_400))],
-            entity: "payment"
-        )
+            [
+                EntityWrite(values: [
+                    "product": .string("app"), "amount": .double(9), "date": .date(noon.addingTimeInterval(86_400)),
+                ])
+            ], entity: "payment")
 
         let grid = try #require(database.records.first { $0.recordType == "Aggregate" })
         grid["c_00"] = Int64(41)
@@ -471,7 +483,8 @@ struct AggregatesTests {
             )
         )
         for (product, amount) in [("app", 10.0), ("app", 6.0), ("book", 4.0)] {
-            try await store.write(["product": .string(product), "amount": .double(amount)], entity: "ledger")
+            try await store.write(
+                [EntityWrite(values: ["product": .string(product), "amount": .double(amount)])], entity: "ledger")
         }
     }
 
@@ -517,7 +530,8 @@ struct AggregatesTests {
             )
         )
         for (product, amount) in [("app", 10.0), ("app", 6.0), ("book", 4.0)] {
-            try await store.write(["product": .string(product), "amount": .double(amount)], entity: "reading")
+            try await store.write(
+                [EntityWrite(values: ["product": .string(product), "amount": .double(amount)])], entity: "reading")
         }
 
         for view in ["peak", "trough"] {
@@ -612,8 +626,10 @@ struct AggregatesTests {
                 views: [AggregateView(name: "by_product", groupBy: "product", sum: "amount")]
             )
         )
-        try await store.write(["product": .string("app"), "amount": .double(10), "tax": .double(1)], entity: "fee")
-        try await store.write(["product": .string("book"), "amount": .double(4), "tax": .double(2)], entity: "fee")
+        try await store.write(
+            [EntityWrite(values: ["product": .string("app"), "amount": .double(10), "tax": .double(1)])], entity: "fee")
+        try await store.write(
+            [EntityWrite(values: ["product": .string("book"), "amount": .double(4), "tax": .double(2)])], entity: "fee")
 
         let grid = try #require(
             database.records.first { $0.recordType == "Aggregate" && $0["group_key"] as? String == "book" }
