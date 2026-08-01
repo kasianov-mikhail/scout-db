@@ -27,10 +27,10 @@ public actor SchemaRegistry {
         }
 
         let task = Task { () throws -> EntityDefinition in
-            let entries = try await database.allRecords(matching: metaQuery(entity: entity)).map(
+            let entries = try await database.allRecords(matching: Self.metaQuery(entity: entity)).map(
                 SchemaDescriptorEntry.init
             )
-            guard let definition = try latest(of: entries) else {
+            guard let definition = try Self.latest(of: entries) else {
                 throw SchemaError.unknownEntity(entity)
             }
             return definition
@@ -77,7 +77,7 @@ public actor SchemaRegistry {
         cache[definition.entity] = definition
     }
 
-    private func latest(of entries: [SchemaDescriptorEntry]) throws -> EntityDefinition? {
+    private static func latest(of entries: [SchemaDescriptorEntry]) throws -> EntityDefinition? {
         guard let entry = entries.max() else {
             return nil
         }
@@ -86,7 +86,7 @@ public actor SchemaRegistry {
         return definition
     }
 
-    private func metaQuery(entity: String) -> CKQuery {
+    private static func metaQuery(entity: String) -> CKQuery {
         CKQuery(
             recordType: SchemaDescriptorEntry.recordType,
             filters: [
