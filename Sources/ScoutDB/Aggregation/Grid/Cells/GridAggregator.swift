@@ -10,11 +10,11 @@ import Foundation
 
 struct GridAggregator {
     let database: any CloudDatabase
-    let slots: SlotCache
+    let slots: GridCache
     let maxRetry = 3
     let maxBatch = 400
 
-    init(database: any CloudDatabase, slots: SlotCache = SlotCache()) {
+    init(database: any CloudDatabase, slots: GridCache = GridCache()) {
         self.database = database
         self.slots = slots
     }
@@ -28,9 +28,9 @@ struct GridAggregator {
     {
         var merged = deltas(for: old, using: definition, adding: false)
         for (slot, delta) in deltas(for: new, using: definition, adding: true) {
-            merged[slot, default: CellDelta()].merge(delta)
+            merged[slot, default: GridDelta()].merge(delta)
         }
-        var live: [GridSlot: CellDelta] = [:]
+        var live: [GridSlot: GridDelta] = [:]
         for (slot, delta) in merged where !delta.isNoop() {
             live[slot] = delta
         }
@@ -38,10 +38,10 @@ struct GridAggregator {
     }
 
     private func deltas(for batch: [EntityRecord], using definition: EntityDefinition, adding: Bool) -> [GridSlot:
-        CellDelta]
+        GridDelta]
     {
         let sign: Int64 = adding ? 1 : -1
-        var deltas: [GridSlot: CellDelta] = [:]
+        var deltas: [GridSlot: GridDelta] = [:]
 
         for entityRecord in batch {
             for view in definition.views ?? [] {
@@ -49,7 +49,7 @@ struct GridAggregator {
                 let shard = view.shards.map { Self.shard(of: entityRecord.uuid, among: $0) }
                 let slot = GridSlot(entity: entityRecord.entity, view: view.name, group: group, shard: shard)
 
-                var delta = deltas[slot] ?? CellDelta()
+                var delta = deltas[slot] ?? GridDelta()
                 delta.count += sign
                 if let kind = view.metricKind, let field = view.metricField,
                     let value = entityRecord.values[field]?.scalar
@@ -75,19 +75,19 @@ struct GridAggregator {
 
     private struct Pending {
         var record: CKRecord
-        var delta: CellDelta
+        var delta: GridDelta
     }
 
     private struct ColdSlot {
         let slot: GridSlot
-        let delta: CellDelta
+        let delta: GridDelta
 
         var id: CKRecord.ID {
             slot.recordID
         }
     }
 
-    private func apply(_ deltas: [GridSlot: CellDelta]) async throws {
+    private func apply(_ deltas: [GridSlot: GridDelta]) async throws {
         guard deltas.count > 0 else {
             return
         }
@@ -126,7 +126,7 @@ struct GridAggregator {
         throw RecordConflictError(serverRecord: stranded.record)
     }
 
-    private func open(_ deltas: [GridSlot: CellDelta]) async throws -> [CKRecord.ID: Pending] {
+    private func open(_ deltas: [GridSlot: GridDelta]) async throws -> [CKRecord.ID: Pending] {
         var pending: [CKRecord.ID: Pending] = [:]
         var cold: [ColdSlot] = []
         for (slot, delta) in deltas {
@@ -172,7 +172,7 @@ struct GridAggregator {
 }
 
 extension CKRecord {
-    fileprivate func fold(_ delta: CellDelta) {
+    fileprivate func fold(_ delta: GridDelta) {
         setCellCount(cellCount + delta.count)
         if let kind = delta.kind, let total = delta.value {
             setCellValue(cellValue.map { kind.combine($0, total) } ?? total)

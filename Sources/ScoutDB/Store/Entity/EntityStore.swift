@@ -10,7 +10,7 @@ import Foundation
 public struct EntityStore: Sendable {
     let database: any CloudDatabase
     let registry: SchemaRegistry
-    let slots = SlotCache()
+    let slots = GridCache()
 
     var aggregator: GridAggregator {
         GridAggregator(database: database, slots: slots)
