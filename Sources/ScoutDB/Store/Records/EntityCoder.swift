@@ -9,14 +9,18 @@ import CloudKit
 import Foundation
 
 struct EntityCoder {
+    let definition: EntityDefinition
+
     private let jsonEncoder = JSONEncoder()
     private let jsonDecoder = JSONDecoder()
 
     private static let patterns = PatternCache()
 
-    func resolve(_ values: [String: RecordValue], at version: Int, using definition: EntityDefinition) throws
-        -> [String: RecordValue]
-    {
+    init(definition: EntityDefinition) {
+        self.definition = definition
+    }
+
+    func resolve(_ values: [String: RecordValue], at version: Int) throws -> [String: RecordValue] {
         let fields = definition.fields(at: version)
         var resolved = values
 
@@ -57,7 +61,7 @@ struct EntityCoder {
         return resolved
     }
 
-    func naturalUUID(for values: [String: RecordValue], using definition: EntityDefinition) throws -> String? {
+    func naturalUUID(for values: [String: RecordValue]) throws -> String? {
         guard let unique = definition.unique else {
             return nil
         }
@@ -70,18 +74,14 @@ struct EntityCoder {
         return contentDigest(of: key)
     }
 
-    func rewrite(_ record: CKRecord, using definition: EntityDefinition, transform: (inout EntityRecord) throws -> Void)
-        throws -> CKRecord
-    {
-        var next = try decode(record, using: definition)
+    func rewrite(_ record: CKRecord, transform: (inout EntityRecord) throws -> Void) throws -> CKRecord {
+        var next = try decode(record)
         try transform(&next)
-        next.values = try resolve(next.values, at: next.schemaVersion, using: definition)
-        return try encode(next, using: definition, into: record)
+        next.values = try resolve(next.values, at: next.schemaVersion)
+        return try encode(next, into: record)
     }
 
-    func encode(_ entityRecord: EntityRecord, using definition: EntityDefinition, into base: CKRecord? = nil) throws
-        -> CKRecord
-    {
+    func encode(_ entityRecord: EntityRecord, into base: CKRecord? = nil) throws -> CKRecord {
         let fields = definition.fields(at: entityRecord.schemaVersion)
         let values = entityRecord.values
 
@@ -110,7 +110,7 @@ struct EntityCoder {
         return record
     }
 
-    func decode(_ record: CKRecord, using definition: EntityDefinition) throws -> EntityRecord {
+    func decode(_ record: CKRecord) throws -> EntityRecord {
         guard let version = record["schema_version"] as? Int64, let uuid = record["uuid"] as? String else {
             throw SchemaError.staleSchema(entity: definition.entity, version: 0)
         }
