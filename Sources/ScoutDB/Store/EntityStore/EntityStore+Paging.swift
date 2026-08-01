@@ -24,7 +24,7 @@ extension EntityStore {
             throw SchemaError.invalidValue(field)
         }
 
-        let pager = FieldPager(
+        let pager = EntityPager(
             database: database,
             entity: entity,
             field: field,

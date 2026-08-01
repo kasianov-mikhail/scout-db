@@ -23,7 +23,7 @@ extension EntityStore {
             return nil
         }
 
-        let folder = GridFolder(
+        let folder = EntityFolder(
             database: database,
             entity: entity,
             field: field,

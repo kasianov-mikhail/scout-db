@@ -11,7 +11,7 @@ extension EntityStore {
     func read(entity: String, any branches: [[Filter]] = [[]], sort: [Sort] = [], limit: Int? = nil)
         async throws -> [EntityRecord]
     {
-        let reader = BranchReader(
+        let reader = EntityReader(
             database: database,
             entity: entity,
             sort: sort,
