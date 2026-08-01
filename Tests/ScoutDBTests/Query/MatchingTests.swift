@@ -79,11 +79,10 @@ struct MatchingTests {
         }
 
         #expect(
-            try store.split(
+            try store.clientFilters(
                 [EntityStore.Filter(field: "blob", op: .contains, value: .string("a"))],
-                entity: "shot",
                 using: definition
-            ).client.count == 1
+            ).count == 1
         )
     }
 
