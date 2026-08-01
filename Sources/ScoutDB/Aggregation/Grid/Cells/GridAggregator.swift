@@ -59,8 +59,6 @@ struct GridAggregator {
                         delta.value = delta.value.map { kind.combine($0, value) } ?? value
                     } else if kind == .sum {
                         delta.value = (delta.value ?? 0) - value
-                    } else {
-                        delta.removed = delta.removed.map { kind.combine($0, value) } ?? value
                     }
                 }
                 deltas[slot] = delta

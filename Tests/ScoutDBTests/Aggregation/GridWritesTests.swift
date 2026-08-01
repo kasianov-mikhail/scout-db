@@ -103,8 +103,8 @@ struct GridWritesTests {
         )
     }
 
-    @Test("An update that leaves a min view's value where it stands touches no slot")
-    func unchangedMinSkipsTheSlot() async throws {
+    @Test("An update that raises a min view's value leaves the value standing")
+    func raisedMinLeavesTheValue() async throws {
         let definition = paymentDefinition(views: [AggregateView(name: "cheapest", min: "amount")])
         let stored = payment(amount: 5)
         try await GridAggregator(database: database).record([stored], using: definition)
@@ -116,8 +116,7 @@ struct GridWritesTests {
             using: definition
         )
 
-        #expect(requests(.fetch) == 0)
-        #expect(requests(.conditionalSave) == 0)
+        #expect(requests(.conditionalSave) == 1)
         #expect(try #require(slots.first)["f_00"] as? Double == 5)
     }
 

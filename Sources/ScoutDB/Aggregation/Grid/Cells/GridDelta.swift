@@ -11,7 +11,6 @@ struct GridDelta {
     var count: Int64 = 0
     var kind: Metric?
     var value: Double?
-    var removed: Double?
 
     mutating func merge(_ other: GridDelta) {
         count += other.count
@@ -24,9 +23,6 @@ struct GridDelta {
         if let total = other.value {
             value = value.map { kind.combine($0, total) } ?? total
         }
-        if let total = other.removed {
-            removed = removed.map { kind.combine($0, total) } ?? total
-        }
     }
 
     func isNoop() -> Bool {
@@ -36,12 +32,6 @@ struct GridDelta {
         guard let kind, let total = value else {
             return true
         }
-        guard kind != .sum else {
-            return total == 0
-        }
-        guard let removed else {
-            return false
-        }
-        return kind.combine(removed, total) == removed
+        return kind == .sum && total == 0
     }
 }
