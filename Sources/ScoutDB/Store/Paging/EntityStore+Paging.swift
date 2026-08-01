@@ -78,12 +78,13 @@ extension EntityStore {
                 using: definition
             ) + [uuidSort]
 
-        let (query, included) = try liveQuery(
+        let query = try liveQuery(
             pageFilters,
             entity: entity,
             sort: sort,
             using: definition
         )
+        let included = try liveFilter(pageFilters, entity: entity, using: definition)
 
         let collected = try await boundedRecords(
             matching: query,

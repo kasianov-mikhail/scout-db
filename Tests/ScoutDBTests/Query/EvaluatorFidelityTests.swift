@@ -31,21 +31,11 @@ struct EvaluatorFidelityTests {
             )
         )
         try await store.write(
-            [
-                "owner": .reference("u-1"),
-                "blob": .bytes(Data([0x01])),
-            ],
-            entity: "pin",
-            uuid: "p-1"
-        )
+            [EntityWrite(values: ["owner": .reference("u-1"), "blob": .bytes(Data([0x01]))], uuid: "p-1")],
+            entity: "pin")
         try await store.write(
-            [
-                "owner": .reference("u-2"),
-                "blob": .bytes(Data([0x02])),
-            ],
-            entity: "pin",
-            uuid: "p-2"
-        )
+            [EntityWrite(values: ["owner": .reference("u-2"), "blob": .bytes(Data([0x02]))], uuid: "p-2")],
+            entity: "pin")
     }
 
     private func read(_ filter: EntityStore.Filter) async throws -> [String] {

@@ -8,12 +8,6 @@
 import CloudKit
 
 extension EntityStore {
-    @discardableResult public func write(_ values: [String: RecordValue], entity: String, uuid: String? = nil)
-        async throws -> String
-    {
-        try await write([EntityWrite(values: values, uuid: uuid)], entity: entity)[0]
-    }
-
     @discardableResult public func write(_ batch: [EntityWrite], entity: String) async throws -> [String] {
         guard batch.count > 0 else {
             return []
@@ -53,10 +47,9 @@ extension EntityStore {
         }
         var latest: [String: EntityRecord] = [:]
         for record in records { latest[record.uuid] = record }
-        let live = try decode(
-            try await items(entity: definition.entity, uuids: latest.keys.filter(stored.contains)),
-            using: definition
-        )
+        let coder = EntityCoder()
+        let live = try await items(entity: definition.entity, uuids: latest.keys.filter(stored.contains))
+            .map { try coder.decode($0, using: definition) }
         let liveByUUID = Dictionary(live.map { ($0.uuid, $0) }, uniquingKeysWith: { first, _ in first })
         return (Array(liveByUUID.values), Array(latest.values))
     }

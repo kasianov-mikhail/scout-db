@@ -32,14 +32,13 @@ struct BuilderTests {
         for (index, quantity) in [3, 1, 2].enumerated() {
             try await store.write(
                 [
-                    "product_id": .string("sku-\(index)"),
-                    "quantity": .int(Int64(quantity)),
-                    "amount": .double(Double(quantity) * 10),
-                    "date": .date(Date(timeIntervalSince1970: TimeInterval(index * 1_000))),
-                ],
-                entity: "purchase",
-                uuid: "p-\(index)"
-            )
+                    EntityWrite(
+                        values: [
+                            "product_id": .string("sku-\(index)"), "quantity": .int(Int64(quantity)),
+                            "amount": .double(Double(quantity) * 10),
+                            "date": .date(Date(timeIntervalSince1970: TimeInterval(index * 1_000))),
+                        ], uuid: "p-\(index)")
+                ], entity: "purchase")
         }
     }
 
@@ -369,14 +368,12 @@ struct BuilderTests {
     func groupedFolds() async throws {
         try await store.write(
             [
-                "product_id": .string("sku-0"),
-                "quantity": .int(5),
-                "amount": .double(50),
-                "date": .date(Date(timeIntervalSince1970: 4_000)),
-            ],
-            entity: "purchase",
-            uuid: "p-3"
-        )
+                EntityWrite(
+                    values: [
+                        "product_id": .string("sku-0"), "quantity": .int(5), "amount": .double(50),
+                        "date": .date(Date(timeIntervalSince1970: 4_000)),
+                    ], uuid: "p-3")
+            ], entity: "purchase")
 
         #expect(
             try await store.query("purchase").sum("quantity", by: "product_id") == ["sku-0": 8, "sku-1": 1, "sku-2": 2]
@@ -434,7 +431,7 @@ struct BuilderTests {
 
         #expect(try await registry.definition(for: "account").field(named: "email", at: 1)?.pattern == "[^@]+@[^@]+")
         await #expect(throws: SchemaError.invalidValue("email")) {
-            try await store.write(["email": .string("nope")], entity: "account", uuid: "a-1")
+            try await store.write([EntityWrite(values: ["email": .string("nope")], uuid: "a-1")], entity: "account")
         }
     }
 
@@ -475,7 +472,7 @@ struct BuilderTests {
         try await store.migrate([CreateNote()])
         try await store.migrate([CreateNote()])
 
-        try await store.write(["title": .string("hi")], entity: "note", uuid: "n-1")
+        try await store.write([EntityWrite(values: ["title": .string("hi")], uuid: "n-1")], entity: "note")
         #expect(try await store.query("note").count() == 1)
     }
 }

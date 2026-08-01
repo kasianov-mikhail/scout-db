@@ -19,10 +19,11 @@ struct StoreContractTests {
             let entity = try await f.publishOrder()
             let date = Date(timeIntervalSince1970: 1_000_000)
             try await f.store.write(
-                orderValues(product: "sku-9", quantity: 4, total: 19.5, date: date, note: "gift"),
-                entity: entity,
-                uuid: "r-1"
-            )
+                [
+                    EntityWrite(
+                        values: orderValues(product: "sku-9", quantity: 4, total: 19.5, date: date, note: "gift"),
+                        uuid: "r-1")
+                ], entity: entity)
 
             try await eventually { try await f.store.read(entity: entity).count == 1 }
             let record = try #require(try await f.store.read(entity: entity).first)
@@ -39,8 +40,8 @@ struct StoreContractTests {
     func upsertSameUUID() async throws {
         try await withContract { f in
             let entity = try await f.publishOrder()
-            try await f.store.write(orderValues(quantity: 1), entity: entity, uuid: "u-1")
-            try await f.store.write(orderValues(quantity: 7), entity: entity, uuid: "u-1")
+            try await f.store.write([EntityWrite(values: orderValues(quantity: 1), uuid: "u-1")], entity: entity)
+            try await f.store.write([EntityWrite(values: orderValues(quantity: 7), uuid: "u-1")], entity: entity)
 
             try await eventually {
                 let records = try await f.store.read(entity: entity)
@@ -60,8 +61,10 @@ struct StoreContractTests {
                 ],
                 unique: ["user"]
             )
-            try await f.store.write(["user": .string("u1"), "date": .date(Date())], entity: entity)
-            try await f.store.write(["user": .string("u1"), "date": .date(Date())], entity: entity)
+            try await f.store.write(
+                [EntityWrite(values: ["user": .string("u1"), "date": .date(Date())])], entity: entity)
+            try await f.store.write(
+                [EntityWrite(values: ["user": .string("u1"), "date": .date(Date())])], entity: entity)
 
             try await eventually { try await f.store.read(entity: entity).count == 1 }
         }
@@ -73,10 +76,10 @@ struct StoreContractTests {
             let entity = try await f.publishOrder()
             for (index, quantity) in [1, 5, 9].enumerated() {
                 try await f.store.write(
-                    orderValues(product: "sku-\(quantity)", quantity: quantity),
-                    entity: entity,
-                    uuid: "q-\(index)"
-                )
+                    [
+                        EntityWrite(
+                            values: orderValues(product: "sku-\(quantity)", quantity: quantity), uuid: "q-\(index)")
+                    ], entity: entity)
             }
             try await eventually { try await f.store.read(entity: entity).count == 3 }
 
@@ -102,7 +105,8 @@ struct StoreContractTests {
         try await withContract { f in
             let entity = try await f.publishOrder()
             for product in ["a", "b", "c"] {
-                try await f.store.write(orderValues(product: product), entity: entity, uuid: "in-\(product)")
+                try await f.store.write(
+                    [EntityWrite(values: orderValues(product: product), uuid: "in-\(product)")], entity: entity)
             }
             try await eventually { try await f.store.read(entity: entity).count == 3 }
 
@@ -118,8 +122,9 @@ struct StoreContractTests {
     func containsSubstring() async throws {
         try await withContract { f in
             let entity = try await f.publishOrder()
-            try await f.store.write(orderValues(product: "deluxe-bundle"), entity: entity, uuid: "s-1")
-            try await f.store.write(orderValues(product: "basic"), entity: entity, uuid: "s-2")
+            try await f.store.write(
+                [EntityWrite(values: orderValues(product: "deluxe-bundle"), uuid: "s-1")], entity: entity)
+            try await f.store.write([EntityWrite(values: orderValues(product: "basic"), uuid: "s-2")], entity: entity)
             try await eventually { try await f.store.read(entity: entity).count == 2 }
 
             let matched = try await f.store.read(
@@ -135,7 +140,8 @@ struct StoreContractTests {
         try await withContract { f in
             let entity = try await f.publishOrder()
             for (index, quantity) in [5, 1, 9].enumerated() {
-                try await f.store.write(orderValues(quantity: quantity), entity: entity, uuid: "o-\(index)")
+                try await f.store.write(
+                    [EntityWrite(values: orderValues(quantity: quantity), uuid: "o-\(index)")], entity: entity)
             }
             try await eventually { try await f.store.read(entity: entity).count == 3 }
 
@@ -153,10 +159,10 @@ struct StoreContractTests {
             let base = Date(timeIntervalSince1970: 1_000_000)
             for index in 0..<5 {
                 try await f.store.write(
-                    orderValues(date: base.addingTimeInterval(Double(index) * 60)),
-                    entity: entity,
-                    uuid: "p-\(index)"
-                )
+                    [
+                        EntityWrite(
+                            values: orderValues(date: base.addingTimeInterval(Double(index) * 60)), uuid: "p-\(index)")
+                    ], entity: entity)
             }
             try await eventually { try await f.store.read(entity: entity).count == 5 }
 
@@ -175,7 +181,8 @@ struct StoreContractTests {
         try await withContract { f in
             let entity = try await f.publishOrder()
             for (index, total) in [2.5, 7.5, 10.0].enumerated() {
-                try await f.store.write(orderValues(total: total), entity: entity, uuid: "fs-\(index)")
+                try await f.store.write(
+                    [EntityWrite(values: orderValues(total: total), uuid: "fs-\(index)")], entity: entity)
             }
             try await eventually { try await f.store.read(entity: entity).count == 3 }
 
@@ -189,7 +196,8 @@ struct StoreContractTests {
         try await withContract { f in
             let entity = try await f.publishOrder()
             for (index, product) in ["a", "a", "b"].enumerated() {
-                try await f.store.write(orderValues(product: product), entity: entity, uuid: "cg-\(index)")
+                try await f.store.write(
+                    [EntityWrite(values: orderValues(product: product), uuid: "cg-\(index)")], entity: entity)
             }
             try await eventually { try await f.store.read(entity: entity).count == 3 }
 
@@ -201,8 +209,8 @@ struct StoreContractTests {
     func aggregateViewTotals() async throws {
         try await withContract { f in
             let entity = try await f.publishOrder(views: [AggregateView(name: "revenue", sum: "total")])
-            try await f.store.write(orderValues(total: 2), entity: entity, uuid: "v-1")
-            try await f.store.write(orderValues(total: 3), entity: entity, uuid: "v-2")
+            try await f.store.write([EntityWrite(values: orderValues(total: 2), uuid: "v-1")], entity: entity)
+            try await f.store.write([EntityWrite(values: orderValues(total: 3), uuid: "v-2")], entity: entity)
 
             try await eventually {
                 let totals = try await AggregateQuery(f.store, entity: entity, view: "revenue").totals()

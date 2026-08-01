@@ -27,7 +27,7 @@ struct MigratorTests {
     func backfill() async throws {
         try await registry.publish(makeRenameDefinition(version: 1))
         let store = EntityStore(database: database, registry: registry)
-        try await store.write(["user": .string("alice")], entity: "profile", uuid: "u-1")
+        try await store.write([EntityWrite(values: ["user": .string("alice")], uuid: "u-1")], entity: "profile")
 
         try await registry.publish(makeRenameDefinition(version: 2))
         let migrated = try await migrator.backfill(entity: "profile")
@@ -42,7 +42,7 @@ struct MigratorTests {
     func rename() async throws {
         try await registry.publish(makeRenameDefinition(version: 1))
         let store = EntityStore(database: database, registry: registry)
-        try await store.write(["user": .string("bob")], entity: "profile", uuid: "u-2")
+        try await store.write([EntityWrite(values: ["user": .string("bob")], uuid: "u-2")], entity: "profile")
 
         try await registry.publish(makeRenameDefinition(version: 2))
         try await migrator.backfill(entity: "profile")
@@ -56,7 +56,7 @@ struct MigratorTests {
     func renameAcrossSlots() async throws {
         try await registry.publish(makeReslotDefinition(version: 1))
         let store = EntityStore(database: database, registry: registry)
-        try await store.write(["user": .string("dana")], entity: "member", uuid: "u-4")
+        try await store.write([EntityWrite(values: ["user": .string("dana")], uuid: "u-4")], entity: "member")
 
         try await registry.publish(makeReslotDefinition(version: 2))
         let migrated = try await migrator.rename(entity: "member", from: "user", to: "handle")
@@ -76,7 +76,7 @@ struct MigratorTests {
     func typeChange() async throws {
         try await registry.publish(makeRetypeDefinition(version: 1))
         let store = EntityStore(database: database, registry: registry)
-        try await store.write(["amount": .int(500)], entity: "payment", uuid: "m-1")
+        try await store.write([EntityWrite(values: ["amount": .int(500)], uuid: "m-1")], entity: "payment")
 
         try await registry.publish(makeRetypeDefinition(version: 2))
         try await migrator.backfill(entity: "payment") { record in
@@ -94,7 +94,7 @@ struct MigratorTests {
     func idempotence() async throws {
         try await registry.publish(makeRenameDefinition(version: 2))
         let store = EntityStore(database: database, registry: registry)
-        try await store.write(["user_id": .string("carol")], entity: "profile", uuid: "u-3")
+        try await store.write([EntityWrite(values: ["user_id": .string("carol")], uuid: "u-3")], entity: "profile")
 
         let migrated = try await migrator.backfill(entity: "profile")
         #expect(migrated == 0)
@@ -112,9 +112,11 @@ struct MigratorTests {
         )
         try await registry.publish(definition)
         let store = EntityStore(database: database, registry: registry)
-        try await store.write(["product": .string("app"), "amount": .double(10)], entity: "sale")
-        try await store.write(["product": .string("app"), "amount": .double(5)], entity: "sale")
-        try await store.write(["product": .string("book"), "amount": .double(2)], entity: "sale")
+        try await store.write(
+            [EntityWrite(values: ["product": .string("app"), "amount": .double(10)])], entity: "sale")
+        try await store.write([EntityWrite(values: ["product": .string("app"), "amount": .double(5)])], entity: "sale")
+        try await store.write(
+            [EntityWrite(values: ["product": .string("book"), "amount": .double(2)])], entity: "sale")
 
         definition.views? += [AggregateView(name: "by_product", groupBy: "product", sum: "amount")]
         try await registry.publish(definition)

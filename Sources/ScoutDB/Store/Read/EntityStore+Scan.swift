@@ -9,25 +9,30 @@ import CloudKit
 
 extension EntityStore {
     func liveQuery(_ filters: [Filter], entity: String, sort: [ServerSort] = [], using definition: EntityDefinition)
-        throws -> (query: CKQuery, included: (EntityRecord) -> Bool)
+        throws -> CKQuery
     {
-        let (server, client) = try split(filters, entity: entity, using: definition)
+        let (server, _) = try split(filters, entity: entity, using: definition)
+        return CKQuery(recordType: "Entity", filters: server, sort: sort)
+    }
+
+    func liveFilter(_ filters: [Filter], entity: String, using definition: EntityDefinition)
+        throws -> (EntityRecord) -> Bool
+    {
+        let (_, client) = try split(filters, entity: entity, using: definition)
         let matchers = try Self.matchers(for: client)
-        return (
-            CKQuery(recordType: "Entity", filters: server, sort: sort),
-            { record in matchers.allSatisfy { $0(record) } }
-        )
+        return { record in matchers.allSatisfy { $0(record) } }
     }
 
     func boundedRecords(
         matching query: CKQuery, limit: Int, using definition: EntityDefinition,
         where included: (EntityRecord) -> Bool
     ) async throws -> [EntityRecord] {
+        let coder = EntityCoder()
         var collected: [EntityRecord] = []
         var page = Self.cappedPage(limit == Int.max ? limit : limit + 1)
         var (batch, token) = try await database.records(matching: query, resultsLimit: page)
         while true {
-            collected += try decode(batch.map { try $0.1.get() }, using: definition).filter(included)
+            collected += try batch.map { try coder.decode($0.1.get(), using: definition) }.filter(included)
             guard collected.count < limit, let cursor = token else {
                 break
             }

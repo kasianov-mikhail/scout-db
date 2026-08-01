@@ -20,12 +20,13 @@ extension EntityStore {
             }
             return Array(ranked.prefix(limit))
         }
-        let (query, included) = try liveQuery(
+        let query = try liveQuery(
             filters,
             entity: entity,
             sort: try serverSort(sort, using: definition),
             using: definition
         )
+        let included = try liveFilter(filters, entity: entity, using: definition)
         if let limit {
             return Array(
                 try await boundedRecords(
@@ -36,9 +37,10 @@ extension EntityStore {
                 ).prefix(limit)
             )
         }
+        let coder = EntityCoder()
         var collected: [EntityRecord] = []
         try await database.forEachPage(matching: query) { page in
-            collected += try decode(page, using: definition).filter(included)
+            collected += try page.map { try coder.decode($0, using: definition) }.filter(included)
         }
         return collected
     }

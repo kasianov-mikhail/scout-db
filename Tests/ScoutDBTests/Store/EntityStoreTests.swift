@@ -26,7 +26,7 @@ struct EntityStoreTests {
 
     @Test("Write persists a single Entity record")
     func write() async throws {
-        try await store.write(makePurchase().values, entity: "purchase", uuid: "p-1")
+        try await store.write([EntityWrite(values: makePurchase().values, uuid: "p-1")], entity: "purchase")
         #expect(database.records.filter { $0.recordType == "Entity" }.count == 1)
     }
 
@@ -55,17 +55,17 @@ struct EntityStoreTests {
     @Test("Read restores entity records")
     func read() async throws {
         let purchase = makePurchase()
-        try await store.write(purchase.values, entity: "purchase", uuid: "p-1")
+        try await store.write([EntityWrite(values: purchase.values, uuid: "p-1")], entity: "purchase")
         let records = try await store.read(entity: "purchase")
         #expect(records == [purchase])
     }
 
     @Test("Read filters on a slot field")
     func filteredRead() async throws {
-        try await store.write(makePurchase(uuid: "p-1").values, entity: "purchase", uuid: "p-1")
+        try await store.write([EntityWrite(values: makePurchase(uuid: "p-1").values, uuid: "p-1")], entity: "purchase")
         var other = makePurchase(uuid: "p-2").values
         other["product_id"] = .string("sku-7")
-        try await store.write(other, entity: "purchase", uuid: "p-2")
+        try await store.write([EntityWrite(values: other, uuid: "p-2")], entity: "purchase")
 
         let filter = EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-7"))
         let records = try await store.read(entity: "purchase", filters: [filter])
@@ -74,10 +74,10 @@ struct EntityStoreTests {
 
     @Test("Filters combine across value types in one query")
     func mixedFilters() async throws {
-        try await store.write(makePurchase(uuid: "p-1").values, entity: "purchase", uuid: "p-1")
+        try await store.write([EntityWrite(values: makePurchase(uuid: "p-1").values, uuid: "p-1")], entity: "purchase")
         var cheap = makePurchase(uuid: "p-2").values
         cheap["quantity"] = .int(1)
-        try await store.write(cheap, entity: "purchase", uuid: "p-2")
+        try await store.write([EntityWrite(values: cheap, uuid: "p-2")], entity: "purchase")
 
         let filters = [
             EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-42")),
@@ -93,7 +93,7 @@ struct EntityStoreTests {
         for (index, quantity) in [3, 1, 2].enumerated() {
             var values = makePurchase().values
             values["quantity"] = .int(Int64(quantity))
-            try await store.write(values, entity: "purchase", uuid: "p-\(index)")
+            try await store.write([EntityWrite(values: values, uuid: "p-\(index)")], entity: "purchase")
         }
 
         let ascending = try await store.read(entity: "purchase", sort: [EntityStore.Sort(field: "quantity")])
@@ -119,7 +119,7 @@ struct EntityStoreTests {
             var values = makePurchase().values
             values["product_id"] = .string(sku)
             values["quantity"] = .int(Int64(index + 1))
-            try await store.write(values, entity: "purchase", uuid: "p-\(index)")
+            try await store.write([EntityWrite(values: values, uuid: "p-\(index)")], entity: "purchase")
         }
 
         let branches = [
@@ -137,10 +137,10 @@ struct EntityStoreTests {
 
     @Test("NOT IN excludes listed values server-side")
     func notIn() async throws {
-        try await store.write(makePurchase(uuid: "p-1").values, entity: "purchase", uuid: "p-1")
+        try await store.write([EntityWrite(values: makePurchase(uuid: "p-1").values, uuid: "p-1")], entity: "purchase")
         var other = makePurchase(uuid: "p-2").values
         other["product_id"] = .string("sku-7")
-        try await store.write(other, entity: "purchase", uuid: "p-2")
+        try await store.write([EntityWrite(values: other, uuid: "p-2")], entity: "purchase")
 
         let filter = EntityStore.Filter(field: "product_id", op: .notIn, value: .strings(["sku-42"]))
         let records = try await store.read(entity: "purchase", filters: [filter])
@@ -152,7 +152,7 @@ struct EntityStoreTests {
         for (index, seconds) in [1_000, 2_000, 3_000].enumerated() {
             var values = makePurchase().values
             values["date"] = .date(Date(timeIntervalSince1970: TimeInterval(seconds)))
-            try await store.write(values, entity: "purchase", uuid: "p-\(index)")
+            try await store.write([EntityWrite(values: values, uuid: "p-\(index)")], entity: "purchase")
         }
         let range =
             "date" >= .date(Date(timeIntervalSince1970: 1_500))
@@ -171,9 +171,10 @@ struct EntityStoreTests {
                 ]
             )
         )
-        try await store.write(["tags": .strings(["swift", "ios"])], entity: "post", uuid: "n-1")
-        try await store.write(["tags": .strings(["swift", "server"])], entity: "post", uuid: "n-2")
-        try await store.write(["tags": .strings(["android"])], entity: "post", uuid: "n-3")
+        try await store.write([EntityWrite(values: ["tags": .strings(["swift", "ios"])], uuid: "n-1")], entity: "post")
+        try await store.write(
+            [EntityWrite(values: ["tags": .strings(["swift", "server"])], uuid: "n-2")], entity: "post")
+        try await store.write([EntityWrite(values: ["tags": .strings(["android"])], uuid: "n-3")], entity: "post")
 
         let both = try await store.query("post").filter("tags" ~~ "swift" && "tags" ~~ "ios").take(100)
         #expect(both.map(\.uuid) == ["n-1"])
@@ -196,15 +197,15 @@ struct EntityStoreTests {
         )
         let t0 = Date(timeIntervalSince1970: 1_000)
         try await store.write(
-            ["codes": .ints([1, 2, 3]), "scores": .doubles([9.5]), "times": .dates([t0])],
-            entity: "sample",
-            uuid: "s-1"
-        )
+            [
+                EntityWrite(
+                    values: ["codes": .ints([1, 2, 3]), "scores": .doubles([9.5]), "times": .dates([t0])], uuid: "s-1")
+            ], entity: "sample")
         try await store.write(
-            ["codes": .ints([4, 5]), "scores": .doubles([1.0]), "times": .dates([])],
-            entity: "sample",
-            uuid: "s-2"
-        )
+            [
+                EntityWrite(
+                    values: ["codes": .ints([4, 5]), "scores": .doubles([1.0]), "times": .dates([])], uuid: "s-2")
+            ], entity: "sample")
 
         let record = try #require(try await store.read(entity: "sample").first { $0.uuid == "s-1" })
         #expect(record.values["codes"] == .ints([1, 2, 3]))
@@ -229,7 +230,7 @@ struct EntityStoreTests {
                 ]
             )
         )
-        try await store.write(["parent": .reference("node-9")], entity: "graph", uuid: "g-1")
+        try await store.write([EntityWrite(values: ["parent": .reference("node-9")], uuid: "g-1")], entity: "graph")
 
         let record = try #require(try await store.read(entity: "graph").first)
         #expect(record.values["parent"] == .reference("node-9"))
@@ -246,7 +247,7 @@ struct EntityStoreTests {
             )
         )
         let payload = Data([0xDE, 0xAD])
-        try await store.write(["digest": .bytes(payload)], entity: "blob", uuid: "b-1")
+        try await store.write([EntityWrite(values: ["digest": .bytes(payload)], uuid: "b-1")], entity: "blob")
         let record = try #require(try await store.read(entity: "blob").first)
         #expect(record.values["digest"] == .bytes(payload))
     }
@@ -279,8 +280,10 @@ struct EntityStoreTests {
             )
         )
 
-        let first = try await store.write(["user_id": .string("alice"), "score": .int(1)], entity: "profile")
-        let second = try await store.write(["user_id": .string("alice"), "score": .int(2)], entity: "profile")
+        let first = try await store.write(
+            [EntityWrite(values: ["user_id": .string("alice"), "score": .int(1)])], entity: "profile")
+        let second = try await store.write(
+            [EntityWrite(values: ["user_id": .string("alice"), "score": .int(2)])], entity: "profile")
         #expect(first == second)
 
         let records = try await store.read(entity: "profile")
@@ -300,11 +303,11 @@ struct EntityStoreTests {
             )
         )
         try await store.write(
-            ["title": .string("Intro"), "tags": .strings(["swift", "ios"])],
-            entity: "post",
-            uuid: "n-1"
-        )
-        try await store.write(["title": .string("Server"), "tags": .strings(["vapor"])], entity: "post", uuid: "n-2")
+            [EntityWrite(values: ["title": .string("Intro"), "tags": .strings(["swift", "ios"])], uuid: "n-1")],
+            entity: "post")
+        try await store.write(
+            [EntityWrite(values: ["title": .string("Server"), "tags": .strings(["vapor"])], uuid: "n-2")],
+            entity: "post")
 
         let filter = EntityStore.Filter(field: "tags", op: .contains, value: .string("swift"))
         let records = try await store.read(entity: "post", filters: [filter])
@@ -325,8 +328,8 @@ struct EntityStoreTests {
         )
 
         let date = Date(timeIntervalSince1970: 36_000)
-        try await store.write(["name": .string("open"), "date": .date(date)], entity: "tap")
-        try await store.write(["name": .string("open"), "date": .date(date)], entity: "tap")
+        try await store.write([EntityWrite(values: ["name": .string("open"), "date": .date(date)])], entity: "tap")
+        try await store.write([EntityWrite(values: ["name": .string("open"), "date": .date(date)])], entity: "tap")
 
         let grids = database.records.filter { $0.recordType == "Aggregate" }
         #expect(grids.count == 1)
@@ -348,8 +351,8 @@ struct EntityStoreTests {
         )
 
         let date = Date(timeIntervalSince1970: 36_000)
-        try await store.write(["amount": .double(2.5), "date": .date(date)], entity: "payment")
-        try await store.write(["amount": .double(1.5), "date": .date(date)], entity: "payment")
+        try await store.write([EntityWrite(values: ["amount": .double(2.5), "date": .date(date)])], entity: "payment")
+        try await store.write([EntityWrite(values: ["amount": .double(1.5), "date": .date(date)])], entity: "payment")
 
         let grids = database.records.filter { $0.recordType == "Aggregate" }
         #expect(grids.count == 1)
