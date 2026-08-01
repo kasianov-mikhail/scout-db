@@ -11,8 +11,7 @@ extension EntityStore {
     @discardableResult public func write(_ values: [String: RecordValue], entity: String, uuid: String? = nil)
         async throws -> String
     {
-        let entry = uuid.map { EntityWrite(values: values, uuid: $0) } ?? EntityWrite(values: values)
-        return try await write([entry], entity: entity)[0]
+        try await write([EntityWrite(values: values, uuid: uuid)], entity: entity)[0]
     }
 
     @discardableResult public func write(_ batch: [EntityWrite], entity: String) async throws -> [String] {
@@ -26,9 +25,10 @@ extension EntityStore {
         let entityRecords = try batch.map { entry in
             let resolved = try coder.resolve(entry.values, at: definition.version, using: definition)
             let natural = try coder.naturalUUID(for: resolved, using: definition)
-            let uuid = natural ?? entry.uuid
-            if natural != nil || entry.assigned {
-                stored.insert(uuid)
+            let assigned = natural ?? entry.uuid
+            let uuid = assigned ?? UUID().uuidString
+            if let assigned {
+                stored.insert(assigned)
             }
             return EntityRecord(entity: entity, uuid: uuid, schemaVersion: definition.version, values: resolved)
         }
