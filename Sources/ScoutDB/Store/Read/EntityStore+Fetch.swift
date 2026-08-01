@@ -10,8 +10,9 @@ import CloudKit
 extension EntityStore {
     public func fetch(entity: String, uuids: [String]) async throws -> [EntityRecord] {
         let definition = try await registry.definition(for: entity)
+        let coder = EntityCoder()
         let records = try await items(entity: entity, uuids: uuids)
-        return try decode(records, using: definition).sorted { $0.uuid < $1.uuid }
+        return try records.map { try coder.decode($0, using: definition) }.sorted { $0.uuid < $1.uuid }
     }
 
     /// Fetches a single record by its identifier, resolving the entity from the record itself.
@@ -29,7 +30,7 @@ extension EntityStore {
             return nil
         }
         let definition = try await registry.definition(for: entity)
-        return try decode([record], using: definition).first
+        return try EntityCoder().decode(record, using: definition)
     }
 
     func items(entity: String, uuids: [String]) async throws -> [CKRecord] {
