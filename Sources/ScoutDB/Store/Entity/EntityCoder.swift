@@ -100,20 +100,13 @@ struct EntityCoder {
         return contentDigest(of: key)
     }
 
-    struct Rewrite {
-        let previous: EntityRecord
-        let next: EntityRecord
-        let record: CKRecord
-    }
-
     func rewrite(_ record: CKRecord, using definition: EntityDefinition, transform: (inout EntityRecord) throws -> Void)
-        throws -> Rewrite
+        throws -> CKRecord
     {
-        let previous = try decode(record, using: definition)
-        var next = previous
+        var next = try decode(record, using: definition)
         try transform(&next)
         next.values = try resolve(next.values, at: next.schemaVersion, using: definition)
-        return Rewrite(previous: previous, next: next, record: try encode(next, using: definition, into: record))
+        return try encode(next, using: definition, into: record)
     }
 
     func encode(_ entityRecord: EntityRecord, using definition: EntityDefinition, into base: CKRecord? = nil) throws
