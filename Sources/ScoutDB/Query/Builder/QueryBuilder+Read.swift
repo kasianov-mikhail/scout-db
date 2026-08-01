@@ -44,28 +44,4 @@ extension QueryBuilder {
     public func first() async throws -> EntityRecord? {
         try await take(1).first
     }
-
-    /// Returns one keyset page ordered by the builder's sort clause.
-    ///
-    /// Requires exactly one `sort(_:_:)` clause on a slot-backed scalar field;
-    /// disjunctions are honored.
-    ///
-    /// ```swift
-    /// let first = try await store.query("purchase").sort("amount").page(size: 50)
-    /// let next = try await store.query("purchase").sort("amount").page(size: 50, after: first.cursor)
-    /// ```
-    ///
-    public func page(size: Int, after cursor: FieldCursor? = nil) async throws -> FieldPage {
-        guard sorts.count == 1, let sort = sorts.first else {
-            throw SchemaError.invalidDefinition("A field-ordered page requires exactly one sort clause")
-        }
-        return try await store.read(
-            entity: entity,
-            any: alternatives,
-            orderedBy: sort.field,
-            descending: !sort.ascending,
-            limit: size,
-            after: cursor
-        )
-    }
 }
