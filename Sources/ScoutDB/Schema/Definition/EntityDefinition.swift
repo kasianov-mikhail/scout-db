@@ -16,7 +16,7 @@ struct EntityDefinition: Codable, Equatable, Sendable {
     private let index = FieldIndex()
 
     init(
-        entity: String, version: Int, fields: [FieldDefinition], unique: [String]? = nil, views: [AggregateView]? = nil
+        entity: String, version: Int, fields: [FieldDefinition], unique: [String]?, views: [AggregateView]?
     ) {
         self.entity = entity
         self.version = version

@@ -33,7 +33,7 @@ public protocol Migration: Sendable {
 }
 
 extension Migration {
-    public func revert(on store: EntityStore) async throws {}
+    public func revert(on _: EntityStore) async throws {}
 }
 
 extension EntityStore {
