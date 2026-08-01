@@ -278,7 +278,8 @@ struct OperationsTests {
             EntityStore.Filter(field: "comment", op: .contains, value: .string("gif")),
         ]
         let definition = try await registry.definition(for: "purchase")
-        let (server, client) = try store.split(filters, entity: "purchase", using: definition)
+        let server = try store.serverFilters(filters, entity: "purchase", using: definition)
+        let client = try store.clientFilters(filters, using: definition)
         #expect(server.contains(ServerFilter(field: "s_00", op: .equals, value: .string("sku-42"))))
         #expect(client == [filters[1]])
         #expect(

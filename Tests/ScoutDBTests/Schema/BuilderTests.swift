@@ -238,7 +238,7 @@ struct BuilderTests {
         #expect(builder.alternatives.count == 1)
 
         let definition = try await registry.definition(for: "purchase")
-        let (server, _) = try store.split(builder.alternatives[0], entity: "purchase", using: definition)
+        let server = try store.serverFilters(builder.alternatives[0], entity: "purchase", using: definition)
         #expect(server.contains { $0.op == .in && $0.value == .strings(["sku-0", "sku-1", "sku-2"]) })
     }
 
@@ -280,7 +280,7 @@ struct BuilderTests {
 
         let definition = try await registry.definition(for: "purchase")
         let branches = try builder.alternatives.map {
-            try store.split($0, entity: "purchase", using: definition).server
+            try store.serverFilters($0, entity: "purchase", using: definition)
         }
         #expect(branches[0].contains { branches[1].contains($0) })
         #expect(branches.contains { $0.contains { $0.value == .string("sku-0") } })
@@ -305,7 +305,10 @@ struct BuilderTests {
         func sides(_ builder: QueryBuilder, using definition: EntityDefinition) throws -> (
             server: [ServerFilter], client: [EntityStore.Filter]
         ) {
-            try store.split(builder.alternatives[0], entity: builder.entity, using: definition)
+            (
+                try store.serverFilters(builder.alternatives[0], entity: builder.entity, using: definition),
+                try store.clientFilters(builder.alternatives[0], using: definition)
+            )
         }
 
         let purchase = try await registry.definition(for: "purchase")
