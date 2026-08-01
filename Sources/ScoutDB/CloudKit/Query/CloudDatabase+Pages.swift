@@ -10,10 +10,7 @@ import CloudKit
 extension CloudDatabase {
     func allRecords(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]? = nil) async throws -> [CKRecord] {
         var collected: [CKRecord] = []
-        try await forEachPage(
-            matching: query,
-            desiredKeys: desiredKeys
-        ) {
+        try await forEachPage(matching: query, desiredKeys: desiredKeys) {
             collected += $0
         }
         return collected

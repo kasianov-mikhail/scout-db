@@ -7,14 +7,29 @@
 
 import CloudKit
 
-private struct RecordBatch: @unchecked Sendable {
-    let index: Int
-    let records: [CKRecord]
-}
-
 extension CloudDatabase {
-    /// Fetches the IDs one at a time; a conformance that can fetch a batch in
-    /// one request overrides this.
+    /// The records for those IDs, in the order asked, with the missing ones
+    /// left out.
+    ///
+    /// The default answer to ``CloudDatabase/fetchRecords(ids:)``: one
+    /// ``CloudDatabase/fetchRecord(id:)`` awaited per ID, so n IDs cost n round
+    /// trips. A conformance that can ask for a batch in a single request
+    /// overrides it, and internal callers with a long list reach for
+    /// ``fetchRecords(ids:batchSize:)`` instead.
+    ///
+    /// A missing ID is an answer rather than an error, so the result is shorter
+    /// than `ids` — never holed, and never nil in a slot. Positions therefore
+    /// stop lining up as soon as one record is gone: match on `recordID` rather
+    /// than on index.
+    ///
+    /// ```swift
+    /// let ids = uuids.map { CKRecord.ID(recordName: $0) }
+    /// let records = try await database.fetchRecords(ids: ids)
+    ///
+    /// let found = Set(records.map(\.recordID))
+    /// let missing = ids.filter { !found.contains($0) }
+    /// ```
+    ///
     public func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
         var records: [CKRecord] = []
         for id in ids {
@@ -25,6 +40,30 @@ extension CloudDatabase {
         return records
     }
 
+    /// The same fetch as ``fetchRecords(ids:)``, cut into `batchSize` chunks
+    /// that run at once, still answering in the order asked.
+    ///
+    /// Every chunk is its own task, and tasks complete in whatever order the
+    /// server lets them. The result does not inherit that order: each chunk
+    /// carries the position it was cut from, and the batches are sorted back
+    /// before they are flattened. Order matches `ids` exactly as the serial
+    /// fetch does, with missing records left out the same way.
+    ///
+    /// Short lists skip the machinery — an empty list answers empty, and one
+    /// that fits a single chunk goes straight to ``fetchRecords(ids:)``, which
+    /// a conformance may already serve in one request. So `batchSize` is worth
+    /// setting to what a single request can carry rather than to a slice of the
+    /// expected total.
+    ///
+    /// ```swift
+    /// let ids = slots.map(\.recordID)
+    /// let records = try await database.fetchRecords(ids: ids, batchSize: maxBatch)
+    ///
+    /// for record in records {
+    ///     await cache.keep(record)
+    /// }
+    /// ```
+    ///
     func fetchRecords(ids: [CKRecord.ID], batchSize: Int) async throws -> [CKRecord] {
         guard ids.count > 0 else {
             return []
@@ -34,21 +73,21 @@ extension CloudDatabase {
         }
         let database = self
 
-        return try await withThrowingTaskGroup(of: RecordBatch.self) { group in
+        return try await withThrowingTaskGroup(of: IndexedBatch<CKRecord>.self) { group in
             for (index, batch) in ids.chunked(into: batchSize).enumerated() {
                 group.addTask {
-                    RecordBatch(
+                    try await IndexedBatch(
                         index: index,
-                        records: try await database.fetchRecords(ids: batch)
+                        items: database.fetchRecords(ids: batch)
                     )
                 }
             }
 
-            var batches: [Int: [CKRecord]] = [:]
+            var batches: [IndexedBatch<CKRecord>] = []
             for try await batch in group {
-                batches[batch.index] = batch.records
+                batches.append(batch)
             }
-            return batches.sorted { $0.key < $1.key }.flatMap(\.value)
+            return batches.ordered()
         }
     }
 }

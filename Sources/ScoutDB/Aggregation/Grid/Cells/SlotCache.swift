@@ -9,8 +9,7 @@ import CloudKit
 import Foundation
 
 actor SlotCache {
-    private var records: [CKRecord.ID: CKRecord] = [:]
-    private var usage: [CKRecord.ID: Int64] = [:]
+    private var entries: [CKRecord.ID: Entry] = [:]
     private var clock: Int64 = 0
     private let limit: Int
 
@@ -19,31 +18,38 @@ actor SlotCache {
     }
 
     func record(_ id: CKRecord.ID) -> CKRecord? {
-        guard let record = records[id] else {
+        guard let entry = entries[id] else {
             return nil
         }
-        touch(id)
-        return record.duplicate()
+        entries[id] = Entry(record: entry.record, usage: tick())
+        return entry.record.duplicate()
     }
 
     func keep(_ record: CKRecord) {
-        records[record.recordID] = record.duplicate()
-        touch(record.recordID)
+        entries[record.recordID] = Entry(record: record.duplicate(), usage: tick())
         evict()
     }
 
-    private func touch(_ id: CKRecord.ID) {
+    private func tick() -> Int64 {
         clock += 1
-        usage[id] = clock
+        return clock
     }
 
     private func evict() {
-        guard records.count > limit + limit / 10 else {
+        guard entries.count > limit + limit / 10 else {
             return
         }
-        for victim in records.keys.sorted(by: { usage[$0] ?? 0 < usage[$1] ?? 0 }).prefix(records.count - limit) {
-            records[victim] = nil
-            usage[victim] = nil
+        for victim in entries.values.sorted().prefix(entries.count - limit) {
+            entries[victim.record.recordID] = nil
         }
+    }
+}
+
+private struct Entry: Comparable {
+    let record: CKRecord
+    let usage: Int64
+
+    static func < (lhs: Self, rhs: Self) -> Bool {
+        lhs.usage < rhs.usage
     }
 }
