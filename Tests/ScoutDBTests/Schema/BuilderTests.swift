@@ -287,22 +287,22 @@ struct BuilderTests {
         #expect(branches.contains { $0.contains { $0.value == .string("sku-0") } })
     }
 
-    @Test("Exclude negates a predicate and keeps records without the field")
-    func excludeFilters() async throws {
+    @Test("A negative match drops the records the value matches")
+    func negativeFilters() async throws {
         let records = try await store.query("purchase")
-            .exclude("product_id", .equals, "sku-1")
+            .filter("product_id", .notEquals, "sku-1")
             .sort("date")
             .take(100)
         #expect(records.map(\.uuid) == ["p-0", "p-2"])
 
-        #expect(try await store.query("purchase").filter("quantity" > 1).exclude("quantity", .equals, 3).count() == 1)
-        #expect(try await store.query("purchase").exclude("product_id", .contains, "ku-").count() == 0)
-
-        #expect(try await store.query("purchase").exclude("comment", .equals, "gift").count() == 3)
+        #expect(
+            try await store.query("purchase").filter("quantity" > 1).filter("quantity", .notEquals, 3).count() == 1
+        )
+        #expect(try await store.query("purchase").filter("product_id", .notIn, .strings(["sku-0"])).count() == 2)
     }
 
-    @Test("Exclude runs on the server when the field cannot be missing")
-    func excludePushdown() async throws {
+    @Test("A negative match over a slot-backed field runs on the server")
+    func negativePushdown() async throws {
         func sides(_ builder: QueryBuilder, using definition: EntityDefinition) throws -> (
             server: [ServerFilter], client: [EntityStore.Filter]
         ) {
@@ -311,23 +311,12 @@ struct BuilderTests {
 
         let purchase = try await registry.definition(for: "purchase")
 
-        let required = try sides(store.query("purchase").exclude("product_id", .equals, "sku-1"), using: purchase)
-        #expect(required.server.contains(ServerFilter(field: "s_00", op: .notEquals, value: .string("sku-1"))))
-        #expect(required.client.isEmpty)
+        let slotted = try sides(store.query("purchase").filter("product_id", .notEquals, "sku-1"), using: purchase)
+        #expect(slotted.server.contains(ServerFilter(field: "s_00", op: .notEquals, value: .string("sku-1"))))
+        #expect(slotted.client.isEmpty)
 
-        let optional = try sides(store.query("purchase").exclude("quantity", .greaterThan, .int(1)), using: purchase)
-        #expect(
-            optional.client.contains(
-                EntityStore.Filter(field: "quantity", op: .greaterThan, value: .int(1), negated: true)
-            )
-        )
-
-        let payload = try sides(store.query("purchase").exclude("comment", .equals, "gift"), using: purchase)
-        #expect(
-            payload.client.contains(
-                EntityStore.Filter(field: "comment", op: .equals, value: .string("gift"), negated: true)
-            )
-        )
+        let payload = try sides(store.query("purchase").filter("comment", .notEquals, "gift"), using: purchase)
+        #expect(payload.client.contains(EntityStore.Filter(field: "comment", op: .notEquals, value: .string("gift"))))
 
         try await store.schema("shipment")
             .field("carrier", .string, .required)
@@ -335,14 +324,11 @@ struct BuilderTests {
             .create()
         let shipment = try await registry.definition(for: "shipment")
 
-        let defaulted = try sides(store.query("shipment").exclude("weight", .lessThan, .double(5)), using: shipment)
-        #expect(defaulted.server.contains(ServerFilter(field: "d_00", op: .greaterThanOrEquals, value: .double(5))))
-
-        let excluded = try sides(
-            store.query("shipment").exclude("carrier", .in, .strings(["ups", "dhl"])),
+        let listed = try sides(
+            store.query("shipment").filter("carrier", .notIn, .strings(["ups", "dhl"])),
             using: shipment
         )
-        #expect(excluded.server.contains(ServerFilter(field: "s_00", op: .notIn, value: .strings(["ups", "dhl"]))))
+        #expect(listed.server.contains(ServerFilter(field: "s_00", op: .notIn, value: .strings(["ups", "dhl"]))))
     }
 
     @Test("A compound alternative requires all of its filters at once")

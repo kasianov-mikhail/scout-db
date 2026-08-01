@@ -30,9 +30,9 @@ public func == (field: String, value: RecordValue) -> FilterExpression {
 
 /// Matches the records whose field holds anything but the value.
 ///
-/// It runs on the server as the complementary operator when the field is always
-/// present — `.required`, or carrying a `.defaultValue` — and on the client
-/// otherwise, where a record missing the field is kept.
+/// The server answers it directly over a slot-backed field, and the client after
+/// decoding otherwise. Either way a record missing the field does not match:
+/// the comparison needs a value to fail against.
 ///
 /// ```swift
 /// try await store.query("purchase")

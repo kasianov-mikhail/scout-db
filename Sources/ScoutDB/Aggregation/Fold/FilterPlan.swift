@@ -99,10 +99,6 @@ struct FilterPlan {
 extension FilterPlan {
     private init?(_ filters: [EntityStore.Filter]) {
         for filter in filters {
-            guard !filter.negated else {
-                return nil
-            }
-
             switch (filter.op, filter.value) {
             case (.equals, let value):
                 guard groupField == nil else {

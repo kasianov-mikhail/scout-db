@@ -8,16 +8,6 @@
 import Foundation
 
 extension EntityStore {
-    private static func serverComplement(of filter: Filter, in field: FieldDefinition) -> ServerFilter? {
-        guard let op = filter.op.complement, field.alwaysPresent else {
-            return nil
-        }
-        guard case .slot(_, let slot) = field.storage else {
-            return nil
-        }
-        return ServerFilter(field: slot, op: op, value: filter.value)
-    }
-
     static func ordered(_ lhs: EntityRecord, _ rhs: EntityRecord, by sorts: [Sort]) -> Bool {
         for sort in sorts {
             let order = rank(lhs.values[sort.field], rhs.values[sort.field])
@@ -54,10 +44,7 @@ extension EntityStore {
     }
 
     static func matchers(for filters: [Filter]) throws -> [(EntityRecord) -> Bool] {
-        try filters.map { filter -> (EntityRecord) -> Bool in
-            let base = try matcher(for: filter)
-            return filter.negated ? { !base($0) } : base
-        }
+        try filters.map { try matcher(for: $0) }
     }
 
     func split(_ filters: [Filter], entity: String, using definition: EntityDefinition) throws -> (
@@ -71,18 +58,6 @@ extension EntityStore {
         for filter in filters {
             guard let field = byName[filter.field] else {
                 throw SchemaError.unknownField(filter.field)
-            }
-
-            if filter.negated {
-                guard filter.op != .search else {
-                    throw SchemaError.invalidValue(filter.field)
-                }
-                if let complement = Self.serverComplement(of: filter, in: field) {
-                    server.append(complement)
-                } else {
-                    client.append(filter)
-                }
-                continue
             }
 
             switch filter.op {

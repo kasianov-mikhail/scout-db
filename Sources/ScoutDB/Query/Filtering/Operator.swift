@@ -21,27 +21,4 @@ public enum Operator: CaseIterable, Sendable {
     case beginsWith
     case contains
     case search
-
-    var complement: Operator? {
-        switch self {
-        case .equals:
-            .notEquals
-        case .notEquals:
-            .equals
-        case .in:
-            .notIn
-        case .notIn:
-            .in
-        case .greaterThan:
-            .lessThanOrEquals
-        case .greaterThanOrEquals:
-            .lessThan
-        case .lessThan:
-            .greaterThanOrEquals
-        case .lessThanOrEquals:
-            .greaterThan
-        default:
-            nil
-        }
-    }
 }
