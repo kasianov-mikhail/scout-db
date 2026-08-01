@@ -71,12 +71,12 @@ extension EntityStore {
             return union
         }
         let bounded = try await rankable(sort, entity: entity)
-        let results = try await withThrowingTaskGroup(of: (Int, [EntityRecord]).self) { group in
+        let results = try await withThrowingTaskGroup(of: IndexedBatch<EntityRecord>.self) { group in
             for (index, branch) in branches.enumerated() {
                 group.addTask {
-                    (
-                        index,
-                        try await self.read(
+                    try await IndexedBatch(
+                        index: index,
+                        items: self.read(
                             entity: entity,
                             filters: branch,
                             sort: bounded ? sort : [],
@@ -86,11 +86,11 @@ extension EntityStore {
                     )
                 }
             }
-            var collected: [Int: [EntityRecord]] = [:]
-            for try await (index, records) in group {
-                collected[index] = records
+            var batches: [IndexedBatch<EntityRecord>] = []
+            for try await batch in group {
+                batches.append(batch)
             }
-            return collected.sorted { $0.key < $1.key }.flatMap(\.value)
+            return batches.ordered()
         }
         var seen: Set<String> = []
         let union = results.filter { seen.insert($0.uuid).inserted }

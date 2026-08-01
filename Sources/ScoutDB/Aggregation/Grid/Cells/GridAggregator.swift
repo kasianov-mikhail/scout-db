@@ -82,6 +82,15 @@ struct GridAggregator {
         var delta: CellDelta
     }
 
+    private struct ColdSlot {
+        let slot: GridSlot
+        let delta: CellDelta
+
+        var id: CKRecord.ID {
+            slot.recordID
+        }
+    }
+
     private func apply(_ deltas: [GridSlot: CellDelta]) async throws {
         guard deltas.count > 0 else {
             return
@@ -123,13 +132,13 @@ struct GridAggregator {
 
     private func open(_ deltas: [GridSlot: CellDelta]) async throws -> [CKRecord.ID: Pending] {
         var pending: [CKRecord.ID: Pending] = [:]
-        var cold: [(id: CKRecord.ID, slot: GridSlot, delta: CellDelta)] = []
+        var cold: [ColdSlot] = []
         for (slot, delta) in deltas {
             let id = slot.recordID
             if let cached = await slots.record(id) {
                 pending[id] = Pending(record: cached, delta: delta)
             } else {
-                cold.append((id, slot, delta))
+                cold.append(ColdSlot(slot: slot, delta: delta))
             }
         }
         guard cold.count > 0 else {
