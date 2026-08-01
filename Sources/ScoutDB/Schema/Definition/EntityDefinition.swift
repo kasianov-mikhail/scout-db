@@ -15,16 +15,6 @@ struct EntityDefinition: Codable, Equatable, Sendable {
     var views: [AggregateView]?
     private let index = FieldIndex()
 
-    init(
-        entity: String, version: Int, fields: [FieldDefinition], unique: [String]?, views: [AggregateView]?
-    ) {
-        self.entity = entity
-        self.version = version
-        self.fields = fields
-        self.unique = unique
-        self.views = views
-    }
-
     private enum CodingKeys: String, CodingKey {
         case entity, version, fields, unique, views
     }

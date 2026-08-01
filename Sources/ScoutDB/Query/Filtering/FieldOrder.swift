@@ -22,15 +22,6 @@ struct FieldOrder: SortComparator, Hashable, Sendable {
         FieldOrder(key: .field(name), order: order)
     }
 
-    init(key: Key, order: SortOrder) {
-        self.key = key
-        self.order = order
-    }
-
-    init(_ sort: EntityStore.Sort) {
-        self.init(key: .field(sort.field), order: sort.ascending ? .forward : .reverse)
-    }
-
     func compare(_ lhs: EntityRecord, _ rhs: EntityRecord) -> ComparisonResult {
         let result = RecordValue.rank(value(of: lhs), value(of: rhs))
         guard order == .reverse else {
@@ -50,5 +41,11 @@ struct FieldOrder: SortComparator, Hashable, Sendable {
         case .uuid:
             .string(record.uuid)
         }
+    }
+}
+
+extension FieldOrder {
+    init(_ sort: EntityStore.Sort) {
+        self.init(key: .field(sort.field), order: sort.ascending ? .forward : .reverse)
     }
 }

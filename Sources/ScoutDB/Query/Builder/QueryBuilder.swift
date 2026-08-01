@@ -25,11 +25,6 @@ public struct QueryBuilder: Sendable {
     var sorts: [EntityStore.Sort] = []
     var ceiling: Int?
 
-    init(entity: String, store: EntityStore) {
-        self.entity = entity
-        self.store = store
-    }
-
     public enum Direction: Sendable {
         case ascending
         case descending

@@ -16,10 +16,6 @@ struct EntityCoder {
 
     private static let patterns = PatternCache()
 
-    init(definition: EntityDefinition) {
-        self.definition = definition
-    }
-
     func resolve(_ values: [String: RecordValue], at version: Int) throws -> [String: RecordValue] {
         let fields = definition.fields(at: version)
         var resolved = values
