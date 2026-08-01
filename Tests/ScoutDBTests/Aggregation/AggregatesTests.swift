@@ -66,7 +66,7 @@ struct AggregatesTests {
         legacy["group_key"] = group
         legacy["date"] = period
         legacy["c_00"] = Int64(5)
-        try await database.write(records: [legacy])
+        try await database.modifyRecords(saving: [legacy], deleting: [])
 
         try await writePayments([1], product: group)
 
