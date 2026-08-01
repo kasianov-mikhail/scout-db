@@ -7,7 +7,7 @@
 
 import CloudKit
 
-struct BranchReader: Sendable {
+struct EntityReader: Sendable {
     let database: any CloudDatabase
     let entity: String
     let sort: [EntityStore.Sort]

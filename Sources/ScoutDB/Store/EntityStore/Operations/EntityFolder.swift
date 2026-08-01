@@ -7,7 +7,7 @@
 
 import CloudKit
 
-struct GridFolder: Sendable {
+struct EntityFolder: Sendable {
     let database: any CloudDatabase
     let entity: String
     let field: String?
