@@ -33,16 +33,4 @@ actor RequestGate {
         }
         waiting.removeFirst().resume()
     }
-
-    func setLimit(_ count: Int) {
-        limit = Swift.max(1, count)
-        while inFlight < limit, waiting.count > 0 {
-            inFlight += 1
-            waiting.removeFirst().resume()
-        }
-    }
-
-    var currentLimit: Int {
-        limit
-    }
 }

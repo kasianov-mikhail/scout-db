@@ -149,39 +149,26 @@ struct AggregatesTests {
         #expect(throws: SchemaError.self) { try invalid.validate() }
     }
 
-    @Test("Updating a record rebalances a sum view")
-    func updateRebalancesAggregate() async throws {
-        try await publishPayment(views: [AggregateView(name: "revenue", sum: "amount")])
-        try await store.write(
-            ["product": .string("app"), "amount": .double(2), "date": .date(noon)],
-            entity: "payment",
-            uuid: "p1"
+    @Test("A min view keeps the extremum an upsert lifted a record off")
+    func upsertKeepsMinExtremum() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "meter",
+                fields: [
+                    FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
+                    FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
+                ],
+                unique: ["user"],
+                views: [AggregateView(name: "low", min: "amount")]
+            )
         )
 
-        try await store.update(entity: "payment", uuid: "p1") { $0.values["amount"] = .double(10) }
+        try await store.write(["user": .string("u1"), "amount": .double(2), "date": .date(noon)], entity: "meter")
+        try await store.write(["user": .string("u2"), "amount": .double(8), "date": .date(noon)], entity: "meter")
+        try await store.write(["user": .string("u1"), "amount": .double(6), "date": .date(noon)], entity: "meter")
 
-        let totals = try await AggregateQuery(store, entity: "payment", view: "revenue").totals()
-        #expect(totals.first?.count == 1)
-        #expect(totals.first?.value == 10)
-    }
-
-    @Test("A min view keeps the extremum an update lifted a record off")
-    func updateKeepsMinExtremum() async throws {
-        try await publishPayment(views: [AggregateView(name: "low", min: "amount")])
-        try await store.write(
-            ["product": .string("app"), "amount": .double(2), "date": .date(noon)],
-            entity: "payment",
-            uuid: "p1"
-        )
-        try await store.write(
-            ["product": .string("app"), "amount": .double(8), "date": .date(noon)],
-            entity: "payment",
-            uuid: "p2"
-        )
-
-        try await store.update(entity: "payment", uuid: "p1") { $0.values["amount"] = .double(6) }
-
-        let totals = try await AggregateQuery(store, entity: "payment", view: "low").totals()
+        let totals = try await AggregateQuery(store, entity: "meter", view: "low").totals()
         #expect(totals.first?.count == 2)
         #expect(totals.first?.value == 2)
     }
@@ -665,10 +652,6 @@ private final class GridQueries: CloudDatabase, @unchecked Sendable {
         async throws -> QueryPage
     {
         try await backing.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
-    }
-
-    func save(_ record: CKRecord) async throws -> CKRecord {
-        try await backing.save(record)
     }
 
     func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {

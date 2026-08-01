@@ -32,8 +32,8 @@ schema freely — the CloudKit [schema](Schema) is uploaded once and never touch
 | | | |
 |:-:|-|-|
 | 🗂 | **Schema** | Declare fields, constraints, defaults, and unique keys with a chainable schema builder, then rename, retype, add, or remove fields as new schema versions — old records stay readable forever, nothing is ever re-imported. |
-| 🔍 | **Queries** | Filters, sorting, keyset pagination, full-text search, and batch updates through a query builder, plus counters, sums, and extremes maintained on write so reads never scan raw records. |
-| ⚙️ | **Reliability** | Unique-key upserts and optimistic concurrency. |
+| 🔍 | **Queries** | Filters, sorting, keyset pagination, and full-text search through a query builder, plus counters, sums, and extremes maintained on write so reads never scan raw records. |
+| ⚙️ | **Reliability** | Unique-key upserts, and aggregate cells folded under compare-and-swap. |
 
 ## Requirements
 

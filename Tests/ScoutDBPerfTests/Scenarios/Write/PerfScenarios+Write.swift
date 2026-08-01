@@ -50,17 +50,6 @@ extension PerfScenarios {
             PerfScenario("Records", "fetch by uuid, entity unknown", sql: 1, writes: false) { world, iteration in
                 _ = try await world.store.fetch(uuid: world.order(iteration))
             },
-            PerfScenario("Records", "update one record under CAS", sql: 2) { world, iteration in
-                try await world.store.update(entity: PerfSchema.order, uuid: world.order(iteration)) { record in
-                    record.values["status"] = .string("shipped")
-                }
-            },
-            PerfScenario("Records", "update 50 records under CAS", sql: 2, iterations: 2) { world, iteration in
-                try await world.store.update(entity: PerfSchema.order, uuids: world.orders(50, from: iteration)) {
-                    record in
-                    record.values["status"] = .string("paid")
-                }
-            },
         ]
     }
 

@@ -34,23 +34,6 @@ struct RequestGateTests {
         #expect(await peak.highest > 1)
     }
 
-    @Test("A raised limit lets the waiters through without a slot being returned")
-    func raisingTheLimitAdmitsWaiters() async throws {
-        let gate = RequestGate(limit: 1)
-        await gate.enter()
-
-        let waiter = Task {
-            await gate.enter()
-            return true
-        }
-        try await Task.sleep(for: .milliseconds(10))
-        #expect(waiter.isCancelled == false)
-
-        await gate.setLimit(4)
-        #expect(await waiter.value)
-        #expect(await gate.currentLimit == 4)
-    }
-
     @Test("Returning a slot with nobody waiting frees it for the next arrival")
     func slotsAreReusable() async throws {
         let gate = RequestGate(limit: 2)

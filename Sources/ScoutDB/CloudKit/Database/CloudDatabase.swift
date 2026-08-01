@@ -49,17 +49,6 @@ public protocol CloudDatabase: Sendable {
     func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int)
         async throws -> QueryPage
 
-    /// Saves one record if the server copy is still the one it was read from,
-    /// and answers with the record as stored, carrying fresh server metadata.
-    ///
-    /// A compare-and-swap: the change tag the record was fetched with has to
-    /// still match, so a write that lost a race fails instead of overwriting
-    /// the winner. The thrown error carries the server record — pass it to
-    /// ``RecordConflictError/init(_:)`` to reach that copy and merge. A record
-    /// that has never been saved carries no change tag and simply creates.
-    ///
-    func save(_ record: CKRecord) async throws -> CKRecord
-
     /// Saves and deletes in one atomic request: either every change lands or
     /// none of them does.
     ///

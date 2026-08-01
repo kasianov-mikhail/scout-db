@@ -24,11 +24,6 @@ extension PerfScenarios {
             PerfScenario("Aggregation", "lifetime totals by country", sql: 1, writes: false) { world, _ in
                 _ = try await AggregateQuery(world.store, entity: PerfSchema.customer, view: "by_country").totals()
             },
-            PerfScenario("Grid", "update that cannot move a max", sql: 2) { world, iteration in
-                try await world.store.update(entity: PerfSchema.order, uuid: world.order(iteration)) { record in
-                    record.values["total"] = .double(1)
-                }
-            },
         ]
     }
 }

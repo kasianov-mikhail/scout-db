@@ -23,7 +23,6 @@ enum PerfReport {
         Column(title: "query", width: 6) { "\($0.requests[.query])" },
         Column(title: "cont", width: 5) { "\($0.requests[.continuation])" },
         Column(title: "fetch", width: 6) { "\($0.requests[.fetch])" },
-        Column(title: "save", width: 5) { "\($0.requests[.save])" },
         Column(title: "modify", width: 7) { "\($0.requests[.modify])" },
         Column(title: "cas", width: 5) { "\($0.requests[.conditionalSave])" },
         Column(title: "total", width: 6) { "\($0.requests.total)" },
