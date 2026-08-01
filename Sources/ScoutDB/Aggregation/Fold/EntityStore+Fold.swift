@@ -60,20 +60,20 @@ extension EntityStore {
                 continue
             }
 
-            var entry = folded[group == nil ? "" : key] ?? GridFold()
-            entry.count += count
-            if let cell = record[CKRecord.valueCell] as? Double {
-                entry.value = kind.combine(entry.value, cell)
-            }
-            folded[group == nil ? "" : key] = entry
+            let entry = folded[group == nil ? "" : key]
+            let cell = record[CKRecord.valueCell] as? Double
+            folded[group == nil ? "" : key] = GridFold(
+                count: (entry?.count ?? 0) + count,
+                value: cell.map { kind.combine(entry?.value, $0) } ?? entry?.value
+            )
         }
         return folded
     }
 }
 
 struct GridFold: Sendable {
-    var count = 0
-    var value: Double?
+    let count: Int
+    let value: Double?
 }
 
 extension FilterPlan {
