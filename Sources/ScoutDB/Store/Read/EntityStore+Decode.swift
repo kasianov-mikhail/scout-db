@@ -13,7 +13,8 @@ extension EntityStore {
         return try records.compactMap { try decode($0, with: coder, using: definition) }
     }
 
-    func decode(_ record: CKRecord, with coder: EntityCoder, using definition: EntityDefinition) throws -> EntityRecord? {
+    func decode(_ record: CKRecord, with coder: EntityCoder, using definition: EntityDefinition) throws -> EntityRecord?
+    {
         try coder.decode(record, using: definition)
     }
 }

@@ -176,7 +176,13 @@ struct OperationsTests {
         let top = try await store.read(entity: "purchase", orderedBy: "quantity", descending: true, limit: 3)
         #expect(top.records.map(\.uuid) == ["p-0", "p-2", "p-3"])
         let topCursor = try #require(top.cursor)
-        let rest = try await store.read(entity: "purchase", orderedBy: "quantity", descending: true, limit: 3, after: topCursor)
+        let rest = try await store.read(
+            entity: "purchase",
+            orderedBy: "quantity",
+            descending: true,
+            limit: 3,
+            after: topCursor
+        )
         #expect(rest.records.map(\.uuid) == ["p-1"])
         #expect(rest.cursor == nil)
 
@@ -193,7 +199,9 @@ struct OperationsTests {
                 fields: [
                     FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
                     FieldDefinition(name: "score", type: .int, storage: .payload),
-                ]))
+                ]
+            )
+        )
         try await store.write(["name": .string("Ada"), "score": .int(10)], entity: "player", uuid: "u-1")
         try await store.write(["name": .string("Bo"), "score": .int(5)], entity: "player", uuid: "u-2")
         try await store.write(["name": .string("Cy")], entity: "player", uuid: "u-3")
@@ -219,9 +227,19 @@ struct OperationsTests {
                     FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
                     FieldDefinition(name: "score", type: .int, storage: .payload),
                     FieldDefinition(name: "tags", type: .stringList, storage: .payload),
-                ]))
-        try await store.write(["name": .string("Ada"), "score": .int(10), "tags": .strings(["swift", "db"])], entity: "profile", uuid: "u-1")
-        try await store.write(["name": .string("Bo"), "score": .int(5), "tags": .strings(["db"])], entity: "profile", uuid: "u-2")
+                ]
+            )
+        )
+        try await store.write(
+            ["name": .string("Ada"), "score": .int(10), "tags": .strings(["swift", "db"])],
+            entity: "profile",
+            uuid: "u-1"
+        )
+        try await store.write(
+            ["name": .string("Bo"), "score": .int(5), "tags": .strings(["db"])],
+            entity: "profile",
+            uuid: "u-2"
+        )
         try await store.write(["name": .string("Cy")], entity: "profile", uuid: "u-3")
 
         func uuids(_ filters: [EntityStore.Filter]) async throws -> [String] {
@@ -291,17 +309,37 @@ struct OperationsTests {
             makeDefinition(
                 entity: "account",
                 fields: [
-                    FieldDefinition(name: "email", type: .string, storage: .slot(.string, "s_00"), pattern: "[^@]+@[^@]+\\.[a-z]+"),
-                    FieldDefinition(name: "codes", type: .stringList, storage: .slot(.stringList, "ls_00"), pattern: "[A-Z]{3}"),
-                ]))
+                    FieldDefinition(
+                        name: "email",
+                        type: .string,
+                        storage: .slot(.string, "s_00"),
+                        pattern: "[^@]+@[^@]+\\.[a-z]+"
+                    ),
+                    FieldDefinition(
+                        name: "codes",
+                        type: .stringList,
+                        storage: .slot(.stringList, "ls_00"),
+                        pattern: "[A-Z]{3}"
+                    ),
+                ]
+            )
+        )
 
-        try await store.write(["email": .string("ada@example.com"), "codes": .strings(["ABC", "XYZ"])], entity: "account", uuid: "a-1")
+        try await store.write(
+            ["email": .string("ada@example.com"), "codes": .strings(["ABC", "XYZ"])],
+            entity: "account",
+            uuid: "a-1"
+        )
 
         await #expect(throws: SchemaError.invalidValue("email")) {
             try await store.write(["email": .string("not-an-email")], entity: "account", uuid: "a-2")
         }
         await #expect(throws: SchemaError.invalidValue("codes")) {
-            try await store.write(["email": .string("bo@example.com"), "codes": .strings(["ABC", "nope"])], entity: "account", uuid: "a-3")
+            try await store.write(
+                ["email": .string("bo@example.com"), "codes": .strings(["ABC", "nope"])],
+                entity: "account",
+                uuid: "a-3"
+            )
         }
         await #expect(throws: SchemaError.invalidValue("email")) {
             try await store.write(["email": .string("ada@example.com !!")], entity: "account", uuid: "a-4")
@@ -309,11 +347,13 @@ struct OperationsTests {
 
         let numeric = makeDefinition(fields: [
             FieldDefinition(name: "count", type: .int, storage: .slot(.int, "i_00"), pattern: "[0-9]+")
-        ])
+        ]
+        )
         #expect(throws: SchemaError.self) { try numeric.validate() }
         let broken = makeDefinition(fields: [
             FieldDefinition(name: "email", type: .string, storage: .slot(.string, "s_00"), pattern: "([")
-        ])
+        ]
+        )
         #expect(throws: SchemaError.self) { try broken.validate() }
     }
 
@@ -343,7 +383,9 @@ struct OperationsTests {
                 entity: "ticket",
                 fields: [
                     FieldDefinition(name: "label", type: .string, storage: .slot(.string, "s_00"))
-                ]))
+                ]
+            )
+        )
 
         try await store.write(makePurchase().values, entity: "purchase", uuid: "shared")
         try await store.write(["label": .string("t")], entity: "ticket", uuid: "shared")
@@ -386,7 +428,11 @@ struct OperationsTests {
         let (server, client) = try store.split(filters, entity: "purchase", using: definition)
         #expect(server.contains(ServerFilter(field: "s_00", op: .equals, value: .string("sku-42"))))
         #expect(client == [filters[1]])
-        #expect(try store.serverSort([EntityStore.Sort(field: "date")], using: definition) == [ServerSort(field: "t_00", ascending: true)])
+        #expect(
+            try store.serverSort([EntityStore.Sort(field: "date")], using: definition) == [
+                ServerSort(field: "t_00", ascending: true)
+            ]
+        )
     }
 
     @Test("Paginated reads apply client-side filters across pages")
@@ -402,7 +448,13 @@ struct OperationsTests {
         var uuids: [String] = []
         var cursor: FieldCursor?
         repeat {
-            let page = try await store.read(entity: "purchase", any: [[filter]], orderedBy: "date", limit: 1, after: cursor)
+            let page = try await store.read(
+                entity: "purchase",
+                any: [[filter]],
+                orderedBy: "date",
+                limit: 1,
+                after: cursor
+            )
             uuids += page.records.map(\.uuid)
             cursor = page.cursor
         } while cursor != nil
@@ -458,7 +510,11 @@ struct OperationsTests {
         try await store.update(entity: "purchase", uuids: ["p-0", "p-2", "p-0"]) { record in
             record.values["quantity"] = .int(record.uuid == "p-2" ? 20 : 10)
         }
-        #expect(try await store.fetch(entity: "purchase", uuids: ["p-0", "p-1", "p-2"]).map { $0.values["quantity"] } == [.int(10), .int(3), .int(20)])
+        #expect(
+            try await store.fetch(entity: "purchase", uuids: ["p-0", "p-1", "p-2"]).map { $0.values["quantity"] } == [
+                .int(10), .int(3), .int(20),
+            ]
+        )
 
         await #expect(throws: SchemaError.notFound("ghost")) {
             try await store.update(entity: "purchase", uuids: ["p-1", "ghost"]) { record in
@@ -488,13 +544,17 @@ struct OperationsTests {
                 entity: "alpha",
                 fields: [
                     FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
-                ]))
+                ]
+            )
+        )
         try await registry.publish(
             makeDefinition(
                 entity: "beta",
                 fields: [
                     FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
-                ]))
+                ]
+            )
+        )
 
         let fresh = SchemaRegistry(database: database)
         let loaded = try await fresh.loadAll()

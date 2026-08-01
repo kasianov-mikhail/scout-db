@@ -69,7 +69,9 @@ final class ContractFixture {
         _ name: String, fields: [FieldDefinition], unique: [String]? = nil, views: [AggregateView]? = nil
     ) async throws -> String {
         let entity = entity(name)
-        try await registry.publish(EntityDefinition(entity: entity, version: 1, fields: fields, unique: unique, views: views))
+        try await registry.publish(
+            EntityDefinition(entity: entity, version: 1, fields: fields, unique: unique, views: views)
+        )
         published.append(entity)
         return entity
     }
@@ -83,7 +85,9 @@ final class ContractFixture {
                 FieldDefinition(name: "total", type: .double, storage: .slot(.double, "d_00")),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 FieldDefinition(name: "note", type: .string, storage: .payload),
-            ], views: views)
+            ],
+            views: views
+        )
     }
 
     func tearDown() async {
@@ -104,7 +108,9 @@ func withContract(_ body: (ContractFixture) async throws -> Void) async throws {
     await fixture.tearDown()
 }
 
-func orderValues(product: String = "sku-1", quantity: Int = 1, total: Double = 9.99, date: Date = Date(), note: String? = nil) -> [String: RecordValue] {
+func orderValues(
+    product: String = "sku-1", quantity: Int = 1, total: Double = 9.99, date: Date = Date(), note: String? = nil
+) -> [String: RecordValue] {
     var values: [String: RecordValue] = [
         "product": .string(product), "quantity": .int(Int64(quantity)), "total": .double(total), "date": .date(date),
     ]

@@ -8,7 +8,9 @@
 import CloudKit
 
 extension EntityStore {
-    @discardableResult public func write(_ values: [String: RecordValue], entity: String, uuid: String? = nil) async throws -> String {
+    @discardableResult public func write(_ values: [String: RecordValue], entity: String, uuid: String? = nil)
+        async throws -> String
+    {
         let entry = uuid.map { EntityWrite(values: values, uuid: $0) } ?? EntityWrite(values: values)
         return try await write([entry], entity: entity)[0]
     }
@@ -31,7 +33,11 @@ extension EntityStore {
             return EntityRecord(entity: entity, uuid: uuid, schemaVersion: definition.version, values: resolved)
         }
 
-        let (removedFromViews, addedToViews) = try await aggregationRebalance(entityRecords, stored: stored, using: definition)
+        let (removedFromViews, addedToViews) = try await aggregationRebalance(
+            entityRecords,
+            stored: stored,
+            using: definition
+        )
 
         let encoded = try entityRecords.map { try coder.encode($0, using: definition) }
         try await database.write(records: encoded)
@@ -39,15 +45,19 @@ extension EntityStore {
         return entityRecords.map(\.uuid)
     }
 
-    private func aggregationRebalance(_ records: [EntityRecord], stored: Set<String>, using definition: EntityDefinition) async throws -> (
-        removing: [EntityRecord], adding: [EntityRecord]
-    ) {
+    private func aggregationRebalance(
+        _ records: [EntityRecord], stored: Set<String>, using definition: EntityDefinition
+    ) async throws -> (removing: [EntityRecord], adding: [EntityRecord]) {
         guard definition.views?.isEmpty == false else {
             return ([], [])
         }
         var latest: [String: EntityRecord] = [:]
         for record in records { latest[record.uuid] = record }
-        let live = try await liveRecords(entity: definition.entity, uuids: latest.keys.filter(stored.contains), using: definition)
+        let live = try await liveRecords(
+            entity: definition.entity,
+            uuids: latest.keys.filter(stored.contains),
+            using: definition
+        )
         let liveByUUID = Dictionary(live.map { ($0.uuid, $0) }, uniquingKeysWith: { first, _ in first })
         var removing: [EntityRecord] = []
         var adding: [EntityRecord] = []
@@ -60,7 +70,9 @@ extension EntityStore {
         return (removing, adding)
     }
 
-    private func liveRecords(entity: String, uuids: [String], using definition: EntityDefinition) async throws -> [EntityRecord] {
+    private func liveRecords(entity: String, uuids: [String], using definition: EntityDefinition) async throws
+        -> [EntityRecord]
+    {
         guard definition.views?.isEmpty == false else {
             return []
         }

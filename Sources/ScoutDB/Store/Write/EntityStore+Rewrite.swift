@@ -13,11 +13,15 @@ extension EntityStore {
     /// A conflict whose winning fields are disjoint from the transform's is
     /// merged onto the winner instead of re-running the transform.
     ///
-    public func update(entity: String, uuid: String, maxRetry: Int = 3, transform: (inout EntityRecord) throws -> Void) async throws {
+    public func update(entity: String, uuid: String, maxRetry: Int = 3, transform: (inout EntityRecord) throws -> Void)
+        async throws
+    {
         try await update(entity: entity, uuids: [uuid], maxRetry: maxRetry, transform: transform)
     }
 
-    func update(entity: String, uuids: [String], maxRetry: Int = 3, transform: (inout EntityRecord) throws -> Void) async throws {
+    func update(entity: String, uuids: [String], maxRetry: Int = 3, transform: (inout EntityRecord) throws -> Void)
+        async throws
+    {
         guard uuids.count > 0 else {
             return
         }
@@ -122,7 +126,11 @@ extension EntityStore {
     }
 
     func settle(rewritten: [EntityCoder.Rewrite], using definition: EntityDefinition) async throws {
-        try await aggregator.rebalance(removing: rewritten.map(\.previous), adding: rewritten.map(\.next), using: definition)
+        try await aggregator.rebalance(
+            removing: rewritten.map(\.previous),
+            adding: rewritten.map(\.next),
+            using: definition
+        )
     }
 
     private func save(_ records: [CKRecord]) async throws -> [CKRecord] {
@@ -138,8 +146,8 @@ extension EntityStore {
     }
 
     private func remerge(
-        _ rewrite: EntityCoder.Rewrite, onto winner: CKRecord, with coder: EntityCoder, using definition: EntityDefinition,
-        transform: (inout EntityRecord) throws -> Void
+        _ rewrite: EntityCoder.Rewrite, onto winner: CKRecord, with coder: EntityCoder,
+        using definition: EntityDefinition, transform: (inout EntityRecord) throws -> Void
     ) throws -> EntityCoder.Rewrite {
         let served = try coder.decode(winner, using: definition)
         let mine = Self.changedFields(from: rewrite.previous, to: rewrite.next)

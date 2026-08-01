@@ -26,7 +26,9 @@ public actor SchemaRegistry {
             return try await inFlight.value
         }
         let task = Task { () throws -> EntityDefinition in
-            let entries = try await database.allRecords(matching: metaQuery(entity: entity)).map(SchemaDescriptorEntry.init)
+            let entries = try await database.allRecords(matching: metaQuery(entity: entity)).map(
+                SchemaDescriptorEntry.init
+            )
             guard let definition = try latest(of: entries) else {
                 throw SchemaError.unknownEntity(entity)
             }
@@ -60,7 +62,8 @@ public actor SchemaRegistry {
             recordType: SchemaDescriptorEntry.recordType,
             filters: [
                 ServerFilter(field: "status", op: .equals, value: .string("active"))
-            ])
+            ]
+        )
         let entries = try await database.allRecords(matching: query).map(SchemaDescriptorEntry.init)
         for (entity, entries) in Dictionary(grouping: entries, by: \.entity) {
             if let definition = try latest(of: entries) {
@@ -84,7 +87,10 @@ public actor SchemaRegistry {
 
     func publish(_ definition: EntityDefinition) async throws {
         try definition.validate()
-        let record = CKRecord(recordType: SchemaDescriptorEntry.recordType, recordID: CKRecord.ID(recordName: "\(definition.entity)@\(definition.version)"))
+        let record = CKRecord(
+            recordType: SchemaDescriptorEntry.recordType,
+            recordID: CKRecord.ID(recordName: "\(definition.entity)@\(definition.version)")
+        )
         record["entity"] = definition.entity
         record["entity_version"] = Int64(definition.version)
         record["status"] = "active"
@@ -108,7 +114,8 @@ public actor SchemaRegistry {
             filters: [
                 ServerFilter(field: "entity", op: .equals, value: .string(entity)),
                 ServerFilter(field: "status", op: .equals, value: .string("active")),
-            ])
+            ]
+        )
     }
 }
 
@@ -120,7 +127,10 @@ struct SchemaDescriptorEntry {
     let definition: Data
 
     init(record: CKRecord) throws {
-        guard let entity = record["entity"] as? String, let version = record["entity_version"] as? Int64, let definition = record["definition"] as? Data else {
+        guard let entity = record["entity"] as? String, let version = record["entity_version"] as? Int64 else {
+            throw SchemaError.invalidDefinition("Malformed SchemaDescriptor record '\(record.recordID.recordName)'")
+        }
+        guard let definition = record["definition"] as? Data else {
             throw SchemaError.invalidDefinition("Malformed SchemaDescriptor record '\(record.recordID.recordName)'")
         }
         self.entity = entity

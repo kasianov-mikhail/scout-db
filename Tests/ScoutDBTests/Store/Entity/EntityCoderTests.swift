@@ -42,11 +42,14 @@ struct EntityCoderTests {
     @Test("Old records decode through their own version")
     func versionedDecode() throws {
         let old = EntityRecord(
-            entity: "purchase", uuid: "p-2", schemaVersion: 1,
+            entity: "purchase",
+            uuid: "p-2",
+            schemaVersion: 1,
             values: [
                 "product_id": .string("sku-1"),
                 "amount": .int(500),
-            ])
+            ]
+        )
         let record = try coder.encode(old, using: definition)
         let decoded = try coder.decode(record, using: definition)
         #expect(decoded.schemaVersion == 1)
@@ -88,8 +91,14 @@ struct EntityCoderTests {
         let definition = makeDefinition(
             entity: "log",
             fields: [
-                FieldDefinition(name: "level", type: .string, storage: .slot(.string, "s_00"), defaultValue: .string("info"))
-            ])
+                FieldDefinition(
+                    name: "level",
+                    type: .string,
+                    storage: .slot(.string, "s_00"),
+                    defaultValue: .string("info")
+                )
+            ]
+        )
         let resolved = try coder.resolve([:], at: 2, using: definition)
         #expect(resolved["level"] == .string("info"))
     }
@@ -100,7 +109,8 @@ struct EntityCoderTests {
             entity: "log",
             fields: [
                 FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"), required: true)
-            ])
+            ]
+        )
         #expect(throws: SchemaError.missingField("name")) {
             try coder.resolve([:], at: 2, using: definition)
         }
@@ -111,8 +121,14 @@ struct EntityCoderTests {
         let definition = makeDefinition(
             entity: "log",
             fields: [
-                FieldDefinition(name: "level", type: .string, storage: .slot(.string, "s_00"), allowed: ["info", "error"])
-            ])
+                FieldDefinition(
+                    name: "level",
+                    type: .string,
+                    storage: .slot(.string, "s_00"),
+                    allowed: ["info", "error"]
+                )
+            ]
+        )
         #expect(throws: SchemaError.invalidValue("level")) {
             try coder.resolve(["level": .string("debug")], at: 2, using: definition)
         }
@@ -124,7 +140,8 @@ struct EntityCoderTests {
             entity: "log",
             fields: [
                 FieldDefinition(name: "count", type: .int, storage: .slot(.int, "i_00"), min: 0)
-            ])
+            ]
+        )
         #expect(throws: SchemaError.invalidValue("count")) {
             try coder.resolve(["count": .int(-1)], at: 2, using: definition)
         }
@@ -136,15 +153,29 @@ struct EntityCoderTests {
             entity: "log",
             fields: [
                 FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
-                FieldDefinition(name: "name_lower", type: .string, storage: .slot(.string, "s_01"), derived: Derivation(source: "name", transform: .lowercase)),
+                FieldDefinition(
+                    name: "name_lower",
+                    type: .string,
+                    storage: .slot(.string, "s_01"),
+                    derived: Derivation(source: "name", transform: .lowercase)
+                ),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
-                FieldDefinition(name: "day", type: .timestamp, storage: .slot(.timestamp, "t_01"), derived: Derivation(source: "date", transform: .day)),
-            ])
+                FieldDefinition(
+                    name: "day",
+                    type: .timestamp,
+                    storage: .slot(.timestamp, "t_01"),
+                    derived: Derivation(source: "date", transform: .day)
+                ),
+            ]
+        )
         let resolved = try coder.resolve(
             [
                 "name": .string("Sign Up"),
                 "date": .date(Date(timeIntervalSince1970: 108_123)),
-            ], at: 2, using: definition)
+            ],
+            at: 2,
+            using: definition
+        )
         #expect(resolved["name_lower"] == .string("sign up"))
         #expect(resolved["day"] == .date(Date(timeIntervalSince1970: 86_400)))
     }
@@ -158,10 +189,14 @@ struct EntityCoderTests {
                 FieldDefinition(name: "counts", type: .intList, storage: .slot(.intList, "li_00")),
                 FieldDefinition(name: "ratios", type: .doubleList, storage: .slot(.doubleList, "ld_00")),
                 FieldDefinition(name: "times", type: .timestampList, storage: .slot(.timestampList, "lt_00")),
-            ])
+            ]
+        )
         let record = EntityRecord(
-            entity: "lists", uuid: "l-1", schemaVersion: 2,
-            values: ["tags": .strings([]), "counts": .ints([]), "ratios": .doubles([]), "times": .dates([])])
+            entity: "lists",
+            uuid: "l-1",
+            schemaVersion: 2,
+            values: ["tags": .strings([]), "counts": .ints([]), "ratios": .doubles([]), "times": .dates([])]
+        )
         let decoded = try coder.decode(try coder.encode(record, using: definition), using: definition)
         #expect(decoded.values["tags"] == .strings([]))
         #expect(decoded.values["counts"] == .ints([]))
@@ -176,10 +211,19 @@ struct EntityCoderTests {
             fields: [
                 FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
                 FieldDefinition(
-                    name: "name_lower", type: .string, storage: .slot(.string, "s_02"),
-                    derived: Derivation(source: "name_folded", transform: .lowercase)),
-                FieldDefinition(name: "name_folded", type: .string, storage: .slot(.string, "s_01"), derived: Derivation(source: "name", transform: .fold)),
-            ])
+                    name: "name_lower",
+                    type: .string,
+                    storage: .slot(.string, "s_02"),
+                    derived: Derivation(source: "name_folded", transform: .lowercase)
+                ),
+                FieldDefinition(
+                    name: "name_folded",
+                    type: .string,
+                    storage: .slot(.string, "s_01"),
+                    derived: Derivation(source: "name", transform: .fold)
+                ),
+            ]
+        )
         let resolved = try coder.resolve(["name": .string("CAFÉ")], at: 2, using: definition)
         #expect(resolved["name_folded"] == .string("cafe"))
         #expect(resolved["name_lower"] == .string("cafe"))
@@ -190,8 +234,14 @@ struct EntityCoderTests {
         let definition = makeDefinition(
             entity: "post",
             fields: [
-                FieldDefinition(name: "tags", type: .stringList, storage: .slot(.stringList, "ls_00"), allowed: ["red", "green"])
-            ])
+                FieldDefinition(
+                    name: "tags",
+                    type: .stringList,
+                    storage: .slot(.stringList, "ls_00"),
+                    allowed: ["red", "green"]
+                )
+            ]
+        )
         #expect(throws: SchemaError.invalidValue("tags")) {
             try coder.resolve(["tags": .strings(["red", "blue"])], at: 2, using: definition)
         }
@@ -205,7 +255,8 @@ struct EntityCoderTests {
             entity: "sample",
             fields: [
                 FieldDefinition(name: "counts", type: .intList, storage: .slot(.intList, "li_00"), min: 0)
-            ])
+            ]
+        )
         #expect(throws: SchemaError.invalidValue("counts")) {
             try coder.resolve(["counts": .ints([1, -1, 2])], at: 2, using: definition)
         }
@@ -217,7 +268,9 @@ struct EntityCoderTests {
             entity: "profile",
             fields: [
                 FieldDefinition(name: "user_id", type: .string, storage: .slot(.string, "s_00"))
-            ], unique: ["user_id"])
+            ],
+            unique: ["user_id"]
+        )
         let first = try coder.naturalUUID(for: ["user_id": .string("alice")], using: definition)
         let second = try coder.naturalUUID(for: ["user_id": .string("alice")], using: definition)
         let other = try coder.naturalUUID(for: ["user_id": .string("bob")], using: definition)
@@ -229,12 +282,15 @@ struct EntityCoderTests {
 
 func makePurchase(uuid: String = "p-1") -> EntityRecord {
     EntityRecord(
-        entity: "purchase", uuid: uuid, schemaVersion: 2,
+        entity: "purchase",
+        uuid: uuid,
+        schemaVersion: 2,
         values: [
             "product_id": .string("sku-42"),
             "date": .date(Date(timeIntervalSince1970: 1_000_000)),
             "quantity": .int(3),
             "total": .double(29.97),
             "comment": .string("gift"),
-        ])
+        ]
+    )
 }

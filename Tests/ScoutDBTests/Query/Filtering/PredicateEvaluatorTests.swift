@@ -31,11 +31,21 @@ struct PredicateEvaluatorTests {
         #expect(PredicateEvaluator.evaluate(NSPredicate(format: "a == %d", 1), record: record) == true)
         #expect(
             PredicateEvaluator.evaluate(
-                NSCompoundPredicate(andPredicateWithSubpredicates: [NSPredicate(format: "a == %d", 1), NSPredicate(value: true)]),
-                record: record) == true)
+                NSCompoundPredicate(andPredicateWithSubpredicates: [
+                    NSPredicate(format: "a == %d", 1), NSPredicate(value: true),
+                ]
+                ),
+                record: record
+            ) == true
+        )
         #expect(
             PredicateEvaluator.evaluate(
-                NSCompoundPredicate(orPredicateWithSubpredicates: [NSPredicate(format: "a == %d", 2), NSPredicate(value: false)]),
-                record: record) == false)
+                NSCompoundPredicate(orPredicateWithSubpredicates: [
+                    NSPredicate(format: "a == %d", 2), NSPredicate(value: false),
+                ]
+                ),
+                record: record
+            ) == false
+        )
     }
 }

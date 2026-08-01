@@ -130,7 +130,9 @@ extension SchemaBuilder {
         return parts.joined(separator: "_")
     }
 
-    static func merge(_ declared: [AggregateView], onto inherited: [AggregateView], keeping active: Set<String>) -> [AggregateView] {
+    static func merge(_ declared: [AggregateView], onto inherited: [AggregateView], keeping active: Set<String>)
+        -> [AggregateView]
+    {
         let byName = Dictionary(declared.map { ($0.name, $0) }, uniquingKeysWith: { _, last in last })
         let superseded = declared.map(\.groupBy)
         var merged = inherited.compactMap { view -> AggregateView? in

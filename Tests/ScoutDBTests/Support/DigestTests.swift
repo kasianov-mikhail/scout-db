@@ -22,7 +22,8 @@ struct DigestTests {
     @Test("Components free of the separator keep their pre-escaping id")
     func cleanComponentsAreStable() {
         let clean = ["order", "42", "sku-7"]
-        let unescaped = SHA256.hash(data: Data(clean.joined(separator: "|").utf8)).map { String(format: "%02x", $0) }.joined()
+        let unescaped = SHA256.hash(data: Data(clean.joined(separator: "|").utf8)).map { String(format: "%02x", $0) }
+            .joined()
         #expect(contentDigest(of: clean) == unescaped)
     }
 }

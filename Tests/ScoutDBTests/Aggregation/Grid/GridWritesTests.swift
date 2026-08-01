@@ -24,14 +24,19 @@ struct GridWritesTests {
                 FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00")),
                 FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
-            ], views: views)
+            ],
+            views: views
+        )
     }
 
     private func payments(_ products: [String]) -> [EntityRecord] {
         products.enumerated().map { index, product in
             EntityRecord(
-                entity: "payment", uuid: "p-\(index)", schemaVersion: 2,
-                values: ["product": .string(product), "amount": .double(1), "date": .date(noon)])
+                entity: "payment",
+                uuid: "p-\(index)",
+                schemaVersion: 2,
+                values: ["product": .string(product), "amount": .double(1), "date": .date(noon)]
+            )
         }
     }
 
@@ -48,7 +53,8 @@ struct GridWritesTests {
         let definition = paymentDefinition(views: [
             AggregateView(name: "by_product", groupBy: "product"),
             AggregateView(name: "revenue", groupBy: "product", sum: "amount"),
-        ])
+        ]
+        )
         let aggregator = GridAggregator(database: database)
 
         try await aggregator.record(payments(["app", "pro", "max"]), using: definition)
@@ -90,8 +96,11 @@ struct GridWritesTests {
 
     private func payment(amount: Double) -> EntityRecord {
         EntityRecord(
-            entity: "payment", uuid: "p-0", schemaVersion: 2,
-            values: ["product": .string("app"), "amount": .double(amount), "date": .date(noon)])
+            entity: "payment",
+            uuid: "p-0",
+            schemaVersion: 2,
+            values: ["product": .string("app"), "amount": .double(amount), "date": .date(noon)]
+        )
     }
 
     @Test("An update that leaves a min view's value where it stands touches no slot")
@@ -101,7 +110,11 @@ struct GridWritesTests {
         try await GridAggregator(database: database).record([stored], using: definition)
         database.resetRequests()
 
-        try await GridAggregator(database: database).rebalance(removing: [stored], adding: [payment(amount: 9)], using: definition)
+        try await GridAggregator(database: database).rebalance(
+            removing: [stored],
+            adding: [payment(amount: 9)],
+            using: definition
+        )
 
         #expect(requests(.fetch) == 0)
         #expect(requests(.conditionalSave) == 0)
@@ -115,7 +128,11 @@ struct GridWritesTests {
         try await GridAggregator(database: database).record([stored], using: definition)
         database.resetRequests()
 
-        try await GridAggregator(database: database).rebalance(removing: [stored], adding: [payment(amount: 2)], using: definition)
+        try await GridAggregator(database: database).rebalance(
+            removing: [stored],
+            adding: [payment(amount: 2)],
+            using: definition
+        )
 
         #expect(requests(.conditionalSave) == 1)
         #expect(try #require(slots.first)["f_00"] as? Double == 2)

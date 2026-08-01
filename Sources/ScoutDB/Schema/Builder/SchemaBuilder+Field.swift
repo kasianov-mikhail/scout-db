@@ -92,7 +92,9 @@ extension SchemaBuilder {
         return builder
     }
 
-    func resolve(_ declaration: Declaration, allocator: inout SlotAllocator, since: Int?, storage: Storage? = nil) throws -> FieldDefinition {
+    func resolve(_ declaration: Declaration, allocator: inout SlotAllocator, since: Int?, storage: Storage? = nil)
+        throws -> FieldDefinition
+    {
         let resolved: Storage
 
         if let storage {

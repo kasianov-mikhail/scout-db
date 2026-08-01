@@ -36,7 +36,8 @@ enum PerfReport {
     static func header(title: String) -> String {
         [
             "", title,
-            "requests the store made per call, against the statements a relational database would spend on the same work",
+            "requests the store made per call, against the statements a relational database would spend "
+                + "on the same work",
             String(repeating: "=", count: width(of: columns)),
             columns.map { pad($0.title, $0.width) }.joined(),
             String(repeating: "-", count: width(of: columns)),
@@ -109,7 +110,9 @@ enum PerfReport {
             guard let rows = grouped[key], let last = rows.last else {
                 return nil
             }
-            let measured = rows.sorted { $0.size.records < $1.size.records }.map { (size: $0.size, perOperation: $0.perOperation) }
+            let measured = rows.sorted { $0.size.records < $1.size.records }.map {
+                (size: $0.size, perOperation: $0.perOperation)
+            }
             var exponent = 0.0
             if measured.count > 1 {
                 let (near, far) = (measured[measured.count - 2], measured[measured.count - 1])
@@ -120,8 +123,14 @@ enum PerfReport {
             }
             let base = measured.last ?? (size: last.size, perOperation: last.perOperation)
             return Projection(
-                feature: last.feature, scenario: last.scenario, sql: last.sql, measured: measured, exponent: exponent,
-                base: base.perOperation, baseRecords: base.size.records)
+                feature: last.feature,
+                scenario: last.scenario,
+                sql: last.sql,
+                measured: measured,
+                exponent: exponent,
+                base: base.perOperation,
+                baseRecords: base.size.records
+            )
         }
     }
 
@@ -135,7 +144,8 @@ enum PerfReport {
             columns.append(
                 Column(title: volume(point.size.records), width: 8) { projection in
                     projection.measured.indices.contains(index) ? number(projection.measured[index].perOperation) : "—"
-                })
+                }
+            )
         }
         columns.append(Column(title: "over", width: 8) { $0.overhead.map { "\(number($0))×" } ?? "—" })
         guard projected else {
@@ -151,13 +161,15 @@ enum PerfReport {
                     return "—"
                 }
                 return "\(number(projection.requests(at: levels[levels.count - 1]) / Double(projection.sql)))×"
-            })
+            }
+        )
         return columns
     }
 
     private static func verdict(_ projections: [Projection]) -> String {
         let growing = projections.filter { $0.exponent >= 0.15 }.count
-        return "\(projections.count) scenarios · \(projections.count - growing) hold flat at any volume · \(growing) grow with the database"
+        return "\(projections.count) scenarios · \(projections.count - growing) hold flat at any volume · "
+            + "\(growing) grow with the database"
     }
 
     static func projectionTable(_ results: [PerfResult]) -> String {
@@ -169,7 +181,8 @@ enum PerfReport {
 
         var lines = [
             "", "Projection — requests per call at larger volumes",
-            "fitted as base × (N / \(volume(sample.baseRecords))) ^ k from the two largest databases measured; k is the growth exponent",
+            "fitted as base × (N / \(volume(sample.baseRecords))) ^ k from the two largest databases measured; "
+                + "k is the growth exponent",
             String(repeating: "=", count: width(of: columns)),
             columns.map { pad($0.title, $0.width) }.joined(),
             String(repeating: "-", count: width(of: columns)),
@@ -200,12 +213,16 @@ enum PerfReport {
             if sample.measured.count < DatasetSize.allCases.count {
                 lines += [
                     "",
-                    "> \(sample.measured.count) of \(DatasetSize.allCases.count) databases measured. The fit reads one extra page as a curve at "
-                        + "these sizes, so a row below is a lead, not a verdict — only a full sweep decides.",
+                    "> \(sample.measured.count) of \(DatasetSize.allCases.count) databases measured. "
+                        + "The fit reads one extra page as a curve at these sizes, so a row below is a lead, "
+                        + "not a verdict — only a full sweep decides.",
                 ]
             }
         } else {
-            lines += ["", "> One database measured, so nothing is fitted; run without `SCOUTDB_PERF_SIZES` for the projection."]
+            lines += [
+                "",
+                "> One database measured, so nothing is fitted; run without `SCOUTDB_PERF_SIZES` for the projection.",
+            ]
         }
 
         let columns = projectionColumns(sample: sample, projected: fitted)
@@ -213,12 +230,20 @@ enum PerfReport {
             let grew = projections.filter { $0.exponent >= 0.15 }.sorted(by: Projection.steepest)
             if grew.count > 0 {
                 lines += block(
-                    "Scenarios that grew", note: "work whose cost per call rises with what the database holds", columns: columns, rows: grew)
+                    "Scenarios that grew",
+                    note: "work whose cost per call rises with what the database holds",
+                    columns: columns,
+                    rows: grew
+                )
             }
         }
         lines += block(
-            "Every feature", note: "one call of each of the feature's scenarios, added up, against the statements SQL would spend on the same work",
-            columns: featureColumns, rows: features(projections).sorted { ($0.overhead ?? 0, $0.requests) > ($1.overhead ?? 0, $1.requests) })
+            "Every feature",
+            note: "one call of each of the feature's scenarios, added up, against the statements SQL would "
+                + "spend on the same work",
+            columns: featureColumns,
+            rows: features(projections).sorted { ($0.overhead ?? 0, $0.requests) > ($1.overhead ?? 0, $1.requests) }
+        )
 
         lines += [
             "", "<details>", "<summary>Every scenario</summary>", "", "```",
@@ -273,9 +298,13 @@ enum PerfReport {
         return order.map { name in
             let rows = grouped[name] ?? []
             return Feature(
-                name: name, scenarios: rows.count, requests: rows.reduce(0) { $0 + $1.base }, sql: rows.reduce(0) { $0 + $1.sql },
+                name: name,
+                scenarios: rows.count,
+                requests: rows.reduce(0) { $0 + $1.base },
+                sql: rows.reduce(0) { $0 + $1.sql },
                 growing: rows.filter { $0.exponent >= 0.15 }.count,
-                worst: rows.max { ($0.overhead ?? -1) < ($1.overhead ?? -1) })
+                worst: rows.max { ($0.overhead ?? -1) < ($1.overhead ?? -1) }
+            )
         }
     }
 
@@ -324,7 +353,9 @@ enum PerfReport {
             let base = URL(fileURLWithPath: path)
             return base.pathExtension == "json" ? base : base.appendingPathComponent("\(name).json")
         }
-        return URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".build/perf/\(name).json")
+        return URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(
+            ".build/perf/\(name).json"
+        )
     }
 
     private static func summary(_ results: [PerfResult]) -> String {
@@ -334,8 +365,15 @@ enum PerfReport {
         let errors = results.reduce(0) { $0 + $1.requests.failures }
         let overhead = statements > 0 ? Double(requests) / Double(statements) : 0
         return String(
-            format: "%d scenarios · %d requests · %d SQL statements · %.1f× overall · %d failed calls · %d broken scenarios",
-            results.count, requests, statements, overhead, errors, failed)
+            format: "%d scenarios · %d requests · %d SQL statements · %.1f× overall · %d failed calls · "
+                + "%d broken scenarios",
+            results.count,
+            requests,
+            statements,
+            overhead,
+            errors,
+            failed
+        )
     }
 
     private static func width<Row>(of columns: [Column<Row>]) -> Int {
@@ -417,7 +455,9 @@ enum PerfReport {
             feature = projection.feature
             scenario = projection.scenario
             sql = projection.sql
-            measured = Dictionary(uniqueKeysWithValues: projection.measured.map { ("\($0.size.records)", rounded($0.perOperation)) })
+            measured = Dictionary(
+                uniqueKeysWithValues: projection.measured.map { ("\($0.size.records)", rounded($0.perOperation)) }
+            )
             exponent = rounded(projection.exponent)
             growth = projection.growth
             projected = Dictionary(uniqueKeysWithValues: levels.map { ("\($0)", rounded(projection.requests(at: $0))) })

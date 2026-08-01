@@ -18,7 +18,11 @@ struct StoreContractTests {
         try await withContract { f in
             let entity = try await f.publishOrder()
             let date = Date(timeIntervalSince1970: 1_000_000)
-            try await f.store.write(orderValues(product: "sku-9", quantity: 4, total: 19.5, date: date, note: "gift"), entity: entity, uuid: "r-1")
+            try await f.store.write(
+                orderValues(product: "sku-9", quantity: 4, total: 19.5, date: date, note: "gift"),
+                entity: entity,
+                uuid: "r-1"
+            )
 
             try await eventually { try await f.store.read(entity: entity).count == 1 }
             let record = try #require(try await f.store.read(entity: entity).first)
@@ -53,7 +57,9 @@ struct StoreContractTests {
                 fields: [
                     FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_00")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
-                ], unique: ["user"])
+                ],
+                unique: ["user"]
+            )
             try await f.store.write(["user": .string("u1"), "date": .date(Date())], entity: entity)
             try await f.store.write(["user": .string("u1"), "date": .date(Date())], entity: entity)
 
@@ -73,7 +79,9 @@ struct StoreContractTests {
 
             try await f.store.write(orderValues(product: "keep-me"), entity: entity, uuid: "d-1")
             try await eventually { try await f.store.read(entity: entity).count == 1 }
-            #expect(try await f.store.fetch(entity: entity, uuids: ["d-1"]).first?.values["product"] == .string("keep-me"))
+            #expect(
+                try await f.store.fetch(entity: entity, uuids: ["d-1"]).first?.values["product"] == .string("keep-me")
+            )
         }
     }
 
@@ -82,14 +90,24 @@ struct StoreContractTests {
         try await withContract { f in
             let entity = try await f.publishOrder()
             for (index, quantity) in [1, 5, 9].enumerated() {
-                try await f.store.write(orderValues(product: "sku-\(quantity)", quantity: quantity), entity: entity, uuid: "q-\(index)")
+                try await f.store.write(
+                    orderValues(product: "sku-\(quantity)", quantity: quantity),
+                    entity: entity,
+                    uuid: "q-\(index)"
+                )
             }
             try await eventually { try await f.store.read(entity: entity).count == 3 }
 
-            let exact = try await f.store.read(entity: entity, filters: [.init(field: "product", op: .equals, value: .string("sku-5"))])
+            let exact = try await f.store.read(
+                entity: entity,
+                filters: [.init(field: "product", op: .equals, value: .string("sku-5"))]
+            )
             #expect(exact.map(\.uuid) == ["q-1"])
 
-            let above = try await f.store.read(entity: entity, filters: [.init(field: "quantity", op: .greaterThan, value: .int(4))])
+            let above = try await f.store.read(
+                entity: entity,
+                filters: [.init(field: "quantity", op: .greaterThan, value: .int(4))]
+            )
             #expect(Set(above.map(\.uuid)) == ["q-1", "q-2"])
 
             let middle = try await f.store.query(entity).filter("quantity" >= 2 && "quantity" < 9).take(100)
@@ -106,7 +124,10 @@ struct StoreContractTests {
             }
             try await eventually { try await f.store.read(entity: entity).count == 3 }
 
-            let picked = try await f.store.read(entity: entity, filters: [.init(field: "product", op: .in, value: .strings(["a", "c"]))])
+            let picked = try await f.store.read(
+                entity: entity,
+                filters: [.init(field: "product", op: .in, value: .strings(["a", "c"]))]
+            )
             #expect(Set(picked.map(\.uuid)) == ["in-a", "in-c"])
         }
     }
@@ -119,7 +140,10 @@ struct StoreContractTests {
             try await f.store.write(orderValues(product: "basic"), entity: entity, uuid: "s-2")
             try await eventually { try await f.store.read(entity: entity).count == 2 }
 
-            let matched = try await f.store.read(entity: entity, filters: [.init(field: "product", op: .contains, value: .string("uxe-bun"))])
+            let matched = try await f.store.read(
+                entity: entity,
+                filters: [.init(field: "product", op: .contains, value: .string("uxe-bun"))]
+            )
             #expect(matched.map(\.uuid) == ["s-1"])
         }
     }
@@ -146,7 +170,11 @@ struct StoreContractTests {
             let entity = try await f.publishOrder()
             let base = Date(timeIntervalSince1970: 1_000_000)
             for index in 0..<5 {
-                try await f.store.write(orderValues(date: base.addingTimeInterval(Double(index) * 60)), entity: entity, uuid: "p-\(index)")
+                try await f.store.write(
+                    orderValues(date: base.addingTimeInterval(Double(index) * 60)),
+                    entity: entity,
+                    uuid: "p-\(index)"
+                )
             }
             try await eventually { try await f.store.read(entity: entity).count == 5 }
 

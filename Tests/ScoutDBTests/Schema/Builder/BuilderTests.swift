@@ -36,7 +36,10 @@ struct BuilderTests {
                     "quantity": .int(Int64(quantity)),
                     "amount": .double(Double(quantity) * 10),
                     "date": .date(Date(timeIntervalSince1970: TimeInterval(index * 1_000))),
-                ], entity: "purchase", uuid: "p-\(index)")
+                ],
+                entity: "purchase",
+                uuid: "p-\(index)"
+            )
         }
     }
 
@@ -277,7 +280,9 @@ struct BuilderTests {
         #expect(builder.alternatives.count == 2)
 
         let definition = try await registry.definition(for: "purchase")
-        let branches = try builder.alternatives.map { try store.split($0, entity: "purchase", using: definition).server }
+        let branches = try builder.alternatives.map {
+            try store.split($0, entity: "purchase", using: definition).server
+        }
         #expect(branches[0].contains { branches[1].contains($0) })
         #expect(branches.contains { $0.contains { $0.value == .string("sku-0") } })
     }
@@ -309,7 +314,9 @@ struct BuilderTests {
 
     @Test("Exclude runs on the server when the field cannot be missing")
     func excludePushdown() async throws {
-        func sides(_ builder: QueryBuilder, using definition: EntityDefinition) throws -> (server: [ServerFilter], client: [EntityStore.Filter]) {
+        func sides(_ builder: QueryBuilder, using definition: EntityDefinition) throws -> (
+            server: [ServerFilter], client: [EntityStore.Filter]
+        ) {
             try store.split(builder.alternatives[0], entity: builder.entity, using: definition)
         }
 
@@ -320,10 +327,18 @@ struct BuilderTests {
         #expect(required.client.isEmpty)
 
         let optional = try sides(store.query("purchase").exclude("quantity", .greaterThan, .int(1)), using: purchase)
-        #expect(optional.client.contains(EntityStore.Filter(field: "quantity", op: .greaterThan, value: .int(1), negated: true)))
+        #expect(
+            optional.client.contains(
+                EntityStore.Filter(field: "quantity", op: .greaterThan, value: .int(1), negated: true)
+            )
+        )
 
         let payload = try sides(store.query("purchase").exclude("comment", .equals, "gift"), using: purchase)
-        #expect(payload.client.contains(EntityStore.Filter(field: "comment", op: .equals, value: .string("gift"), negated: true)))
+        #expect(
+            payload.client.contains(
+                EntityStore.Filter(field: "comment", op: .equals, value: .string("gift"), negated: true)
+            )
+        )
 
         try await store.schema("shipment")
             .field("carrier", .string, .required)
@@ -334,7 +349,10 @@ struct BuilderTests {
         let defaulted = try sides(store.query("shipment").exclude("weight", .lessThan, .double(5)), using: shipment)
         #expect(defaulted.server.contains(ServerFilter(field: "d_00", op: .greaterThanOrEquals, value: .double(5))))
 
-        let excluded = try sides(store.query("shipment").exclude("carrier", .in, .strings(["ups", "dhl"])), using: shipment)
+        let excluded = try sides(
+            store.query("shipment").exclude("carrier", .in, .strings(["ups", "dhl"])),
+            using: shipment
+        )
         #expect(excluded.server.contains(ServerFilter(field: "s_00", op: .notIn, value: .strings(["ups", "dhl"]))))
     }
 
@@ -396,12 +414,25 @@ struct BuilderTests {
                 "quantity": .int(5),
                 "amount": .double(50),
                 "date": .date(Date(timeIntervalSince1970: 4_000)),
-            ], entity: "purchase", uuid: "p-3")
+            ],
+            entity: "purchase",
+            uuid: "p-3"
+        )
 
-        #expect(try await store.query("purchase").sum("quantity", by: "product_id") == ["sku-0": 8, "sku-1": 1, "sku-2": 2])
+        #expect(
+            try await store.query("purchase").sum("quantity", by: "product_id") == ["sku-0": 8, "sku-1": 1, "sku-2": 2]
+        )
         #expect(try await store.query("purchase").count(by: "product_id") == ["sku-0": 2, "sku-1": 1, "sku-2": 1])
-        #expect(try await store.query("purchase").max("amount", by: "product_id") == ["sku-0": 50, "sku-1": 10, "sku-2": 20])
-        #expect(try await store.query("purchase").filter("quantity" > 1).average("amount", by: "product_id") == ["sku-0": 40, "sku-2": 20])
+        #expect(
+            try await store.query("purchase").max("amount", by: "product_id") == [
+                "sku-0": 50, "sku-1": 10, "sku-2": 20,
+            ]
+        )
+        #expect(
+            try await store.query("purchase").filter("quantity" > 1).average("amount", by: "product_id") == [
+                "sku-0": 40, "sku-2": 20,
+            ]
+        )
 
         await #expect(throws: SchemaError.invalidValue("product_id")) {
             _ = try await store.query("purchase").sum("product_id", by: "quantity")

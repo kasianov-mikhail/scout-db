@@ -35,9 +35,9 @@ struct FieldDefinition: Codable, Equatable, Sendable {
     var ungrouped: Bool?
 
     init(
-        name: String, type: FieldType, storage: Storage, since: Int? = nil, until: Int? = nil, required: Bool? = nil, defaultValue: RecordValue? = nil,
-        allowed: [String]? = nil, min: Double? = nil, max: Double? = nil, derived: Derivation? = nil, pattern: String? = nil,
-        ungrouped: Bool? = nil
+        name: String, type: FieldType, storage: Storage, since: Int? = nil, until: Int? = nil, required: Bool? = nil,
+        defaultValue: RecordValue? = nil, allowed: [String]? = nil, min: Double? = nil, max: Double? = nil,
+        derived: Derivation? = nil, pattern: String? = nil, ungrouped: Bool? = nil
     ) {
         self.name = name
         self.type = type
@@ -92,7 +92,9 @@ extension Storage: Codable {
         } else if let pool = FieldType.type(forSlot: raw) {
             self = .slot(pool, raw)
         } else {
-            throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Unknown storage '\(raw)'"))
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Unknown storage '\(raw)'")
+            )
         }
     }
 

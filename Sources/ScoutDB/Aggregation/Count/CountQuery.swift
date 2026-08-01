@@ -38,14 +38,20 @@ struct CountQuery {
                 groupKeys = keys
 
             case (.greaterThanOrEquals, let value):
-                guard let scalar = value.scalar, numericField == nil || numericField == filter.field, numericGTE == nil else {
+                guard let scalar = value.scalar, numericField == nil || numericField == filter.field else {
+                    return nil
+                }
+                guard numericGTE == nil else {
                     return nil
                 }
                 numericField = filter.field
                 numericGTE = scalar
 
             case (.lessThan, let value):
-                guard let scalar = value.scalar, numericField == nil || numericField == filter.field, numericLT == nil else {
+                guard let scalar = value.scalar, numericField == nil || numericField == filter.field else {
+                    return nil
+                }
+                guard numericLT == nil else {
                     return nil
                 }
                 numericField = filter.field
@@ -100,7 +106,9 @@ struct CountQuery {
         groupField == nil || groupField == view.groupBy
     }
 
-    func foldPlan(in definition: EntityDefinition, folding metric: (kind: Metric, field: String)?, grouping group: String?) -> AggregateView? {
+    func foldPlan(
+        in definition: EntityDefinition, folding metric: (kind: Metric, field: String)?, grouping group: String?
+    ) -> AggregateView? {
         for view in definition.views ?? [] where matchesGrouping(of: view) {
             guard group == nil || view.groupBy == group else {
                 continue
@@ -132,7 +140,10 @@ struct CountQuery {
 
         let floor = max(lower.rounded(.up), numericGTE?.rounded(.up) ?? -.greatestFiniteMagnitude)
         let ceiling = min(upper.rounded(.down), numericLT.map { $0.rounded(.up) - 1 } ?? .greatestFiniteMagnitude)
-        guard ceiling - floor < Self.namedDomain, let first = Int64(exactly: floor), let last = Int64(exactly: ceiling) else {
+        guard ceiling - floor < Self.namedDomain else {
+            return
+        }
+        guard let first = Int64(exactly: floor), let last = Int64(exactly: ceiling) else {
             return
         }
 

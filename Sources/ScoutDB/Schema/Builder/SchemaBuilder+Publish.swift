@@ -145,7 +145,10 @@ extension SchemaBuilder {
         .map(\.name)
     }
 
-    func publish(fields: [FieldDefinition], version: Int, inheriting previous: EntityDefinition?, publishing views: [AggregateView]) async throws {
+    func publish(
+        fields: [FieldDefinition], version: Int, inheriting previous: EntityDefinition?,
+        publishing views: [AggregateView]
+    ) async throws {
         let definition = EntityDefinition(
             entity: entity,
             version: version,

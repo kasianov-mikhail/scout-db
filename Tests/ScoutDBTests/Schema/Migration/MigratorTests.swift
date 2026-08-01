@@ -107,7 +107,9 @@ struct MigratorTests {
             fields: [
                 FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00")),
                 FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
-            ], views: [AggregateView(name: "all_time")])
+            ],
+            views: [AggregateView(name: "all_time")]
+        )
         try await registry.publish(definition)
         let store = EntityStore(database: database, registry: registry)
         try await store.write(["product": .string("app"), "amount": .double(10)], entity: "sale")
@@ -139,27 +141,33 @@ struct MigratorTests {
 
 func makeRenameDefinition(version: Int) -> EntityDefinition {
     makeDefinition(
-        entity: "profile", version: version,
+        entity: "profile",
+        version: version,
         fields: [
             FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_00"), until: 2),
             FieldDefinition(name: "user_id", type: .string, storage: .slot(.string, "s_00"), since: 2),
-        ])
+        ]
+    )
 }
 
 func makeReslotDefinition(version: Int) -> EntityDefinition {
     makeDefinition(
-        entity: "member", version: version,
+        entity: "member",
+        version: version,
         fields: [
             FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_00"), until: 2),
             FieldDefinition(name: "handle", type: .string, storage: .slot(.string, "s_01"), since: 2),
-        ])
+        ]
+    )
 }
 
 func makeRetypeDefinition(version: Int) -> EntityDefinition {
     makeDefinition(
-        entity: "payment", version: version,
+        entity: "payment",
+        version: version,
         fields: [
             FieldDefinition(name: "amount", type: .int, storage: .slot(.int, "i_00"), until: 2),
             FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"), since: 2),
-        ])
+        ]
+    )
 }

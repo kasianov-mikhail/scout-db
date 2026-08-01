@@ -27,18 +27,42 @@ extension PerfScenarios {
                 let entity = world.fresh("ent", iteration)
                 try await world.registry.publish(
                     EntityDefinition(
-                        entity: entity, version: 1,
+                        entity: entity,
+                        version: 1,
                         fields: [
-                            FieldDefinition(name: "label", type: .string, storage: .slot(.string, "s_00"), required: true),
-                            FieldDefinition(name: "at", type: .timestamp, storage: .slot(.timestamp, "t_00"), required: true),
-                        ]))
+                            FieldDefinition(
+                                name: "label",
+                                type: .string,
+                                storage: .slot(.string, "s_00"),
+                                required: true
+                            ),
+                            FieldDefinition(
+                                name: "at",
+                                type: .timestamp,
+                                storage: .slot(.timestamp, "t_00"),
+                                required: true
+                            ),
+                        ]
+                    )
+                )
             },
-            PerfScenario("Schema", "publish a second version", sql: 1, setUp: { world in try await stageEntities(world, prefix: "ver") }) {
+            PerfScenario(
+                "Schema",
+                "publish a second version",
+                sql: 1,
+                setUp: { world in try await stageEntities(world, prefix: "ver") }
+            ) {
                 world, iteration in
                 try await world.registry.publish(
-                    EntityDefinition(entity: world.stage.entities[iteration], version: 2, fields: fields(at: 2)))
+                    EntityDefinition(entity: world.stage.entities[iteration], version: 2, fields: fields(at: 2))
+                )
             },
-            PerfScenario("Schema", "retire an entity", sql: 1, setUp: { world in try await stageEntities(world, prefix: "ret") }) { world, iteration in
+            PerfScenario(
+                "Schema",
+                "retire an entity",
+                sql: 1,
+                setUp: { world in try await stageEntities(world, prefix: "ret") }
+            ) { world, iteration in
                 try await world.registry.retire(entity: world.stage.entities[iteration])
             },
         ]

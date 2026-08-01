@@ -17,9 +17,11 @@ import CloudKit
 /// query and fetch names all describe the public one.
 ///
 public protocol CloudDatabase: Sendable {
-    func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> QueryPage
+    func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws
+        -> QueryPage
 
-    func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> QueryPage
+    func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int)
+        async throws -> QueryPage
 
     func save(_ record: CKRecord) async throws -> CKRecord
     func modifyRecords(saving: [CKRecord], deleting: [CKRecord.ID]) async throws

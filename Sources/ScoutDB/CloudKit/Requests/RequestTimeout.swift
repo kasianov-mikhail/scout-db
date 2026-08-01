@@ -23,9 +23,8 @@ private struct UncheckedBox<T>: @unchecked Sendable {
     let value: T
 }
 
-func withRequestTimeout<R>(
-    _ timeout: Duration, _ operation: @Sendable @escaping () async throws -> R
-) async throws -> R {
+func withRequestTimeout<R>(_ timeout: Duration, _ operation: @Sendable @escaping () async throws -> R) async throws -> R
+{
     let relay = ResultRelay<UncheckedBox<R>>()
     let operationTask = Task {
         do {

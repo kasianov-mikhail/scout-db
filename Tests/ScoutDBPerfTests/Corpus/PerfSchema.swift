@@ -27,27 +27,55 @@ enum PerfSchema {
 
     static var customerDefinition: EntityDefinition {
         EntityDefinition(
-            entity: customer, version: 1,
+            entity: customer,
+            version: 1,
             fields: [
                 FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"), required: true),
                 FieldDefinition(name: "email", type: .string, storage: .slot(.string, "s_01"), required: true),
-                FieldDefinition(name: "country", type: .string, storage: .slot(.string, "s_02"), required: true, allowed: countries),
+                FieldDefinition(
+                    name: "country",
+                    type: .string,
+                    storage: .slot(.string, "s_02"),
+                    required: true,
+                    allowed: countries
+                ),
                 FieldDefinition(name: "signup", type: .timestamp, storage: .slot(.timestamp, "t_00"), required: true),
                 FieldDefinition(name: "points", type: .double, storage: .slot(.double, "d_00")),
                 FieldDefinition(name: "tags", type: .stringList, storage: .slot(.stringList, "ls_00")),
                 FieldDefinition(name: "bio", type: .text, storage: .payload),
             ],
-            views: [AggregateView(name: "by_country", groupBy: "country")])
+            views: [AggregateView(name: "by_country", groupBy: "country")]
+        )
     }
 
     static var orderDefinition: EntityDefinition {
         EntityDefinition(
-            entity: order, version: 1,
+            entity: order,
+            version: 1,
             fields: [
                 FieldDefinition(name: "customer", type: .string, storage: .slot(.string, "s_00"), required: true),
-                FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_01"), required: true, allowed: products),
-                FieldDefinition(name: "status", type: .string, storage: .slot(.string, "s_02"), required: true, allowed: statuses),
-                FieldDefinition(name: "quantity", type: .int, storage: .slot(.int, "i_00"), required: true, min: 1, max: 20),
+                FieldDefinition(
+                    name: "product",
+                    type: .string,
+                    storage: .slot(.string, "s_01"),
+                    required: true,
+                    allowed: products
+                ),
+                FieldDefinition(
+                    name: "status",
+                    type: .string,
+                    storage: .slot(.string, "s_02"),
+                    required: true,
+                    allowed: statuses
+                ),
+                FieldDefinition(
+                    name: "quantity",
+                    type: .int,
+                    storage: .slot(.int, "i_00"),
+                    required: true,
+                    min: 1,
+                    max: 20
+                ),
                 FieldDefinition(name: "total", type: .double, storage: .slot(.double, "d_00"), required: true),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00"), required: true),
                 FieldDefinition(name: "note", type: .string, storage: .payload),
@@ -57,31 +85,48 @@ enum PerfSchema {
                 AggregateView(name: "peak", groupBy: "product", max: "total"),
                 AggregateView(name: "by_status", groupBy: "status"),
                 AggregateView(name: "by_quantity", groupBy: "quantity"),
-            ])
+            ]
+        )
     }
 
     static var itemDefinition: EntityDefinition {
         EntityDefinition(
-            entity: item, version: 1,
+            entity: item,
+            version: 1,
             fields: [
                 FieldDefinition(name: "order", type: .string, storage: .slot(.string, "s_00"), required: true),
-                FieldDefinition(name: "sku", type: .string, storage: .slot(.string, "s_01"), required: true, allowed: products),
+                FieldDefinition(
+                    name: "sku",
+                    type: .string,
+                    storage: .slot(.string, "s_01"),
+                    required: true,
+                    allowed: products
+                ),
                 FieldDefinition(name: "quantity", type: .int, storage: .slot(.int, "i_00"), required: true),
                 FieldDefinition(name: "price", type: .double, storage: .slot(.double, "d_00"), required: true),
                 FieldDefinition(name: "added", type: .timestamp, storage: .slot(.timestamp, "t_00"), required: true),
-            ])
+            ]
+        )
     }
 
     static var sessionDefinition: EntityDefinition {
         EntityDefinition(
-            entity: session, version: 1,
+            entity: session,
+            version: 1,
             fields: [
                 FieldDefinition(name: "customer", type: .string, storage: .slot(.string, "s_00"), required: true),
-                FieldDefinition(name: "device", type: .string, storage: .slot(.string, "s_01"), required: true, allowed: devices),
+                FieldDefinition(
+                    name: "device",
+                    type: .string,
+                    storage: .slot(.string, "s_01"),
+                    required: true,
+                    allowed: devices
+                ),
                 FieldDefinition(name: "started", type: .timestamp, storage: .slot(.timestamp, "t_00"), required: true),
                 FieldDefinition(name: "seconds", type: .int, storage: .slot(.int, "i_00")),
                 FieldDefinition(name: "token", type: .string, storage: .payload),
-            ])
+            ]
+        )
     }
 
     static var definitions: [EntityDefinition] {

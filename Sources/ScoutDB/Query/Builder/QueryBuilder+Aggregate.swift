@@ -239,7 +239,9 @@ extension QueryBuilder {
         var narrowed: String?
         for filter in flat {
             guard let group, filter.field == group, filter.op == .equals else {
-                throw SchemaError.invalidDefinition("An aggregate reads the grid and can only be filtered by an equal '\(group ?? "group")'")
+                throw SchemaError.invalidDefinition(
+                    "An aggregate reads the grid and can only be filtered by an equal '\(group ?? "group")'"
+                )
             }
             narrowed = filter.value.canonical
         }

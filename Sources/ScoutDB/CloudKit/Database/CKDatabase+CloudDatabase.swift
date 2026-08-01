@@ -8,7 +8,9 @@
 import CloudKit
 
 extension CKDatabase: CloudDatabase {
-    public func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> QueryPage {
+    public func records(matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws
+        -> QueryPage
+    {
         do {
             return try await throttled { database in
                 let (results, cursor) = try await database.records(
@@ -24,21 +26,24 @@ extension CKDatabase: CloudDatabase {
         }
     }
 
-    public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int) async throws -> QueryPage {
+    public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [CKRecord.FieldKey]?, resultsLimit: Int)
+        async throws -> QueryPage
+    {
         guard case .cloudKit(let cursor) = cursor else {
             throw CKError(.invalidArguments)
         }
         return try await throttled { database in
-            let (results, next): (matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?) =
-                try await withCheckedThrowingContinuation { continuation in
-                    database.fetch(
-                        withCursor: cursor,
-                        desiredKeys: desiredKeys,
-                        resultsLimit: resultsLimit
-                    ) { result in
-                        continuation.resume(with: result)
+            let (results, next):
+                (matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?) =
+                    try await withCheckedThrowingContinuation { continuation in
+                        database.fetch(
+                            withCursor: cursor,
+                            desiredKeys: desiredKeys,
+                            resultsLimit: resultsLimit
+                        ) { result in
+                            continuation.resume(with: result)
+                        }
                     }
-                }
             return (results, next.map(QueryCursor.cloudKit))
         }
     }

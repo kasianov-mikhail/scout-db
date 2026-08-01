@@ -19,7 +19,10 @@ extension PerfScenarios {
                 var cursor: FieldCursor?
                 var seen = 0
                 repeat {
-                    let page = try await world.store.query(PerfSchema.order).sort("total").page(size: 100, after: cursor)
+                    let page = try await world.store.query(PerfSchema.order).sort("total").page(
+                        size: 100,
+                        after: cursor
+                    )
                     seen += page.records.count
                     cursor = page.cursor
                 } while cursor != nil && seen < 500

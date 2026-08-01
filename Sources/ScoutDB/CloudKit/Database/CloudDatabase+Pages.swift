@@ -20,8 +20,7 @@ extension CloudDatabase {
     }
 
     func forEachPage(
-        matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]? = nil,
-        _ body: ([CKRecord]) async throws -> Void
+        matching query: CKQuery, desiredKeys: [CKRecord.FieldKey]? = nil, _ body: ([CKRecord]) async throws -> Void
     ) async throws {
         var (results, cursor) = try await records(
             matching: query,

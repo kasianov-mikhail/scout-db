@@ -120,11 +120,18 @@ enum CorpusBuilder {
         }
 
         return Corpus(
-            size: size, records: database.records, customers: customers, orders: orders, items: items,
-            now: Corpus.epoch)
+            size: size,
+            records: database.records,
+            customers: customers,
+            orders: orders,
+            items: items,
+            now: Corpus.epoch
+        )
     }
 
-    private static func writeCustomers(_ size: DatasetSize, store: EntityStore, generator: inout SeededGenerator) async throws -> [String] {
+    private static func writeCustomers(_ size: DatasetSize, store: EntityStore, generator: inout SeededGenerator)
+        async throws -> [String]
+    {
         var uuids: [String] = []
         var batch: [EntityWrite] = []
         for index in 0..<size.customers {
@@ -138,7 +145,9 @@ enum CorpusBuilder {
                 "tags": .strings(tags(&generator)),
             ]
             if generator.unit() < 0.6 {
-                values["bio"] = .string("Shops from \(PerfSchema.countries[generator.index(below: PerfSchema.countries.count)]) since 2019.")
+                values["bio"] = .string(
+                    "Shops from \(PerfSchema.countries[generator.index(below: PerfSchema.countries.count)]) since 2019."
+                )
             }
             uuids.append(uuid)
             batch.append(EntityWrite(values: values, uuid: uuid))
@@ -153,7 +162,9 @@ enum CorpusBuilder {
         return uuids
     }
 
-    private static func writeOrders(_ size: DatasetSize, customers: [String], store: EntityStore, generator: inout SeededGenerator) async throws -> [String] {
+    private static func writeOrders(
+        _ size: DatasetSize, customers: [String], store: EntityStore, generator: inout SeededGenerator
+    ) async throws -> [String] {
         var uuids: [String] = []
         var batch: [EntityWrite] = []
         for index in 0..<size.orders {
@@ -184,7 +195,9 @@ enum CorpusBuilder {
         return uuids
     }
 
-    private static func writeItems(_ size: DatasetSize, orders: [String], store: EntityStore, generator: inout SeededGenerator) async throws -> [String] {
+    private static func writeItems(
+        _ size: DatasetSize, orders: [String], store: EntityStore, generator: inout SeededGenerator
+    ) async throws -> [String] {
         var uuids: [String] = []
         var batch: [EntityWrite] = []
         for index in 0..<size.items {
@@ -199,7 +212,10 @@ enum CorpusBuilder {
                         "quantity": .int(Int64(quantity)),
                         "price": .double(Double(generator.index(below: 200)) + 0.99),
                         "added": .date(Corpus.epoch.addingTimeInterval(-generator.unit() * Corpus.span)),
-                    ], uuid: uuid))
+                    ],
+                    uuid: uuid
+                )
+            )
             if batch.count == 200 {
                 try await store.write(batch, entity: PerfSchema.item)
                 batch = []
@@ -211,7 +227,9 @@ enum CorpusBuilder {
         return uuids
     }
 
-    private static func writeSessions(_ size: DatasetSize, customers: [String], store: EntityStore, generator: inout SeededGenerator) async throws -> [String] {
+    private static func writeSessions(
+        _ size: DatasetSize, customers: [String], store: EntityStore, generator: inout SeededGenerator
+    ) async throws -> [String] {
         var uuids: [String] = []
         var batch: [EntityWrite] = []
         for index in 0..<size.sessions {
@@ -224,7 +242,10 @@ enum CorpusBuilder {
                         "device": .string(generator.pick(PerfSchema.devices)),
                         "started": .date(Corpus.epoch.addingTimeInterval(-generator.unit() * 60 * 60 * 24 * 90)),
                         "seconds": .int(Int64(generator.index(below: 7_200))),
-                    ], uuid: uuid))
+                    ],
+                    uuid: uuid
+                )
+            )
             if batch.count == 200 {
                 try await store.write(batch, entity: PerfSchema.session)
                 batch = []

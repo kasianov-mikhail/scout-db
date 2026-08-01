@@ -27,7 +27,9 @@ struct EntityCoder {
         calendar.dateInterval(of: component, for: date)?.start ?? date
     }
 
-    func resolve(_ values: [String: RecordValue], at version: Int, using definition: EntityDefinition) throws -> [String: RecordValue] {
+    func resolve(_ values: [String: RecordValue], at version: Int, using definition: EntityDefinition) throws
+        -> [String: RecordValue]
+    {
         let fields = definition.fields(at: version)
         var resolved = values
 
@@ -64,7 +66,9 @@ struct EntityCoder {
             if let allowed = field.allowed, !value.strings.allSatisfy(allowed.contains) {
                 throw SchemaError.invalidValue(field.name)
             }
-            if let pattern = field.pattern, let regex = Self.patterns.regex(for: pattern), !value.strings.allSatisfy({ $0.wholeMatch(of: regex) != nil }) {
+            if let pattern = field.pattern, let regex = Self.patterns.regex(for: pattern),
+                !value.strings.allSatisfy({ $0.wholeMatch(of: regex) != nil })
+            {
                 throw SchemaError.invalidValue(field.name)
             }
             for scalar in value.scalars {
@@ -102,7 +106,9 @@ struct EntityCoder {
         let record: CKRecord
     }
 
-    func rewrite(_ record: CKRecord, using definition: EntityDefinition, transform: (inout EntityRecord) throws -> Void) throws -> Rewrite {
+    func rewrite(_ record: CKRecord, using definition: EntityDefinition, transform: (inout EntityRecord) throws -> Void)
+        throws -> Rewrite
+    {
         let previous = try decode(record, using: definition)
         var next = previous
         try transform(&next)
@@ -110,7 +116,9 @@ struct EntityCoder {
         return Rewrite(previous: previous, next: next, record: try encode(next, using: definition, into: record))
     }
 
-    func encode(_ entityRecord: EntityRecord, using definition: EntityDefinition, into base: CKRecord? = nil) throws -> CKRecord {
+    func encode(_ entityRecord: EntityRecord, using definition: EntityDefinition, into base: CKRecord? = nil) throws
+        -> CKRecord
+    {
         let fields = definition.fields(at: entityRecord.schemaVersion)
         let values = entityRecord.values
 

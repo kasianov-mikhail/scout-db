@@ -8,9 +8,9 @@
 import Foundation
 
 extension EntityStore {
-    func read(
-        entity: String, filters: [Filter] = [], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil
-    ) async throws -> [EntityRecord] {
+    func read(entity: String, filters: [Filter] = [], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil)
+        async throws -> [EntityRecord]
+    {
         let definition = try await registry.definition(for: entity)
         if try clientRanked(sort, using: definition) {
             let projection = fields.map { $0 + sort.map(\.field) }
@@ -21,17 +21,32 @@ extension EntityStore {
             }
             return Array(ranked.prefix(limit))
         }
-        let (query, included) = try liveQuery(filters, entity: entity, sort: try serverSort(sort, using: definition), using: definition)
+        let (query, included) = try liveQuery(
+            filters,
+            entity: entity,
+            sort: try serverSort(sort, using: definition),
+            using: definition
+        )
         let keys = try fields.map { try desiredKeys($0 + filters.map(\.field), using: definition) }
         if let limit {
-            return Array(try await boundedRecords(matching: query, desiredKeys: keys, limit: limit, using: definition, where: included).prefix(limit))
+            return Array(
+                try await boundedRecords(
+                    matching: query,
+                    desiredKeys: keys,
+                    limit: limit,
+                    using: definition,
+                    where: included
+                ).prefix(limit)
+            )
         }
-        return try decode(try await database.allRecords(matching: query, desiredKeys: keys), using: definition).filter(included)
+        return try decode(try await database.allRecords(matching: query, desiredKeys: keys), using: definition).filter(
+            included
+        )
     }
 
-    func read(
-        entity: String, any branches: [[Filter]], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil
-    ) async throws -> [EntityRecord] {
+    func read(entity: String, any branches: [[Filter]], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil)
+        async throws -> [EntityRecord]
+    {
         if branches.count == 1 {
             return try await read(entity: entity, filters: branches[0], sort: sort, fields: fields, limit: limit)
         }
@@ -40,7 +55,12 @@ extension EntityStore {
             var seen: Set<String> = []
             var union: [EntityRecord] = []
             for branch in branches {
-                let page: [EntityRecord] = try await read(entity: entity, filters: branch, fields: branchFields, limit: limit)
+                let page: [EntityRecord] = try await read(
+                    entity: entity,
+                    filters: branch,
+                    fields: branchFields,
+                    limit: limit
+                )
                 for record in page where seen.insert(record.uuid).inserted {
                     union.append(record)
                     if union.count == limit {
@@ -57,7 +77,12 @@ extension EntityStore {
                     (
                         index,
                         try await self.read(
-                            entity: entity, filters: branch, sort: bounded ? sort : [], fields: branchFields, limit: bounded ? limit : nil)
+                            entity: entity,
+                            filters: branch,
+                            sort: bounded ? sort : [],
+                            fields: branchFields,
+                            limit: bounded ? limit : nil
+                        )
                     )
                 }
             }

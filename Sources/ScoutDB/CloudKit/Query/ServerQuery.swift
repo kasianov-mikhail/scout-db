@@ -67,7 +67,8 @@ extension CKQuery {
             recordType: recordType,
             predicate: filters.isEmpty
                 ? NSPredicate(value: true)
-                : NSCompoundPredicate(type: .and, subpredicates: filters.map(\.predicate)))
+                : NSCompoundPredicate(type: .and, subpredicates: filters.map(\.predicate))
+        )
         if sort.count > 0 {
             sortDescriptors = sort.map { NSSortDescriptor(key: $0.field, ascending: $0.ascending) }
         }

@@ -27,7 +27,9 @@ struct GridAggregator {
         try await rebalance(removing: batch, adding: [], using: definition)
     }
 
-    func rebalance(removing old: [EntityRecord], adding new: [EntityRecord], using definition: EntityDefinition) async throws {
+    func rebalance(removing old: [EntityRecord], adding new: [EntityRecord], using definition: EntityDefinition)
+        async throws
+    {
         var merged = deltas(for: old, using: definition, adding: false)
         for (slot, delta) in deltas(for: new, using: definition, adding: true) {
             merged[slot, default: CellDelta()].merge(delta)
@@ -39,7 +41,9 @@ struct GridAggregator {
         try await apply(live)
     }
 
-    private func deltas(for batch: [EntityRecord], using definition: EntityDefinition, adding: Bool) -> [GridSlot: CellDelta] {
+    private func deltas(for batch: [EntityRecord], using definition: EntityDefinition, adding: Bool) -> [GridSlot:
+        CellDelta]
+    {
         let sign: Int64 = adding ? 1 : -1
         var deltas: [GridSlot: CellDelta] = [:]
 
@@ -153,7 +157,8 @@ struct GridAggregator {
                 ServerFilter(field: "view", op: .equals, value: .string(slot.view)),
                 ServerFilter(field: "group_key", op: .equals, value: .string(slot.group)),
                 ServerFilter(field: "date", op: .equals, value: .date(GridSlot.date)),
-            ])
+            ]
+        )
         return try await database.allRecords(matching: query).first
     }
 }
