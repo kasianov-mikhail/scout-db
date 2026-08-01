@@ -11,20 +11,4 @@ import Foundation
 extension CKRecord {
     static let countCell = "c_00"
     static let valueCell = "f_00"
-
-    var cellCount: Int64 {
-        self[Self.countCell] as? Int64 ?? 0
-    }
-
-    var cellValue: Double? {
-        self[Self.valueCell] as? Double
-    }
-
-    func setCellCount(_ count: Int64) {
-        self[Self.countCell] = count
-    }
-
-    func setCellValue(_ value: Double?) {
-        self[Self.valueCell] = value
-    }
 }

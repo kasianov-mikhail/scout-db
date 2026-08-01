@@ -5,6 +5,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
 import Foundation
 
 extension EntityStore {
@@ -32,14 +33,14 @@ extension EntityStore {
                 continue
             }
 
-            let count = Int(record.cellCount)
+            let count = Int(record[CKRecord.countCell] as? Int64 ?? 0)
             guard count > 0 else {
                 continue
             }
 
             var entry = folded[group == nil ? "" : key] ?? GridFold()
             entry.count += count
-            if let cell = record.cellValue {
+            if let cell = record[CKRecord.valueCell] as? Double {
                 entry.value = entry.value.map { kind.combine($0, cell) } ?? cell
             }
             folded[group == nil ? "" : key] = entry
