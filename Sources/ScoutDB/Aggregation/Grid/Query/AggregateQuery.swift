@@ -65,11 +65,8 @@ struct AggregateQuery {
 }
 
 private func combined(_ lhs: Double?, _ rhs: Double?, _ kind: Metric?) -> Double? {
-    guard let lhs else {
-        return rhs
-    }
     guard let rhs else {
         return lhs
     }
-    return kind?.combine(lhs, rhs) ?? lhs + rhs
+    return (kind ?? .sum).combine(lhs, rhs)
 }

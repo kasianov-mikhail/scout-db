@@ -39,9 +39,11 @@ extension EntityStore {
                 ).prefix(limit)
             )
         }
-        return try decode(try await database.allRecords(matching: query, desiredKeys: keys), using: definition).filter(
-            included
-        )
+        var collected: [EntityRecord] = []
+        try await database.forEachPage(matching: query, desiredKeys: keys) { page in
+            collected += try decode(page, using: definition).filter(included)
+        }
+        return collected
     }
 
     func read(entity: String, any branches: [[Filter]], sort: [Sort] = [], fields: [String]? = nil, limit: Int? = nil)
@@ -71,26 +73,14 @@ extension EntityStore {
             return union
         }
         let bounded = try await rankable(sort, entity: entity)
-        let results = try await withThrowingTaskGroup(of: IndexedBatch<EntityRecord>.self) { group in
-            for (index, branch) in branches.enumerated() {
-                group.addTask {
-                    try await IndexedBatch(
-                        index: index,
-                        items: self.read(
-                            entity: entity,
-                            filters: branch,
-                            sort: bounded ? sort : [],
-                            fields: branchFields,
-                            limit: bounded ? limit : nil
-                        )
-                    )
-                }
-            }
-            var batches: [IndexedBatch<EntityRecord>] = []
-            for try await batch in group {
-                batches.append(batch)
-            }
-            return batches.ordered()
+        let results = try await branches.orderedBatches { branch in
+            try await self.read(
+                entity: entity,
+                filters: branch,
+                sort: bounded ? sort : [],
+                fields: branchFields,
+                limit: bounded ? limit : nil
+            )
         }
         var seen: Set<String> = []
         let union = results.filter { seen.insert($0.uuid).inserted }

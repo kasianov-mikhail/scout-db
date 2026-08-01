@@ -62,4 +62,15 @@ enum Metric: Equatable, Sendable {
             Swift.max(lhs, rhs)
         }
     }
+
+    /// The same fold with nothing on the left yet, which `rhs` then seeds.
+    func combine(_ lhs: Double?, _ rhs: Double) -> Double {
+        lhs.map { combine($0, rhs) } ?? rhs
+    }
+
+    /// Whether a value already folded in can be taken back out.
+    ///
+    /// Only a sum can: dropping a term from a running minimum or maximum needs
+    /// the terms that remain, which a grid cell does not keep.
+    var isReversible: Bool { self == .sum }
 }

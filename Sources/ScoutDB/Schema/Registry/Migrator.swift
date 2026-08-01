@@ -77,15 +77,7 @@ public struct Migrator: Sendable {
             throw SchemaError.unknownField(viewName)
         }
 
-        try await database.forEachPage(
-            matching: CKQuery(
-                recordType: GridSlot.recordType,
-                filters: [
-                    ServerFilter(field: "entity", op: .equals, value: .string(entity)),
-                    ServerFilter(field: "view", op: .equals, value: .string(viewName)),
-                ]
-            )
-        ) { page in
+        try await database.forEachPage(matching: .grid(entity: entity, view: viewName)) { page in
             for chunk in page.map(\.recordID).chunked(into: batchSize) {
                 try await database.modifyRecords(saving: [], deleting: chunk)
             }

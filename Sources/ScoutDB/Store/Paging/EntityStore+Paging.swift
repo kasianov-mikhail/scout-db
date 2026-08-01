@@ -38,13 +38,12 @@ extension EntityStore {
                     )
                 }
             }
-            return try await group.reduce(into: [[EntityRecord]]()) { $0.append($1) }
+            return try await group.reduce(into: [EntityRecord]()) { $0 += $1 }
         }
 
         var seen: Set<String> = []
         let records = Array(
-            pages.flatMap { $0 }
-                .sorted { precedes($0, $1, by: field, descending: descending) }
+            pages.sorted { precedes($0, $1, by: field, descending: descending) }
                 .filter { seen.insert($0.uuid).inserted }
                 .prefix(limit)
         )

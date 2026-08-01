@@ -10,15 +10,6 @@ import Foundation
 
 extension EntityStore {
     func grid(entity: String, view: String, group: String?, values: Bool = false) async throws -> [CKRecord] {
-        var filters = [
-            ServerFilter(field: "entity", op: .equals, value: .string(entity)),
-            ServerFilter(field: "view", op: .equals, value: .string(view)),
-        ]
-
-        if let group {
-            filters.append(ServerFilter(field: "group_key", op: .equals, value: .string(group)))
-        }
-
         var keys = ["group_key", CKRecord.countCell]
 
         if values {
@@ -26,7 +17,7 @@ extension EntityStore {
         }
 
         return try await database.allRecords(
-            matching: CKQuery(recordType: GridSlot.recordType, filters: filters),
+            matching: .grid(entity: entity, view: view, group: group),
             desiredKeys: keys
         )
     }

@@ -106,40 +106,23 @@ extension FilterExpression {
     private static func membership(of values: [RecordValue]) -> RecordValue? {
         switch values.first {
         case .string:
-            let members = values.compactMap { value -> String? in
-                guard case .string(let member) = value else {
-                    return nil
-                }
-                return member
-            }
-            return members.count == values.count ? .strings(members) : nil
+            homogeneous(values, of: String.self)
         case .int:
-            let members = values.compactMap { value -> Int64? in
-                guard case .int(let member) = value else {
-                    return nil
-                }
-                return member
-            }
-            return members.count == values.count ? .ints(members) : nil
+            homogeneous(values, of: Int64.self)
         case .double:
-            let members = values.compactMap { value -> Double? in
-                guard case .double(let member) = value else {
-                    return nil
-                }
-                return member
-            }
-            return members.count == values.count ? .doubles(members) : nil
+            homogeneous(values, of: Double.self)
         case .date:
-            let members = values.compactMap { value -> Date? in
-                guard case .date(let member) = value else {
-                    return nil
-                }
-                return member
-            }
-            return members.count == values.count ? .dates(members) : nil
+            homogeneous(values, of: Date.self)
         default:
-            return nil
+            nil
         }
+    }
+
+    private static func homogeneous<Element: RecordListElement>(
+        _ values: [RecordValue], of type: Element.Type
+    ) -> RecordValue? {
+        let members = values.compactMap(Element.init(recordValue:))
+        return members.count == values.count ? Element.list(members) : nil
     }
 }
 
@@ -149,7 +132,7 @@ extension EntityStore.Filter {
         case .equals:
             return [value]
         case .in:
-            return value.listMembers ?? []
+            return value.members ?? []
         default:
             return []
         }

@@ -106,26 +106,9 @@ extension Date: RecordListElement {
     public static func list(_ elements: [Date]) -> RecordValue { .dates(elements) }
 }
 
-extension RecordValue {
-    var listMembers: [RecordValue]? {
-        switch self {
-        case .strings(let members):
-            members.map { .string($0) }
-        case .ints(let members):
-            members.map { .int($0) }
-        case .doubles(let members):
-            members.map { .double($0) }
-        case .dates(let members):
-            members.map { .date($0) }
-        default:
-            nil
-        }
-    }
-}
-
 extension Array: RecordValue.Convertible where Element: RecordListElement {
     public init?(recordValue: RecordValue) {
-        guard let members = recordValue.listMembers else {
+        guard let members = recordValue.members else {
             return nil
         }
         var elements: [Element] = []

@@ -12,7 +12,6 @@ struct GridAggregator {
     let database: any CloudDatabase
     let slots: GridCache
     let maxRetry = 3
-    let maxBatch = 400
 
     init(database: any CloudDatabase, slots: GridCache = GridCache()) {
         self.database = database
@@ -56,8 +55,8 @@ struct GridAggregator {
                 {
                     delta.kind = kind
                     if adding {
-                        delta.value = delta.value.map { kind.combine($0, value) } ?? value
-                    } else if kind == .sum {
+                        delta.value = kind.combine(delta.value, value)
+                    } else if kind.isReversible {
                         delta.value = (delta.value ?? 0) - value
                     }
                 }
@@ -79,10 +78,7 @@ struct GridAggregator {
     private struct ColdSlot {
         let slot: GridSlot
         let delta: GridDelta
-
-        var id: CKRecord.ID {
-            slot.recordID
-        }
+        let id: CKRecord.ID
     }
 
     private func apply(_ deltas: [GridSlot: GridDelta]) async throws {
@@ -96,7 +92,7 @@ struct GridAggregator {
                 entry.record.fold(entry.delta)
             }
             var retry: [CKRecord.ID: CKRecord] = [:]
-            for chunk in Array(pending.values).chunked(into: maxBatch) {
+            for chunk in Array(pending.values).chunked(into: maxBatchSize) {
                 for (id, result) in try await database.saveIfUnchanged(chunk.map(\.record)) {
                     switch result {
                     case .success(let saved):
@@ -132,7 +128,7 @@ struct GridAggregator {
             if let cached = await slots.record(id) {
                 pending[id] = Pending(record: cached, delta: delta)
             } else {
-                cold.append(ColdSlot(slot: slot, delta: delta))
+                cold.append(ColdSlot(slot: slot, delta: delta, id: id))
             }
         }
         guard cold.count > 0 else {
@@ -141,7 +137,7 @@ struct GridAggregator {
 
         var served: [CKRecord.ID: CKRecord] = [:]
         let ids = cold.map(\.id).sorted { $0.recordName < $1.recordName }
-        for record in try await database.fetchRecords(ids: ids, batchSize: maxBatch) {
+        for record in try await database.fetchRecords(ids: ids, batchSize: maxBatchSize) {
             served[record.recordID] = record
         }
         for entry in cold {
@@ -156,16 +152,9 @@ struct GridAggregator {
     }
 
     private func adopt(_ slot: GridSlot) async throws -> CKRecord? {
-        let query = CKQuery(
-            recordType: GridSlot.recordType,
-            filters: [
-                ServerFilter(field: "entity", op: .equals, value: .string(slot.entity)),
-                ServerFilter(field: "view", op: .equals, value: .string(slot.view)),
-                ServerFilter(field: "group_key", op: .equals, value: .string(slot.group)),
-                ServerFilter(field: "date", op: .equals, value: .date(GridSlot.date)),
-            ]
-        )
-        return try await database.allRecords(matching: query).first
+        try await database.allRecords(
+            matching: .grid(entity: slot.entity, view: slot.view, group: slot.group)
+        ).first
     }
 }
 
@@ -173,8 +162,7 @@ extension CKRecord {
     fileprivate func fold(_ delta: GridDelta) {
         self[Self.countCell] = (self[Self.countCell] as? Int64 ?? 0) + delta.count
         if let kind = delta.kind, let total = delta.value {
-            let current = self[Self.valueCell] as? Double
-            self[Self.valueCell] = current.map { kind.combine($0, total) } ?? total
+            self[Self.valueCell] = kind.combine(self[Self.valueCell] as? Double, total)
         }
     }
 }

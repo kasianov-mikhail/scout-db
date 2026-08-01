@@ -24,10 +24,7 @@ extension Sequence where Element == UInt8 {
 
 func contentDigest(of components: [String]) -> String {
     let escaped = components.map { component in
-        guard escapesSeparators([component]) else {
-            return component
-        }
-        return component.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "|", with: "\\|")
+        component.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "|", with: "\\|")
     }
     return SHA256.hash(data: Data(escaped.joined(separator: "|").utf8)).hexString
 }
