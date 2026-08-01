@@ -12,8 +12,14 @@ struct FoldQuery {
     let entity: String
 
     var branches: [[EntityStore.Filter]]
+    var field: String?
+    var group: String?
 
-    func value(fold: Fold, field: String) async throws -> Double? {
+    func value(fold: Fold) async throws -> Double? {
+        guard let field else {
+            return nil
+        }
+
         let definition = try await store.registry.definition(for: entity)
 
         try definition.numericField(field)
@@ -25,13 +31,21 @@ struct FoldQuery {
             return fold.apply(values: values, count: count)
         }
 
-        let records = try await EntityReader(store: store, entity: entity).read(any: branches)
+        let records = try await EntityReader(
+            store: store,
+            entity: entity
+        )
+        .read(any: branches)
         let scalars = records.compactMap { $0.values[field]?.scalar }
 
         return fold.apply(values: scalars, count: scalars.count)
     }
 
-    func values(fold: Fold, field: String, group: String) async throws -> [String: Double] {
+    func values(fold: Fold) async throws -> [String: Double] {
+        guard let field, let group else {
+            return [:]
+        }
+
         let definition = try await store.registry.definition(for: entity)
 
         try definition.numericField(field)
@@ -43,7 +57,11 @@ struct FoldQuery {
             }
         }
 
-        let records = try await EntityReader(store: store, entity: entity).read(any: branches)
+        let records = try await EntityReader(
+            store: store,
+            entity: entity
+        )
+        .read(any: branches)
 
         var buckets: [String: [Double]] = [:]
         for record in records {
@@ -58,7 +76,11 @@ struct FoldQuery {
         }
     }
 
-    func counts(group: String) async throws -> [String: Int] {
+    func counts() async throws -> [String: Int] {
+        guard let group else {
+            return [:]
+        }
+
         let definition = try await store.registry.definition(for: entity)
 
         try definition.declaredField(group)
@@ -67,7 +89,11 @@ struct FoldQuery {
             return gridded
         }
 
-        let records = try await EntityReader(store: store, entity: entity).read(any: branches)
+        let records = try await EntityReader(
+            store: store,
+            entity: entity
+        )
+        .read(any: branches)
 
         var counts: [String: Int] = [:]
         for record in records {
