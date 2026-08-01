@@ -12,11 +12,26 @@ extension EntityStore {
         guard batch.count > 0 else {
             return []
         }
-        let definition = try await registry.definition(for: entity)
-        let coder = EntityCoder()
+        let writer = EntityWriter(
+            database: database,
+            aggregator: aggregator,
+            entity: entity,
+            definition: try await registry.definition(for: entity)
+        )
+        return try await writer.write(batch)
+    }
+}
 
+private struct EntityWriter: Sendable {
+    let database: any CloudDatabase
+    let aggregator: GridAggregator
+    let entity: String
+    let definition: EntityDefinition
+    let coder = EntityCoder()
+
+    func write(_ batch: [EntityWrite]) async throws -> [String] {
         var stored: Set<String> = []
-        let entityRecords = try batch.map { entry in
+        let records = try batch.map { entry in
             let resolved = try coder.resolve(
                 entry.values,
                 at: definition.version,
@@ -41,13 +56,9 @@ extension EntityStore {
             )
         }
 
-        let (removedFromViews, addedToViews) = try await aggregationRebalance(
-            entityRecords,
-            stored: stored,
-            using: definition
-        )
+        let (removedFromViews, addedToViews) = try await rebalance(records, stored: stored)
 
-        let encoded = try entityRecords.map {
+        let encoded = try records.map {
             try coder.encode($0, using: definition)
         }
 
@@ -59,12 +70,12 @@ extension EntityStore {
             using: definition
         )
 
-        return entityRecords.map(\.uuid)
+        return records.map(\.uuid)
     }
 
-    private func aggregationRebalance(
-        _ records: [EntityRecord], stored: Set<String>, using definition: EntityDefinition
-    ) async throws -> (removing: [EntityRecord], adding: [EntityRecord]) {
+    private func rebalance(_ records: [EntityRecord], stored: Set<String>) async throws -> (
+        removing: [EntityRecord], adding: [EntityRecord]
+    ) {
         guard definition.views?.isEmpty == false else {
             return ([], [])
         }
@@ -78,7 +89,7 @@ extension EntityStore {
         let live = try await database.fetchRecords(ids: ids, batchSize: 100)
             .filter { $0["entity"] as? String == definition.entity }
             .map {
-                try EntityCoder().decode($0, using: definition)
+                try coder.decode($0, using: definition)
             }
 
         let liveByUUID = Dictionary(
