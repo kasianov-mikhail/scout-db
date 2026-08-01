@@ -24,20 +24,27 @@ extension EntityStore {
             return nil
         }
 
-        return try await gridFold(
-            query,
-            of: field,
-            folding: kind,
-            by: group,
+        let folder = GridFolder(
+            database: database,
             entity: entity,
-            in: definition
+            field: field,
+            kind: kind,
+            group: group,
+            definition: definition
         )
+        return try await folder.fold(matching: query)
     }
+}
 
-    private func gridFold(
-        _ query: FilterPlan, of field: String?, folding kind: Metric, by group: String?, entity: String,
-        in definition: EntityDefinition
-    ) async throws -> [String: GridFold]? {
+private struct GridFolder: Sendable {
+    let database: any CloudDatabase
+    let entity: String
+    let field: String?
+    let kind: Metric
+    let group: String?
+    let definition: EntityDefinition
+
+    func fold(matching query: FilterPlan) async throws -> [String: GridFold]? {
         guard group == nil || query.groupField == nil || query.groupField == group else {
             return nil
         }
@@ -63,9 +70,10 @@ extension EntityStore {
                 continue
             }
 
-            let entry = folded[group == nil ? "" : key]
+            let bucket = group == nil ? "" : key
+            let entry = folded[bucket]
             let cell = record[CKRecord.valueCell] as? Double
-            folded[group == nil ? "" : key] = GridFold(
+            folded[bucket] = GridFold(
                 count: (entry?.count ?? 0) + count,
                 value: kind.accumulate(entry?.value, cell)
             )
