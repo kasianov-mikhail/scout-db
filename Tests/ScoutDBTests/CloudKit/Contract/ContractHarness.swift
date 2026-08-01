@@ -91,9 +91,8 @@ final class ContractFixture {
     }
 
     func tearDown() async {
-        for entity in published {
-            try? await registry.retire(entity: entity)
-        }
+        let descriptors = published.map { CKRecord.ID(recordName: "\($0)@1") }
+        try? await database.modifyRecords(saving: [], deleting: descriptors)
     }
 }
 

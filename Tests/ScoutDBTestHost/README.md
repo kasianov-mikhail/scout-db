@@ -65,10 +65,10 @@ Two one-time steps, both observed on the first real run:
 - The suite polls (`eventually`) instead of asserting immediate consistency —
   freshly written records reach the query indexes with a lag of seconds, so a
   live run takes minutes, not the double's milliseconds.
-- Every run is hermetic: run-salted entity names, and teardown retires the
-  schemas it published. Leftover `Aggregate` grid rows and retired `Schema`
-  rows may accumulate in the development environment — reset it from the
-  Console when it gets noisy.
+- Every run is hermetic: run-salted entity names, and teardown deletes the
+  schema descriptors it published. Leftover `Aggregate` grid rows may
+  accumulate in the development environment — reset it from the Console when
+  it gets noisy.
 - One test (`staleConditionalSave`) is live-only by design: the in-memory
   double accepts every conditional save today, and the live run exists to keep
   that divergence visible.
