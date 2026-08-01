@@ -23,10 +23,6 @@ extension IndexedBatch: Comparable {
 }
 
 extension Sequence {
-    fileprivate func ordered<Item>() -> [Item] where Element == IndexedBatch<Item> {
-        sorted().flatMap(\.items)
-    }
-
     /// The batches `body` makes of every element, run at once and flattened
     /// back into the order the elements came in.
     ///
@@ -44,7 +40,7 @@ extension Sequence {
             for try await batch in group {
                 batches.append(batch)
             }
-            return batches.ordered()
+            return batches.sorted().flatMap(\.items)
         }
     }
 }

@@ -8,16 +8,6 @@
 import CloudKit
 import ObjectiveC
 
-extension CKRecord {
-    func scoutValue(forKey key: String) -> RecordValue? {
-        self[key].flatMap(RecordValue.init(native:))
-    }
-
-    func setScoutValue(_ value: RecordValue?, forKey key: String) {
-        self[key] = value?.nativeValue
-    }
-}
-
 extension RecordValue {
     init?(native value: Any) {
         switch value {
@@ -48,7 +38,7 @@ extension RecordValue {
         }
     }
 
-    fileprivate var nativeValue: any CKRecordValueProtocol {
+    var nativeValue: any CKRecordValueProtocol {
         switch self {
         case .string(let value):
             value

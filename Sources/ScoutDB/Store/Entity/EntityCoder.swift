@@ -101,7 +101,7 @@ struct EntityCoder {
             }
             switch field.storage {
             case .slot(_, let slot):
-                record.setScoutValue(value, forKey: slot)
+                record[slot] = value.nativeValue
             case .payload:
                 payload[field.name] = value
             }
@@ -127,7 +127,7 @@ struct EntityCoder {
         for field in definition.fields(at: Int(version)) {
             switch field.storage {
             case .slot(_, let slot):
-                var value = record.scoutValue(forKey: slot)
+                var value = record[slot].flatMap(RecordValue.init(native:))
                 if let decoded = value, field.type.isList, decoded.isEmptyList {
                     value = field.type.emptyList
                 }

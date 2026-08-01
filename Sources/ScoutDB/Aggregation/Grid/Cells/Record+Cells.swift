@@ -11,4 +11,5 @@ import Foundation
 extension CKRecord {
     static let countCell = "c_00"
     static let valueCell = "f_00"
+    static let groupCell = "group_key"
 }

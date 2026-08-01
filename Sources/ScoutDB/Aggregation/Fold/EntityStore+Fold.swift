@@ -51,7 +51,10 @@ extension EntityStore {
 
         var folded: [String: GridFold] = [:]
         for record in records {
-            guard let key = record["group_key"] as? String, query.covers(key) else {
+            guard let key = record[CKRecord.groupCell] as? String else {
+                continue
+            }
+            guard query.groupField == nil || query.groupKeys.contains(key) else {
                 continue
             }
 
@@ -64,7 +67,7 @@ extension EntityStore {
             let cell = record[CKRecord.valueCell] as? Double
             folded[group == nil ? "" : key] = GridFold(
                 count: (entry?.count ?? 0) + count,
-                value: cell.map { kind.combine(entry?.value, $0) } ?? entry?.value
+                value: kind.accumulate(entry?.value, cell)
             )
         }
         return folded
@@ -79,9 +82,5 @@ struct GridFold: Sendable {
 extension FilterPlan {
     fileprivate var serverGroup: String? {
         groupKeys.count == 1 ? groupKeys.first : nil
-    }
-
-    fileprivate func covers(_ key: String) -> Bool {
-        groupField == nil || groupKeys.contains(key)
     }
 }

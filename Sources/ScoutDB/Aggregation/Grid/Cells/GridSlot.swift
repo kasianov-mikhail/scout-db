@@ -43,7 +43,7 @@ struct GridSlot: Hashable {
         let record = CKRecord(recordType: Self.recordType, recordID: id)
         record["entity"] = entity
         record["view"] = view
-        record["group_key"] = group
+        record[CKRecord.groupCell] = group
         record["date"] = Self.date
         return record
     }
@@ -60,7 +60,7 @@ extension CKQuery {
             ServerFilter(field: "view", op: .equals, value: .string(view)),
         ]
         if let group {
-            filters.append(ServerFilter(field: "group_key", op: .equals, value: .string(group)))
+            filters.append(ServerFilter(field: CKRecord.groupCell, op: .equals, value: .string(group)))
         }
         return CKQuery(recordType: GridSlot.recordType, filters: filters)
     }

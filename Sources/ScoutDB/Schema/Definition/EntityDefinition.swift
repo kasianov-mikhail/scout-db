@@ -113,7 +113,7 @@ struct EntityDefinition: Codable, Equatable, Sendable {
                 guard case .slot(_, let rhsSlot) = rhs.storage else {
                     continue
                 }
-                if lhsSlot == rhsSlot, lhs.overlaps(rhs) {
+                if lhsSlot == rhsSlot, (lhs.since ?? 1) < (rhs.until ?? .max), (rhs.since ?? 1) < (lhs.until ?? .max) {
                     throw SchemaError.invalidDefinition(
                         "Fields '\(lhs.name)' and '\(rhs.name)' share slot '\(lhsSlot)'"
                     )
