@@ -8,19 +8,16 @@
 import CloudKit
 import Foundation
 
-func retryDelay(
-    attempt: Int, suggested: Double?, base: Double = 0.5, random: () -> Double = { Double.random(in: 0..<1) }
-) -> Double {
+private func retryDelay(attempt: Int, suggested: Double?) -> Double {
     if let suggested {
         return suggested
     }
-    let window = base * pow(2, Double(Swift.max(0, attempt - 1)))
-    return window * (0.5 + 0.5 * random())
+    let window = 0.5 * pow(2, Double(Swift.max(0, attempt - 1)))
+    return window * (0.5 + 0.5 * Double.random(in: 0..<1))
 }
 
 func withRateLimitRetry<R>(
     maxRetry: Int = 3,
-    sleep: (Double) async throws -> Void = { try await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) },
     operation: () async throws -> R
 ) async throws -> R {
     var attempt = 0
@@ -32,7 +29,8 @@ func withRateLimitRetry<R>(
             guard attempt < maxRetry else {
                 throw error
             }
-            try await sleep(retryDelay(attempt: attempt, suggested: error.retryAfterSeconds))
+            let delay = retryDelay(attempt: attempt, suggested: error.retryAfterSeconds)
+            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
         }
     }
 }
