@@ -654,10 +654,6 @@ private final class GridQueries: CloudDatabase, @unchecked Sendable {
         try await backing.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
     }
 
-    func save(_ record: CKRecord) async throws -> CKRecord {
-        try await backing.save(record)
-    }
-
     func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {
         try await backing.modifyRecords(saving: records, deleting: recordIDs)
     }

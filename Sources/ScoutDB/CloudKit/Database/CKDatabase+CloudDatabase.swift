@@ -48,32 +48,6 @@ extension CKDatabase: CloudDatabase {
         }
     }
 
-    public func save(_ record: CKRecord) async throws -> CKRecord {
-        try await throttled { database in
-            do {
-                let results = try await database.modifyRecords(
-                    saving: [record],
-                    deleting: [],
-                    savePolicy: .ifServerRecordUnchanged,
-                    atomically: true
-                )
-
-                guard let result = results.saveResults[record.recordID] else {
-                    throw CKError(.internalError)
-                }
-                return try result.get()
-            } catch let error as CKError where error.code == .partialFailure {
-                guard let perItem = error.userInfo[CKPartialErrorsByItemIDKey] as? [CKRecord.ID: any Error] else {
-                    throw error
-                }
-                guard let cause = perItem[record.recordID] else {
-                    throw error
-                }
-                throw cause
-            }
-        }
-    }
-
     public func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {
         try await throttled { database in
             _ = try await database.modifyRecords(

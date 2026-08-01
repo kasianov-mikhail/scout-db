@@ -23,32 +23,39 @@ struct InMemoryCASTests {
         return record
     }
 
-    @Test("A stale single-record save conflicts with the server copy")
+    private func save(_ record: CKRecord) async throws -> Result<CKRecord, any Error> {
+        let results = try await database.saveIfUnchanged([record])
+        guard let result = results.first?.1 else {
+            return .failure(CKError(.internalError))
+        }
+        return result
+    }
+
+    @Test("A stale conditional save conflicts with the server copy")
     func staleSaveConflicts() async throws {
-        _ = try await database.save(makeRecord())
+        _ = try await save(makeRecord()).get()
         let fresh = try #require(try await database.fetchRecord(id: id))
         let stale = try #require(try await database.fetchRecord(id: id))
 
         fresh["s_00"] = "winner"
-        _ = try await database.save(fresh)
+        _ = try await save(fresh).get()
 
         stale["s_00"] = "loser"
-        do {
-            _ = try await database.save(stale)
-            Issue.record("Expected a RecordConflictError")
-        } catch let conflict as RecordConflictError {
-            #expect(conflict.serverRecord["s_00"] == "winner")
+        guard case .failure(let error) = try await save(stale) else {
+            Issue.record("Expected the stale record to conflict")
+            return
         }
+        #expect((error as? RecordConflictError)?.serverRecord["s_00"] == "winner")
         #expect(database.records.first?["s_00"] == "winner")
     }
 
     @Test("A batch conditional save fails only its stale records")
     func batchFailsOnlyStale() async throws {
-        _ = try await database.save(makeRecord())
+        _ = try await save(makeRecord()).get()
         let stale = try #require(try await database.fetchRecord(id: id))
         let fresh = try #require(try await database.fetchRecord(id: id))
         fresh["s_00"] = "winner"
-        _ = try await database.save(fresh)
+        _ = try await save(fresh).get()
 
         stale["s_00"] = "loser"
         let newcomer = CKRecord(recordType: "Thing", recordID: CKRecord.ID(recordName: "t-2"))
@@ -69,11 +76,13 @@ struct InMemoryCASTests {
 
     @Test("A tag-less save over an existing record conflicts, the blind batch path overwrites")
     func freshRecordPolicies() async throws {
-        _ = try await database.save(makeRecord())
+        _ = try await save(makeRecord()).get()
 
-        await #expect(throws: RecordConflictError.self) {
-            _ = try await database.save(makeRecord())
+        guard case .failure(let error) = try await save(makeRecord()) else {
+            Issue.record("Expected a tag-less record to conflict with the stored one")
+            return
         }
+        #expect(error is RecordConflictError)
 
         let overwrite = makeRecord()
         overwrite["s_00"] = "rewritten"
@@ -82,18 +91,18 @@ struct InMemoryCASTests {
         #expect(database.records.first?["s_00"] == "rewritten")
 
         let refetched = try #require(try await database.fetchRecord(id: id))
-        _ = try await database.save(refetched)
+        _ = try await save(refetched).get()
     }
 
     @Test("A record fetched from the double carries the tag through its save loop")
     func fetchedRecordSavesRepeatedly() async throws {
-        _ = try await database.save(makeRecord())
+        _ = try await save(makeRecord()).get()
         let fetched = try #require(try await database.fetchRecord(id: id))
 
         fetched["s_00"] = "second"
-        _ = try await database.save(fetched)
+        _ = try await save(fetched).get()
         fetched["s_00"] = "third"
-        _ = try await database.save(fetched)
+        _ = try await save(fetched).get()
         #expect(database.records.first?["s_00"] == "third")
     }
 }
