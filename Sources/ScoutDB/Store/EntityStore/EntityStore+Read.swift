@@ -11,18 +11,34 @@ extension EntityStore {
     func read(entity: String, any branches: [[Filter]] = [[]], sort: [Sort] = [], limit: Int? = nil)
         async throws -> [EntityRecord]
     {
+        let reader = BranchReader(
+            database: database,
+            entity: entity,
+            sort: sort,
+            limit: limit,
+            definition: try await registry.definition(for: entity)
+        )
+        return try await reader.read(any: branches)
+    }
+}
+
+private struct BranchReader: Sendable {
+    let database: any CloudDatabase
+    let entity: String
+    let sort: [EntityStore.Sort]
+    let limit: Int?
+    let definition: EntityDefinition
+    let coder = EntityCoder()
+
+    func read(any branches: [[EntityStore.Filter]]) async throws -> [EntityRecord] {
         if branches.count == 1 {
-            return try await records(entity: entity, matching: branches[0], sort: sort, limit: limit)
+            return try await records(matching: branches[0], sort: sort, limit: limit)
         }
         if let limit, sort.isEmpty {
             var seen: Set<String> = []
             var union: [EntityRecord] = []
             for branch in branches {
-                let page: [EntityRecord] = try await records(
-                    entity: entity,
-                    matching: branch,
-                    limit: limit
-                )
+                let page: [EntityRecord] = try await records(matching: branch, limit: limit)
                 for record in page where seen.insert(record.uuid).inserted {
                     union.append(record)
                     if union.count == limit {
@@ -32,13 +48,12 @@ extension EntityStore {
             }
             return union
         }
-        let bounded = try await rankable(sort, entity: entity)
+        let bounded = rankable
         let results = try await branches.orderedBatches { branch in
             try await self.records(
-                entity: entity,
                 matching: branch,
-                sort: bounded ? sort : [],
-                limit: bounded ? limit : nil
+                sort: bounded ? self.sort : [],
+                limit: bounded ? self.limit : nil
             )
         }
         var seen: Set<String> = []
@@ -53,12 +68,11 @@ extension EntityStore {
         return Array(ranked.prefix(limit))
     }
 
-    private func records(entity: String, matching filters: [Filter], sort: [Sort] = [], limit: Int? = nil)
+    private func records(matching filters: [EntityStore.Filter], sort: [EntityStore.Sort] = [], limit: Int? = nil)
         async throws -> [EntityRecord]
     {
-        let definition = try await registry.definition(for: entity)
         if try definition.clientRanked(sort) {
-            let ranked = try await records(entity: entity, matching: filters)
+            let ranked = try await records(matching: filters)
                 .sorted(using: sort.map(FieldOrder.init))
             guard let limit else {
                 return ranked
@@ -82,7 +96,6 @@ extension EntityStore {
                 ).prefix(limit)
             )
         }
-        let coder = EntityCoder()
         var collected: [EntityRecord] = []
         try await database.forEachPage(matching: query) { page in
             collected += try page.map { try coder.decode($0, using: definition) }.filter(included)
@@ -90,11 +103,10 @@ extension EntityStore {
         return collected
     }
 
-    private func rankable(_ sort: [Sort], entity: String) async throws -> Bool {
+    private var rankable: Bool {
         guard sort.count > 0 else {
             return true
         }
-        let definition = try await registry.definition(for: entity)
         if (try? definition.clientRanked(sort)) == true {
             return true
         }
