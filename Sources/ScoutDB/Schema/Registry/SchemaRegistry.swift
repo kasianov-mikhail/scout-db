@@ -27,10 +27,10 @@ public actor SchemaRegistry {
         }
 
         let task = Task { () throws -> EntityDefinition in
-            let entries = try await database.allRecords(matching: Self.metaQuery(entity: entity)).map(
+            let entries = try await database.allRecords(matching: CKQuery(activeSchemasOf: entity)).map(
                 SchemaDescriptorEntry.init
             )
-            guard let definition = try Self.latest(of: entries) else {
+            guard let definition = try entries.latest else {
                 throw SchemaError.unknownEntity(entity)
             }
             return definition
@@ -75,24 +75,5 @@ public actor SchemaRegistry {
         record["definition"] = try JSONEncoder().encode(definition)
         try await database.write(records: [record])
         cache[definition.entity] = definition
-    }
-
-    private static func latest(of entries: [SchemaDescriptorEntry]) throws -> EntityDefinition? {
-        guard let entry = entries.max() else {
-            return nil
-        }
-        let definition = try JSONDecoder().decode(EntityDefinition.self, from: entry.definition)
-        try definition.validate()
-        return definition
-    }
-
-    private static func metaQuery(entity: String) -> CKQuery {
-        CKQuery(
-            recordType: SchemaDescriptorEntry.recordType,
-            filters: [
-                ServerFilter(field: "entity", op: .equals, value: .string(entity)),
-                ServerFilter(field: "status", op: .equals, value: .string("active")),
-            ]
-        )
     }
 }

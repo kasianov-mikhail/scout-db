@@ -33,3 +33,34 @@ extension SchemaDescriptorEntry: Comparable {
         lhs.version < rhs.version
     }
 }
+
+extension [SchemaDescriptorEntry] {
+    /// The highest-versioned entry decoded into the definition it carries.
+    ///
+    /// Nothing to decode answers `nil`; a definition that fails validation
+    /// throws rather than being served.
+    ///
+    var latest: EntityDefinition? {
+        get throws {
+            guard let entry = max() else {
+                return nil
+            }
+            let definition = try JSONDecoder().decode(EntityDefinition.self, from: entry.definition)
+            try definition.validate()
+            return definition
+        }
+    }
+}
+
+extension CKQuery {
+    /// The active descriptors of one entity, newest version included.
+    convenience init(activeSchemasOf entity: String) {
+        self.init(
+            recordType: SchemaDescriptorEntry.recordType,
+            filters: [
+                ServerFilter(field: "entity", op: .equals, value: .string(entity)),
+                ServerFilter(field: "status", op: .equals, value: .string("active")),
+            ]
+        )
+    }
+}
