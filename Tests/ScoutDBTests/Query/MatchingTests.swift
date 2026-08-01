@@ -48,7 +48,7 @@ struct MatchingTests {
     private func read(_ field: String, _ op: Operator, _ value: String) async throws -> [String] {
         let records = try await store.read(
             entity: "note",
-            filters: [EntityStore.Filter(field: field, op: op, value: .string(value))]
+            any: [[EntityStore.Filter(field: field, op: op, value: .string(value))]]
         )
         return records.map(\.uuid)
     }

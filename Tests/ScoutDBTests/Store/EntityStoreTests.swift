@@ -68,7 +68,7 @@ struct EntityStoreTests {
         try await store.write([EntityWrite(values: other, uuid: "p-2")], entity: "purchase")
 
         let filter = EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-7"))
-        let records = try await store.read(entity: "purchase", filters: [filter])
+        let records = try await store.read(entity: "purchase", any: [[filter]])
         #expect(records.map(\.uuid) == ["p-2"])
     }
 
@@ -84,7 +84,7 @@ struct EntityStoreTests {
             EntityStore.Filter(field: "quantity", op: .greaterThan, value: .int(1)),
             EntityStore.Filter(field: "date", op: .greaterThan, value: .date(Date(timeIntervalSince1970: 500_000))),
         ]
-        let records = try await store.read(entity: "purchase", filters: filters)
+        let records = try await store.read(entity: "purchase", any: [filters])
         #expect(records.map(\.uuid) == ["p-1"])
     }
 
@@ -143,7 +143,7 @@ struct EntityStoreTests {
         try await store.write([EntityWrite(values: other, uuid: "p-2")], entity: "purchase")
 
         let filter = EntityStore.Filter(field: "product_id", op: .notIn, value: .strings(["sku-42"]))
-        let records = try await store.read(entity: "purchase", filters: [filter])
+        let records = try await store.read(entity: "purchase", any: [[filter]])
         #expect(records.map(\.uuid) == ["p-2"])
     }
 
@@ -216,7 +216,7 @@ struct EntityStoreTests {
         #expect(whole.values["scores"] == .doubles([1.0]))
 
         let filter = EntityStore.Filter(field: "codes", op: .contains, value: .int(2))
-        let matched = try await store.read(entity: "sample", filters: [filter])
+        let matched = try await store.read(entity: "sample", any: [[filter]])
         #expect(matched.map(\.uuid) == ["s-1"])
     }
 
@@ -256,7 +256,7 @@ struct EntityStoreTests {
     func unknownFilter() async throws {
         let filter = EntityStore.Filter(field: "ghost", op: .equals, value: .string("x"))
         await #expect(throws: SchemaError.unknownField("ghost")) {
-            try await store.read(entity: "purchase", filters: [filter])
+            try await store.read(entity: "purchase", any: [[filter]])
         }
     }
 
@@ -310,7 +310,7 @@ struct EntityStoreTests {
             entity: "post")
 
         let filter = EntityStore.Filter(field: "tags", op: .contains, value: .string("swift"))
-        let records = try await store.read(entity: "post", filters: [filter])
+        let records = try await store.read(entity: "post", any: [[filter]])
         #expect(records.map(\.uuid) == ["n-1"])
     }
 

@@ -85,13 +85,13 @@ struct StoreContractTests {
 
             let exact = try await f.store.read(
                 entity: entity,
-                filters: [.init(field: "product", op: .equals, value: .string("sku-5"))]
+                any: [[.init(field: "product", op: .equals, value: .string("sku-5"))]]
             )
             #expect(exact.map(\.uuid) == ["q-1"])
 
             let above = try await f.store.read(
                 entity: entity,
-                filters: [.init(field: "quantity", op: .greaterThan, value: .int(4))]
+                any: [[.init(field: "quantity", op: .greaterThan, value: .int(4))]]
             )
             #expect(Set(above.map(\.uuid)) == ["q-1", "q-2"])
 
@@ -112,7 +112,7 @@ struct StoreContractTests {
 
             let picked = try await f.store.read(
                 entity: entity,
-                filters: [.init(field: "product", op: .in, value: .strings(["a", "c"]))]
+                any: [[.init(field: "product", op: .in, value: .strings(["a", "c"]))]]
             )
             #expect(Set(picked.map(\.uuid)) == ["in-a", "in-c"])
         }
@@ -129,7 +129,7 @@ struct StoreContractTests {
 
             let matched = try await f.store.read(
                 entity: entity,
-                filters: [.init(field: "product", op: .contains, value: .string("uxe-bun"))]
+                any: [[.init(field: "product", op: .contains, value: .string("uxe-bun"))]]
             )
             #expect(matched.map(\.uuid) == ["s-1"])
         }

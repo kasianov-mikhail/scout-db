@@ -48,7 +48,7 @@ struct MigratorTests {
         try await migrator.backfill(entity: "profile")
 
         let filter = EntityStore.Filter(field: "user_id", op: .equals, value: .string("bob"))
-        let records = try await store.read(entity: "profile", filters: [filter])
+        let records = try await store.read(entity: "profile", any: [[filter]])
         #expect(records.map(\.uuid) == ["u-2"])
     }
 
