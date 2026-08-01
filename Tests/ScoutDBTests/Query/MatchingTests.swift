@@ -48,7 +48,7 @@ struct MatchingTests {
     private func read(_ field: String, _ op: Operator, _ value: String) async throws -> [String] {
         let records = try await store.read(
             entity: "note",
-            filters: [EntityStore.Filter(field: field, op: op, value: .string(value))]
+            any: [[EntityStore.Filter(field: field, op: op, value: .string(value))]]
         )
         return records.map(\.uuid)
     }
@@ -74,15 +74,13 @@ struct MatchingTests {
 
         for field in ["blob", "tags"] {
             #expect(throws: SchemaError.invalidValue(field)) {
-                _ = try store.serverSort([EntityStore.Sort(field: field)], using: definition)
+                _ = try definition.serverSort([EntityStore.Sort(field: field)])
             }
         }
 
         #expect(
-            try store.clientFilters(
-                [EntityStore.Filter(field: "blob", op: .contains, value: .string("a"))],
-                using: definition
-            ).count == 1
+            try definition.clientFilters([EntityStore.Filter(field: "blob", op: .contains, value: .string("a"))]).count
+                == 1
         )
     }
 

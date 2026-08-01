@@ -100,7 +100,7 @@ struct PaginationTests {
         let filter = EntityStore.Filter(field: "comment", op: .contains, value: .string("gif"))
         let records = try await store.read(
             entity: "purchase",
-            filters: [filter],
+            any: [[filter]],
             sort: [EntityStore.Sort(field: "date")],
             limit: 2
         )

@@ -238,7 +238,7 @@ struct BuilderTests {
         #expect(builder.alternatives.count == 1)
 
         let definition = try await registry.definition(for: "purchase")
-        let server = try store.serverFilters(builder.alternatives[0], entity: "purchase", using: definition)
+        let server = try definition.serverFilters(builder.alternatives[0])
         #expect(server.contains { $0.op == .in && $0.value == .strings(["sku-0", "sku-1", "sku-2"]) })
     }
 
@@ -280,7 +280,7 @@ struct BuilderTests {
 
         let definition = try await registry.definition(for: "purchase")
         let branches = try builder.alternatives.map {
-            try store.serverFilters($0, entity: "purchase", using: definition)
+            try definition.serverFilters($0)
         }
         #expect(branches[0].contains { branches[1].contains($0) })
         #expect(branches.contains { $0.contains { $0.value == .string("sku-0") } })
@@ -303,10 +303,10 @@ struct BuilderTests {
     @Test("A negative match over a slot-backed field runs on the server")
     func negativePushdown() async throws {
         func server(_ builder: QueryBuilder, using definition: EntityDefinition) throws -> [ServerFilter] {
-            try store.serverFilters(builder.alternatives[0], entity: builder.entity, using: definition)
+            try definition.serverFilters(builder.alternatives[0])
         }
         func client(_ builder: QueryBuilder, using definition: EntityDefinition) throws -> [EntityStore.Filter] {
-            try store.clientFilters(builder.alternatives[0], using: definition)
+            try definition.clientFilters(builder.alternatives[0])
         }
 
         let purchase = try await registry.definition(for: "purchase")

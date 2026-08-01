@@ -46,6 +46,16 @@ public actor SchemaRegistry {
         return definition
     }
 
+    func alwaysPresent(_ field: String, entity: String) async throws -> Bool {
+        let definition = try await definition(for: entity)
+
+        guard let target = definition.field(named: field, at: definition.version) else {
+            return false
+        }
+
+        return target.alwaysPresent
+    }
+
     /// The entity's schema as a caller sees it: the fields a write may carry
     /// and the rules over them, without the storage the library keeps to
     /// itself.

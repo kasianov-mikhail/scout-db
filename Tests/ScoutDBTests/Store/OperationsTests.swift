@@ -135,7 +135,7 @@ struct OperationsTests {
         try await store.write([EntityWrite(values: ["name": .string("Cy")], uuid: "u-3")], entity: "profile")
 
         func uuids(_ filters: [EntityStore.Filter]) async throws -> [String] {
-            try await store.read(entity: "profile", filters: filters).map(\.uuid).sorted()
+            try await store.read(entity: "profile", any: [filters]).map(\.uuid).sorted()
         }
 
         #expect(try await uuids([.init(field: "score", op: .equals, value: .int(10))]) == ["u-1"])
@@ -278,12 +278,12 @@ struct OperationsTests {
             EntityStore.Filter(field: "comment", op: .contains, value: .string("gif")),
         ]
         let definition = try await registry.definition(for: "purchase")
-        let server = try store.serverFilters(filters, entity: "purchase", using: definition)
-        let client = try store.clientFilters(filters, using: definition)
+        let server = try definition.serverFilters(filters)
+        let client = try definition.clientFilters(filters)
         #expect(server.contains(ServerFilter(field: "s_00", op: .equals, value: .string("sku-42"))))
         #expect(client == [filters[1]])
         #expect(
-            try store.serverSort([EntityStore.Sort(field: "date")], using: definition) == [
+            try definition.serverSort([EntityStore.Sort(field: "date")]) == [
                 ServerSort(field: "t_00", ascending: true)
             ]
         )

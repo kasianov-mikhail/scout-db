@@ -55,7 +55,7 @@ public struct Migrator: Sendable {
                         entity: entity,
                         uuid: previous.uuid,
                         schemaVersion: definition.version,
-                        values: rekey(previous, using: definition)
+                        values: definition.rekey(previous)
                     )
                     try transform(&entityRecord, previous)
                 }
@@ -104,17 +104,19 @@ public struct Migrator: Sendable {
         }
         return counted
     }
+}
 
-    private func rekey(_ decoded: EntityRecord, using definition: EntityDefinition) -> [String: RecordValue] {
+extension EntityDefinition {
+    fileprivate func rekey(_ decoded: EntityRecord) -> [String: RecordValue] {
         var predecessors: [String: FieldDefinition] = [:]
-        for field in definition.fields(at: decoded.schemaVersion) {
+        for field in fields(at: decoded.schemaVersion) {
             guard case .slot(_, let slot) = field.storage, predecessors[slot] == nil else {
                 continue
             }
             predecessors[slot] = field
         }
         var values: [String: RecordValue] = [:]
-        for field in definition.fields(at: definition.version) {
+        for field in fields(at: version) {
             if let value = decoded.values[field.name] {
                 values[field.name] = value
             } else if case .slot(_, let slot) = field.storage {

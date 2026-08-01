@@ -141,6 +141,62 @@ struct EntityCoder {
     }
 }
 
+extension RecordValue {
+    fileprivate init?(native value: Any) {
+        switch value {
+        case let value as String:
+            self = .string(value)
+        case let value as Date:
+            self = .date(value)
+        case let value as Data:
+            self = .bytes(value)
+        case let value as CKRecord.Reference:
+            self = .reference(value.recordID.recordName)
+        case let value as [String]:
+            self = .strings(value)
+        case let value as [Date]:
+            self = .dates(value)
+        case let value as [NSNumber]:
+            if value.contains(where: { CFNumberIsFloatType($0) }) {
+                self = .doubles(value.map(\.doubleValue))
+            } else {
+                self = .ints(value.map(\.int64Value))
+            }
+        case let value as NSNumber where CFNumberIsFloatType(value):
+            self = .double(value.doubleValue)
+        case let value as NSNumber:
+            self = .int(value.int64Value)
+        default:
+            return nil
+        }
+    }
+
+    fileprivate var nativeValue: any CKRecordValueProtocol {
+        switch self {
+        case .string(let value):
+            value
+        case .int(let value):
+            value
+        case .double(let value):
+            value
+        case .date(let value):
+            value
+        case .bytes(let value):
+            value
+        case .strings(let value):
+            value
+        case .ints(let value):
+            value
+        case .doubles(let value):
+            value
+        case .dates(let value):
+            value
+        case .reference(let value):
+            CKRecord.Reference(recordID: CKRecord.ID(recordName: value), action: .none)
+        }
+    }
+}
+
 private final class PatternCache: @unchecked Sendable {
     private let lock = NSLock()
     private var compiled: [String: Regex<AnyRegexOutput>?] = [:]
