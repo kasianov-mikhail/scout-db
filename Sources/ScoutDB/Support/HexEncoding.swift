@@ -28,7 +28,3 @@ func contentDigest(of components: [String]) -> String {
     }
     return SHA256.hash(data: Data(escaped.joined(separator: "|").utf8)).hexString
 }
-
-func escapesSeparators(_ components: [String]) -> Bool {
-    components.contains { $0.contains(where: { $0 == "\\" || $0 == "|" }) }
-}

@@ -36,7 +36,7 @@ struct GridSlot: Hashable {
     }
 
     var isRenamed: Bool {
-        shard == nil && escapesSeparators(components)
+        shard == nil && components.contains { $0.contains(where: { $0 == "\\" || $0 == "|" }) }
     }
 
     func blank(named id: CKRecord.ID) -> CKRecord {
