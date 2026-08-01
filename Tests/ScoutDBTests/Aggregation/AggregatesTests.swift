@@ -139,9 +139,7 @@ struct AggregatesTests {
         #expect(totals.first?.count == 6)
         #expect(totals.first?.value == 21)
 
-        try await store.delete(entity: "payment", uuid: "p-3")
-        #expect(try await AggregateQuery(store, entity: "payment", view: "revenue").totals().map(\.count) == [5])
-        #expect(try await store.query("payment").count() == 5)
+        #expect(try await store.query("payment").count() == 6)
 
         let invalid = makeDefinition(
             entity: "e",
@@ -149,27 +147,6 @@ struct AggregatesTests {
             views: [AggregateView(name: "x", shards: 1)]
         )
         #expect(throws: SchemaError.self) { try invalid.validate() }
-    }
-
-    @Test("Deleting a record reverses its aggregate contribution")
-    func deleteReversesAggregate() async throws {
-        try await publishPayment(views: [AggregateView(name: "revenue", sum: "amount")])
-        try await store.write(
-            ["product": .string("app"), "amount": .double(2), "date": .date(noon)],
-            entity: "payment",
-            uuid: "p1"
-        )
-        try await store.write(
-            ["product": .string("app"), "amount": .double(3), "date": .date(noon)],
-            entity: "payment",
-            uuid: "p2"
-        )
-
-        try await store.delete(entity: "payment", uuid: "p1")
-
-        let totals = try await AggregateQuery(store, entity: "payment", view: "revenue").totals()
-        #expect(totals.first?.count == 1)
-        #expect(totals.first?.value == 3)
     }
 
     @Test("Updating a record rebalances a sum view")
@@ -186,27 +163,6 @@ struct AggregatesTests {
         let totals = try await AggregateQuery(store, entity: "payment", view: "revenue").totals()
         #expect(totals.first?.count == 1)
         #expect(totals.first?.value == 10)
-    }
-
-    @Test("Deleting a record decrements the count of a min view even though the extremum stays")
-    func deleteHoldsMinExtremum() async throws {
-        try await publishPayment(views: [AggregateView(name: "low", min: "amount")])
-        try await store.write(
-            ["product": .string("app"), "amount": .double(2), "date": .date(noon)],
-            entity: "payment",
-            uuid: "p1"
-        )
-        try await store.write(
-            ["product": .string("app"), "amount": .double(8), "date": .date(noon)],
-            entity: "payment",
-            uuid: "p2"
-        )
-
-        try await store.delete(entity: "payment", uuid: "p1")
-
-        let totals = try await AggregateQuery(store, entity: "payment", view: "low").totals()
-        #expect(totals.first?.count == 1)
-        #expect(totals.first?.value == 2)
     }
 
     @Test("A min view keeps the extremum an update lifted a record off")
@@ -363,20 +319,15 @@ struct AggregatesTests {
             )
         )
 
-        let first = try await store.write(["product": .string("app"), "amount": .double(10)], entity: "sale")
+        try await store.write(["product": .string("app"), "amount": .double(10)], entity: "sale")
         try await store.write(["product": .string("app"), "amount": .double(5)], entity: "sale")
         try await store.write(["product": .string("book"), "amount": .double(2)], entity: "sale")
 
-        var totals = try await AggregateQuery(store, entity: "sale", view: "by_product").totals()
+        let totals = try await AggregateQuery(store, entity: "sale", view: "by_product").totals()
         #expect(totals.first { $0.group == "app" }?.count == 2)
         #expect(totals.first { $0.group == "app" }?.value == 15)
         #expect(totals.first { $0.group == "book" }?.value == 2)
         #expect(database.records.filter { $0.recordType == "Aggregate" }.count == 2)
-
-        try await store.delete(entity: "sale", uuid: first)
-        totals = try await AggregateQuery(store, entity: "sale", view: "by_product").totals()
-        #expect(totals.first { $0.group == "app" }?.count == 1)
-        #expect(totals.first { $0.group == "app" }?.value == 5)
     }
 
     @Test("count() reads a covering view's grid instead of scanning")

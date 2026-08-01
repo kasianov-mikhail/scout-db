@@ -27,12 +27,6 @@ extension CloudDatabase {
         }
     }
 
-    func delete(records ids: [CKRecord.ID]) async throws {
-        for chunk in ids.chunked(into: Self.maxBatchSize) {
-            try await modifyRecords(saving: [], deleting: chunk)
-        }
-    }
-
     func writeIfUnchanged(records: [CKRecord]) async throws -> [CKRecord] {
         var conflicts: [CKRecord] = []
         for chunk in records.chunked(into: Self.maxBatchSize) {

@@ -67,24 +67,6 @@ struct StoreContractTests {
         }
     }
 
-    @Test("A delete hides the record, and a rewrite of its uuid brings it back")
-    func deleteAndRewrite() async throws {
-        try await withContract { f in
-            let entity = try await f.publishOrder()
-            try await f.store.write(orderValues(product: "keep-me"), entity: entity, uuid: "d-1")
-            try await eventually { try await f.store.read(entity: entity).count == 1 }
-
-            try await f.store.delete(entity: entity, uuid: "d-1")
-            try await eventually { try await f.store.read(entity: entity).isEmpty }
-
-            try await f.store.write(orderValues(product: "keep-me"), entity: entity, uuid: "d-1")
-            try await eventually { try await f.store.read(entity: entity).count == 1 }
-            #expect(
-                try await f.store.fetch(entity: entity, uuids: ["d-1"]).first?.values["product"] == .string("keep-me")
-            )
-        }
-    }
-
     @Test("Equality and range filters narrow server-side")
     func equalityAndRangeFilters() async throws {
         try await withContract { f in
