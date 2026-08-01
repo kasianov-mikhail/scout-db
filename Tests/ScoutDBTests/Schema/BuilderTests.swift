@@ -302,23 +302,29 @@ struct BuilderTests {
 
     @Test("A negative match over a slot-backed field runs on the server")
     func negativePushdown() async throws {
-        func sides(_ builder: QueryBuilder, using definition: EntityDefinition) throws -> (
-            server: [ServerFilter], client: [EntityStore.Filter]
-        ) {
-            (
-                try store.serverFilters(builder.alternatives[0], entity: builder.entity, using: definition),
-                try store.clientFilters(builder.alternatives[0], using: definition)
-            )
+        func server(_ builder: QueryBuilder, using definition: EntityDefinition) throws -> [ServerFilter] {
+            try store.serverFilters(builder.alternatives[0], entity: builder.entity, using: definition)
+        }
+        func client(_ builder: QueryBuilder, using definition: EntityDefinition) throws -> [EntityStore.Filter] {
+            try store.clientFilters(builder.alternatives[0], using: definition)
         }
 
         let purchase = try await registry.definition(for: "purchase")
 
-        let slotted = try sides(store.query("purchase").filter("product_id", .notEquals, "sku-1"), using: purchase)
-        #expect(slotted.server.contains(ServerFilter(field: "s_00", op: .notEquals, value: .string("sku-1"))))
-        #expect(slotted.client.isEmpty)
+        let slotted = store.query("purchase").filter("product_id", .notEquals, "sku-1")
+        #expect(
+            try server(slotted, using: purchase).contains(
+                ServerFilter(field: "s_00", op: .notEquals, value: .string("sku-1"))
+            )
+        )
+        #expect(try client(slotted, using: purchase).isEmpty)
 
-        let payload = try sides(store.query("purchase").filter("comment", .notEquals, "gift"), using: purchase)
-        #expect(payload.client.contains(EntityStore.Filter(field: "comment", op: .notEquals, value: .string("gift"))))
+        let payload = store.query("purchase").filter("comment", .notEquals, "gift")
+        #expect(
+            try client(payload, using: purchase).contains(
+                EntityStore.Filter(field: "comment", op: .notEquals, value: .string("gift"))
+            )
+        )
 
         try await store.schema("shipment")
             .field("carrier", .string, .required)
@@ -326,11 +332,12 @@ struct BuilderTests {
             .create()
         let shipment = try await registry.definition(for: "shipment")
 
-        let listed = try sides(
-            store.query("shipment").filter("carrier", .notIn, .strings(["ups", "dhl"])),
-            using: shipment
+        let listed = store.query("shipment").filter("carrier", .notIn, .strings(["ups", "dhl"]))
+        #expect(
+            try server(listed, using: shipment).contains(
+                ServerFilter(field: "s_00", op: .notIn, value: .strings(["ups", "dhl"]))
+            )
         )
-        #expect(listed.server.contains(ServerFilter(field: "s_00", op: .notIn, value: .strings(["ups", "dhl"]))))
     }
 
     @Test("A compound alternative requires all of its filters at once")
