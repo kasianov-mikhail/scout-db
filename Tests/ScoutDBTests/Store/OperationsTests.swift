@@ -42,11 +42,11 @@ struct OperationsTests {
             try await store.write([EntityWrite(values: values, uuid: "p-\(index)")], entity: "purchase")
         }
 
-        let first = try await store.read(entity: "purchase", orderedBy: "date", limit: 2)
+        let first = try await store.query("purchase").sort("date").page(size: 2)
         #expect(first.records.map(\.uuid) == ["p-1", "p-2"])
         let cursor = try #require(first.cursor)
 
-        let second = try await store.read(entity: "purchase", orderedBy: "date", limit: 2, after: cursor)
+        let second = try await store.query("purchase").sort("date").page(size: 2, after: cursor)
         #expect(second.records.map(\.uuid) == ["p-0"])
         #expect(second.cursor == nil)
     }
@@ -59,27 +59,21 @@ struct OperationsTests {
             try await store.write([EntityWrite(values: values, uuid: "p-\(index)")], entity: "purchase")
         }
 
-        let first = try await store.read(entity: "purchase", orderedBy: "quantity", limit: 2)
+        let first = try await store.query("purchase").sort("quantity").page(size: 2)
         #expect(first.records.map(\.uuid) == ["p-1", "p-2"])
         let firstCursor = try #require(first.cursor)
-        let second = try await store.read(entity: "purchase", orderedBy: "quantity", limit: 2, after: firstCursor)
+        let second = try await store.query("purchase").sort("quantity").page(size: 2, after: firstCursor)
         #expect(second.records.map(\.uuid) == ["p-3", "p-0"])
 
-        let top = try await store.read(entity: "purchase", orderedBy: "quantity", descending: true, limit: 3)
+        let top = try await store.query("purchase").sort("quantity", .descending).page(size: 3)
         #expect(top.records.map(\.uuid) == ["p-0", "p-2", "p-3"])
         let topCursor = try #require(top.cursor)
-        let rest = try await store.read(
-            entity: "purchase",
-            orderedBy: "quantity",
-            descending: true,
-            limit: 3,
-            after: topCursor
-        )
+        let rest = try await store.query("purchase").sort("quantity", .descending).page(size: 3, after: topCursor)
         #expect(rest.records.map(\.uuid) == ["p-1"])
         #expect(rest.cursor == nil)
 
         await #expect(throws: SchemaError.invalidValue("comment")) {
-            _ = try await store.read(entity: "purchase", orderedBy: "comment", limit: 1)
+            _ = try await store.query("purchase").sort("comment").page(size: 1)
         }
     }
 
@@ -281,17 +275,13 @@ struct OperationsTests {
             try await store.write([EntityWrite(values: values, uuid: "p-\(index)")], entity: "purchase")
         }
 
-        let filter = EntityStore.Filter(field: "comment", op: .contains, value: .string("gif"))
         var uuids: [String] = []
         var cursor: FieldCursor?
         repeat {
-            let page = try await store.read(
-                entity: "purchase",
-                any: [[filter]],
-                orderedBy: "date",
-                limit: 1,
-                after: cursor
-            )
+            let page = try await store.query("purchase")
+                .filter("comment", .contains, "gif")
+                .sort("date")
+                .page(size: 1, after: cursor)
             uuids += page.records.map(\.uuid)
             cursor = page.cursor
         } while cursor != nil

@@ -162,11 +162,11 @@ struct StoreContractTests {
             }
             try await eventually { try await EntityReader(store: f.store, entity: entity).read().count == 5 }
 
-            let first = try await f.store.read(entity: entity, orderedBy: "date", limit: 2)
+            let first = try await f.store.query(entity).sort("date").page(size: 2)
             #expect(first.records.map(\.uuid) == ["p-0", "p-1"])
-            let second = try await f.store.read(entity: entity, orderedBy: "date", limit: 2, after: first.cursor)
+            let second = try await f.store.query(entity).sort("date").page(size: 2, after: first.cursor)
             #expect(second.records.map(\.uuid) == ["p-2", "p-3"])
-            let last = try await f.store.read(entity: entity, orderedBy: "date", limit: 2, after: second.cursor)
+            let last = try await f.store.query(entity).sort("date").page(size: 2, after: second.cursor)
             #expect(last.records.map(\.uuid) == ["p-4"])
             #expect(last.cursor == nil)
         }

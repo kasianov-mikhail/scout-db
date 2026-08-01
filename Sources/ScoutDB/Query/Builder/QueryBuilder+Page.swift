@@ -20,25 +20,34 @@ extension QueryBuilder {
         guard sorts.count == 1, let sort = sorts.first else {
             throw SchemaError.invalidDefinition("A field-ordered page requires exactly one sort clause")
         }
-        return try await store.read(
+
+        let definition = try await store.registry.definition(for: entity)
+
+        guard let target = definition.field(named: sort.field, at: definition.version),
+            [.string, .int, .double, .timestamp].contains(target.type),
+            case .slot = target.storage
+        else {
+            throw SchemaError.invalidValue(sort.field)
+        }
+
+        return try await EntityPager(
+            database: store.database,
             entity: entity,
-            any: alternatives,
-            orderedBy: sort.field,
+            field: sort.field,
             descending: !sort.ascending,
             limit: size,
-            after: cursor
+            cursor: cursor,
+            definition: definition
         )
+        .page(any: alternatives)
     }
 }
 
-/// One keyset page ordered by an arbitrary field.
 public struct FieldPage: Equatable, Sendable {
     public let records: [EntityRecord]
     public let cursor: FieldCursor?
 }
 
-/// Continuation token of a field-ordered keyset read: the last served value
-/// and the uuid that breaks its ties.
 public struct FieldCursor: Codable, Equatable, Sendable {
     public let value: RecordValue
     public let uuid: String
