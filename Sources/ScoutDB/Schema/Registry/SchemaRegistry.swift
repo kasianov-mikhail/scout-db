@@ -120,7 +120,7 @@ public actor SchemaRegistry {
     }
 }
 
-struct SchemaDescriptorEntry {
+private struct SchemaDescriptorEntry {
     static let recordType = "SchemaDescriptor"
 
     let entity: String

@@ -52,7 +52,7 @@ extension SchemaBuilder {
     struct Declaration {
         let name: String
         let type: FieldType
-        let constraints: [FieldConstraint]
+        fileprivate let constraints: [FieldConstraint]
 
         var wantsSlot: Bool {
             !constraints.contains { if case .payload = $0 { true } else { false } }

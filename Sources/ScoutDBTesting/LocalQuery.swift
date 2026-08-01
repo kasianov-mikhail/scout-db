@@ -12,7 +12,7 @@ import ScoutDB
 enum LocalQuery {
     /// What a scan has left to serve: the already-matched, already-ordered ids
     /// still to come, so a continuation never re-evaluates the query.
-    struct Scan: @unchecked Sendable {
+    private struct Scan: @unchecked Sendable {
         let query: CKQuery
         let remaining: [CKRecord.ID]
     }

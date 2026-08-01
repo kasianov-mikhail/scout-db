@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct IndexedBatch<Element>: @unchecked Sendable {
+private struct IndexedBatch<Element>: @unchecked Sendable {
     let index: Int
     let items: [Element]
 }
@@ -23,7 +23,7 @@ extension IndexedBatch: Comparable {
 }
 
 extension Sequence {
-    func ordered<Item>() -> [Item] where Element == IndexedBatch<Item> {
+    fileprivate func ordered<Item>() -> [Item] where Element == IndexedBatch<Item> {
         sorted().flatMap(\.items)
     }
 

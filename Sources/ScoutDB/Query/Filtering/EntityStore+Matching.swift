@@ -99,7 +99,7 @@ extension EntityStore {
         }
     }
 
-    static func matcher(for filter: Filter) throws -> (EntityRecord) -> Bool {
+    private static func matcher(for filter: Filter) throws -> (EntityRecord) -> Bool {
         let field = filter.field
         switch filter.op {
         case .equals:
