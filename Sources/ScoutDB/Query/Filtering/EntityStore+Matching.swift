@@ -47,11 +47,10 @@ extension EntityStore {
         try filters.map { try matcher(for: $0) }
     }
 
-    func split(_ filters: [Filter], entity: String, using definition: EntityDefinition) throws -> (
-        server: [ServerFilter], client: [Filter]
-    ) {
+    func serverFilters(_ filters: [Filter], entity: String, using definition: EntityDefinition) throws
+        -> [ServerFilter]
+    {
         var server = [ServerFilter(field: "entity", op: .equals, value: .string(entity))]
-        var client: [Filter] = []
 
         let byName = definition.fieldsByName(at: definition.version)
 
@@ -62,25 +61,50 @@ extension EntityStore {
 
             switch filter.op {
             case .contains where !field.type.isList:
-                client.append(filter)
+                continue
 
             case .search:
                 guard field.type == .text, case .slot(_, let slot) = field.storage else {
                     throw SchemaError.invalidValue(filter.field)
                 }
                 server.append(ServerFilter(field: slot, op: .search, value: filter.value))
-                client.append(filter)
 
             default:
                 guard case .slot(_, let slot) = field.storage else {
-                    client.append(filter)
                     continue
                 }
                 server.append(ServerFilter(field: slot, op: filter.op, value: filter.value))
             }
         }
 
-        return (server, client)
+        return server
+    }
+
+    func clientFilters(_ filters: [Filter], using definition: EntityDefinition) throws -> [Filter] {
+        let byName = definition.fieldsByName(at: definition.version)
+
+        return try filters.filter { filter in
+            guard let field = byName[filter.field] else {
+                throw SchemaError.unknownField(filter.field)
+            }
+
+            switch filter.op {
+            case .contains where !field.type.isList:
+                return true
+
+            case .search:
+                guard field.type == .text, case .slot = field.storage else {
+                    throw SchemaError.invalidValue(filter.field)
+                }
+                return true
+
+            default:
+                guard case .slot = field.storage else {
+                    return true
+                }
+                return false
+            }
+        }
     }
 
     func serverSort(_ sort: [Sort], using definition: EntityDefinition) throws -> [ServerSort] {

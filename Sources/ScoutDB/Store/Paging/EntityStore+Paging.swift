@@ -96,7 +96,7 @@ private struct FieldPager: Sendable {
             sort: sort,
             using: definition
         )
-        let included = try store.liveFilter(pageFilters, entity: entity, using: definition)
+        let included = try store.liveFilter(pageFilters, using: definition)
 
         let collected = try await store.boundedRecords(
             matching: query,

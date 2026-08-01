@@ -26,7 +26,7 @@ extension EntityStore {
             sort: try serverSort(sort, using: definition),
             using: definition
         )
-        let included = try liveFilter(filters, entity: entity, using: definition)
+        let included = try liveFilter(filters, using: definition)
         if let limit {
             return Array(
                 try await boundedRecords(
