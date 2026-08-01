@@ -9,8 +9,8 @@ import CloudKit
 import Foundation
 
 struct EntityCoder {
-    let jsonEncoder = JSONEncoder()
-    let jsonDecoder = JSONDecoder()
+    private let jsonEncoder = JSONEncoder()
+    private let jsonDecoder = JSONDecoder()
 
     private static let patterns = PatternCache()
 

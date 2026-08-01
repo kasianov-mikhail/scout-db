@@ -11,8 +11,8 @@ struct FilterPlan {
     var groupField: String?
     var groupKeys: Set<String> = []
     var numericField: String?
-    var numericGTE: Double?
-    var numericLT: Double?
+    private var numericGTE: Double?
+    private var numericLT: Double?
 
     init?(any branches: [[EntityStore.Filter]]) {
         guard let first = branches.first, var merged = FilterPlan(first) else {

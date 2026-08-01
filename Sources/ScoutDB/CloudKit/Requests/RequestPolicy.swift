@@ -7,7 +7,7 @@
 
 import CloudKit
 
-let requestTimeout: Duration = .seconds(30)
+private let requestTimeout: Duration = .seconds(30)
 
 extension CKDatabase {
     @discardableResult func throttled<R>(body: @Sendable @escaping (CKDatabase) async throws -> R) async throws -> R {
