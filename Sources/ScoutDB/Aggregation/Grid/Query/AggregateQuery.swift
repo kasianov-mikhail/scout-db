@@ -5,6 +5,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
 import Foundation
 
 struct AggregateQuery {
@@ -43,8 +44,8 @@ struct AggregateQuery {
                 continue
             }
 
-            let count = Int(record.cellCount)
-            let value = kind == nil ? nil : record.cellValue
+            let count = Int(record[CKRecord.countCell] as? Int64 ?? 0)
+            let value = kind == nil ? nil : record[CKRecord.valueCell] as? Double
 
             guard count != 0 || value != nil else {
                 continue

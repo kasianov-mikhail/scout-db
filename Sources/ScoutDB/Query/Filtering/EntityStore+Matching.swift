@@ -9,7 +9,7 @@ import Foundation
 
 extension EntityStore {
     private static func serverComplement(of filter: Filter, in field: FieldDefinition) -> ServerFilter? {
-        guard let op = filter.op.complement?.serverOperator, field.alwaysPresent else {
+        guard let op = filter.op.complement, field.alwaysPresent else {
             return nil
         }
         guard case .slot(_, let slot) = field.storage else {
@@ -86,9 +86,6 @@ extension EntityStore {
             }
 
             switch filter.op {
-            case .isNull, .isNotNull:
-                client.append(filter)
-
             case .contains where !field.type.isList:
                 client.append(filter)
 
@@ -100,14 +97,11 @@ extension EntityStore {
                 client.append(filter)
 
             default:
-                guard let op = filter.op.serverOperator else {
-                    throw SchemaError.unknownField(filter.field)
-                }
                 guard case .slot(_, let slot) = field.storage else {
                     client.append(filter)
                     continue
                 }
-                server.append(ServerFilter(field: slot, op: op, value: filter.value))
+                server.append(ServerFilter(field: slot, op: filter.op, value: filter.value))
             }
         }
 
@@ -133,12 +127,6 @@ extension EntityStore {
     static func matcher(for filter: Filter) throws -> (EntityRecord) -> Bool {
         let field = filter.field
         switch filter.op {
-        case .isNull:
-            return { $0.values[field] == nil }
-
-        case .isNotNull:
-            return { $0.values[field] != nil }
-
         case .equals:
             return { $0.values[field] == filter.value }
 

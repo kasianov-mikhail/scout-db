@@ -173,9 +173,10 @@ struct GridAggregator {
 
 extension CKRecord {
     fileprivate func fold(_ delta: GridDelta) {
-        setCellCount(cellCount + delta.count)
+        self[Self.countCell] = (self[Self.countCell] as? Int64 ?? 0) + delta.count
         if let kind = delta.kind, let total = delta.value {
-            setCellValue(cellValue.map { kind.combine($0, total) } ?? total)
+            let current = self[Self.valueCell] as? Double
+            self[Self.valueCell] = current.map { kind.combine($0, total) } ?? total
         }
     }
 }

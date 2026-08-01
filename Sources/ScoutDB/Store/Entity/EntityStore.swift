@@ -24,11 +24,11 @@ public struct EntityStore: Sendable {
 
     struct Filter: Equatable, Sendable {
         let field: String
-        let op: Match
+        let op: Operator
         let value: RecordValue
         var negated = false
 
-        init(field: String, op: Match, value: RecordValue, negated: Bool = false) {
+        init(field: String, op: Operator, value: RecordValue, negated: Bool = false) {
             self.field = field
             self.op = op
             self.value = value
