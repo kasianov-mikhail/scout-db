@@ -345,7 +345,7 @@ struct AggregatesTests {
         #expect(try await store.query("sale").filter("product", .equals, "book").count() == 41)
 
         #expect(try await store.query("sale").filter("amount" > 4).count() == 2)
-        #expect(try await store.query("sale").exclude("product", .equals, "app").count() == 1)
+        #expect(try await store.query("sale").filter("product", .notEquals, "app").count() == 1)
         #expect(try await store.query("sale").filter("product", .equals, "app").filter("amount" > 1).count() == 2)
     }
 
@@ -623,7 +623,7 @@ struct AggregatesTests {
 
         #expect(try await store.query("fee").sum("tax") == 3)
         #expect(try await store.query("fee").count(by: "amount") == ["d10.0": 1, "d4.0": 1])
-        #expect(try await store.query("fee").exclude("product", .equals, "app").sum("amount") == 4)
+        #expect(try await store.query("fee").filter("product", .notEquals, "app").sum("amount") == 4)
     }
 }
 

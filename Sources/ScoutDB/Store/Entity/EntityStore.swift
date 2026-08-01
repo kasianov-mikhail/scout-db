@@ -26,14 +26,6 @@ public struct EntityStore: Sendable {
         let field: String
         let op: Operator
         let value: RecordValue
-        var negated = false
-
-        init(field: String, op: Operator, value: RecordValue, negated: Bool = false) {
-            self.field = field
-            self.op = op
-            self.value = value
-            self.negated = negated
-        }
     }
 
     struct Sort: Equatable, Sendable {
