@@ -14,7 +14,7 @@ extension EntityStore {
         let definition = try await registry.definition(for: entity)
         if try clientRanked(sort, using: definition) {
             let ranked = try await read(entity: entity, filters: filters)
-                .sorted { Self.ordered($0, $1, by: sort) }
+                .sorted(using: sort.map(FieldOrder.init))
             guard let limit else {
                 return ranked
             }
@@ -83,7 +83,7 @@ extension EntityStore {
         guard sort.count > 0 else {
             return union
         }
-        let ranked = union.sorted { Self.ordered($0, $1, by: sort) }
+        let ranked = union.sorted(using: sort.map(FieldOrder.init))
         guard let limit else {
             return ranked
         }

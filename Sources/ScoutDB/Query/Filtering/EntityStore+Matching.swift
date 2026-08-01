@@ -8,17 +8,6 @@
 import Foundation
 
 extension EntityStore {
-    static func ordered(_ lhs: EntityRecord, _ rhs: EntityRecord, by sorts: [Sort]) -> Bool {
-        for sort in sorts {
-            let order = rank(lhs.values[sort.field], rhs.values[sort.field])
-            guard order != .orderedSame else {
-                continue
-            }
-            return sort.ascending ? order == .orderedAscending : order == .orderedDescending
-        }
-        return false
-    }
-
     static func rank(_ lhs: RecordValue?, _ rhs: RecordValue?) -> ComparisonResult {
         switch (lhs, rhs) {
         case (nil, nil):

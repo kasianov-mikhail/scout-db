@@ -46,6 +46,10 @@ private struct FieldPager: Sendable {
     let cursor: FieldCursor?
     let definition: EntityDefinition
 
+    private var order: [FieldOrder] {
+        [.field(field, descending ? .reverse : .forward), .uuid]
+    }
+
     func page(any branches: [[EntityStore.Filter]]) async throws -> FieldPage {
         let pages = try await withThrowingTaskGroup(of: [EntityRecord].self) { group in
             for branch in branches {
@@ -58,7 +62,7 @@ private struct FieldPager: Sendable {
 
         var seen: Set<String> = []
         let records = Array(
-            pages.sorted(by: precedes)
+            pages.sorted(using: order)
                 .filter { seen.insert($0.uuid).inserted }
                 .prefix(limit)
         )
@@ -111,7 +115,7 @@ private struct FieldPager: Sendable {
             return beyond(record, cursor)
         }
 
-        return Array(collected.sorted(by: precedes).prefix(limit))
+        return Array(collected.sorted(using: order).prefix(limit))
     }
 
     private func beyond(_ record: EntityRecord, _ cursor: FieldCursor) -> Bool {
@@ -123,13 +127,5 @@ private struct FieldPager: Sendable {
         case .orderedDescending:
             !descending
         }
-    }
-
-    private func precedes(_ lhs: EntityRecord, _ rhs: EntityRecord) -> Bool {
-        let order = EntityStore.rank(lhs.values[field], rhs.values[field])
-        guard order != .orderedSame else {
-            return lhs.uuid < rhs.uuid
-        }
-        return descending ? order == .orderedDescending : order == .orderedAscending
     }
 }
