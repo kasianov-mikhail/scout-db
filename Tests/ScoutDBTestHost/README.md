@@ -1,6 +1,6 @@
 # Live contract runs
 
-The contract suite in `Tests/ScoutDBTests/Contract` runs against the in-memory
+The contract suite in `Tests/ScoutDBTests/CloudKit/Contract` runs against the in-memory
 double on every `swift test`. This host runs the **same tests** against a real
 CloudKit private database, which is the only way to verify the assumptions the
 double encodes (save policies, query semantics, index lag, CAS conflicts).
