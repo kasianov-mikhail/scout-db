@@ -8,7 +8,7 @@
 import CloudKit
 import Foundation
 
-struct AggregateQuery {
+struct EntityAggregator {
     let store: EntityStore
     let entity: String
     let view: String
@@ -61,7 +61,7 @@ struct AggregateQuery {
     }
 }
 
-extension AggregateQuery {
+extension EntityAggregator {
     init(_ query: QueryBuilder, field: String?, group: String?) async throws {
         let store = query.store
         let definition = try await store.registry.definition(for: query.entity)

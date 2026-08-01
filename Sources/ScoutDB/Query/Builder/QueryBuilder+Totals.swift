@@ -23,11 +23,30 @@ extension QueryBuilder {
     /// ```
     ///
     public func totals(_ field: String? = nil, by group: String? = nil) async throws -> [AggregateTotal] {
-        try await AggregateQuery(
+        try await EntityAggregator(
             self,
             field: field,
             group: group
         )
         .totals()
+    }
+}
+
+public struct AggregateTotal: Equatable, Sendable {
+    public let group: String
+    public let count: Int
+    public let value: Double?
+
+    public var average: Double? {
+        guard let value, count > 0 else {
+            return nil
+        }
+        return value / Double(count)
+    }
+}
+
+extension AggregateTotal: Comparable {
+    public static func < (lhs: Self, rhs: Self) -> Bool {
+        lhs.group < rhs.group
     }
 }
