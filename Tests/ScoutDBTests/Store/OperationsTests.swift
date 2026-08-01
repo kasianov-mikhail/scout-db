@@ -149,25 +149,6 @@ struct OperationsTests {
         #expect(try await uuids([.init(field: "score", op: .notIn, value: .ints([10]))]) == ["u-2"])
     }
 
-    @Test("Retiring an entity hides its schema; a republish revives it")
-    func retireEntity() async throws {
-        try await registry.retire(entity: "purchase")
-        await #expect(throws: SchemaError.unknownEntity("purchase")) {
-            _ = try await EntityReader(store: store, entity: "purchase").read()
-        }
-
-        let fresh = SchemaRegistry(database: database)
-        try await fresh.loadAll()
-        #expect(await fresh.schemas().isEmpty)
-
-        try await registry.publish(makePurchaseDefinition())
-        #expect(try await EntityReader(store: store, entity: "purchase").read().isEmpty)
-
-        await #expect(throws: SchemaError.unknownEntity("ghost")) {
-            try await registry.retire(entity: "ghost")
-        }
-    }
-
     @Test("A batch write surfaces the error the database raised")
     func batchWriteError() async throws {
         database.writeErrors = [CKError(.partialFailure)]
@@ -315,31 +296,6 @@ struct OperationsTests {
             cursor = page.cursor
         } while cursor != nil
         #expect(uuids == ["p-0", "p-2"])
-    }
-
-    @Test("A bulk load warms the cache for every published entity")
-    func loadAll() async throws {
-        try await registry.publish(
-            makeDefinition(
-                entity: "alpha",
-                fields: [
-                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
-                ]
-            )
-        )
-        try await registry.publish(
-            makeDefinition(
-                entity: "beta",
-                fields: [
-                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
-                ]
-            )
-        )
-
-        let fresh = SchemaRegistry(database: database)
-        let loaded = try await fresh.loadAll()
-        #expect(loaded == 3)
-        #expect(Set(await fresh.schemas().map(\.entity)) == ["purchase", "alpha", "beta"])
     }
 
     @Test("Typed lists round-trip through the record subscript")

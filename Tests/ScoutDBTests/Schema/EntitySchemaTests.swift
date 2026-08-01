@@ -71,12 +71,4 @@ struct EntitySchemaTests {
         let schema = try await registry.schema(for: "purchase")
         #expect(schema.fields.map(\.name).sorted() == ["date", "product_id"])
     }
-
-    @Test("Loaded entities list themselves")
-    func loadedSchemas() async throws {
-        let reader = SchemaRegistry(database: database)
-        #expect(await reader.schemas().isEmpty)
-        try await reader.loadAll()
-        #expect(await reader.schemas().map(\.entity) == ["purchase"])
-    }
 }

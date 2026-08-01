@@ -63,39 +63,6 @@ public actor SchemaRegistry {
         EntitySchema(try await definition(for: entity))
     }
 
-    /// The schemas of every entity the registry has loaded so far.
-    public func schemas() -> [EntitySchema] {
-        cache.values.map(EntitySchema.init)
-    }
-
-    @discardableResult func loadAll() async throws -> Int {
-        let query = CKQuery(
-            recordType: SchemaDescriptorEntry.recordType,
-            filters: [
-                ServerFilter(field: "status", op: .equals, value: .string("active"))
-            ]
-        )
-        let entries = try await database.allRecords(matching: query).map(SchemaDescriptorEntry.init)
-        for (entity, entries) in Dictionary(grouping: entries, by: \.entity) {
-            if let definition = try latest(of: entries) {
-                cache[entity] = definition
-            }
-        }
-        return cache.count
-    }
-
-    func retire(entity: String) async throws {
-        let descriptors = try await database.allRecords(matching: metaQuery(entity: entity))
-        guard descriptors.count > 0 else {
-            throw SchemaError.unknownEntity(entity)
-        }
-        for descriptor in descriptors {
-            descriptor["status"] = "retired"
-        }
-        try await database.write(records: descriptors)
-        cache[entity] = nil
-    }
-
     func publish(_ definition: EntityDefinition) async throws {
         try definition.validate()
         let record = CKRecord(
