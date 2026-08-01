@@ -8,7 +8,7 @@
 import Foundation
 
 extension EntityStore {
-    func folder(entity: String, any branches: [[Filter]]) async throws -> GridFolder? {
+    func folder(entity: String, any branches: [[Filter]]) async throws -> EntityFolder? {
         let definition = try await registry.definition(for: entity)
 
         guard definition.views?.isEmpty == false, var query = FilterPlan(any: branches) else {
@@ -21,7 +21,7 @@ extension EntityStore {
             return nil
         }
 
-        return GridFolder(
+        return EntityFolder(
             database: database,
             entity: entity,
             definition: definition,

@@ -56,7 +56,7 @@ struct EntityStoreTests {
     func read() async throws {
         let purchase = makePurchase()
         try await store.write([EntityWrite(values: purchase.values, uuid: "p-1")], entity: "purchase")
-        let records = try await BranchReader(store: store, entity: "purchase").read()
+        let records = try await EntityReader(store: store, entity: "purchase").read()
         #expect(records == [purchase])
     }
 
@@ -68,7 +68,7 @@ struct EntityStoreTests {
         try await store.write([EntityWrite(values: other, uuid: "p-2")], entity: "purchase")
 
         let filter = EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-7"))
-        let records = try await BranchReader(store: store, entity: "purchase").read(any: [[filter]])
+        let records = try await EntityReader(store: store, entity: "purchase").read(any: [[filter]])
         #expect(records.map(\.uuid) == ["p-2"])
     }
 
@@ -84,7 +84,7 @@ struct EntityStoreTests {
             EntityStore.Filter(field: "quantity", op: .greaterThan, value: .int(1)),
             EntityStore.Filter(field: "date", op: .greaterThan, value: .date(Date(timeIntervalSince1970: 500_000))),
         ]
-        let records = try await BranchReader(store: store, entity: "purchase").read(any: [filters])
+        let records = try await EntityReader(store: store, entity: "purchase").read(any: [filters])
         #expect(records.map(\.uuid) == ["p-1"])
     }
 
@@ -96,12 +96,12 @@ struct EntityStoreTests {
             try await store.write([EntityWrite(values: values, uuid: "p-\(index)")], entity: "purchase")
         }
 
-        let ascending = try await BranchReader(
+        let ascending = try await EntityReader(
             store: store, entity: "purchase", sort: [EntityStore.Sort(field: "quantity")]
         ).read()
         #expect(ascending.map(\.uuid) == ["p-1", "p-2", "p-0"])
 
-        let descending = try await BranchReader(
+        let descending = try await EntityReader(
             store: store, entity: "purchase", sort: [EntityStore.Sort(field: "quantity", ascending: false)]
         ).read()
         #expect(descending.map(\.uuid) == ["p-0", "p-2", "p-1"])
@@ -110,7 +110,7 @@ struct EntityStoreTests {
     @Test("Sorting on an unknown field fails")
     func sortUnknownField() async throws {
         await #expect(throws: SchemaError.unknownField("ghost")) {
-            try await BranchReader(store: store, entity: "purchase", sort: [EntityStore.Sort(field: "ghost")]).read()
+            try await EntityReader(store: store, entity: "purchase", sort: [EntityStore.Sort(field: "ghost")]).read()
         }
     }
 
@@ -128,7 +128,7 @@ struct EntityStoreTests {
             [EntityStore.Filter(field: "product_id", op: .equals, value: .string("sku-3"))],
             [EntityStore.Filter(field: "quantity", op: .greaterThan, value: .int(2))],
         ]
-        let records = try await BranchReader(
+        let records = try await EntityReader(
             store: store, entity: "purchase", sort: [EntityStore.Sort(field: "quantity")]
         ).read(any: branches)
         #expect(records.map(\.uuid) == ["p-0", "p-2"])
@@ -142,7 +142,7 @@ struct EntityStoreTests {
         try await store.write([EntityWrite(values: other, uuid: "p-2")], entity: "purchase")
 
         let filter = EntityStore.Filter(field: "product_id", op: .notIn, value: .strings(["sku-42"]))
-        let records = try await BranchReader(store: store, entity: "purchase").read(any: [[filter]])
+        let records = try await EntityReader(store: store, entity: "purchase").read(any: [[filter]])
         #expect(records.map(\.uuid) == ["p-2"])
     }
 
@@ -206,7 +206,7 @@ struct EntityStoreTests {
                     values: ["codes": .ints([4, 5]), "scores": .doubles([1.0]), "times": .dates([])], uuid: "s-2")
             ], entity: "sample")
 
-        let samples = try await BranchReader(store: store, entity: "sample").read()
+        let samples = try await EntityReader(store: store, entity: "sample").read()
 
         let record = try #require(samples.first { $0.uuid == "s-1" })
         #expect(record.values["codes"] == .ints([1, 2, 3]))
@@ -217,7 +217,7 @@ struct EntityStoreTests {
         #expect(whole.values["scores"] == .doubles([1.0]))
 
         let filter = EntityStore.Filter(field: "codes", op: .contains, value: .int(2))
-        let matched = try await BranchReader(store: store, entity: "sample").read(any: [[filter]])
+        let matched = try await EntityReader(store: store, entity: "sample").read(any: [[filter]])
         #expect(matched.map(\.uuid) == ["s-1"])
     }
 
@@ -233,7 +233,7 @@ struct EntityStoreTests {
         )
         try await store.write([EntityWrite(values: ["parent": .reference("node-9")], uuid: "g-1")], entity: "graph")
 
-        let record = try #require(try await BranchReader(store: store, entity: "graph").read().first)
+        let record = try #require(try await EntityReader(store: store, entity: "graph").read().first)
         #expect(record.values["parent"] == .reference("node-9"))
     }
 
@@ -249,7 +249,7 @@ struct EntityStoreTests {
         )
         let payload = Data([0xDE, 0xAD])
         try await store.write([EntityWrite(values: ["digest": .bytes(payload)], uuid: "b-1")], entity: "blob")
-        let record = try #require(try await BranchReader(store: store, entity: "blob").read().first)
+        let record = try #require(try await EntityReader(store: store, entity: "blob").read().first)
         #expect(record.values["digest"] == .bytes(payload))
     }
 
@@ -257,14 +257,14 @@ struct EntityStoreTests {
     func unknownFilter() async throws {
         let filter = EntityStore.Filter(field: "ghost", op: .equals, value: .string("x"))
         await #expect(throws: SchemaError.unknownField("ghost")) {
-            try await BranchReader(store: store, entity: "purchase").read(any: [[filter]])
+            try await EntityReader(store: store, entity: "purchase").read(any: [[filter]])
         }
     }
 
     @Test("Reading an unpublished entity fails")
     func unknownEntity() async throws {
         await #expect(throws: SchemaError.unknownEntity("ghost")) {
-            try await BranchReader(store: store, entity: "ghost").read()
+            try await EntityReader(store: store, entity: "ghost").read()
         }
     }
 
@@ -287,7 +287,7 @@ struct EntityStoreTests {
             [EntityWrite(values: ["user_id": .string("alice"), "score": .int(2)])], entity: "profile")
         #expect(first == second)
 
-        let records = try await BranchReader(store: store, entity: "profile").read()
+        let records = try await EntityReader(store: store, entity: "profile").read()
         #expect(records.count == 1)
         #expect(records.first?.values["score"] == .int(2))
     }
@@ -311,7 +311,7 @@ struct EntityStoreTests {
             entity: "post")
 
         let filter = EntityStore.Filter(field: "tags", op: .contains, value: .string("swift"))
-        let records = try await BranchReader(store: store, entity: "post").read(any: [[filter]])
+        let records = try await EntityReader(store: store, entity: "post").read(any: [[filter]])
         #expect(records.map(\.uuid) == ["n-1"])
     }
 
