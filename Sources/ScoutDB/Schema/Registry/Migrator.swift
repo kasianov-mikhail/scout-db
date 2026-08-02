@@ -145,7 +145,7 @@ extension EntityCoder {
     fileprivate func rewrite(_ record: CKRecord, transform: (inout EntityRecord) throws -> Void) throws -> CKRecord {
         var next = try decode(record)
         try transform(&next)
-        next.values = try resolve(next.values, at: next.schemaVersion)
+        next.values = try definition.resolve(next.values, at: next.schemaVersion)
         return try encode(next, into: record)
     }
 }
