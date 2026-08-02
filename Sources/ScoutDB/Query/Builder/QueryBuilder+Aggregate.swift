@@ -50,10 +50,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func sum(_ field: String) async throws -> Double {
-        try await aggregate.value(
-            field: field,
-            metric: .sum
-        ) ?? 0
+        try await value(of: field, metric: .sum) ?? 0
     }
 
     /// The smallest value of a numeric field across the matching records.
@@ -69,10 +66,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func min(_ field: String) async throws -> Double? {
-        try await aggregate.value(
-            field: field,
-            metric: .min
-        )
+        try await value(of: field, metric: .min)
     }
 
     /// The largest value of a numeric field across the matching records.
@@ -88,10 +82,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func max(_ field: String) async throws -> Double? {
-        try await aggregate.value(
-            field: field,
-            metric: .max
-        )
+        try await value(of: field, metric: .max)
     }
 
     /// The mean of a numeric field across the matching records.
@@ -107,9 +98,30 @@ extension QueryBuilder {
     /// ```
     ///
     public func average(_ field: String) async throws -> Double? {
-        try await aggregate.value(
-            field: field,
-            metric: .average
+        try await value(of: field, metric: .average)
+    }
+}
+
+extension QueryBuilder {
+    private func value(of field: String, metric: Metric) async throws -> Double? {
+        let target = try await store.registry.definition(for: entity).field(field)
+
+        guard [.int, .double].contains(target.type) else {
+            throw SchemaError.unsupportedQuery(.nonNumericField(field))
+        }
+
+        if metric != .average || target.alwaysPresent, let folded = try await fold?.cell(of: field, folding: metric) {
+            return metric.apply(
+                values: [folded.value].compactMap(\.self),
+                count: folded.count
+            )
+        }
+
+        let scalars = try await read.records().compactMap(\.values[field]?.scalar)
+
+        return metric.apply(
+            values: scalars,
+            count: scalars.count
         )
     }
 }
