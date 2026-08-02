@@ -84,11 +84,11 @@ struct StoreContractTests {
             try await eventually { try await ReadOperation(store: f.store, entity: entity).read().count == 3 }
 
             let exact = try await ReadOperation(store: f.store, entity: entity)
-                .read(any: [[.init(field: "product", op: .equals, value: .string("sku-5"))]])
+                .read(branches: [[.init(field: "product", op: .equals, value: .string("sku-5"))]])
             #expect(exact.map(\.uuid) == ["q-1"])
 
             let above = try await ReadOperation(store: f.store, entity: entity)
-                .read(any: [[.init(field: "quantity", op: .greaterThan, value: .int(4))]])
+                .read(branches: [[.init(field: "quantity", op: .greaterThan, value: .int(4))]])
             #expect(Set(above.map(\.uuid)) == ["q-1", "q-2"])
 
             let middle = try await f.store.query(entity).filter("quantity" >= 2 && "quantity" < 9).take(100)
@@ -107,7 +107,7 @@ struct StoreContractTests {
             try await eventually { try await ReadOperation(store: f.store, entity: entity).read().count == 3 }
 
             let picked = try await ReadOperation(store: f.store, entity: entity)
-                .read(any: [[.init(field: "product", op: .in, value: .strings(["a", "c"]))]])
+                .read(branches: [[.init(field: "product", op: .in, value: .strings(["a", "c"]))]])
             #expect(Set(picked.map(\.uuid)) == ["in-a", "in-c"])
         }
     }
@@ -122,7 +122,7 @@ struct StoreContractTests {
             try await eventually { try await ReadOperation(store: f.store, entity: entity).read().count == 2 }
 
             let matched = try await ReadOperation(store: f.store, entity: entity)
-                .read(any: [[.init(field: "product", op: .contains, value: .string("uxe-bun"))]])
+                .read(branches: [[.init(field: "product", op: .contains, value: .string("uxe-bun"))]])
             #expect(matched.map(\.uuid) == ["s-1"])
         }
     }
@@ -213,7 +213,7 @@ struct StoreContractTests {
             try await f.store.write([EntityWrite(values: orderValues(total: 3), uuid: "v-2")], entity: entity)
 
             try await eventually {
-                let totals = try await TotalOperation(f.store, entity: entity, aggregate: "revenue").totals()
+                let totals = try await TotalOperation(store: f.store, entity: entity, aggregate: "revenue").totals()
                 return totals.first?.count == 2 && totals.first?.value == 5
             }
         }

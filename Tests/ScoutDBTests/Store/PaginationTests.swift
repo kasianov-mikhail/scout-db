@@ -100,7 +100,7 @@ struct PaginationTests {
         let filter = ClientFilter(field: "comment", op: .contains, value: .string("gif"))
         let records = try await ReadOperation(
             store: store, entity: "purchase", sort: [EntityStore.Sort(field: "date")], limit: 2
-        ).read(any: [[filter]])
+        ).read(branches: [[filter]])
         #expect(records.map(\.uuid) == ["p-0", "p-2"])
     }
 

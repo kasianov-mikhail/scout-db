@@ -60,7 +60,7 @@ struct BuilderTests {
         #expect(Set(aggregates.map(\.name)) == ["by_product_id", "by_quantity", "by_amount"])
         #expect(aggregates.first { $0.name == "by_product_id" }?.groupBy == "product_id")
 
-        let counted = try await TotalOperation(store, entity: "purchase", aggregate: "by_product_id").totals()
+        let counted = try await TotalOperation(store: store, entity: "purchase", aggregate: "by_product_id").totals()
         #expect(counted.map(\.count).reduce(0, +) == 3)
         #expect(try await store.query("purchase").filter("product_id", .equals, "sku-1").count() == 1)
     }

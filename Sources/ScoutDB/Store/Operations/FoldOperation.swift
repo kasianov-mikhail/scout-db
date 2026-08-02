@@ -9,41 +9,46 @@ import CloudKit
 
 struct FoldOperation: Sendable {
     let database: any CloudDatabase
-    let entity: String
     let definition: EntityDefinition
     let query: FilterPlan
 
-    func fold(of field: String?, folding kind: Metric = .sum) async throws -> GridFold? {
+    func fold(of field: String?, folding kind: Metric) async throws -> GridFold? {
         guard let aggregate = query.foldPlan(in: definition, folding: kind, of: field) else {
             return nil
         }
 
         let records = try await database.allRecords(
-            matching: CKQuery(gridOf: entity, aggregate: aggregate.name, group: query.serverGroup)
+            matching: CKQuery(
+                gridOf: definition.entity,
+                aggregate: aggregate.name,
+                group: query.serverGroup
+            )
         )
 
-        var folded = GridFold(count: 0, value: nil)
-        for record in records {
-            guard let key = record[CKRecord.groupCell] as? String else {
-                continue
+        let rows = records.gridRows(folding: kind) { row in
+            guard row.count > 0 else {
+                return false
             }
-            guard query.groupField == nil || query.groupKeys.contains(key) else {
-                continue
-            }
-
-            let count = Int(record[CKRecord.countCell] as? Int64 ?? 0)
-            guard count > 0 else {
-                continue
-            }
-
-            var total = folded.value
-            if let cell = record[CKRecord.valueCell] as? Double {
-                total = total.map { kind.combine($0, cell) } ?? cell
-            }
-
-            folded = GridFold(count: folded.count + count, value: total)
+            return query.groupField == nil || query.groupKeys.contains(row.group)
         }
-        return folded
+
+        return rows.values.reduce(GridFold.empty) { $0.merging($1, folding: kind) }
+    }
+}
+
+extension FoldOperation {
+    init?(database: any CloudDatabase, definition: EntityDefinition, branches: [[ClientFilter]]) {
+        guard definition.aggregates?.isEmpty == false, var query = FilterPlan(branches: branches) else {
+            return nil
+        }
+
+        query.expandRange(in: definition)
+
+        guard query.numericField == nil else {
+            return nil
+        }
+
+        self.init(database: database, definition: definition, query: query)
     }
 }
 
@@ -51,9 +56,4 @@ extension FilterPlan {
     fileprivate var serverGroup: String? {
         groupKeys.count == 1 ? groupKeys.first : nil
     }
-}
-
-struct GridFold: Sendable {
-    let count: Int
-    let value: Double?
 }

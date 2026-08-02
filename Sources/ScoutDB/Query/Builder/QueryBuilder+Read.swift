@@ -31,7 +31,7 @@ extension QueryBuilder {
             sort: sorts,
             limit: Swift.min(count, ceiling ?? count)
         )
-        .read(any: alternatives)
+        .read(branches: alternatives)
     }
 
     /// Runs the query and returns the first matching record, if any.

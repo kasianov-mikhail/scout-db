@@ -15,7 +15,7 @@ struct FilterPlan {
     private var numericGTE: Double?
     private var numericLT: Double?
 
-    init?(any branches: [[ClientFilter]]) {
+    init?(branches: [[ClientFilter]]) {
         guard let first = branches.first, var merged = FilterPlan(first) else {
             return nil
         }
@@ -58,7 +58,7 @@ struct FilterPlan {
         guard groupField == nil, let name = numericField else {
             return
         }
-        guard let field = definition.fieldsByName(at: definition.version)[name] else {
+        guard let field = try? definition.field(name) else {
             return
         }
         guard field.type == .int, field.alwaysPresent else {

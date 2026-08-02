@@ -26,17 +26,24 @@ extension QueryBuilder {
     /// ```
     ///
     public func count() async throws -> Int {
-        if let folded = try await store.folder(entity: entity, any: alternatives)?.fold(of: nil) {
+        let definition = try await self.definition
+
+        if let folded = try await FoldOperation(
+            database: store.database,
+            definition: definition,
+            branches: alternatives
+        )?
+        .fold(of: nil, folding: .sum) {
             return Swift.min(folded.count, ceiling ?? Int.max)
         }
 
         return try await ReadOperation(
-            store: store,
-            entity: entity,
+            database: store.database,
+            definition: definition,
             sort: sorts,
             limit: ceiling
         )
-        .read(any: alternatives)
+        .read(branches: alternatives)
         .count
     }
 
@@ -53,13 +60,8 @@ extension QueryBuilder {
     /// ```
     ///
     public func sum(_ field: String) async throws -> Double {
-        try await AggregateOperation(
-            store: store,
-            entity: entity,
-            branches: alternatives,
-            field: field
-        )
-        .value(metric: .sum) ?? 0
+        try await AggregateOperation(query: self, field: field)
+            .value(metric: .sum) ?? 0
     }
 
     /// The smallest value of a numeric field across the matching records.
@@ -75,13 +77,8 @@ extension QueryBuilder {
     /// ```
     ///
     public func min(_ field: String) async throws -> Double? {
-        try await AggregateOperation(
-            store: store,
-            entity: entity,
-            branches: alternatives,
-            field: field
-        )
-        .value(metric: .min)
+        try await AggregateOperation(query: self, field: field)
+            .value(metric: .min)
     }
 
     /// The largest value of a numeric field across the matching records.
@@ -97,13 +94,8 @@ extension QueryBuilder {
     /// ```
     ///
     public func max(_ field: String) async throws -> Double? {
-        try await AggregateOperation(
-            store: store,
-            entity: entity,
-            branches: alternatives,
-            field: field
-        )
-        .value(metric: .max)
+        try await AggregateOperation(query: self, field: field)
+            .value(metric: .max)
     }
 
     /// The mean of a numeric field across the matching records.
@@ -119,12 +111,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func average(_ field: String) async throws -> Double? {
-        try await AggregateOperation(
-            store: store,
-            entity: entity,
-            branches: alternatives,
-            field: field
-        )
-        .value(metric: .average)
+        try await AggregateOperation(query: self, field: field)
+            .value(metric: .average)
     }
 }

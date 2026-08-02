@@ -6,71 +6,50 @@
 // https://opensource.org/licenses/MIT.
 
 import CloudKit
-import Foundation
 
 struct TotalOperation {
-    let store: EntityStore
-    let entity: String
+    let database: any CloudDatabase
+    let definition: EntityDefinition
     let aggregate: String
     let group: String?
 
-    init(_ store: EntityStore, entity: String, aggregate: String, group: String? = nil) {
-        self.store = store
-        self.entity = entity
-        self.aggregate = aggregate
-        self.group = group
-    }
-
     func totals() async throws -> [AggregateTotal] {
-        let definition = try await store.registry.definition(for: entity)
-
         guard let declared = definition.aggregate(named: aggregate) else {
             throw SchemaError.unknownField(aggregate)
         }
 
-        let kind = declared.metricKind
-
-        let records = try await store.database.allRecords(
-            matching: CKQuery(gridOf: entity, aggregate: aggregate, group: group)
+        let records = try await database.allRecords(
+            matching: CKQuery(
+                gridOf: definition.entity,
+                aggregate: aggregate,
+                group: group
+            )
         )
 
-        var totals: [String: AggregateTotal] = [:]
-
-        for record in records {
-            guard let key = record[CKRecord.groupCell] as? String else {
-                continue
-            }
-
-            let count = Int(record[CKRecord.countCell] as? Int64 ?? 0)
-            let value = kind == nil ? nil : record[CKRecord.valueCell] as? Double
-
-            guard count != 0 || value != nil else {
-                continue
-            }
-
-            let merged = totals[key]
-
-            var total = merged?.value
-
-            if let kind, let value {
-                total = total.map { kind.combine($0, value) } ?? value
-            }
-
-            totals[key] = AggregateTotal(
-                group: key,
-                count: (merged?.count ?? 0) + count,
-                value: total
-            )
+        let rows = records.gridRows(folding: declared.metricKind) { row in
+            row.count != 0 || row.value != nil
         }
 
-        return totals.values.sorted()
+        return rows.map { key, fold in
+            AggregateTotal(group: key, count: fold.count, value: fold.value)
+        }
+        .sorted()
     }
 }
 
 extension TotalOperation {
-    init(_ query: QueryBuilder, field: String?, metric: Metric, group: String?) async throws {
+    init(store: EntityStore, entity: String, aggregate: String, group: String? = nil) async throws {
+        self.init(
+            database: store.database,
+            definition: try await store.registry.definition(for: entity),
+            aggregate: aggregate,
+            group: group
+        )
+    }
+
+    init(query: QueryBuilder, field: String?, metric: Metric, group: String?) async throws {
         let store = query.store
-        let definition = try await store.registry.definition(for: query.entity)
+        let definition = try await query.definition
 
         guard let aggregate = definition.aggregate(grouping: group, folding: field, as: metric) else {
             throw SchemaError.unsupportedQuery(
@@ -79,8 +58,8 @@ extension TotalOperation {
         }
 
         self.init(
-            store,
-            entity: query.entity,
+            database: store.database,
+            definition: definition,
             aggregate: aggregate.name,
             group: try query.narrowing(to: group)
         )

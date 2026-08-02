@@ -5,64 +5,65 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-import Foundation
-
 struct AggregateOperation {
-    let store: EntityStore
-    let entity: String
-
+    let database: any CloudDatabase
+    let definition: EntityDefinition
     let branches: [[ClientFilter]]
-    let field: String?
+    let field: String
 
     func value(metric: Metric) async throws -> Double? {
-        guard let field else {
-            return nil
+        let target = try definition.field(field)
+
+        guard [.int, .double].contains(target.type) else {
+            throw SchemaError.unsupportedQuery(.nonNumericField(field))
         }
 
-        let definition = try await store.registry.definition(for: entity)
+        if metric != .average || target.alwaysPresent {
+            let operation = FoldOperation(
+                database: database,
+                definition: definition,
+                branches: branches
+            )
 
-        try definition.numericField(field)
-
-        if let folded = try await gridCell(metric: metric, field: field) {
-            return metric.apply(values: [folded.value].compactMap { $0 }, count: folded.count)
+            if let folded = try await operation?.fold(of: field, folding: metric) {
+                return metric.apply(
+                    values: [folded.value].compactMap(\.self),
+                    count: folded.count
+                )
+            }
         }
 
-        let records = try await ReadOperation(
-            store: store,
-            entity: entity
+        let scalars = try await ReadOperation(
+            database: database,
+            definition: definition,
+            sort: [],
+            limit: nil
         )
-        .read(any: branches)
-        let scalars = records.compactMap { $0.values[field]?.scalar }
+        .read(branches: branches)
+        .compactMap(\.values[field]?.scalar)
 
-        return metric.apply(values: scalars, count: scalars.count)
-    }
-
-    private func gridCell(metric: Metric, field: String) async throws -> GridFold? {
-        if metric == .average, try await store.registry.alwaysPresent(field, entity: entity) == false {
-            return nil
-        }
-
-        guard let folder = try await store.folder(entity: entity, any: branches) else {
-            return nil
-        }
-        return try await folder.fold(of: field, folding: metric)
+        return metric.apply(
+            values: scalars,
+            count: scalars.count
+        )
     }
 }
 
-extension EntityDefinition {
-    @discardableResult fileprivate func numericField(_ name: String) throws -> FieldDefinition {
-        guard let target = fieldsByName(at: version)[name] else {
-            throw SchemaError.unknownField(name)
-        }
-        guard target.isNumeric else {
-            throw SchemaError.unsupportedQuery(.nonNumericField(name))
-        }
-        return target
+extension AggregateOperation {
+    init(query: QueryBuilder, field: String) async throws {
+        self.init(
+            database: query.store.database,
+            definition: try await query.definition,
+            branches: query.alternatives,
+            field: field
+        )
     }
 }
 
-extension FieldDefinition {
-    fileprivate var isNumeric: Bool {
-        [.int, .double].contains(type)
+extension QueryBuilder {
+    var definition: EntityDefinition {
+        get async throws {
+            try await store.registry.definition(for: entity)
+        }
     }
 }
