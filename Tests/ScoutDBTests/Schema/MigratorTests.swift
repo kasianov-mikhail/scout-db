@@ -48,7 +48,7 @@ struct MigratorTests {
         try await migrator.backfill(entity: "profile")
 
         let filter = ClientFilter(field: "user_id", op: .equals, value: .string("bob"))
-        let records = try await ReadOperation(store: store, entity: "profile").read(any: [[filter]])
+        let records = try await ReadOperation(store: store, entity: "profile").read(branches: [[filter]])
         #expect(records.map(\.uuid) == ["u-2"])
     }
 
@@ -121,20 +121,22 @@ struct MigratorTests {
 
         definition.aggregates? += [AggregateDefinition(name: "by_product", groupBy: "product", sum: "amount")]
         try await registry.publish(definition)
-        #expect(try await TotalOperation(store, entity: "sale", aggregate: "by_product").totals().isEmpty)
+        #expect(try await TotalOperation(store: store, entity: "sale", aggregate: "by_product").totals().isEmpty)
 
         #expect(try await migrator.backfill(aggregate: "by_product", entity: "sale") == 3)
-        var totals = try await TotalOperation(store, entity: "sale", aggregate: "by_product").totals()
+        var totals = try await TotalOperation(store: store, entity: "sale", aggregate: "by_product").totals()
         #expect(totals.first { $0.group == "app" }?.count == 2)
         #expect(totals.first { $0.group == "app" }?.value == 15)
         #expect(totals.first { $0.group == "book" }?.count == 1)
-        #expect(try await TotalOperation(store, entity: "sale", aggregate: "all_time").totals().map(\.count) == [3])
+        #expect(
+            try await TotalOperation(store: store, entity: "sale", aggregate: "all_time").totals().map(\.count) == [3])
 
         #expect(try await migrator.backfill(aggregate: "by_product", entity: "sale") == 3)
-        totals = try await TotalOperation(store, entity: "sale", aggregate: "by_product").totals()
+        totals = try await TotalOperation(store: store, entity: "sale", aggregate: "by_product").totals()
         #expect(totals.first { $0.group == "app" }?.count == 2)
         #expect(totals.first { $0.group == "app" }?.value == 15)
-        #expect(try await TotalOperation(store, entity: "sale", aggregate: "all_time").totals().map(\.count) == [3])
+        #expect(
+            try await TotalOperation(store: store, entity: "sale", aggregate: "all_time").totals().map(\.count) == [3])
 
         await #expect(throws: SchemaError.unknownField("ghost")) {
             try await migrator.backfill(aggregate: "ghost", entity: "sale")

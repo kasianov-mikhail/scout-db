@@ -68,7 +68,7 @@ struct EntityStoreTests {
         try await store.write([EntityWrite(values: other, uuid: "p-2")], entity: "purchase")
 
         let filter = ClientFilter(field: "product_id", op: .equals, value: .string("sku-7"))
-        let records = try await ReadOperation(store: store, entity: "purchase").read(any: [[filter]])
+        let records = try await ReadOperation(store: store, entity: "purchase").read(branches: [[filter]])
         #expect(records.map(\.uuid) == ["p-2"])
     }
 
@@ -84,7 +84,7 @@ struct EntityStoreTests {
             ClientFilter(field: "quantity", op: .greaterThan, value: .int(1)),
             ClientFilter(field: "date", op: .greaterThan, value: .date(Date(timeIntervalSince1970: 500_000))),
         ]
-        let records = try await ReadOperation(store: store, entity: "purchase").read(any: [filters])
+        let records = try await ReadOperation(store: store, entity: "purchase").read(branches: [filters])
         #expect(records.map(\.uuid) == ["p-1"])
     }
 
@@ -130,7 +130,7 @@ struct EntityStoreTests {
         ]
         let records = try await ReadOperation(
             store: store, entity: "purchase", sort: [EntityStore.Sort(field: "quantity")]
-        ).read(any: branches)
+        ).read(branches: branches)
         #expect(records.map(\.uuid) == ["p-0", "p-2"])
     }
 
@@ -142,7 +142,7 @@ struct EntityStoreTests {
         try await store.write([EntityWrite(values: other, uuid: "p-2")], entity: "purchase")
 
         let filter = ClientFilter(field: "product_id", op: .notIn, value: .strings(["sku-42"]))
-        let records = try await ReadOperation(store: store, entity: "purchase").read(any: [[filter]])
+        let records = try await ReadOperation(store: store, entity: "purchase").read(branches: [[filter]])
         #expect(records.map(\.uuid) == ["p-2"])
     }
 
@@ -217,7 +217,7 @@ struct EntityStoreTests {
         #expect(whole.values["scores"] == .doubles([1.0]))
 
         let filter = ClientFilter(field: "codes", op: .contains, value: .int(2))
-        let matched = try await ReadOperation(store: store, entity: "sample").read(any: [[filter]])
+        let matched = try await ReadOperation(store: store, entity: "sample").read(branches: [[filter]])
         #expect(matched.map(\.uuid) == ["s-1"])
     }
 
@@ -257,7 +257,7 @@ struct EntityStoreTests {
     func unknownFilter() async throws {
         let filter = ClientFilter(field: "ghost", op: .equals, value: .string("x"))
         await #expect(throws: SchemaError.unknownField("ghost")) {
-            try await ReadOperation(store: store, entity: "purchase").read(any: [[filter]])
+            try await ReadOperation(store: store, entity: "purchase").read(branches: [[filter]])
         }
     }
 
@@ -314,7 +314,7 @@ struct EntityStoreTests {
             entity: "post")
 
         let filter = ClientFilter(field: "tags", op: .contains, value: .string("swift"))
-        let records = try await ReadOperation(store: store, entity: "post").read(any: [[filter]])
+        let records = try await ReadOperation(store: store, entity: "post").read(branches: [[filter]])
         #expect(records.map(\.uuid) == ["n-1"])
     }
 

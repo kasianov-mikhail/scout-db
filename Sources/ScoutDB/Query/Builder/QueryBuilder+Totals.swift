@@ -29,7 +29,7 @@ extension QueryBuilder {
         _ field: String? = nil, folding metric: Metric = .sum, by group: String? = nil
     ) async throws -> [AggregateTotal] {
         try await TotalOperation(
-            self,
+            query: self,
             field: field,
             metric: metric,
             group: group
