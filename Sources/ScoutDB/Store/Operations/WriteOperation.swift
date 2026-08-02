@@ -47,7 +47,7 @@ struct WriteOperation: Sendable {
 
         let (removedFromViews, addedToViews) = try await rebalance(records, stored: stored)
 
-        let encoded = try records.map { try encoder.encode($0) }
+        let encoded = try records.map(encoder.encode)
 
         for chunk in encoded.chunked(into: maxBatchSize) {
             try await database.modifyRecords(saving: chunk, deleting: [])

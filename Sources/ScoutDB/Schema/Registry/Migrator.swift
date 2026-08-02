@@ -64,7 +64,7 @@ public struct Migrator: Sendable {
                 )
                 try transform(&entityRecord, previous)
                 entityRecord.values = try definition.resolve(entityRecord.values, at: entityRecord.schemaVersion)
-                return try encoder.encode(entityRecord, into: record)
+                return try encoder.encode(entityRecord)
             }
 
             guard rewritten.count > 0 else {
