@@ -97,7 +97,7 @@ public struct Migrator: Sendable {
         scoped.aggregates = [aggregate]
 
         let decoder = EntityDecoder(definition: definition)
-        let aggregator = GridAggregator(database: database)
+        let aggregator = GridAggregator(database: database, definition: scoped)
 
         var counted = 0
         try await database.forEachPage(
@@ -110,7 +110,7 @@ public struct Migrator: Sendable {
         ) { page in
             for chunk in page.chunked(into: batchSize) {
                 let decoded = try chunk.map(decoder.decode)
-                try await aggregator.rebalance(removing: [], adding: decoded, using: scoped)
+                try await aggregator.rebalance(removing: [], adding: decoded)
                 counted += decoded.count
             }
         }

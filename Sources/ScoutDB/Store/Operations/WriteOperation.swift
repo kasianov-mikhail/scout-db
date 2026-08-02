@@ -43,11 +43,7 @@ struct WriteOperation: Sendable {
             try await database.modifyRecords(saving: chunk, deleting: [])
         }
 
-        try await aggregator.rebalance(
-            removing: removedFromViews,
-            adding: addedToViews,
-            using: definition
-        )
+        try await aggregator.rebalance(removing: removedFromViews, adding: addedToViews)
 
         return records.map(\.uuid)
     }

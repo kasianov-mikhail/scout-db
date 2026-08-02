@@ -16,10 +16,12 @@ extension EntityStore {
     }
 
     func write(entity: String) async throws -> WriteOperation {
-        WriteOperation(
+        let definition = try await registry.definition(for: entity)
+
+        return WriteOperation(
             database: database,
-            definition: try await registry.definition(for: entity),
-            aggregator: GridAggregator(database: database, slots: slots)
+            definition: definition,
+            aggregator: GridAggregator(database: database, definition: definition, slots: slots)
         )
     }
 }
