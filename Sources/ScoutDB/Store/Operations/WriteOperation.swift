@@ -90,3 +90,15 @@ struct WriteOperation: Sendable {
         return (Array(liveByUUID.values), Array(latest.values))
     }
 }
+
+extension EntityStore {
+    func write(entity: String) async throws -> WriteOperation {
+        let definition = try await registry.definition(for: entity)
+
+        return WriteOperation(
+            database: database,
+            definition: definition,
+            aggregator: GridAggregator(database: database, definition: definition, slots: slots)
+        )
+    }
+}
