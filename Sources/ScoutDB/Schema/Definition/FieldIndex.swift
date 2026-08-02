@@ -8,34 +8,48 @@
 import Foundation
 
 final class FieldIndex: @unchecked Sendable {
-    struct Entry {
-        let active: [FieldDefinition]
-        let byName: [String: FieldDefinition]
-    }
-
     private let lock = NSLock()
-    private var entries: [Int: Entry] = [:]
+    private var active: [Int: [FieldDefinition]] = [:]
+    private var byName: [Int: [String: FieldDefinition]] = [:]
 
-    func entry(at version: Int, of fields: [FieldDefinition]) -> Entry {
+    func fields(at version: Int, of fields: [FieldDefinition]) -> [FieldDefinition] {
         lock.lock()
         defer {
             lock.unlock()
         }
 
-        if let cached = entries[version] {
+        return activeFields(at: version, of: fields)
+    }
+
+    func fieldsByName(at version: Int, of fields: [FieldDefinition]) -> [String: FieldDefinition] {
+        lock.lock()
+        defer {
+            lock.unlock()
+        }
+
+        if let cached = byName[version] {
             return cached
         }
 
-        let active = fields.filter {
-            $0.isActive(at: version)
+        let named = Dictionary(
+            activeFields(at: version, of: fields).map { ($0.name, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        byName[version] = named
+
+        return named
+    }
+
+    private func activeFields(at version: Int, of fields: [FieldDefinition]) -> [FieldDefinition] {
+        if let cached = active[version] {
+            return cached
         }
 
-        let entry = Entry(
-            active: active,
-            byName: Dictionary(active.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
-        )
-        entries[version] = entry
+        let filtered = fields.filter {
+            $0.isActive(at: version)
+        }
+        active[version] = filtered
 
-        return entry
+        return filtered
     }
 }
