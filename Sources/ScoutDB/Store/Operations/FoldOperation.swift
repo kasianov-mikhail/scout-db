@@ -13,19 +13,16 @@ struct FoldOperation: Sendable {
     let definition: EntityDefinition
     let query: FilterPlan
 
-    func fold(of field: String?, folding kind: Metric = .sum, by group: String?) async throws -> [String: GridFold]? {
-        guard group == nil || query.groupField == nil || query.groupField == group else {
-            return nil
-        }
-        guard let aggregate = query.foldPlan(in: definition, folding: kind, of: field, grouping: group) else {
+    func fold(of field: String?, folding kind: Metric = .sum) async throws -> GridFold? {
+        guard let aggregate = query.foldPlan(in: definition, folding: kind, of: field) else {
             return nil
         }
 
         let records = try await database.allRecords(
-            matching: .grid(entity: entity, aggregate: aggregate.name, group: query.serverGroup)
+            matching: CKQuery(gridOf: entity, aggregate: aggregate.name, group: query.serverGroup)
         )
 
-        var folded: [String: GridFold] = [:]
+        var folded = GridFold(count: 0, value: nil)
         for record in records {
             guard let key = record[CKRecord.groupCell] as? String else {
                 continue
@@ -39,14 +36,12 @@ struct FoldOperation: Sendable {
                 continue
             }
 
-            let bucket = group == nil ? "" : key
-            let entry = folded[bucket]
-            let cell = record[CKRecord.valueCell] as? Double
+            var total = folded.value
+            if let cell = record[CKRecord.valueCell] as? Double {
+                total = total.map { kind.combine($0, cell) } ?? cell
+            }
 
-            folded[bucket] = GridFold(
-                count: (entry?.count ?? 0) + count,
-                value: kind.accumulate(entry?.value, cell)
-            )
+            folded = GridFold(count: folded.count + count, value: total)
         }
         return folded
     }

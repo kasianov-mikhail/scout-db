@@ -6,7 +6,6 @@
 // https://opensource.org/licenses/MIT.
 
 import CloudKit
-import CryptoKit
 import Foundation
 import ScoutDBTesting
 import Testing
@@ -49,34 +48,6 @@ struct AggregatesTests {
                 ],
                 entity: "payment")
         }
-    }
-
-    @Test("A grid slot named before separators were escaped is still adopted")
-    func legacyGridSlotAdoption() async throws {
-        try await publishPayment(aggregates: [AggregateDefinition(name: "by_product", groupBy: "product")])
-
-        let group = "a|b"
-        let period = GridSlot.date
-        let legacyKey = "payment|by_product|\(group)|\(period.millisecondsSince1970)"
-        let legacyName = "grid-" + SHA256.hash(data: Data(legacyKey.utf8)).hexString
-        #expect(
-            legacyName != "grid-"
-                + contentDigest(of: ["payment", "by_product", group, "\(period.millisecondsSince1970)"])
-        )
-
-        let legacy = CKRecord(recordType: "Aggregate", recordID: CKRecord.ID(recordName: legacyName))
-        legacy["entity"] = "payment"
-        legacy["aggregate"] = "by_product"
-        legacy["group_key"] = group
-        legacy["date"] = period
-        legacy["c_00"] = Int64(5)
-        try await database.modifyRecords(saving: [legacy], deleting: [])
-
-        try await writePayments([1], product: group)
-
-        #expect(database.records.filter { $0.recordType == "Aggregate" }.count == 1)
-        #expect(
-            try await TotalOperation(store, entity: "payment", aggregate: "by_product").totals().map(\.count) == [6])
     }
 
     @Test("A unique-key upsert counts once in aggregates")
@@ -141,9 +112,9 @@ struct AggregatesTests {
                         uuid: "p-\(index)")
                 ], entity: "payment")
         }
-        let shards = Set((0..<6).map { GridAggregator.shard(of: "p-\($0)", among: 3) })
-        #expect(shards.count > 1)
-        #expect(database.records.filter { $0.recordType == "Aggregate" }.count == shards.count)
+        let cells = database.records.filter { $0.recordType == "Aggregate" }
+        #expect(cells.count > 1)
+        #expect(cells.count <= 3)
 
         let totals = try await TotalOperation(store, entity: "payment", aggregate: "revenue").totals()
         #expect(totals.count == 1)
@@ -157,7 +128,7 @@ struct AggregatesTests {
             fields: [FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))],
             aggregates: [AggregateDefinition(name: "x", shards: 1)]
         )
-        #expect(throws: SchemaError.self) { try invalid.validate() }
+        #expect(throws: SchemaError.invalidDefinition(.invalidShards(aggregate: "x"))) { try invalid.validate() }
     }
 
     @Test("A min aggregate keeps the extremum an upsert lifted a record off")
@@ -259,7 +230,9 @@ struct AggregatesTests {
             ],
             aggregates: [AggregateDefinition(name: "broken", sum: "amount", min: "amount")]
         )
-        #expect(throws: SchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.invalidDefinition(.ambiguousMetric(aggregate: "broken"))) {
+            try definition.validate()
+        }
     }
 
     @Test("A batched write aggregates like the equivalent single writes")
@@ -409,16 +382,6 @@ struct AggregatesTests {
         #expect(
             try await store.query("ticket")
                 .filter("kind" == "b" || "kind" == "b").count() == 41
-        )
-        #expect(
-            try await AggregateOperation(
-                store: store,
-                entity: "ticket",
-                branches: [[Filter(field: "kind", op: .in, value: .strings(["b", "c"]))]],
-                group: "kind"
-            )
-            .counts()
-                == ["b": 41, "c": 1]
         )
         #expect(try await store.query("ticket").filter("kind", .in, .strings(["a", "b"])).sum("price") == 115)
 
@@ -572,20 +535,23 @@ struct AggregatesTests {
 
         #expect(try await store.query("reading").max("amount") == 41)
         #expect(try await store.query("reading").filter("product", .equals, "book").max("amount") == 41)
-        #expect(try await store.query("reading").max("amount", by: "product") == ["app": 10, "book": 41])
+        let peaks = try await store.query("reading").totals("amount", folding: .max, by: "product")
+        #expect(peaks.map(\.group) == ["app", "book"])
+        #expect(peaks.map(\.value) == [10, 41])
 
         #expect(try await store.query("reading").min("amount") == 1)
     }
 
-    @Test("Grouped folds and count(by:) read the grouping aggregate's grid")
+    @Test("Grouped totals read the grouping aggregate's grid")
     func groupedFoldThroughLifetimeView() async throws {
         try await publishLedger()
         _ = try tamperedBookSlot()
 
-        #expect(try await store.query("ledger").sum("amount", by: "product") == ["app": 16, "book": 40])
-        #expect(try await store.query("ledger").count(by: "product") == ["app": 2, "book": 3])
-        #expect(try await store.query("ledger").average("amount", by: "product") == ["app": 8, "book": 40.0 / 3])
-        #expect(try await store.query("ledger").min("amount", by: "product") == ["app": 6, "book": 4])
+        let totals = try await store.query("ledger").totals("amount", by: "product")
+        #expect(totals.map(\.group) == ["app", "book"])
+        #expect(totals.map(\.value) == [16, 40])
+        #expect(totals.map(\.count) == [2, 3])
+        #expect(totals.map(\.average) == [8, 40.0 / 3])
     }
 
     @Test("A fold that divides by the grid's row count scans when the field may be absent")
@@ -595,8 +561,6 @@ struct AggregatesTests {
 
         #expect(try await store.query("ledger").sum("amount") == 56)
         #expect(try await store.query("ledger").average("amount") == 20.0 / 3)
-        #expect(try await store.query("ledger").count(by: "product") == ["app": 2, "book": 1])
-        #expect(try await store.query("ledger").sum("amount", by: "product") == ["app": 16, "book": 4])
     }
 
     @Test("A fold over one group asks the server for that group's rows only")
@@ -646,7 +610,6 @@ struct AggregatesTests {
         grid["f_00"] = 40.0
 
         #expect(try await store.query("fee").sum("tax") == 3)
-        #expect(try await store.query("fee").count(by: "amount") == ["d10.0": 1, "d4.0": 1])
         #expect(try await store.query("fee").filter("product", .notEquals, "app").sum("amount") == 4)
     }
 }

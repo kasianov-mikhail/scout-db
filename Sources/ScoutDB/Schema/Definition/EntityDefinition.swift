@@ -34,10 +34,6 @@ extension EntityDefinition {
         index.fields(at: version, of: fields)
     }
 
-    func field(named name: String, at version: Int) -> FieldDefinition? {
-        index.fieldsByName(at: version, of: fields)[name]
-    }
-
     func fieldsByName(at version: Int) -> [String: FieldDefinition] {
         index.fieldsByName(at: version, of: fields)
     }
@@ -50,7 +46,7 @@ extension EntityDefinition {
         }
     }
 
-    func aggregate(grouping group: String?, folding field: String?) -> AggregateDefinition? {
+    func aggregate(grouping group: String?, folding field: String?, as metric: Metric) -> AggregateDefinition? {
         aggregates?.first { aggregate in
             guard aggregate.groupBy == group else {
                 return false
@@ -58,7 +54,7 @@ extension EntityDefinition {
             guard let field else {
                 return true
             }
-            return aggregate.metricField == field
+            return aggregate.answers(metric, of: field)
         }
     }
 }

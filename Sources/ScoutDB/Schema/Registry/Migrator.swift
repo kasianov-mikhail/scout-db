@@ -27,7 +27,7 @@ public struct Migrator: Sendable {
     @discardableResult public func rename(entity: String, from: String, to: String) async throws -> Int {
         let definition = try await registry.definition(for: entity)
 
-        guard definition.field(named: to, at: definition.version) != nil else {
+        guard definition.fieldsByName(at: definition.version)[to] != nil else {
             throw SchemaError.unknownField(to)
         }
 
@@ -88,7 +88,7 @@ public struct Migrator: Sendable {
             throw SchemaError.unknownField(name)
         }
 
-        try await database.forEachPage(matching: .grid(entity: entity, aggregate: name)) { page in
+        try await database.forEachPage(matching: CKQuery(gridOf: entity, aggregate: name)) { page in
             for chunk in page.map(\.recordID).chunked(into: batchSize) {
                 try await database.modifyRecords(saving: [], deleting: chunk)
             }

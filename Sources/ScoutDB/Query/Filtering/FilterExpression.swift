@@ -31,7 +31,7 @@ import Foundation
 /// ```
 ///
 public struct FilterExpression: Sendable {
-    var alternatives: [[Filter]]
+    let alternatives: [[Filter]]
 
     init(_ alternatives: [[Filter]]) {
         self.alternatives = alternatives

@@ -10,7 +10,7 @@ import Foundation
 actor RequestGate {
     static let shared = RequestGate()
 
-    private var limit: Int
+    private let limit: Int
     private var inFlight = 0
     private var waiting: [CheckedContinuation<Void, Never>] = []
 

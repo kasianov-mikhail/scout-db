@@ -1,0 +1,65 @@
+//
+// Copyright 2026 Mikhail Kasianov
+//
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file or at
+// https://opensource.org/licenses/MIT.
+
+import Foundation
+
+/// The rule an entity definition broke.
+public enum DefinitionFault: Equatable, Sendable {
+    case slotTypeMismatch(field: String, type: FieldType, pool: FieldType)
+    case slotOutsidePool(String, pool: FieldType)
+    case slotBeyondCapacity(String, pool: FieldType)
+    case sharedSlot(String, String, slot: String)
+    case exhaustedPool(FieldType)
+
+    case unsupportedPattern(field: String, type: FieldType)
+    case malformedPattern(field: String)
+    case unsupportedAllowed(field: String, type: FieldType)
+    case unsupportedBounds(field: String, type: FieldType)
+
+    case unknownUniqueKey(String)
+    case unknownGrouping(aggregate: String, field: String)
+    case ambiguousMetric(aggregate: String)
+    case nonNumericMetric(aggregate: String, field: String)
+    case invalidShards(aggregate: String)
+}
+
+extension DefinitionFault: CustomStringConvertible {
+    public var description: String {
+        switch self {
+        case .slotTypeMismatch(let field, let type, let pool):
+            "Field '\(field)' of type '\(type.rawValue)' cannot live in the '\(pool.rawValue)' pool"
+        case .slotOutsidePool(let slot, let pool):
+            "Slot '\(slot)' does not belong to the '\(pool.rawValue)' pool"
+        case .slotBeyondCapacity(let slot, let pool):
+            "Slot '\(slot)' is beyond the '\(pool.rawValue)' pool capacity of \(pool.capacity)"
+        case .sharedSlot(let lhs, let rhs, let slot):
+            "Fields '\(lhs)' and '\(rhs)' share slot '\(slot)'"
+        case .exhaustedPool(let pool):
+            "The '\(pool.rawValue)' pool is exhausted"
+
+        case .unsupportedPattern(let field, let type):
+            "Field '\(field)' of type '\(type.rawValue)' cannot constrain 'pattern'"
+        case .malformedPattern(let field):
+            "Field '\(field)' declares a malformed pattern"
+        case .unsupportedAllowed(let field, let type):
+            "Field '\(field)' of type '\(type.rawValue)' cannot constrain 'allowed'"
+        case .unsupportedBounds(let field, let type):
+            "Field '\(field)' of type '\(type.rawValue)' cannot constrain 'minimum'/'maximum'"
+
+        case .unknownUniqueKey(let key):
+            "Unique key '\(key)' is not a field"
+        case .unknownGrouping(let aggregate, let field):
+            "Aggregate '\(aggregate)' groups by unknown '\(field)'"
+        case .ambiguousMetric(let aggregate):
+            "Aggregate '\(aggregate)' declares more than one metric"
+        case .nonNumericMetric(let aggregate, let field):
+            "Aggregate '\(aggregate)' aggregates non-numeric '\(field)'"
+        case .invalidShards(let aggregate):
+            "Aggregate '\(aggregate)' must shard into 2...64 records"
+        }
+    }
+}

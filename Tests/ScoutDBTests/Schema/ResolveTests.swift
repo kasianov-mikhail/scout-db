@@ -75,7 +75,7 @@ struct ResolveTests {
                 )
             ]
         )
-        #expect(throws: SchemaError.invalidValue("level")) {
+        #expect(throws: SchemaError.invalidValue(.outsideDomain(field: "level"))) {
             try definition.resolve(["level": .string("debug")], at: 2)
         }
     }
@@ -88,7 +88,7 @@ struct ResolveTests {
                 FieldDefinition(name: "count", type: .int, storage: .slot(.int, "i_00"), min: 0)
             ]
         )
-        #expect(throws: SchemaError.invalidValue("count")) {
+        #expect(throws: SchemaError.invalidValue(.belowMinimum(field: "count", minimum: 0))) {
             try definition.resolve(["count": .int(-1)], at: 2)
         }
     }
@@ -106,7 +106,7 @@ struct ResolveTests {
                 )
             ]
         )
-        #expect(throws: SchemaError.invalidValue("tags")) {
+        #expect(throws: SchemaError.invalidValue(.outsideDomain(field: "tags"))) {
             try definition.resolve(["tags": .strings(["red", "blue"])], at: 2)
         }
         let ok = try definition.resolve(["tags": .strings(["red", "green"])], at: 2)
@@ -121,7 +121,7 @@ struct ResolveTests {
                 FieldDefinition(name: "counts", type: .intList, storage: .slot(.intList, "li_00"), min: 0)
             ]
         )
-        #expect(throws: SchemaError.invalidValue("counts")) {
+        #expect(throws: SchemaError.invalidValue(.belowMinimum(field: "counts", minimum: 0))) {
             try definition.resolve(["counts": .ints([1, -1, 2])], at: 2)
         }
     }

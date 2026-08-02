@@ -24,7 +24,7 @@ struct GridSlot: Hashable {
     let shard: Int?
 
     private var components: [String] {
-        var components = [entity, aggregate, group, "\(Self.date.millisecondsSince1970)"]
+        var components = [entity, aggregate, group]
         if let shard, shard > 0 {
             components.append("shard-\(shard)")
         }
@@ -33,10 +33,6 @@ struct GridSlot: Hashable {
 
     var recordID: CKRecord.ID {
         CKRecord.ID(recordName: "grid-" + contentDigest(of: components))
-    }
-
-    var isRenamed: Bool {
-        shard == nil && components.contains { $0.contains(where: { $0 == "\\" || $0 == "|" }) }
     }
 
     func blank(named id: CKRecord.ID) -> CKRecord {
@@ -50,11 +46,7 @@ struct GridSlot: Hashable {
 }
 
 extension CKQuery {
-    /// The cells of one aggregate, narrowed to a single group when one is named.
-    ///
-    /// The date column needs no filter of its own: every cell carries
-    /// ``GridSlot/date``, so matching on it would narrow nothing.
-    static func grid(entity: String, aggregate: String, group: String? = nil) -> CKQuery {
+    convenience init(gridOf entity: String, aggregate: String, group: String? = nil) {
         var filters = [
             CKQuery.Filter(field: "entity", op: .equals, value: .string(entity)),
             CKQuery.Filter(field: "aggregate", op: .equals, value: .string(aggregate)),
@@ -62,6 +54,6 @@ extension CKQuery {
         if let group {
             filters.append(CKQuery.Filter(field: CKRecord.groupCell, op: .equals, value: .string(group)))
         }
-        return CKQuery(recordType: GridSlot.recordType, filters: filters)
+        self.init(recordType: GridSlot.recordType, filters: filters)
     }
 }

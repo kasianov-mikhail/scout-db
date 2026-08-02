@@ -12,9 +12,11 @@ public enum SchemaError: Error, Equatable {
     case unknownField(String)
     case typeMismatch(String)
     case missingField(String)
-    case invalidValue(String)
+    case invalidValue(ValueFault)
     case staleSchema(entity: String, version: Int)
-    case invalidDefinition(String)
+    case invalidDefinition(DefinitionFault)
+    case unsupportedQuery(QueryFault)
+    case malformedRecord(String)
 }
 
 extension SchemaError: LocalizedError {
@@ -28,12 +30,16 @@ extension SchemaError: LocalizedError {
             "Type mismatch for field '\(name)'"
         case .missingField(let name):
             "Missing required field '\(name)'"
-        case .invalidValue(let name):
-            "Invalid value for field '\(name)'"
+        case .invalidValue(let fault):
+            "Invalid value: \(fault)"
         case .staleSchema(let entity, let version):
             "Stale schema for entity '\(entity)' at version \(version)"
-        case .invalidDefinition(let message):
-            "Invalid definition: \(message)"
+        case .invalidDefinition(let fault):
+            "Invalid definition: \(fault)"
+        case .unsupportedQuery(let fault):
+            "Unsupported query: \(fault)"
+        case .malformedRecord(let name):
+            "Malformed record '\(name)'"
         }
     }
 }

@@ -81,19 +81,6 @@ struct GridWritesTests {
         #expect(slot["f_00"] as? Double == 2)
     }
 
-    @Test("Only a slot named before separators were escaped falls back to a query")
-    func fallbackIsScopedToRenamedSlots() async throws {
-        let definition = paymentDefinition(aggregates: [AggregateDefinition(name: "by_product", groupBy: "product")])
-        let aggregator = GridAggregator(database: database)
-
-        try await aggregator.rebalance(removing: [], adding: payments(["app"]), using: definition)
-        #expect(requests(.query) == 0)
-
-        database.resetRequests()
-        try await aggregator.rebalance(removing: [], adding: payments(["a|b"]), using: definition)
-        #expect(requests(.query) == 1)
-    }
-
     private func payment(amount: Double) -> EntityRecord {
         EntityRecord(
             entity: "payment",
