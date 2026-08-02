@@ -20,7 +20,7 @@ extension Filter {
             return stored.map { $0 != value }
 
         case .greaterThan, .greaterThanOrEquals, .lessThan, .lessThanOrEquals:
-            return stored?.ranks(op, against: value)
+            return stored?.satisfies(op, against: value)
 
         case .in:
             return stored.map { options.contains($0) }

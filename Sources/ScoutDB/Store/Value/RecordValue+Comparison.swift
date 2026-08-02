@@ -8,7 +8,7 @@
 import Foundation
 
 extension RecordValue {
-    func ranks(_ op: Operator, against other: RecordValue) -> Bool {
+    func satisfies(_ op: Operator, against other: RecordValue) -> Bool {
         guard comparable(with: other) else {
             return false
         }
