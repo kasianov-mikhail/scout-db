@@ -49,16 +49,16 @@ public struct Migrator: Sendable {
         var migrated = 0
         try await database.forEachPage(matching: query) { page in
             let rewritten = try page.map { record in
-                try coder.rewrite(record) { entityRecord in
-                    let previous = entityRecord
-                    entityRecord = EntityRecord(
-                        entity: entity,
-                        uuid: previous.uuid,
-                        schemaVersion: definition.version,
-                        values: definition.rekey(previous)
-                    )
-                    try transform(&entityRecord, previous)
-                }
+                let previous = try coder.decode(record)
+                var entityRecord = EntityRecord(
+                    entity: entity,
+                    uuid: previous.uuid,
+                    schemaVersion: definition.version,
+                    values: definition.rekey(previous)
+                )
+                try transform(&entityRecord, previous)
+                entityRecord.values = try coder.resolve(entityRecord.values, at: entityRecord.schemaVersion)
+                return try coder.encode(entityRecord, into: record)
             }
             guard rewritten.count > 0 else {
                 return
