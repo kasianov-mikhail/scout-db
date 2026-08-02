@@ -52,7 +52,9 @@ struct FilterPlan {
             guard grouping == nil || aggregate.groupBy == grouping else {
                 return false
             }
-            return field.map { aggregate.answers(kind, of: $0) } ?? true
+            return field.map {
+                aggregate.metricKind == kind && aggregate.metricField == $0
+            } ?? true
         }
     }
 

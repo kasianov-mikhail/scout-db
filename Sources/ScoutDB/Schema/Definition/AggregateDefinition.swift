@@ -31,17 +31,6 @@ struct AggregateDefinition: Codable, Equatable, Sendable {
     var metricField: String? {
         sum ?? min ?? max
     }
-
-    func answers(_ kind: Metric, of field: String) -> Bool {
-        switch kind {
-        case .sum:
-            sum == field
-        case .min:
-            min == field
-        case .max:
-            max == field
-        }
-    }
 }
 
 enum Metric: Equatable, Sendable {
