@@ -89,6 +89,29 @@ extension SchemaBuilder {
     }
 }
 
+extension SchemaBuilder.FieldConstraint {
+    func apply(to field: inout FieldDefinition) {
+        switch self {
+        case .required:
+            field.required = true
+        case .payload:
+            break
+        case .allowed(let values):
+            field.allowed = values
+        case .defaultValue(let value):
+            field.defaultValue = value
+        case .min(let value):
+            field.min = value
+        case .max(let value):
+            field.max = value
+        case .matches(let pattern):
+            field.pattern = pattern
+        case .ungrouped:
+            field.ungrouped = true
+        }
+    }
+}
+
 extension Storage {
     var isSlot: Bool {
         if case .slot = self {
