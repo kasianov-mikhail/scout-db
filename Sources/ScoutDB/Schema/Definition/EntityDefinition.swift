@@ -40,11 +40,13 @@ struct EntityDefinition: Codable, Equatable, Sendable {
     }
 
     func view(named name: String) -> AggregateView? {
-        views?.first { $0.name == name }
+        views?.first {
+            $0.name == name
+        }
     }
 
     func view(grouping group: String?, folding field: String?) -> AggregateView? {
-        (views ?? []).first { view in
+        views?.first { view in
             guard view.groupBy == group else {
                 return false
             }
