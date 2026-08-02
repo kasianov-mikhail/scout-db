@@ -66,7 +66,7 @@ struct AggregatesTests {
 
         let legacy = CKRecord(recordType: "Aggregate", recordID: CKRecord.ID(recordName: legacyName))
         legacy["entity"] = "payment"
-        legacy["view"] = "by_product"
+        legacy["aggregate"] = "by_product"
         legacy["group_key"] = group
         legacy["date"] = period
         legacy["c_00"] = Int64(5)
@@ -563,7 +563,7 @@ struct AggregatesTests {
         for aggregate in ["peak", "trough"] {
             let grid = try #require(
                 database.records.first {
-                    $0.recordType == "Aggregate" && $0["view"] as? String == aggregate
+                    $0.recordType == "Aggregate" && $0["aggregate"] as? String == aggregate
                         && $0["group_key"] as? String == "book"
                 }
             )

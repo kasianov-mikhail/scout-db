@@ -42,7 +42,7 @@ struct GridSlot: Hashable {
     func blank(named id: CKRecord.ID) -> CKRecord {
         let record = CKRecord(recordType: Self.recordType, recordID: id)
         record["entity"] = entity
-        record["view"] = aggregate
+        record["aggregate"] = aggregate
         record[CKRecord.groupCell] = group
         record["date"] = Self.date
         return record
@@ -57,7 +57,7 @@ extension CKQuery {
     static func grid(entity: String, aggregate: String, group: String? = nil) -> CKQuery {
         var filters = [
             ServerFilter(field: "entity", op: .equals, value: .string(entity)),
-            ServerFilter(field: "view", op: .equals, value: .string(aggregate)),
+            ServerFilter(field: "aggregate", op: .equals, value: .string(aggregate)),
         ]
         if let group {
             filters.append(ServerFilter(field: CKRecord.groupCell, op: .equals, value: .string(group)))

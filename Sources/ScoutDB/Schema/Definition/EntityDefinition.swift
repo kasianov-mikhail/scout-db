@@ -27,7 +27,9 @@ struct EntityDefinition: Codable, Equatable, Sendable {
             && lhs.unique == rhs.unique
             && lhs.aggregates == rhs.aggregates
     }
+}
 
+extension EntityDefinition {
     func fields(at version: Int) -> [FieldDefinition] {
         index.entry(at: version, of: fields).active
     }
@@ -39,7 +41,9 @@ struct EntityDefinition: Codable, Equatable, Sendable {
     func fieldsByName(at version: Int) -> [String: FieldDefinition] {
         index.entry(at: version, of: fields).byName
     }
+}
 
+extension EntityDefinition {
     func aggregate(named name: String) -> AggregateDefinition? {
         aggregates?.first {
             $0.name == name

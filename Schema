@@ -266,7 +266,7 @@ DEFINE SCHEMA
         "___modifiedBy" REFERENCE,
         "___recordID"   REFERENCE QUERYABLE,
         entity          STRING QUERYABLE SEARCHABLE SORTABLE,
-        view            STRING QUERYABLE SEARCHABLE SORTABLE,
+        aggregate       STRING QUERYABLE SEARCHABLE SORTABLE,
         group_key       STRING QUERYABLE SEARCHABLE SORTABLE,
         date            TIMESTAMP QUERYABLE SORTABLE,
         schema_version  INT64 QUERYABLE SORTABLE,
