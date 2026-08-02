@@ -128,27 +128,3 @@ public func ~~ (field: String, value: RecordValue) -> FilterExpression {
 public func =~ (field: String, value: RecordValue) -> FilterExpression {
     FilterExpression(Filter(field: field, op: .beginsWith, value: value))
 }
-
-extension RecordValue: ExpressibleByStringLiteral {
-    public init(stringLiteral value: String) {
-        self = .string(value)
-    }
-}
-
-extension RecordValue: ExpressibleByIntegerLiteral {
-    public init(integerLiteral value: Int64) {
-        self = .int(value)
-    }
-}
-
-extension RecordValue: ExpressibleByFloatLiteral {
-    public init(floatLiteral value: Double) {
-        self = .double(value)
-    }
-}
-
-extension RecordValue: ExpressibleByBooleanLiteral {
-    public init(booleanLiteral value: Bool) {
-        self = .int(value ? 1 : 0)
-    }
-}
