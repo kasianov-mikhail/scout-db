@@ -9,9 +9,8 @@ struct AggregateOperation {
     let database: any CloudDatabase
     let definition: EntityDefinition
     let branches: [[ClientFilter]]
-    let field: String
 
-    func value(metric: Metric) async throws -> Double? {
+    func value(field: String, metric: Metric) async throws -> Double? {
         let target = try definition.field(field)
 
         guard [.int, .double].contains(target.type) else {
@@ -25,7 +24,7 @@ struct AggregateOperation {
                 branches: branches
             )
 
-            if let folded = try await operation?.fold(of: field, folding: metric) {
+            if let folded = try await operation?.cell(of: field, folding: metric) {
                 return metric.apply(
                     values: [folded.value].compactMap(\.self),
                     count: folded.count
@@ -36,10 +35,10 @@ struct AggregateOperation {
         let scalars = try await ReadOperation(
             database: database,
             definition: definition,
-            sort: [],
-            limit: nil
+            branches: branches,
+            sort: []
         )
-        .read(branches: branches)
+        .records()
         .compactMap(\.values[field]?.scalar)
 
         return metric.apply(
@@ -49,21 +48,14 @@ struct AggregateOperation {
     }
 }
 
-extension AggregateOperation {
-    init(query: QueryBuilder, field: String) async throws {
-        self.init(
-            database: query.store.database,
-            definition: try await query.definition,
-            branches: query.alternatives,
-            field: field
-        )
-    }
-}
-
 extension QueryBuilder {
-    var definition: EntityDefinition {
+    var aggregate: AggregateOperation {
         get async throws {
-            try await store.registry.definition(for: entity)
+            AggregateOperation(
+                database: store.database,
+                definition: try await store.registry.definition(for: entity),
+                branches: alternatives
+            )
         }
     }
 }

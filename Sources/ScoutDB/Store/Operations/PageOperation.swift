@@ -9,43 +9,37 @@ import CloudKit
 
 struct PageOperation: Sendable {
     let database: any CloudDatabase
-    let entity: String
+    let definition: EntityDefinition
     let field: String
     let descending: Bool
-    let limit: Int
-    let cursor: FieldCursor?
-    let definition: EntityDefinition
 
     private var order: [FieldOrder] {
         [FieldOrder(key: .field(field), order: descending ? .reverse : .forward), FieldOrder(key: .uuid)]
     }
 
-    func page(any branches: [[ClientFilter]]) async throws -> FieldPage {
+    func records(branches: [[ClientFilter]], size: Int, cursor: FieldCursor?) async throws -> FieldPage {
         let pages = try await withThrowingTaskGroup(of: [EntityRecord].self) { group in
             for branch in branches {
                 group.addTask {
-                    try await self.page(matching: branch)
+                    try await self.records(matching: branch, size: size, cursor: cursor)
                 }
             }
             return try await group.reduce(into: [EntityRecord]()) { $0 += $1 }
         }
 
-        var seen: Set<String> = []
-        let records = Array(
-            pages.sorted(using: order)
-                .filter { seen.insert($0.uuid).inserted }
-                .prefix(limit)
-        )
+        let records = pages.unique().ranked(using: order, limit: size)
 
         let next: FieldCursor? =
-            records.count == limit
+            records.count == size
             ? records.last.flatMap { record in record.values[field].map { FieldCursor(value: $0, uuid: record.uuid) } }
             : nil
 
         return FieldPage(records: records, cursor: next)
     }
 
-    private func page(matching filters: [ClientFilter]) async throws -> [EntityRecord] {
+    private func records(matching filters: [ClientFilter], size: Int, cursor: FieldCursor?) async throws
+        -> [EntityRecord]
+    {
         var pageFilters = filters
 
         if let cursor {
@@ -63,19 +57,14 @@ struct PageOperation: Sendable {
                 [EntityStore.Sort(field: field, ascending: !descending)]
             ) + [CKQuery.Sort(field: "uuid", order: .forward)]
 
-        let query = CKQuery(
-            recordType: "Entity",
-            filters: try definition.serverFilters(pageFilters),
-            sort: sort
-        )
-        let matching = try definition.clientFilters(pageFilters)
+        let plan = try definition.plan(matching: pageFilters, sort: sort)
 
         let collected = try await database.scan(
-            matching: query,
-            limit: limit,
+            matching: plan.query,
+            limit: size,
             using: definition
         ) { record in
-            guard matching.allSatisfy({ $0.matches(record) ?? false }), record.values[field] != nil else {
+            guard plan.includes(record), record.values[field] != nil else {
                 return false
             }
             guard let cursor else {
@@ -84,7 +73,7 @@ struct PageOperation: Sendable {
             return beyond(record, cursor)
         }
 
-        return Array(collected.sorted(using: order).prefix(limit))
+        return collected.ranked(using: order, limit: size)
     }
 
     private func beyond(_ record: EntityRecord, _ cursor: FieldCursor) -> Bool {
@@ -95,6 +84,33 @@ struct PageOperation: Sendable {
             descending
         case .orderedDescending:
             !descending
+        }
+    }
+}
+
+extension QueryBuilder {
+    var page: PageOperation {
+        get async throws {
+            guard sorts.count == 1, let sort = sorts.first else {
+                throw SchemaError.unsupportedQuery(.singleSortRequired)
+            }
+
+            let definition = try await store.registry.definition(for: entity)
+            let target = try definition.field(sort.field)
+
+            guard [.string, .int, .double, .timestamp].contains(target.type) else {
+                throw SchemaError.unsupportedQuery(.unpageableField(sort.field))
+            }
+            guard case .slot = target.storage else {
+                throw SchemaError.unsupportedQuery(.unpageableField(sort.field))
+            }
+
+            return PageOperation(
+                database: store.database,
+                definition: definition,
+                field: sort.field,
+                descending: !sort.ascending
+            )
         }
     }
 }

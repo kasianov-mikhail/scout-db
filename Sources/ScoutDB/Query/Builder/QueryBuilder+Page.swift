@@ -17,32 +17,11 @@ extension QueryBuilder {
     /// ```
     ///
     public func page(size: Int, after cursor: FieldCursor? = nil) async throws -> FieldPage {
-        guard sorts.count == 1, let sort = sorts.first else {
-            throw SchemaError.unsupportedQuery(.singleSortRequired)
-        }
-
-        let definition = try await store.registry.definition(for: entity)
-
-        guard let target = definition.fieldsByName(at: definition.version)[sort.field] else {
-            throw SchemaError.unknownField(sort.field)
-        }
-        guard [.string, .int, .double, .timestamp].contains(target.type) else {
-            throw SchemaError.unsupportedQuery(.unpageableField(sort.field))
-        }
-        guard case .slot = target.storage else {
-            throw SchemaError.unsupportedQuery(.unpageableField(sort.field))
-        }
-
-        return try await PageOperation(
-            database: store.database,
-            entity: entity,
-            field: sort.field,
-            descending: !sort.ascending,
-            limit: size,
-            cursor: cursor,
-            definition: definition
+        try await page.records(
+            branches: alternatives,
+            size: size,
+            cursor: cursor
         )
-        .page(any: alternatives)
     }
 }
 

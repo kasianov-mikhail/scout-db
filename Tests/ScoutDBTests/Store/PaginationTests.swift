@@ -84,7 +84,7 @@ struct PaginationTests {
         try await writePurchases(5)
         database.pageLimit = 2
 
-        let records = try await ReadOperation(store: store, entity: "purchase").read()
+        let records = try await ReadOperation(store: store, entity: "purchase").records()
         #expect(records.map(\.uuid).sorted() == ["p-0", "p-1", "p-2", "p-3", "p-4"])
     }
 
@@ -99,8 +99,12 @@ struct PaginationTests {
 
         let filter = ClientFilter(field: "comment", op: .contains, value: .string("gif"))
         let records = try await ReadOperation(
-            store: store, entity: "purchase", sort: [EntityStore.Sort(field: "date")], limit: 2
-        ).read(branches: [[filter]])
+            store: store,
+            entity: "purchase",
+            branches: [[filter]],
+            sort: [EntityStore.Sort(field: "date")]
+        )
+        .records(limit: 2)
         #expect(records.map(\.uuid) == ["p-0", "p-2"])
     }
 

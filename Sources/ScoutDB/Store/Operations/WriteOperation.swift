@@ -10,23 +10,12 @@ import Foundation
 
 struct WriteOperation: Sendable {
     let database: any CloudDatabase
-    let aggregator: GridAggregator
-    let entity: String
     let definition: EntityDefinition
-    let encoder: EntityEncoder
-    let decoder: EntityDecoder
+    let aggregator: GridAggregator
 
-    init(database: any CloudDatabase, aggregator: GridAggregator, entity: String, definition: EntityDefinition) {
-        self.database = database
-        self.aggregator = aggregator
-        self.entity = entity
-        self.definition = definition
-        self.encoder = EntityEncoder(definition: definition)
-        self.decoder = EntityDecoder(definition: definition)
-    }
-
-    func write(_ batch: [EntityWrite]) async throws -> [String] {
+    func save(_ batch: [EntityWrite]) async throws -> [String] {
         var stored: Set<String> = []
+
         let records = try batch.map { entry in
             let resolved = try definition.resolve(entry.values, at: definition.version)
             let natural = try naturalUUID(for: resolved)
@@ -38,7 +27,7 @@ struct WriteOperation: Sendable {
             }
 
             return EntityRecord(
-                entity: entity,
+                entity: definition.entity,
                 uuid: uuid,
                 schemaVersion: definition.version,
                 values: resolved
@@ -47,6 +36,7 @@ struct WriteOperation: Sendable {
 
         let (removedFromViews, addedToViews) = try await rebalance(records, stored: stored)
 
+        let encoder = EntityEncoder(definition: definition)
         let encoded = try records.map { try encoder.encode($0) }
 
         for chunk in encoded.chunked(into: maxBatchSize) {
@@ -87,7 +77,11 @@ struct WriteOperation: Sendable {
             latest[record.uuid] = record
         }
 
-        let ids = latest.keys.filter(stored.contains).map { CKRecord.ID(recordName: $0) }
+        let ids = latest.keys.filter(stored.contains).map {
+            CKRecord.ID(recordName: $0)
+        }
+
+        let decoder = EntityDecoder(definition: definition)
         let live = try await database.fetchRecords(ids: ids, batchSize: 100)
             .filter { $0["entity"] as? String == definition.entity }
             .map(decoder.decode)
