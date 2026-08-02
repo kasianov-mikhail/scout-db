@@ -82,12 +82,3 @@ extension SlotAllocator {
         throw SchemaError.invalidDefinition(.exhaustedPool(pool))
     }
 }
-
-extension Storage {
-    var isSlot: Bool {
-        if case .slot = self {
-            return true
-        }
-        return false
-    }
-}
