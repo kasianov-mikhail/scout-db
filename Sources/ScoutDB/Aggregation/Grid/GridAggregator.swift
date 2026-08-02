@@ -85,7 +85,11 @@ struct GridAggregator {
 
         for _ in 0..<maxRetry {
             for entry in pending.values {
-                entry.record.fold(entry.delta)
+                let record = entry.record
+                record[CKRecord.countCell] = (record[CKRecord.countCell] as? Int64 ?? 0) + entry.delta.count
+                if let kind = entry.delta.kind, let total = entry.delta.value {
+                    record[CKRecord.valueCell] = kind.combine(record[CKRecord.valueCell] as? Double, total)
+                }
             }
             var retry: [CKRecord.ID: CKRecord] = [:]
             for chunk in Array(pending.values).chunked(into: maxBatchSize) {
@@ -151,14 +155,5 @@ struct GridAggregator {
         try await database.allRecords(
             matching: .grid(entity: slot.entity, view: slot.view, group: slot.group)
         ).first
-    }
-}
-
-extension CKRecord {
-    fileprivate func fold(_ delta: GridDelta) {
-        self[Self.countCell] = (self[Self.countCell] as? Int64 ?? 0) + delta.count
-        if let kind = delta.kind, let total = delta.value {
-            self[Self.valueCell] = kind.combine(self[Self.valueCell] as? Double, total)
-        }
     }
 }
