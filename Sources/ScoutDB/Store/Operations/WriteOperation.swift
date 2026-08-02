@@ -47,9 +47,7 @@ struct WriteOperation: Sendable {
 
         let (removedFromViews, addedToViews) = try await rebalance(records, stored: stored)
 
-        let encoded = try records.map {
-            try encoder.encode($0)
-        }
+        let encoded = try records.map { try encoder.encode($0) }
 
         for chunk in encoded.chunked(into: maxBatchSize) {
             try await database.modifyRecords(saving: chunk, deleting: [])
@@ -92,9 +90,7 @@ struct WriteOperation: Sendable {
         let ids = latest.keys.filter(stored.contains).map { CKRecord.ID(recordName: $0) }
         let live = try await database.fetchRecords(ids: ids, batchSize: 100)
             .filter { $0["entity"] as? String == definition.entity }
-            .map {
-                try decoder.decode($0)
-            }
+            .map(decoder.decode)
 
         let liveByUUID = Dictionary(
             live.map { ($0.uuid, $0) },

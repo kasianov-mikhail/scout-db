@@ -14,7 +14,7 @@ extension EntityStore {
         let ids = uuids.map { CKRecord.ID(recordName: $0) }
         let records = try await database.fetchRecords(ids: ids, batchSize: 100)
             .filter { $0["entity"] as? String == entity }
-        return try records.map { try decoder.decode($0) }.sorted(using: FieldOrder(key: .uuid))
+        return try records.map(decoder.decode).sorted(using: FieldOrder(key: .uuid))
     }
 
     /// Fetches a single record by its identifier, resolving the entity from the record itself.

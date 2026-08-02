@@ -96,7 +96,7 @@ struct ReadOperation: Sendable {
 
         var collected: [EntityRecord] = []
         try await database.forEachPage(matching: query) { page in
-            collected += try page.map { try decoder.decode($0) }.filter(included)
+            collected += try page.map(decoder.decode).filter(included)
         }
         return collected
     }
