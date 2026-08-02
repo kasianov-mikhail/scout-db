@@ -129,7 +129,7 @@ extension EntityDefinition {
             predecessors[slot] = field
         }
         var values: [String: RecordValue] = [:]
-        for field in fields(at: version) {
+        for field in activeFields {
             if let value = decoded.values[field.name] {
                 values[field.name] = value
             } else if case .slot(_, let slot) = field.storage {

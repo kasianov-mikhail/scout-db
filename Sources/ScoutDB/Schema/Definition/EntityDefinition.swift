@@ -34,6 +34,10 @@ extension EntityDefinition {
         index.fields(at: version, of: fields)
     }
 
+    var activeFields: [FieldDefinition] {
+        fields(at: version)
+    }
+
     func fieldsByName(at version: Int) -> [String: FieldDefinition] {
         index.fieldsByName(at: version, of: fields)
     }
