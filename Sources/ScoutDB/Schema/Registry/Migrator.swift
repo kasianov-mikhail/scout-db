@@ -54,16 +54,16 @@ public struct Migrator: Sendable {
 
         try await database.forEachPage(matching: query) { page in
             let rewritten = try page.map { record in
-                try coder.rewrite(record) { entityRecord in
-                    let previous = entityRecord
-                    entityRecord = EntityRecord(
-                        entity: entity,
-                        uuid: previous.uuid,
-                        schemaVersion: definition.version,
-                        values: definition.rekey(previous)
-                    )
-                    try transform(&entityRecord, previous)
-                }
+                let previous = try coder.decode(record)
+                var entityRecord = EntityRecord(
+                    entity: entity,
+                    uuid: previous.uuid,
+                    schemaVersion: definition.version,
+                    values: definition.rekey(previous)
+                )
+                try transform(&entityRecord, previous)
+                entityRecord.values = try definition.resolve(entityRecord.values, at: entityRecord.schemaVersion)
+                return try coder.encode(entityRecord, into: record)
             }
 
             guard rewritten.count > 0 else {
@@ -138,14 +138,5 @@ extension EntityDefinition {
             }
         }
         return values
-    }
-}
-
-extension EntityCoder {
-    fileprivate func rewrite(_ record: CKRecord, transform: (inout EntityRecord) throws -> Void) throws -> CKRecord {
-        var next = try decode(record)
-        try transform(&next)
-        next.values = try definition.resolve(next.values, at: next.schemaVersion)
-        return try encode(next, into: record)
     }
 }
