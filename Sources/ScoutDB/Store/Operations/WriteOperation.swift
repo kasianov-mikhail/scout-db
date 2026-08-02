@@ -13,14 +13,16 @@ struct WriteOperation: Sendable {
     let aggregator: GridAggregator
     let entity: String
     let definition: EntityDefinition
-    let coder: EntityCoder
+    let encoder: EntityEncoder
+    let decoder: EntityDecoder
 
     init(database: any CloudDatabase, aggregator: GridAggregator, entity: String, definition: EntityDefinition) {
         self.database = database
         self.aggregator = aggregator
         self.entity = entity
         self.definition = definition
-        self.coder = EntityCoder(definition: definition)
+        self.encoder = EntityEncoder(definition: definition)
+        self.decoder = EntityDecoder(definition: definition)
     }
 
     func write(_ batch: [EntityWrite]) async throws -> [String] {
@@ -46,7 +48,7 @@ struct WriteOperation: Sendable {
         let (removedFromViews, addedToViews) = try await rebalance(records, stored: stored)
 
         let encoded = try records.map {
-            try coder.encode($0)
+            try encoder.encode($0)
         }
 
         for chunk in encoded.chunked(into: maxBatchSize) {
@@ -91,7 +93,7 @@ struct WriteOperation: Sendable {
         let live = try await database.fetchRecords(ids: ids, batchSize: 100)
             .filter { $0["entity"] as? String == definition.entity }
             .map {
-                try coder.decode($0)
+                try decoder.decode($0)
             }
 
         let liveByUUID = Dictionary(
