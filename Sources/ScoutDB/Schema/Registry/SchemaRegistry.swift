@@ -55,7 +55,24 @@ public actor SchemaRegistry {
     /// and the rules over them, without the storage the library keeps to
     /// itself.
     public func schema(for entity: String) async throws -> EntitySchema {
-        EntitySchema(try await definition(for: entity))
+        let definition = try await definition(for: entity)
+        return EntitySchema(
+            entity: definition.entity,
+            fields: definition.fields(at: definition.version).map {
+                EntitySchema.Field(
+                    name: $0.name,
+                    type: $0.type,
+                    required: $0.required == true,
+                    payload: $0.storage == .payload,
+                    allowed: $0.allowed,
+                    defaultValue: $0.defaultValue,
+                    min: $0.min,
+                    max: $0.max,
+                    pattern: $0.pattern
+                )
+            },
+            unique: definition.unique
+        )
     }
 
     func publish(_ definition: EntityDefinition) async throws {
