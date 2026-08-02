@@ -12,12 +12,8 @@ extension EntityDefinition {
     func serverFilters(_ filters: [ClientFilter]) throws -> [CKQuery.Filter] {
         var server = [CKQuery.Filter(field: "entity", op: .equals, value: .string(entity))]
 
-        let byName = fieldsByName(at: version)
-
         for filter in filters {
-            guard let field = byName[filter.field] else {
-                throw SchemaError.unknownField(filter.field)
-            }
+            let field = try field(filter.field)
 
             switch filter.op {
             case .contains where !field.type.isList:
@@ -41,12 +37,8 @@ extension EntityDefinition {
     }
 
     func clientFilters(_ filters: [ClientFilter]) throws -> [ClientFilter] {
-        let byName = fieldsByName(at: version)
-
-        return try filters.filter { filter in
-            guard let field = byName[filter.field] else {
-                throw SchemaError.unknownField(filter.field)
-            }
+        try filters.filter { filter in
+            let field = try field(filter.field)
 
             switch filter.op {
             case .contains where !field.type.isList:
@@ -69,9 +61,8 @@ extension EntityDefinition {
 
     func serverSort(_ sort: [EntityStore.Sort]) throws -> [CKQuery.Sort] {
         try sort.map { sort in
-            guard let field = fieldsByName(at: version)[sort.field] else {
-                throw SchemaError.unknownField(sort.field)
-            }
+            let field = try field(sort.field)
+
             guard case .slot(let pool, let slot) = field.storage else {
                 throw SchemaError.unknownField(sort.field)
             }

@@ -385,7 +385,7 @@ struct BuilderTests {
                     ], uuid: "p-3")
             ], entity: "purchase")
 
-        let totals = try await store.query("purchase").totals(by: "product_id")
+        let totals = try await store.query("purchase").totals(metric: .sum, group: "product_id")
         #expect(totals.map(\.group) == ["sku-0", "sku-1", "sku-2"])
         #expect(totals.map(\.count) == [2, 1, 1])
     }

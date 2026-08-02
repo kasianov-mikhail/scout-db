@@ -21,13 +21,11 @@ extension QueryBuilder {
     ///
     /// ```swift
     /// let revenue = try await store.query("purchase")
-    ///     .totals("amount", by: "product_id")
+    ///     .totals("amount", metric: .sum, group: "product_id")
     /// // [AggregateTotal(group: "sku-42", count: 48211, value: 481628.9), ...]
     /// ```
     ///
-    public func totals(
-        _ field: String? = nil, metric: Metric = .sum, by group: String? = nil
-    ) async throws -> [AggregateTotal] {
+    public func totals(_ field: String? = nil, metric: Metric, group: String? = nil) async throws -> [AggregateTotal] {
         try await total.rows(
             field: field,
             metric: metric,

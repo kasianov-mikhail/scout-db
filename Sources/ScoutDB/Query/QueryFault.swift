@@ -39,7 +39,7 @@ extension QueryFault: CustomStringConvertible {
         case .noAggregate(let entity, let grouping, let folding):
             "Entity '\(entity)' keeps no aggregate "
                 + [grouping.map { "grouped by '\($0)'" }, folding.map { "folding '\($0)'" }]
-                .compactMap { $0 }
+                .compactMap(\.self)
                 .joined(separator: ", ")
         }
     }

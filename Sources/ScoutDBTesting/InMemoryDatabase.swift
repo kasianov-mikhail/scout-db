@@ -29,7 +29,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
             if let dense {
                 return dense
             }
-            let records = slots.compactMap { $0 }
+            let records = slots.compactMap(\.self)
             dense = records
             return records
         }
@@ -81,7 +81,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
             guard emptied > 64, emptied * 2 >= slots.count else {
                 return
             }
-            let records = slots.compactMap { $0 }
+            let records = slots.compactMap(\.self)
             positions.removeAll(keepingCapacity: true)
             for (position, record) in records.enumerated() {
                 positions[record.recordID] = position
@@ -168,14 +168,14 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     public init() {}
 
     public func records(matching query: CKQuery, resultsLimit: Int) async throws -> QueryPage {
-        try counting(.query, carrying: { $0.matchResults.count }) {
+        try counting(.query, carrying: \.matchResults.count) {
             try popErrorLocked(writing: false)
             return pageLocked(query: query, resultsLimit: resultsLimit)
         }
     }
 
     public func records(continuingMatchFrom cursor: QueryCursor, resultsLimit: Int) async throws -> QueryPage {
-        try counting(.continuation, carrying: { $0.matchResults.count }) {
+        try counting(.continuation, carrying: \.matchResults.count) {
             try popErrorLocked(writing: false)
             let resumed = LocalQuery.resume(
                 indexedLocked(),
@@ -221,7 +221,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     }
 
     public func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
-        try counting(.conditionalSave, carrying: { $0.count }) {
+        try counting(.conditionalSave, carrying: \.count) {
             var queued: [CKRecord.ID: any Error] = [:]
             let batch = Set(records.map(\.recordID))
             while let next = pendingConflictLocked(in: batch, queued: queued) {
@@ -297,7 +297,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     }
 
     public func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
-        try counting(.fetch, carrying: { $0.count }) {
+        try counting(.fetch, carrying: \.count) {
             try popErrorLocked(writing: false)
             return ids.compactMap { state.table.record(id: $0)?.duplicate() }
         }

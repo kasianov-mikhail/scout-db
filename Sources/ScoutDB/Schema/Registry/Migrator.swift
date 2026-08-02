@@ -27,9 +27,7 @@ public struct Migrator: Sendable {
     @discardableResult public func rename(entity: String, from: String, to: String) async throws -> Int {
         let definition = try await registry.definition(for: entity)
 
-        guard definition.fieldsByName(at: definition.version)[to] != nil else {
-            throw SchemaError.unknownField(to)
-        }
+        try definition.field(to)
 
         return try await backfill(entity: entity) { record, previous in
             record.values[to] = record.values[to] ?? previous.values[from]
