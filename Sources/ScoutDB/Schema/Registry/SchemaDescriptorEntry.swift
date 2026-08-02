@@ -17,10 +17,10 @@ struct SchemaDescriptorEntry {
 
     init(record: CKRecord) throws {
         guard let entity = record["entity"] as? String, let version = record["entity_version"] as? Int64 else {
-            throw SchemaError.invalidDefinition("Malformed SchemaDescriptor record '\(record.recordID.recordName)'")
+            throw SchemaError.malformedRecord(record.recordID.recordName)
         }
         guard let definition = record["definition"] as? Data else {
-            throw SchemaError.invalidDefinition("Malformed SchemaDescriptor record '\(record.recordID.recordName)'")
+            throw SchemaError.malformedRecord(record.recordID.recordName)
         }
         self.entity = entity
         self.version = Int(version)

@@ -103,7 +103,7 @@ struct ReadOperation: Sendable {
 
     private func clientRanked(_ sort: [EntityStore.Sort]) throws -> Bool {
         try sort.contains { clause in
-            guard let field = definition.field(named: clause.field, at: definition.version) else {
+            guard let field = definition.fieldsByName(at: definition.version)[clause.field] else {
                 throw SchemaError.unknownField(clause.field)
             }
             guard case .payload = field.storage else {

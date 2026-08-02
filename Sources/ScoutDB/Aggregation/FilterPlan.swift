@@ -43,17 +43,13 @@ struct FilterPlan {
         self = merged
     }
 
-    func foldPlan(
-        in definition: EntityDefinition, folding kind: Metric, of field: String?, grouping group: String?
-    ) -> AggregateDefinition? {
-        let grouping = group ?? groupField
-
-        return (definition.aggregates ?? []).first { aggregate in
-            guard grouping == nil || aggregate.groupBy == grouping else {
+    func foldPlan(in definition: EntityDefinition, folding kind: Metric, of field: String?) -> AggregateDefinition? {
+        definition.aggregates?.first { aggregate in
+            guard groupField == nil || aggregate.groupBy == groupField else {
                 return false
             }
             return field.map {
-                aggregate.metricKind == kind && aggregate.metricField == $0
+                aggregate.metricKind == kind.storage && aggregate.metricField == $0
             } ?? true
         }
     }
@@ -62,7 +58,7 @@ struct FilterPlan {
         guard groupField == nil, let name = numericField else {
             return
         }
-        guard let field = definition.field(named: name, at: definition.version) else {
+        guard let field = definition.fieldsByName(at: definition.version)[name] else {
             return
         }
         guard field.type == .int, field.alwaysPresent else {
@@ -114,11 +110,11 @@ extension FilterPlan {
                 guard groupField == nil else {
                     return nil
                 }
-                guard let keys = value.elementCanonicals else {
+                guard let members = value.members else {
                     return nil
                 }
                 groupField = filter.field
-                groupKeys = keys
+                groupKeys = Set(members.map(\.canonical))
 
             case (.greaterThanOrEquals, let value):
                 guard let scalar = value.scalar else {
@@ -176,11 +172,5 @@ extension FilterPlan {
                 return nil
             }
         }
-    }
-}
-
-extension RecordValue {
-    fileprivate var elementCanonicals: Set<String>? {
-        members.map { Set($0.map(\.canonical)) }
     }
 }

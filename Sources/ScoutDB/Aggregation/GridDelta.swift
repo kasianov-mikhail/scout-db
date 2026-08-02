@@ -21,7 +21,7 @@ struct GridDelta {
         self.kind = kind
 
         if let total = other.value {
-            value = kind.combine(value, total)
+            value = value.map { kind.combine($0, total) } ?? total
         }
     }
 

@@ -11,11 +11,10 @@ struct AggregateOperation {
     let store: EntityStore
     let entity: String
 
-    var branches: [[Filter]]
-    var field: String?
-    var group: String?
+    let branches: [[Filter]]
+    let field: String?
 
-    func value(fold: Fold) async throws -> Double? {
+    func value(metric: Metric) async throws -> Double? {
         guard let field else {
             return nil
         }
@@ -24,11 +23,8 @@ struct AggregateOperation {
 
         try definition.numericField(field)
 
-        if let folded = try await gridCells(fold: fold, field: field) {
-            let count = folded.values.reduce(0) { $0 + $1.count }
-            let values = folded.values.compactMap(\.value)
-
-            return fold.apply(values: values, count: count)
+        if let folded = try await gridCell(metric: metric, field: field) {
+            return metric.apply(values: [folded.value].compactMap { $0 }, count: folded.count)
         }
 
         let records = try await ReadOperation(
@@ -38,117 +34,28 @@ struct AggregateOperation {
         .read(any: branches)
         let scalars = records.compactMap { $0.values[field]?.scalar }
 
-        return fold.apply(values: scalars, count: scalars.count)
+        return metric.apply(values: scalars, count: scalars.count)
     }
 
-    func values(fold: Fold) async throws -> [String: Double] {
-        guard let field, let group else {
-            return [:]
-        }
-
-        let definition = try await store.registry.definition(for: entity)
-
-        try definition.numericField(field)
-        try definition.declaredField(group)
-
-        if let folded = try await gridCells(fold: fold, field: field, group: group) {
-            return folded.compactMapValues { cell in
-                fold.apply(values: [cell.value].compactMap { $0 }, count: cell.count)
-            }
-        }
-
-        let records = try await ReadOperation(
-            store: store,
-            entity: entity
-        )
-        .read(any: branches)
-
-        var buckets: [String: [Double]] = [:]
-        for record in records {
-            guard let key = record.values[group]?.canonical, let scalar = record.values[field]?.scalar else {
-                continue
-            }
-            buckets[key, default: []].append(scalar)
-        }
-
-        return buckets.mapValues { scalars in
-            fold.apply(values: scalars, count: scalars.count) ?? 0
-        }
-    }
-
-    func counts() async throws -> [String: Int] {
-        guard let group else {
-            return [:]
-        }
-
-        let definition = try await store.registry.definition(for: entity)
-
-        try definition.declaredField(group)
-
-        if let gridded = try await gridCounts(group: group) {
-            return gridded
-        }
-
-        let records = try await ReadOperation(
-            store: store,
-            entity: entity
-        )
-        .read(any: branches)
-
-        var counts: [String: Int] = [:]
-        for record in records {
-            guard let key = record.values[group]?.canonical else {
-                continue
-            }
-            counts[key, default: 0] += 1
-        }
-        return counts
-    }
-}
-
-extension AggregateOperation {
-    private func gridCounts(group: String) async throws -> [String: Int]? {
-        guard try await store.registry.alwaysPresent(group, entity: entity) else {
-            return nil
-        }
-        guard let folder = try await store.folder(entity: entity, any: branches) else {
-            return nil
-        }
-        guard let folded = try await folder.fold(of: nil, by: group) else {
-            return nil
-        }
-        return folded.mapValues(\.count)
-    }
-
-    private func gridCells(fold: Fold, field: String, group: String? = nil) async throws -> [String: GridFold]? {
-        if fold == .average, try await store.registry.alwaysPresent(field, entity: entity) == false {
-            return nil
-        }
-        if let group, try await store.registry.alwaysPresent(group, entity: entity) == false {
+    private func gridCell(metric: Metric, field: String) async throws -> GridFold? {
+        if metric == .average, try await store.registry.alwaysPresent(field, entity: entity) == false {
             return nil
         }
 
         guard let folder = try await store.folder(entity: entity, any: branches) else {
             return nil
         }
-        return try await folder.fold(of: field, folding: fold.metric, by: group)
+        return try await folder.fold(of: field, folding: metric)
     }
 }
 
 extension EntityDefinition {
     @discardableResult fileprivate func numericField(_ name: String) throws -> FieldDefinition {
-        guard let target = field(named: name, at: version) else {
-            throw SchemaError.invalidValue(name)
+        guard let target = fieldsByName(at: version)[name] else {
+            throw SchemaError.unknownField(name)
         }
         guard target.isNumeric else {
-            throw SchemaError.invalidValue(name)
-        }
-        return target
-    }
-
-    @discardableResult fileprivate func declaredField(_ name: String) throws -> FieldDefinition {
-        guard let target = field(named: name, at: version) else {
-            throw SchemaError.unknownField(name)
+            throw SchemaError.unsupportedQuery(.nonNumericField(name))
         }
         return target
     }

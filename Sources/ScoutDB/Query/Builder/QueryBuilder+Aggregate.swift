@@ -26,11 +26,8 @@ extension QueryBuilder {
     /// ```
     ///
     public func count() async throws -> Int {
-        if let folded = try await store.folder(entity: entity, any: alternatives)?.fold(of: nil, by: nil) {
-            return Swift.min(
-                folded.values.reduce(0) { $0 + $1.count },
-                ceiling ?? Int.max
-            )
+        if let folded = try await store.folder(entity: entity, any: alternatives)?.fold(of: nil) {
+            return Swift.min(folded.count, ceiling ?? Int.max)
         }
 
         return try await ReadOperation(
@@ -62,7 +59,7 @@ extension QueryBuilder {
             branches: alternatives,
             field: field
         )
-        .value(fold: .sum) ?? 0
+        .value(metric: .sum) ?? 0
     }
 
     /// The smallest value of a numeric field across the matching records.
@@ -84,7 +81,7 @@ extension QueryBuilder {
             branches: alternatives,
             field: field
         )
-        .value(fold: .min)
+        .value(metric: .min)
     }
 
     /// The largest value of a numeric field across the matching records.
@@ -106,7 +103,7 @@ extension QueryBuilder {
             branches: alternatives,
             field: field
         )
-        .value(fold: .max)
+        .value(metric: .max)
     }
 
     /// The mean of a numeric field across the matching records.
@@ -128,117 +125,6 @@ extension QueryBuilder {
             branches: alternatives,
             field: field
         )
-        .value(fold: .average)
-    }
-
-    /// Sums a numeric field per distinct value of the grouping field.
-    ///
-    /// One entry per value the grouping field takes among the matching records.
-    /// An aggregate grouped by that field answers it without reading records;
-    /// otherwise the query scans the matching records.
-    ///
-    /// ```swift
-    /// let byProduct = try await store.query("purchase")
-    ///     .filter("status" == "paid")
-    ///     .sum("amount", by: "product_id")
-    /// // ["sku-42": 1250.0, "sku-7": 310.0]
-    /// ```
-    ///
-    public func sum(_ field: String, by group: String) async throws -> [String: Double] {
-        try await AggregateOperation(
-            store: store,
-            entity: entity,
-            branches: alternatives,
-            field: field,
-            group: group
-        )
-        .values(fold: .sum)
-    }
-
-    /// The smallest value of a numeric field per distinct value of the grouping
-    /// field.
-    ///
-    /// One entry per value the grouping field takes among the matching records;
-    /// a group whose records all miss the folded field is left out.
-    ///
-    /// ```swift
-    /// let cheapest = try await store.query("purchase")
-    ///     .min("amount", by: "product_id")
-    /// ```
-    ///
-    public func min(_ field: String, by group: String) async throws -> [String: Double] {
-        try await AggregateOperation(
-            store: store,
-            entity: entity,
-            branches: alternatives,
-            field: field,
-            group: group
-        )
-        .values(fold: .min)
-    }
-
-    /// The largest value of a numeric field per distinct value of the grouping
-    /// field.
-    ///
-    /// One entry per value the grouping field takes among the matching records;
-    /// a group whose records all miss the folded field is left out.
-    ///
-    /// ```swift
-    /// let peak = try await store.query("purchase")
-    ///     .max("amount", by: "product_id")
-    /// ```
-    ///
-    public func max(_ field: String, by group: String) async throws -> [String: Double] {
-        try await AggregateOperation(
-            store: store,
-            entity: entity,
-            branches: alternatives,
-            field: field,
-            group: group
-        )
-        .values(fold: .max)
-    }
-
-    /// The mean of a numeric field per distinct value of the grouping field.
-    ///
-    /// One entry per value the grouping field takes among the matching records,
-    /// each derived from that group's total and count.
-    ///
-    /// ```swift
-    /// let basket = try await store.query("purchase")
-    ///     .average("amount", by: "product_id")
-    /// ```
-    ///
-    public func average(_ field: String, by group: String) async throws -> [String: Double] {
-        try await AggregateOperation(
-            store: store,
-            entity: entity,
-            branches: alternatives,
-            field: field,
-            group: group
-        )
-        .values(fold: .average)
-    }
-
-    /// Counts the matching records per distinct value of the grouping field.
-    ///
-    /// One entry per value the grouping field takes, read off the grid every
-    /// creation builds over its groupable fields — so this costs one request
-    /// however many records stand behind it, unless the query's shape falls
-    /// outside what the grid can answer and it has to scan.
-    ///
-    /// ```swift
-    /// let byStatus = try await store.query("purchase").count(by: "status")
-    /// // ["placed": 128, "paid": 64]
-    /// ```
-    ///
-    public func count(by group: String) async throws -> [String: Int] {
-        try await AggregateOperation(
-            store: store,
-            entity: entity,
-            branches: alternatives,
-            group: group
-        )
-        .counts()
+        .value(metric: .average)
     }
 }

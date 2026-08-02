@@ -25,7 +25,7 @@ extension EntityDefinition {
 
             case .search:
                 guard field.type == .text, case .slot(_, let slot) = field.storage else {
-                    throw SchemaError.invalidValue(filter.field)
+                    throw SchemaError.unsupportedQuery(.unsearchableField(filter.field))
                 }
                 server.append(CKQuery.Filter(field: slot, op: .search, value: filter.value))
 
@@ -54,7 +54,7 @@ extension EntityDefinition {
 
             case .search:
                 guard field.type == .text, case .slot = field.storage else {
-                    throw SchemaError.invalidValue(filter.field)
+                    throw SchemaError.unsupportedQuery(.unsearchableField(filter.field))
                 }
                 return true
 
@@ -69,14 +69,14 @@ extension EntityDefinition {
 
     func serverSort(_ sort: [EntityStore.Sort]) throws -> [CKQuery.Sort] {
         try sort.map { sort in
-            guard let field = field(named: sort.field, at: version) else {
+            guard let field = fieldsByName(at: version)[sort.field] else {
                 throw SchemaError.unknownField(sort.field)
             }
             guard case .slot(let pool, let slot) = field.storage else {
                 throw SchemaError.unknownField(sort.field)
             }
             guard pool.isSortable else {
-                throw SchemaError.invalidValue(sort.field)
+                throw SchemaError.unsupportedQuery(.unsortableField(sort.field))
             }
 
             return CKQuery.Sort(field: slot, order: sort.ascending ? .forward : .reverse)

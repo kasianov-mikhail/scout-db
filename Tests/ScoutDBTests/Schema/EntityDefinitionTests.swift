@@ -42,7 +42,9 @@ struct EntityDefinitionTests {
             FieldDefinition(name: "count", type: .int, storage: .slot(.string, "s_00"))
         ]
         )
-        #expect(throws: SchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.invalidDefinition(.slotTypeMismatch(field: "count", type: .int, pool: .string))) {
+            try definition.validate()
+        }
     }
 
     @Test("Validation rejects a slot with a foreign prefix")
@@ -51,7 +53,9 @@ struct EntityDefinitionTests {
             FieldDefinition(name: "count", type: .int, storage: .slot(.int, "d_00"))
         ]
         )
-        #expect(throws: SchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.invalidDefinition(.slotOutsidePool("d_00", pool: .int))) {
+            try definition.validate()
+        }
     }
 
     @Test("Validation rejects overlapping fields sharing a slot")
@@ -61,7 +65,9 @@ struct EntityDefinitionTests {
             FieldDefinition(name: "second", type: .int, storage: .slot(.int, "i_00")),
         ]
         )
-        #expect(throws: SchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.invalidDefinition(.sharedSlot("first", "second", slot: "i_00"))) {
+            try definition.validate()
+        }
     }
 
     @Test("Validation allows slot reuse across disjoint versions")
@@ -89,7 +95,9 @@ struct EntityDefinitionTests {
             FieldDefinition(name: "title", type: .text, storage: .slot(.string, "s_00"))
         ]
         )
-        #expect(throws: SchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.invalidDefinition(.slotTypeMismatch(field: "title", type: .text, pool: .string))) {
+            try definition.validate()
+        }
     }
 
     @Test("Validation rejects a slot beyond the pool capacity")
@@ -98,7 +106,9 @@ struct EntityDefinitionTests {
             FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_99"))
         ]
         )
-        #expect(throws: SchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.invalidDefinition(.slotBeyondCapacity("s_99", pool: .string))) {
+            try definition.validate()
+        }
     }
 
     @Test("Validation rejects a aggregate summing a non-numeric field")
@@ -110,7 +120,9 @@ struct EntityDefinitionTests {
             ],
             aggregates: [AggregateDefinition(name: "total", sum: "name")]
         )
-        #expect(throws: SchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.invalidDefinition(.nonNumericMetric(aggregate: "total", field: "name"))) {
+            try definition.validate()
+        }
     }
 
     @Test("Validation rejects a unique key that is not a field")
@@ -121,7 +133,9 @@ struct EntityDefinitionTests {
             ],
             unique: ["user_id"]
         )
-        #expect(throws: SchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.invalidDefinition(.unknownUniqueKey("user_id"))) {
+            try definition.validate()
+        }
     }
 
     @Test("Validation rejects an allowed domain on a non-string field")
@@ -131,7 +145,9 @@ struct EntityDefinitionTests {
                 FieldDefinition(name: "count", type: .int, storage: .slot(.int, "i_00"), allowed: ["1", "2"])
             ]
         )
-        #expect(throws: SchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.invalidDefinition(.unsupportedAllowed(field: "count", type: .int))) {
+            try definition.validate()
+        }
     }
 
     @Test("Validation rejects a numeric bound on a non-numeric field")
@@ -141,7 +157,9 @@ struct EntityDefinitionTests {
                 FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"), min: 0)
             ]
         )
-        #expect(throws: SchemaError.self) { try definition.validate() }
+        #expect(throws: SchemaError.invalidDefinition(.unsupportedBounds(field: "name", type: .string))) {
+            try definition.validate()
+        }
     }
 }
 

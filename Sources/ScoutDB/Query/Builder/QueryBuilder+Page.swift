@@ -18,19 +18,19 @@ extension QueryBuilder {
     ///
     public func page(size: Int, after cursor: FieldCursor? = nil) async throws -> FieldPage {
         guard sorts.count == 1, let sort = sorts.first else {
-            throw SchemaError.invalidDefinition("A field-ordered page requires exactly one sort clause")
+            throw SchemaError.unsupportedQuery(.singleSortRequired)
         }
 
         let definition = try await store.registry.definition(for: entity)
 
-        guard let target = definition.field(named: sort.field, at: definition.version) else {
-            throw SchemaError.invalidValue(sort.field)
+        guard let target = definition.fieldsByName(at: definition.version)[sort.field] else {
+            throw SchemaError.unknownField(sort.field)
         }
         guard [.string, .int, .double, .timestamp].contains(target.type) else {
-            throw SchemaError.invalidValue(sort.field)
+            throw SchemaError.unsupportedQuery(.unpageableField(sort.field))
         }
         guard case .slot = target.storage else {
-            throw SchemaError.invalidValue(sort.field)
+            throw SchemaError.unsupportedQuery(.unpageableField(sort.field))
         }
 
         return try await PageOperation(

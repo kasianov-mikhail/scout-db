@@ -12,7 +12,7 @@ struct TotalOperation {
     let store: EntityStore
     let entity: String
     let aggregate: String
-    var group: String?
+    let group: String?
 
     init(_ store: EntityStore, entity: String, aggregate: String, group: String? = nil) {
         self.store = store
@@ -31,7 +31,7 @@ struct TotalOperation {
         let kind = declared.metricKind
 
         let records = try await store.database.allRecords(
-            matching: .grid(entity: entity, aggregate: aggregate, group: group)
+            matching: CKQuery(gridOf: entity, aggregate: aggregate, group: group)
         )
 
         var totals: [String: AggregateTotal] = [:]
@@ -50,10 +50,16 @@ struct TotalOperation {
 
             let merged = totals[key]
 
+            var total = merged?.value
+
+            if let kind, let value {
+                total = total.map { kind.combine($0, value) } ?? value
+            }
+
             totals[key] = AggregateTotal(
                 group: key,
                 count: (merged?.count ?? 0) + count,
-                value: kind?.accumulate(merged?.value, value) ?? merged?.value
+                value: total
             )
         }
 
@@ -62,17 +68,13 @@ struct TotalOperation {
 }
 
 extension TotalOperation {
-    init(_ query: QueryBuilder, field: String?, group: String?) async throws {
+    init(_ query: QueryBuilder, field: String?, metric: Metric, group: String?) async throws {
         let store = query.store
         let definition = try await store.registry.definition(for: query.entity)
 
-        guard let aggregate = definition.aggregate(grouping: group, folding: field) else {
-            let shape = [
-                group.map { "grouped by '\($0)'" },
-                field.map { "folding '\($0)'" },
-            ]
-            throw SchemaError.invalidDefinition(
-                "Entity '\(query.entity)' keeps no aggregate \(shape.compactMap { $0 }.joined(separator: ", "))"
+        guard let aggregate = definition.aggregate(grouping: group, folding: field, as: metric) else {
+            throw SchemaError.unsupportedQuery(
+                .noAggregate(entity: query.entity, grouping: group, folding: field)
             )
         }
 
@@ -88,15 +90,13 @@ extension TotalOperation {
 extension QueryBuilder {
     fileprivate func narrowing(to group: String?) throws -> String? {
         guard let flat else {
-            throw SchemaError.invalidDefinition("An aggregate reads the grid and cannot honor a disjunction")
+            throw SchemaError.unsupportedQuery(.disjunctionUnsupported)
         }
 
         var narrowed: String?
         for filter in flat {
             guard let group, filter.field == group, filter.op == .equals else {
-                throw SchemaError.invalidDefinition(
-                    "An aggregate reads the grid and can only be filtered by an equal '\(group ?? "group")'"
-                )
+                throw SchemaError.unsupportedQuery(.equalityOnly(group: group))
             }
             narrowed = filter.value.canonical
         }

@@ -72,7 +72,7 @@ struct OperationsTests {
         #expect(rest.records.map(\.uuid) == ["p-1"])
         #expect(rest.cursor == nil)
 
-        await #expect(throws: SchemaError.invalidValue("comment")) {
+        await #expect(throws: SchemaError.unsupportedQuery(.unpageableField("comment"))) {
             _ = try await store.query("purchase").sort("comment").page(size: 1)
         }
     }
@@ -191,18 +191,18 @@ struct OperationsTests {
                     values: ["email": .string("ada@example.com"), "codes": .strings(["ABC", "XYZ"])], uuid: "a-1")
             ], entity: "account")
 
-        await #expect(throws: SchemaError.invalidValue("email")) {
+        await #expect(throws: SchemaError.invalidValue(.patternMismatch(field: "email"))) {
             try await store.write(
                 [EntityWrite(values: ["email": .string("not-an-email")], uuid: "a-2")], entity: "account")
         }
-        await #expect(throws: SchemaError.invalidValue("codes")) {
+        await #expect(throws: SchemaError.invalidValue(.patternMismatch(field: "codes"))) {
             try await store.write(
                 [
                     EntityWrite(
                         values: ["email": .string("bo@example.com"), "codes": .strings(["ABC", "nope"])], uuid: "a-3")
                 ], entity: "account")
         }
-        await #expect(throws: SchemaError.invalidValue("email")) {
+        await #expect(throws: SchemaError.invalidValue(.patternMismatch(field: "email"))) {
             try await store.write(
                 [EntityWrite(values: ["email": .string("ada@example.com !!")], uuid: "a-4")], entity: "account")
         }
@@ -211,12 +211,14 @@ struct OperationsTests {
             FieldDefinition(name: "count", type: .int, storage: .slot(.int, "i_00"), pattern: "[0-9]+")
         ]
         )
-        #expect(throws: SchemaError.self) { try numeric.validate() }
+        #expect(throws: SchemaError.invalidDefinition(.unsupportedPattern(field: "count", type: .int))) {
+            try numeric.validate()
+        }
         let broken = makeDefinition(fields: [
             FieldDefinition(name: "email", type: .string, storage: .slot(.string, "s_00"), pattern: "([")
         ]
         )
-        #expect(throws: SchemaError.self) { try broken.validate() }
+        #expect(throws: SchemaError.invalidDefinition(.malformedPattern(field: "email"))) { try broken.validate() }
     }
 
     @Test("Fetch by identifier resolves the entity from the record")

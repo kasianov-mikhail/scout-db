@@ -44,6 +44,6 @@ extension SlotAllocator {
             used[pool, default: []].insert(slot)
             return slot
         }
-        throw SchemaError.invalidDefinition("The '\(pool.rawValue)' pool is exhausted")
+        throw SchemaError.invalidDefinition(.exhaustedPool(pool))
     }
 }

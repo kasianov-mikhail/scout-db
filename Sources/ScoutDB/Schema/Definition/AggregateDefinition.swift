@@ -32,28 +32,3 @@ struct AggregateDefinition: Codable, Equatable, Sendable {
         sum ?? min ?? max
     }
 }
-
-enum Metric: Equatable, Sendable {
-    case sum, min, max
-
-    func combine(_ lhs: Double, _ rhs: Double) -> Double {
-        switch self {
-        case .sum:
-            lhs + rhs
-        case .min:
-            Swift.min(lhs, rhs)
-        case .max:
-            Swift.max(lhs, rhs)
-        }
-    }
-
-    func combine(_ lhs: Double?, _ rhs: Double) -> Double {
-        lhs.map { combine($0, rhs) } ?? rhs
-    }
-
-    func accumulate(_ lhs: Double?, _ rhs: Double?) -> Double? {
-        rhs.map { combine(lhs, $0) } ?? lhs
-    }
-
-    var isReversible: Bool { self == .sum }
-}

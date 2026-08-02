@@ -190,14 +190,18 @@ struct StoreContractTests {
     @Test("Counts group records by a field's values")
     func countsByGroup() async throws {
         try await withContract { f in
-            let entity = try await f.publishOrder()
+            let entity = try await f.publishOrder(
+                aggregates: [AggregateDefinition(name: "by_product", groupBy: "product")]
+            )
             for (index, product) in ["a", "a", "b"].enumerated() {
                 try await f.store.write(
                     [EntityWrite(values: orderValues(product: product), uuid: "cg-\(index)")], entity: entity)
             }
             try await eventually { try await ReadOperation(store: f.store, entity: entity).read().count == 3 }
 
-            #expect(try await f.store.query(entity).count(by: "product") == ["a": 2, "b": 1])
+            let totals = try await f.store.query(entity).totals(by: "product")
+            #expect(totals.map(\.group) == ["a", "b"])
+            #expect(totals.map(\.count) == [2, 1])
         }
     }
 

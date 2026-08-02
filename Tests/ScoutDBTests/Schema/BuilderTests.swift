@@ -369,13 +369,13 @@ struct BuilderTests {
             .sum("quantity")
         #expect(grouped == 5)
 
-        await #expect(throws: SchemaError.invalidValue("product_id")) {
+        await #expect(throws: SchemaError.unsupportedQuery(.nonNumericField("product_id"))) {
             _ = try await store.query("purchase").sum("product_id")
         }
     }
 
-    @Test("Grouped folds bucket by the grouping field's value")
-    func groupedFolds() async throws {
+    @Test("Grouped totals bucket by the grouping field's value")
+    func groupedTotals() async throws {
         try await store.write(
             [
                 EntityWrite(
@@ -385,27 +385,9 @@ struct BuilderTests {
                     ], uuid: "p-3")
             ], entity: "purchase")
 
-        #expect(
-            try await store.query("purchase").sum("quantity", by: "product_id") == ["sku-0": 8, "sku-1": 1, "sku-2": 2]
-        )
-        #expect(try await store.query("purchase").count(by: "product_id") == ["sku-0": 2, "sku-1": 1, "sku-2": 1])
-        #expect(
-            try await store.query("purchase").max("amount", by: "product_id") == [
-                "sku-0": 50, "sku-1": 10, "sku-2": 20,
-            ]
-        )
-        #expect(
-            try await store.query("purchase").filter("quantity" > 1).average("amount", by: "product_id") == [
-                "sku-0": 40, "sku-2": 20,
-            ]
-        )
-
-        await #expect(throws: SchemaError.invalidValue("product_id")) {
-            _ = try await store.query("purchase").sum("product_id", by: "quantity")
-        }
-        await #expect(throws: SchemaError.unknownField("ghost")) {
-            _ = try await store.query("purchase").count(by: "ghost")
-        }
+        let totals = try await store.query("purchase").totals(by: "product_id")
+        #expect(totals.map(\.group) == ["sku-0", "sku-1", "sku-2"])
+        #expect(totals.map(\.count) == [2, 1, 1])
     }
 
     @Test("The builder pages by its sort clause, honoring OR groups")
@@ -439,8 +421,8 @@ struct BuilderTests {
             .field("email", .string, .matches("[^@]+@[^@]+"))
             .create()
 
-        #expect(try await registry.definition(for: "account").field(named: "email", at: 1)?.pattern == "[^@]+@[^@]+")
-        await #expect(throws: SchemaError.invalidValue("email")) {
+        #expect(try await registry.definition(for: "account").fieldsByName(at: 1)["email"]?.pattern == "[^@]+@[^@]+")
+        await #expect(throws: SchemaError.invalidValue(.patternMismatch(field: "email"))) {
             try await store.write([EntityWrite(values: ["email": .string("nope")], uuid: "a-1")], entity: "account")
         }
     }

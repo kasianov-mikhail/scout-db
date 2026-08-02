@@ -31,20 +31,20 @@ extension EntityDefinition {
             }
 
             if let allowed = field.allowed, !value.strings.allSatisfy(allowed.contains) {
-                throw SchemaError.invalidValue(field.name)
+                throw SchemaError.invalidValue(.outsideDomain(field: field.name))
             }
             if let pattern = field.pattern, let regex = Self.patterns.regex(for: pattern) {
                 if !value.strings.allSatisfy({ $0.wholeMatch(of: regex) != nil }) {
-                    throw SchemaError.invalidValue(field.name)
+                    throw SchemaError.invalidValue(.patternMismatch(field: field.name))
                 }
             }
 
             for scalar in value.scalars {
                 if let min = field.min, scalar < min {
-                    throw SchemaError.invalidValue(field.name)
+                    throw SchemaError.invalidValue(.belowMinimum(field: field.name, minimum: min))
                 }
                 if let max = field.max, scalar > max {
-                    throw SchemaError.invalidValue(field.name)
+                    throw SchemaError.invalidValue(.aboveMaximum(field: field.name, maximum: max))
                 }
             }
         }

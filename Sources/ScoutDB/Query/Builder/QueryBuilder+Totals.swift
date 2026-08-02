@@ -11,7 +11,10 @@ extension QueryBuilder {
     /// One total per group, folded across every record the grid counts.
     ///
     /// One row per group: the count, the metric's value, and the `average`
-    /// derived from them. Without a `field` the rows count alone. The only
+    /// derived from them. Without a `field` the rows count alone. `metric`
+    /// picks which declared aggregate answers the read, so a field two
+    /// aggregates fold — a `min` and a `max` of the same amount — stays
+    /// reachable either way. The only
     /// clause a grid read can honor is an
     /// equality filter on the grouping field, which narrows it to that group
     /// server-side; any other filter throws rather than being quietly dropped.
@@ -22,10 +25,13 @@ extension QueryBuilder {
     /// // [AggregateTotal(group: "sku-42", count: 48211, value: 481628.9), ...]
     /// ```
     ///
-    public func totals(_ field: String? = nil, by group: String? = nil) async throws -> [AggregateTotal] {
+    public func totals(
+        _ field: String? = nil, folding metric: Metric = .sum, by group: String? = nil
+    ) async throws -> [AggregateTotal] {
         try await TotalOperation(
             self,
             field: field,
+            metric: metric,
             group: group
         )
         .totals()

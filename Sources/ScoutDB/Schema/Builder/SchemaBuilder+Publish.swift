@@ -11,8 +11,8 @@ extension SchemaBuilder {
     /// Publishes version 1 of the entity, over a grid it builds itself.
     ///
     /// Every groupable field — a scalar string, reference, int or double in a
-    /// slot — gets an aggregate counting its values. So `count` and `count(by:)` are
-    /// answered from the grid without anyone declaring anything;
+    /// slot — gets an aggregate counting its values. So `count` and `totals(by:)`
+    /// are answered from the grid without anyone declaring anything;
     /// ``sum(_:by:shards:)`` and its siblings remain for the shapes nobody can
     /// guess, like a metric over a field.
     ///

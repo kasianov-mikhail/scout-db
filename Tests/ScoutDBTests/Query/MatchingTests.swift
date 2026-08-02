@@ -71,7 +71,7 @@ struct MatchingTests {
         let definition = try await registry.definition(for: "shot")
 
         for field in ["blob", "tags"] {
-            #expect(throws: SchemaError.invalidValue(field)) {
+            #expect(throws: SchemaError.unsupportedQuery(.unsortableField(field))) {
                 _ = try definition.serverSort([EntityStore.Sort(field: field)])
             }
         }
@@ -106,7 +106,7 @@ struct MatchingTests {
 
     @Test("Search is rejected on non-searchable fields")
     func searchRequiresText() async throws {
-        await #expect(throws: SchemaError.invalidValue("title")) {
+        await #expect(throws: SchemaError.unsupportedQuery(.unsearchableField("title"))) {
             _ = try await read("title", .search, "hello")
         }
     }
