@@ -26,8 +26,8 @@ struct EntityWriter: Sendable {
     func write(_ batch: [EntityWrite]) async throws -> [String] {
         var stored: Set<String> = []
         let records = try batch.map { entry in
-            let resolved = try coder.resolve(entry.values, at: definition.version)
-            let natural = try coder.naturalUUID(for: resolved)
+            let resolved = try definition.resolve(entry.values, at: definition.version)
+            let natural = try naturalUUID(for: resolved)
             let assigned = natural ?? entry.uuid
             let uuid = assigned ?? UUID().uuidString
 
@@ -60,6 +60,19 @@ struct EntityWriter: Sendable {
         )
 
         return records.map(\.uuid)
+    }
+
+    private func naturalUUID(for values: [String: RecordValue]) throws -> String? {
+        guard let unique = definition.unique else {
+            return nil
+        }
+        let key = try unique.map { name in
+            guard let value = values[name] else {
+                throw SchemaError.missingField(name)
+            }
+            return "\(name)=\(value.canonical)"
+        }
+        return contentDigest(of: key)
     }
 
     private func rebalance(_ records: [EntityRecord], stored: Set<String>) async throws -> (
