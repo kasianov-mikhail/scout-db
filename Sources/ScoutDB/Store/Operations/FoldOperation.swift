@@ -36,22 +36,6 @@ struct FoldOperation: Sendable {
     }
 }
 
-extension FoldOperation {
-    init?(database: any CloudDatabase, definition: EntityDefinition, branches: [[ClientFilter]]) {
-        guard definition.aggregates?.isEmpty == false, var query = FilterPlan(branches: branches) else {
-            return nil
-        }
-
-        query.expandRange(in: definition)
-
-        guard query.numericField == nil else {
-            return nil
-        }
-
-        self.init(database: database, definition: definition, query: query)
-    }
-}
-
 extension FilterPlan {
     fileprivate var serverGroup: String? {
         groupKeys.count == 1 ? groupKeys.first : nil
@@ -61,10 +45,22 @@ extension FilterPlan {
 extension QueryBuilder {
     var fold: FoldOperation? {
         get async throws {
-            FoldOperation(
+            let definition = try await store.registry.definition(for: entity)
+
+            guard definition.aggregates?.isEmpty == false, var query = FilterPlan(branches: alternatives) else {
+                return nil
+            }
+
+            query.expandRange(in: definition)
+
+            guard query.numericField == nil else {
+                return nil
+            }
+
+            return FoldOperation(
                 database: store.database,
-                definition: try await store.registry.definition(for: entity),
-                branches: alternatives
+                definition: definition,
+                query: query
             )
         }
     }
