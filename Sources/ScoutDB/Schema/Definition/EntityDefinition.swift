@@ -41,11 +41,13 @@ struct EntityDefinition: Codable, Equatable, Sendable {
     }
 
     func aggregate(named name: String) -> AggregateDefinition? {
-        aggregates?.first { $0.name == name }
+        aggregates?.first {
+            $0.name == name
+        }
     }
 
     func aggregate(grouping group: String?, folding field: String?) -> AggregateDefinition? {
-        (aggregates ?? []).first { aggregate in
+        aggregates?.first { aggregate in
             guard aggregate.groupBy == group else {
                 return false
             }
