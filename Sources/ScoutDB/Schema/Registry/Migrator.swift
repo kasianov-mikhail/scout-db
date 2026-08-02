@@ -79,23 +79,23 @@ public struct Migrator: Sendable {
         return migrated
     }
 
-    @discardableResult public func backfill(view viewName: String, entity: String, batchSize: Int = 400) async throws
+    @discardableResult public func backfill(aggregate name: String, entity: String, batchSize: Int = 400) async throws
         -> Int
     {
         let definition = try await registry.definition(for: entity)
 
-        guard let view = definition.view(named: viewName) else {
-            throw SchemaError.unknownField(viewName)
+        guard let aggregate = definition.aggregate(named: name) else {
+            throw SchemaError.unknownField(name)
         }
 
-        try await database.forEachPage(matching: .grid(entity: entity, view: viewName)) { page in
+        try await database.forEachPage(matching: .grid(entity: entity, aggregate: name)) { page in
             for chunk in page.map(\.recordID).chunked(into: batchSize) {
                 try await database.modifyRecords(saving: [], deleting: chunk)
             }
         }
 
         var scoped = definition
-        scoped.views = [view]
+        scoped.aggregates = [aggregate]
 
         let coder = EntityCoder(definition: definition)
         let aggregator = GridAggregator(database: database)

@@ -58,7 +58,7 @@ struct SchemaConsistencyTests {
         for field in [CKRecord.countCell, CKRecord.valueCell] {
             #expect(names.contains(field), "Aggregate is missing '\(field)'")
         }
-        for field in ["entity", "view", "group_key", "date", "schema_version"] {
+        for field in ["entity", "aggregate", "group_key", "date", "schema_version"] {
             #expect(names.contains(field), "Aggregate is missing '\(field)'")
         }
     }

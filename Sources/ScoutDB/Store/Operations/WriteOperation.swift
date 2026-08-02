@@ -8,7 +8,7 @@
 import CloudKit
 import Foundation
 
-struct EntityWriter: Sendable {
+struct WriteOperation: Sendable {
     let database: any CloudDatabase
     let aggregator: GridAggregator
     let entity: String
@@ -78,7 +78,7 @@ struct EntityWriter: Sendable {
     private func rebalance(_ records: [EntityRecord], stored: Set<String>) async throws -> (
         removing: [EntityRecord], adding: [EntityRecord]
     ) {
-        guard definition.views?.isEmpty == false else {
+        guard definition.aggregates?.isEmpty == false else {
             return ([], [])
         }
 

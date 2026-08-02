@@ -8,10 +8,10 @@
 import Foundation
 
 extension EntityStore {
-    func folder(entity: String, any branches: [[Filter]]) async throws -> EntityFolder? {
+    func folder(entity: String, any branches: [[Filter]]) async throws -> FoldOperation? {
         let definition = try await registry.definition(for: entity)
 
-        guard definition.views?.isEmpty == false, var query = FilterPlan(any: branches) else {
+        guard definition.aggregates?.isEmpty == false, var query = FilterPlan(any: branches) else {
             return nil
         }
 
@@ -21,16 +21,11 @@ extension EntityStore {
             return nil
         }
 
-        return EntityFolder(
+        return FoldOperation(
             database: database,
             entity: entity,
             definition: definition,
             query: query
         )
     }
-}
-
-struct GridFold: Sendable {
-    let count: Int
-    let value: Double?
 }

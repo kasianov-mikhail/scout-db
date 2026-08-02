@@ -33,7 +33,7 @@ extension QueryBuilder {
             )
         }
 
-        return try await EntityReader(
+        return try await ReadOperation(
             store: store,
             entity: entity,
             sort: sorts,
@@ -56,7 +56,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func sum(_ field: String) async throws -> Double {
-        try await FoldQuery(
+        try await AggregateOperation(
             store: store,
             entity: entity,
             branches: alternatives,
@@ -78,7 +78,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func min(_ field: String) async throws -> Double? {
-        try await FoldQuery(
+        try await AggregateOperation(
             store: store,
             entity: entity,
             branches: alternatives,
@@ -100,7 +100,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func max(_ field: String) async throws -> Double? {
-        try await FoldQuery(
+        try await AggregateOperation(
             store: store,
             entity: entity,
             branches: alternatives,
@@ -122,7 +122,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func average(_ field: String) async throws -> Double? {
-        try await FoldQuery(
+        try await AggregateOperation(
             store: store,
             entity: entity,
             branches: alternatives,
@@ -145,7 +145,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func sum(_ field: String, by group: String) async throws -> [String: Double] {
-        try await FoldQuery(
+        try await AggregateOperation(
             store: store,
             entity: entity,
             branches: alternatives,
@@ -167,7 +167,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func min(_ field: String, by group: String) async throws -> [String: Double] {
-        try await FoldQuery(
+        try await AggregateOperation(
             store: store,
             entity: entity,
             branches: alternatives,
@@ -189,7 +189,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func max(_ field: String, by group: String) async throws -> [String: Double] {
-        try await FoldQuery(
+        try await AggregateOperation(
             store: store,
             entity: entity,
             branches: alternatives,
@@ -210,7 +210,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func average(_ field: String, by group: String) async throws -> [String: Double] {
-        try await FoldQuery(
+        try await AggregateOperation(
             store: store,
             entity: entity,
             branches: alternatives,
@@ -233,7 +233,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func count(by group: String) async throws -> [String: Int] {
-        try await FoldQuery(
+        try await AggregateOperation(
             store: store,
             entity: entity,
             branches: alternatives,

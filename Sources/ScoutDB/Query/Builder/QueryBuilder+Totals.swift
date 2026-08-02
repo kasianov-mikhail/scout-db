@@ -23,7 +23,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func totals(_ field: String? = nil, by group: String? = nil) async throws -> [AggregateTotal] {
-        try await EntityAggregator(
+        try await TotalOperation(
             self,
             field: field,
             group: group

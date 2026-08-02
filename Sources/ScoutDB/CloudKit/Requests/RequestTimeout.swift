@@ -26,6 +26,7 @@ private struct UncheckedBox<T>: @unchecked Sendable {
 func withRequestTimeout<R>(_ timeout: Duration, _ operation: @Sendable @escaping () async throws -> R) async throws -> R
 {
     let relay = ResultRelay<UncheckedBox<R>>()
+
     let operationTask = Task {
         do {
             await relay.finish(with: .success(UncheckedBox(value: try await operation())))
@@ -33,14 +34,17 @@ func withRequestTimeout<R>(_ timeout: Duration, _ operation: @Sendable @escaping
             await relay.finish(with: .failure(error))
         }
     }
+
     let timerTask = Task {
         try await Task.sleep(for: timeout)
         await relay.finish(with: .failure(RequestTimeoutError(seconds: Int(timeout.components.seconds))))
     }
+
     defer {
         operationTask.cancel()
         timerTask.cancel()
     }
+
     return try await withTaskCancellationHandler {
         try await relay.value().value
     } onCancel: {

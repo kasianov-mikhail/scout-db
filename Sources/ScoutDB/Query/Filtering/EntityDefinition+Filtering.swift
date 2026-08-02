@@ -78,7 +78,7 @@ extension EntityDefinition {
                 throw SchemaError.invalidValue(sort.field)
             }
 
-            return ServerSort(field: slot, ascending: sort.ascending)
+            return ServerSort(field: slot, order: sort.ascending ? .forward : .reverse)
         }
     }
 }

@@ -11,7 +11,7 @@ extension SchemaBuilder {
     /// Publishes version 1 of the entity, over a grid it builds itself.
     ///
     /// Every groupable field — a scalar string, reference, int or double in a
-    /// slot — gets a view counting its values. So `count` and `count(by:)` are
+    /// slot — gets an aggregate counting its values. So `count` and `count(by:)` are
     /// answered from the grid without anyone declaring anything;
     /// ``sum(_:by:shards:)`` and its siblings remain for the shapes nobody can
     /// guess, like a metric over a field.
@@ -34,10 +34,10 @@ extension SchemaBuilder {
         var allocator = SlotAllocator()
 
         let fields = try declarations.map {
-            try resolve($0, allocator: &allocator, since: nil)
+            try allocator.resolve($0, since: nil)
         }
 
-        let grid = Self.grid(over: fields, declaring: views)
+        let grid = Self.grid(over: fields, declaring: aggregates)
 
         try await publish(
             fields: fields,
@@ -60,7 +60,7 @@ extension SchemaBuilder {
     /// A version builds no grid of its own: the entity already holds records,
     /// and a fresh cell counts only what lands after it. The returned names are
     /// that missing coverage — declare `count(by:)` for them on a further
-    /// version and backfill with `Migrator.backfill(view:entity:)`, mark them
+    /// version and backfill with `Migrator.backfill(aggregate:entity:)`, mark them
     /// `.ungrouped` to say they are meant to go uncounted, or leave them to be
     /// answered by reading records.
     ///
@@ -88,9 +88,8 @@ extension SchemaBuilder {
                 .first { $0.name == declaration.name }
 
             if let active, active.type == declaration.type, active.storage.isSlot == declaration.wantsSlot {
-                var kept = try resolve(
+                var kept = try allocator.resolve(
                     declaration,
-                    allocator: &allocator,
                     since: active.since,
                     storage: active.storage
                 )
@@ -100,9 +99,8 @@ extension SchemaBuilder {
                 carried.insert(declaration.name)
             } else {
                 fields.append(
-                    try resolve(
+                    try allocator.resolve(
                         declaration,
-                        allocator: &allocator,
                         since: version
                     )
                 )
@@ -125,8 +123,8 @@ extension SchemaBuilder {
         let active = Set(fields.filter { $0.isActive(at: version) }.map(\.name))
 
         let carriedViews = Self.merge(
-            views,
-            onto: previous.views ?? [],
+            aggregates,
+            onto: previous.aggregates ?? [],
             keeping: active
         )
 
@@ -147,14 +145,14 @@ extension SchemaBuilder {
 
     func publish(
         fields: [FieldDefinition], version: Int, inheriting previous: EntityDefinition?,
-        publishing views: [AggregateView]
+        publishing aggregates: [AggregateDefinition]
     ) async throws {
         let definition = EntityDefinition(
             entity: entity,
             version: version,
             fields: fields,
             unique: unique ?? previous?.unique,
-            views: views.isEmpty ? nil : views
+            aggregates: aggregates.isEmpty ? nil : aggregates
         )
         try await registry.publish(definition)
     }

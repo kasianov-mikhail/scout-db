@@ -48,7 +48,9 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
         }
     }
 
-    var capacity: Int { 16 }
+    var capacity: Int {
+        16
+    }
 
     var isSortable: Bool {
         switch self {

@@ -26,8 +26,8 @@ extension SchemaBuilder {
     public func count(by group: String? = nil, shards: Int? = nil) -> Self {
         var builder = self
 
-        builder.views.append(
-            AggregateView(
+        builder.aggregates.append(
+            AggregateDefinition(
                 name: Self.name(nil, of: nil, by: group),
                 groupBy: group,
                 shards: shards
@@ -57,8 +57,8 @@ extension SchemaBuilder {
     public func sum(_ field: String, by group: String? = nil, shards: Int? = nil) -> Self {
         var builder = self
 
-        builder.views.append(
-            AggregateView(
+        builder.aggregates.append(
+            AggregateDefinition(
                 name: Self.name("sum", of: field, by: group),
                 groupBy: group,
                 sum: field,
@@ -72,7 +72,7 @@ extension SchemaBuilder {
     /// Keeps the smallest value of the field a cell has seen.
     ///
     /// The cell holds a running extremum, so removing the record that set it
-    /// leaves the value standing — a read served by the view answers with what
+    /// leaves the value standing — a read served by the aggregate answers with what
     /// the group once reached, not what it holds now.
     ///
     /// ```swift
@@ -85,8 +85,8 @@ extension SchemaBuilder {
     public func min(_ field: String, by group: String? = nil) -> Self {
         var builder = self
 
-        builder.views.append(
-            AggregateView(
+        builder.aggregates.append(
+            AggregateDefinition(
                 name: Self.name("min", of: field, by: group),
                 groupBy: group,
                 min: field
@@ -111,8 +111,8 @@ extension SchemaBuilder {
     public func max(_ field: String, by group: String? = nil) -> Self {
         var builder = self
 
-        builder.views.append(
-            AggregateView(
+        builder.aggregates.append(
+            AggregateDefinition(
                 name: Self.name("max", of: field, by: group),
                 groupBy: group,
                 max: field
@@ -120,52 +120,5 @@ extension SchemaBuilder {
         )
 
         return builder
-    }
-
-    static func name(_ metric: String?, of field: String?, by group: String?) -> String {
-        var parts = [metric, field, group.map { "by_\($0)" }].compactMap { $0 }
-        if parts.isEmpty {
-            parts = ["by_all"]
-        }
-        return parts.joined(separator: "_")
-    }
-
-    static func merge(_ declared: [AggregateView], onto inherited: [AggregateView], keeping active: Set<String>)
-        -> [AggregateView]
-    {
-        let byName = Dictionary(declared.map { ($0.name, $0) }, uniquingKeysWith: { _, last in last })
-        let superseded = declared.map(\.groupBy)
-        var merged = inherited.compactMap { view -> AggregateView? in
-            if let replacement = byName[view.name] {
-                return replacement
-            }
-            return view.metricField == nil && superseded.contains(view.groupBy) ? nil : view
-        }
-        merged += declared.filter { view in !inherited.contains { $0.name == view.name } }
-        return merged.filter { view in
-            let fields = [view.groupBy, view.metricField].compactMap { $0 }
-            return fields.allSatisfy(active.contains)
-        }
-    }
-
-    static func grid(over fields: [FieldDefinition], declaring declared: [AggregateView]) -> [AggregateView] {
-        var taken = Set(declared.map(\.name))
-        var counted = Set(declared.compactMap(\.groupBy))
-        var grid = declared
-
-        for field in fields where Self.groupable(field) {
-            guard taken.insert("by_\(field.name)").inserted, counted.insert(field.name).inserted else {
-                continue
-            }
-            grid.append(AggregateView(name: "by_\(field.name)", groupBy: field.name))
-        }
-        return grid
-    }
-
-    static func groupable(_ field: FieldDefinition) -> Bool {
-        guard case .slot = field.storage, field.ungrouped != true else {
-            return false
-        }
-        return [.string, .reference, .int, .double].contains(field.type)
     }
 }

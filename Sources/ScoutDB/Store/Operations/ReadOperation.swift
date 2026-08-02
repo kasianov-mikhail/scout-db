@@ -7,7 +7,7 @@
 
 import CloudKit
 
-struct EntityReader: Sendable {
+struct ReadOperation: Sendable {
     let database: any CloudDatabase
     let entity: String
     let sort: [EntityStore.Sort]
@@ -78,18 +78,22 @@ struct EntityReader: Sendable {
             filters: try definition.serverFilters(filters),
             sort: try definition.serverSort(sort)
         )
-        let matchers = try definition.clientFilters(filters).map { $0.matcher() }
-        let included = { (record: EntityRecord) in matchers.allSatisfy { $0(record) } }
+
+        let matching = try definition.clientFilters(filters)
+        let included = { (record: EntityRecord) in matching.allSatisfy { $0.matches(record) ?? false } }
+
         if let limit {
             return Array(
-                try await database.boundedRecords(
+                try await database.scan(
                     matching: query,
                     limit: limit,
                     using: definition,
                     where: included
-                ).prefix(limit)
+                )
+                .prefix(limit)
             )
         }
+
         var collected: [EntityRecord] = []
         try await database.forEachPage(matching: query) { page in
             collected += try page.map { try coder.decode($0) }.filter(included)

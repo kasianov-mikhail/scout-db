@@ -25,7 +25,7 @@ struct AggregatesTests {
         store = EntityStore(database: database, registry: registry)
     }
 
-    private func publishPayment(views: [AggregateView]) async throws {
+    private func publishPayment(aggregates: [AggregateDefinition]) async throws {
         try await registry.publish(
             makeDefinition(
                 entity: "payment",
@@ -34,7 +34,7 @@ struct AggregatesTests {
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
-                views: views
+                aggregates: aggregates
             )
         )
     }
@@ -53,7 +53,7 @@ struct AggregatesTests {
 
     @Test("A grid slot named before separators were escaped is still adopted")
     func legacyGridSlotAdoption() async throws {
-        try await publishPayment(views: [AggregateView(name: "by_product", groupBy: "product")])
+        try await publishPayment(aggregates: [AggregateDefinition(name: "by_product", groupBy: "product")])
 
         let group = "a|b"
         let period = GridSlot.date
@@ -66,7 +66,7 @@ struct AggregatesTests {
 
         let legacy = CKRecord(recordType: "Aggregate", recordID: CKRecord.ID(recordName: legacyName))
         legacy["entity"] = "payment"
-        legacy["view"] = "by_product"
+        legacy["aggregate"] = "by_product"
         legacy["group_key"] = group
         legacy["date"] = period
         legacy["c_00"] = Int64(5)
@@ -75,10 +75,11 @@ struct AggregatesTests {
         try await writePayments([1], product: group)
 
         #expect(database.records.filter { $0.recordType == "Aggregate" }.count == 1)
-        #expect(try await EntityAggregator(store, entity: "payment", view: "by_product").totals().map(\.count) == [6])
+        #expect(
+            try await TotalOperation(store, entity: "payment", aggregate: "by_product").totals().map(\.count) == [6])
     }
 
-    @Test("A unique-key upsert counts once in aggregate views")
+    @Test("A unique-key upsert counts once in aggregates")
     func upsertCountsOnce() async throws {
         try await registry.publish(
             makeDefinition(
@@ -88,7 +89,7 @@ struct AggregatesTests {
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
                 unique: ["user"],
-                views: [AggregateView(name: "by_all")]
+                aggregates: [AggregateDefinition(name: "by_all")]
             )
         )
 
@@ -97,11 +98,11 @@ struct AggregatesTests {
         try await store.write(
             [EntityWrite(values: ["user": .string("u1"), "date": .date(noon)], uuid: nil)], entity: "visit")
 
-        #expect(try await EntityReader(store: store, entity: "visit").read().count == 1)
-        #expect(try await EntityAggregator(store, entity: "visit", view: "by_all").totals().map(\.count) == [1])
+        #expect(try await ReadOperation(store: store, entity: "visit").read().count == 1)
+        #expect(try await TotalOperation(store, entity: "visit", aggregate: "by_all").totals().map(\.count) == [1])
     }
 
-    @Test("A unique-key upsert with a changed value rebalances a sum view")
+    @Test("A unique-key upsert with a changed value rebalances a sum aggregate")
     func upsertRebalancesSumView() async throws {
         try await registry.publish(
             makeDefinition(
@@ -112,7 +113,7 @@ struct AggregatesTests {
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
                 unique: ["user"],
-                views: [AggregateView(name: "revenue", sum: "amount")]
+                aggregates: [AggregateDefinition(name: "revenue", sum: "amount")]
             )
         )
 
@@ -123,15 +124,15 @@ struct AggregatesTests {
             [EntityWrite(values: ["user": .string("u1"), "amount": .double(25), "date": .date(noon)], uuid: nil)],
             entity: "meter")
 
-        #expect(try await EntityReader(store: store, entity: "meter").read().count == 1)
-        let totals = try await EntityAggregator(store, entity: "meter", view: "revenue").totals()
+        #expect(try await ReadOperation(store: store, entity: "meter").read().count == 1)
+        let totals = try await TotalOperation(store, entity: "meter", aggregate: "revenue").totals()
         #expect(totals.first?.count == 1)
         #expect(totals.first?.value == 25)
     }
 
-    @Test("A sharded view spreads a hot slot over several records and reads back whole")
+    @Test("A sharded aggregate spreads a hot slot over several records and reads back whole")
     func shardedView() async throws {
-        try await publishPayment(views: [AggregateView(name: "revenue", sum: "amount", shards: 3)])
+        try await publishPayment(aggregates: [AggregateDefinition(name: "revenue", sum: "amount", shards: 3)])
         for index in 0..<6 {
             try await store.write(
                 [
@@ -144,7 +145,7 @@ struct AggregatesTests {
         #expect(shards.count > 1)
         #expect(database.records.filter { $0.recordType == "Aggregate" }.count == shards.count)
 
-        let totals = try await EntityAggregator(store, entity: "payment", view: "revenue").totals()
+        let totals = try await TotalOperation(store, entity: "payment", aggregate: "revenue").totals()
         #expect(totals.count == 1)
         #expect(totals.first?.count == 6)
         #expect(totals.first?.value == 21)
@@ -154,12 +155,12 @@ struct AggregatesTests {
         let invalid = makeDefinition(
             entity: "e",
             fields: [FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))],
-            views: [AggregateView(name: "x", shards: 1)]
+            aggregates: [AggregateDefinition(name: "x", shards: 1)]
         )
         #expect(throws: SchemaError.self) { try invalid.validate() }
     }
 
-    @Test("A min view keeps the extremum an upsert lifted a record off")
+    @Test("A min aggregate keeps the extremum an upsert lifted a record off")
     func upsertKeepsMinExtremum() async throws {
         try await registry.publish(
             makeDefinition(
@@ -170,7 +171,7 @@ struct AggregatesTests {
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
                 unique: ["user"],
-                views: [AggregateView(name: "low", min: "amount")]
+                aggregates: [AggregateDefinition(name: "low", min: "amount")]
             )
         )
 
@@ -184,48 +185,49 @@ struct AggregatesTests {
             [EntityWrite(values: ["user": .string("u1"), "amount": .double(6), "date": .date(noon)], uuid: nil)],
             entity: "meter")
 
-        let totals = try await EntityAggregator(store, entity: "meter", view: "low").totals()
+        let totals = try await TotalOperation(store, entity: "meter", aggregate: "low").totals()
         #expect(totals.first?.count == 2)
         #expect(totals.first?.value == 2)
     }
 
-    @Test("MIN view keeps the smallest value")
+    @Test("MIN aggregate keeps the smallest value")
     func minView() async throws {
-        try await publishPayment(views: [AggregateView(name: "low", min: "amount")])
+        try await publishPayment(aggregates: [AggregateDefinition(name: "low", min: "amount")])
         try await writePayments([5, 2, 8])
 
-        let totals = try await EntityAggregator(store, entity: "payment", view: "low").totals()
+        let totals = try await TotalOperation(store, entity: "payment", aggregate: "low").totals()
         #expect(totals.count == 1)
         #expect(totals.first?.count == 3)
         #expect(totals.first?.value == 2)
     }
 
-    @Test("MAX view keeps the largest value")
+    @Test("MAX aggregate keeps the largest value")
     func maxView() async throws {
-        try await publishPayment(views: [AggregateView(name: "high", max: "amount")])
+        try await publishPayment(aggregates: [AggregateDefinition(name: "high", max: "amount")])
         try await writePayments([5, 2, 8])
 
-        let totals = try await EntityAggregator(store, entity: "payment", view: "high").totals()
+        let totals = try await TotalOperation(store, entity: "payment", aggregate: "high").totals()
         #expect(totals.first?.value == 8)
     }
 
-    @Test("AVG derives from a sum view")
+    @Test("AVG derives from a sum aggregate")
     func average() async throws {
-        try await publishPayment(views: [AggregateView(name: "revenue", sum: "amount")])
+        try await publishPayment(aggregates: [AggregateDefinition(name: "revenue", sum: "amount")])
         try await writePayments([2.5, 1.5])
 
-        let total = try #require(try await EntityAggregator(store, entity: "payment", view: "revenue").totals().first)
+        let total = try #require(
+            try await TotalOperation(store, entity: "payment", aggregate: "revenue").totals().first)
         #expect(total.value == 4)
         #expect(total.average == 2)
     }
 
     @Test("GROUP BY works over totals")
     func groupByTotals() async throws {
-        try await publishPayment(views: [AggregateView(name: "revenue", groupBy: "product", sum: "amount")])
+        try await publishPayment(aggregates: [AggregateDefinition(name: "revenue", groupBy: "product", sum: "amount")])
         try await writePayments([1, 2, 3], product: "app")
         try await writePayments([10], product: "bundle")
 
-        let totals = try await EntityAggregator(store, entity: "payment", view: "revenue").totals()
+        let totals = try await TotalOperation(store, entity: "payment", aggregate: "revenue").totals()
         #expect(totals.map(\.group) == ["app", "bundle"])
         #expect(totals.map(\.count) == [3, 1])
         #expect(totals.first?.value == 6)
@@ -233,21 +235,21 @@ struct AggregatesTests {
 
     @Test("A single-group aggregate read narrows to that group's rows")
     func aggregateOneGroup() async throws {
-        try await publishPayment(views: [AggregateView(name: "revenue", groupBy: "product", sum: "amount")])
+        try await publishPayment(aggregates: [AggregateDefinition(name: "revenue", groupBy: "product", sum: "amount")])
         try await writePayments([10, 5], product: "app")
         try await writePayments([2], product: "book")
 
-        let totals = try await EntityAggregator(store, entity: "payment", view: "revenue", group: "book").totals()
+        let totals = try await TotalOperation(store, entity: "payment", aggregate: "revenue", group: "book").totals()
         #expect(totals.map(\.group) == ["book"])
         #expect(totals.first?.value == 2)
         #expect(
-            try await EntityAggregator(store, entity: "payment", view: "revenue", group: "app")
+            try await TotalOperation(store, entity: "payment", aggregate: "revenue", group: "app")
                 .totals()
                 .map(\.value) == [15]
         )
     }
 
-    @Test("A view with two metrics is rejected")
+    @Test("A aggregate with two metrics is rejected")
     func metricExclusivity() async throws {
         let definition = makeDefinition(
             entity: "payment",
@@ -255,14 +257,14 @@ struct AggregatesTests {
                 FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
             ],
-            views: [AggregateView(name: "broken", sum: "amount", min: "amount")]
+            aggregates: [AggregateDefinition(name: "broken", sum: "amount", min: "amount")]
         )
         #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
     @Test("A batched write aggregates like the equivalent single writes")
     func batchAggregation() async throws {
-        try await publishPayment(views: [AggregateView(name: "revenue", groupBy: "product", sum: "amount")])
+        try await publishPayment(aggregates: [AggregateDefinition(name: "revenue", groupBy: "product", sum: "amount")])
         try await store.write(
             [
                 EntityWrite(values: ["product": .string("app"), "amount": .double(2), "date": .date(noon)], uuid: nil),
@@ -273,7 +275,7 @@ struct AggregatesTests {
             entity: "payment"
         )
 
-        let totals = try await EntityAggregator(store, entity: "payment", view: "revenue").totals()
+        let totals = try await TotalOperation(store, entity: "payment", aggregate: "revenue").totals()
 
         #expect(totals.count == 2)
         #expect(totals.first { $0.group == "app" }?.count == 2)
@@ -283,7 +285,7 @@ struct AggregatesTests {
 
     @Test("A batched write folds MIN across the whole batch")
     func batchMinFold() async throws {
-        try await publishPayment(views: [AggregateView(name: "low", min: "amount")])
+        try await publishPayment(aggregates: [AggregateDefinition(name: "low", min: "amount")])
         try await store.write(
             [5, 2, 8].map {
                 EntityWrite(values: ["product": .string("app"), "amount": .double($0), "date": .date(noon)], uuid: nil)
@@ -291,7 +293,7 @@ struct AggregatesTests {
             entity: "payment"
         )
 
-        let totals = try await EntityAggregator(store, entity: "payment", view: "low").totals()
+        let totals = try await TotalOperation(store, entity: "payment", aggregate: "low").totals()
         #expect(totals.count == 1)
         #expect(totals.first?.count == 3)
         #expect(totals.first?.value == 2)
@@ -299,7 +301,7 @@ struct AggregatesTests {
 
     @Test("A batched write touches each grid record once")
     func batchGridWrites() async throws {
-        try await publishPayment(views: [AggregateView(name: "revenue", groupBy: "product", sum: "amount")])
+        try await publishPayment(aggregates: [AggregateDefinition(name: "revenue", groupBy: "product", sum: "amount")])
         try await store.write(
             [1, 2, 3, 4].map {
                 EntityWrite(values: ["product": .string("app"), "amount": .double($0), "date": .date(noon)], uuid: nil)
@@ -310,7 +312,7 @@ struct AggregatesTests {
         #expect(database.records.filter { $0.recordType == "Aggregate" }.count == 1)
     }
 
-    @Test("A view keeps one running total per category")
+    @Test("A aggregate keeps one running total per category")
     func lifetimeView() async throws {
         try await registry.publish(
             makeDefinition(
@@ -319,7 +321,7 @@ struct AggregatesTests {
                     FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00")),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                 ],
-                views: [AggregateView(name: "by_product", groupBy: "product", sum: "amount")]
+                aggregates: [AggregateDefinition(name: "by_product", groupBy: "product", sum: "amount")]
             )
         )
 
@@ -330,14 +332,14 @@ struct AggregatesTests {
         try await store.write(
             [EntityWrite(values: ["product": .string("book"), "amount": .double(2)], uuid: nil)], entity: "sale")
 
-        let totals = try await EntityAggregator(store, entity: "sale", view: "by_product").totals()
+        let totals = try await TotalOperation(store, entity: "sale", aggregate: "by_product").totals()
         #expect(totals.first { $0.group == "app" }?.count == 2)
         #expect(totals.first { $0.group == "app" }?.value == 15)
         #expect(totals.first { $0.group == "book" }?.value == 2)
         #expect(database.records.filter { $0.recordType == "Aggregate" }.count == 2)
     }
 
-    @Test("count() reads a covering view's grid instead of scanning")
+    @Test("count() reads a covering aggregate's grid instead of scanning")
     func countThroughLifetimeView() async throws {
         try await registry.publish(
             makeDefinition(
@@ -346,7 +348,7 @@ struct AggregatesTests {
                     FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00")),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                 ],
-                views: [AggregateView(name: "by_product", groupBy: "product")]
+                aggregates: [AggregateDefinition(name: "by_product", groupBy: "product")]
             )
         )
         try await store.write(
@@ -372,7 +374,7 @@ struct AggregatesTests {
         #expect(try await store.query("sale").filter("product", .equals, "app").filter("amount" > 1).count() == 2)
     }
 
-    @Test("count() honors IN lists and OR groups through the view's grid")
+    @Test("count() honors IN lists and OR groups through the aggregate's grid")
     func countThroughKeySets() async throws {
         try await registry.publish(
             makeDefinition(
@@ -381,7 +383,7 @@ struct AggregatesTests {
                     FieldDefinition(name: "kind", type: .string, storage: .slot(.string, "s_00"), required: true),
                     FieldDefinition(name: "price", type: .double, storage: .slot(.double, "d_00")),
                 ],
-                views: [AggregateView(name: "by_kind", groupBy: "kind", sum: "price")]
+                aggregates: [AggregateDefinition(name: "by_kind", groupBy: "kind", sum: "price")]
             )
         )
         try await store.write(
@@ -409,7 +411,7 @@ struct AggregatesTests {
                 .filter("kind" == "b" || "kind" == "b").count() == 41
         )
         #expect(
-            try await FoldQuery(
+            try await AggregateOperation(
                 store: store,
                 entity: "ticket",
                 branches: [[Filter(field: "kind", op: .in, value: .strings(["b", "c"]))]],
@@ -442,7 +444,7 @@ struct AggregatesTests {
                     ),
                     FieldDefinition(name: "weight", type: .int, storage: .slot(.int, "i_01"), required: true),
                 ],
-                views: [AggregateView(name: "by_units", groupBy: "units")]
+                aggregates: [AggregateDefinition(name: "by_units", groupBy: "units")]
             )
         )
         for units: Int64 in [1, 5, 12, 16, 20] {
@@ -466,7 +468,7 @@ struct AggregatesTests {
 
     @Test("A date range falls outside what the grid answers and scans")
     func countThroughDateRangeScans() async throws {
-        try await publishPayment(views: [AggregateView(name: "by_product", groupBy: "product")])
+        try await publishPayment(aggregates: [AggregateDefinition(name: "by_product", groupBy: "product")])
         try await writePayments([1, 2], product: "app")
         try await store.write(
             [
@@ -501,7 +503,7 @@ struct AggregatesTests {
                     ),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"), required: required),
                 ],
-                views: [AggregateView(name: "by_product", groupBy: "product", sum: "amount")]
+                aggregates: [AggregateDefinition(name: "by_product", groupBy: "product", sum: "amount")]
             )
         )
         for (product, amount) in [("app", 10.0), ("app", 6.0), ("book", 4.0)] {
@@ -520,7 +522,7 @@ struct AggregatesTests {
         return grid
     }
 
-    @Test("sum() and average() read a covering view's grid, while min and max still scan")
+    @Test("sum() and average() read a covering aggregate's grid, while min and max still scan")
     func foldThroughLifetimeView() async throws {
         try await publishLedger()
         #expect(try await store.query("ledger").sum("amount") == 20)
@@ -537,7 +539,7 @@ struct AggregatesTests {
         #expect(try await store.query("ledger").max("amount") == 10)
     }
 
-    @Test("An extremum reads its view's grid instead of scanning")
+    @Test("An extremum reads its aggregate's grid instead of scanning")
     func extremumThroughView() async throws {
         try await registry.publish(
             makeDefinition(
@@ -546,9 +548,9 @@ struct AggregatesTests {
                     FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00"), required: true),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"), required: true),
                 ],
-                views: [
-                    AggregateView(name: "peak", groupBy: "product", max: "amount"),
-                    AggregateView(name: "trough", groupBy: "product", min: "amount"),
+                aggregates: [
+                    AggregateDefinition(name: "peak", groupBy: "product", max: "amount"),
+                    AggregateDefinition(name: "trough", groupBy: "product", min: "amount"),
                 ]
             )
         )
@@ -558,14 +560,14 @@ struct AggregatesTests {
                 entity: "reading")
         }
 
-        for view in ["peak", "trough"] {
+        for aggregate in ["peak", "trough"] {
             let grid = try #require(
                 database.records.first {
-                    $0.recordType == "Aggregate" && $0["view"] as? String == view
+                    $0.recordType == "Aggregate" && $0["aggregate"] as? String == aggregate
                         && $0["group_key"] as? String == "book"
                 }
             )
-            grid["f_00"] = view == "peak" ? 41.0 : 1.0
+            grid["f_00"] = aggregate == "peak" ? 41.0 : 1.0
         }
 
         #expect(try await store.query("reading").max("amount") == 41)
@@ -575,7 +577,7 @@ struct AggregatesTests {
         #expect(try await store.query("reading").min("amount") == 1)
     }
 
-    @Test("Grouped folds and count(by:) read the grouping view's grid")
+    @Test("Grouped folds and count(by:) read the grouping aggregate's grid")
     func groupedFoldThroughLifetimeView() async throws {
         try await publishLedger()
         _ = try tamperedBookSlot()
@@ -617,7 +619,7 @@ struct AggregatesTests {
         #expect(ungrouped.matched == 2)
     }
 
-    @Test("A fold with no covering view scans")
+    @Test("A fold with no covering aggregate scans")
     func foldWithoutCoveringView() async throws {
         try await registry.publish(
             makeDefinition(
@@ -627,7 +629,7 @@ struct AggregatesTests {
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"), required: true),
                     FieldDefinition(name: "tax", type: .double, storage: .slot(.double, "d_01"), required: true),
                 ],
-                views: [AggregateView(name: "by_product", groupBy: "product", sum: "amount")]
+                aggregates: [AggregateDefinition(name: "by_product", groupBy: "product", sum: "amount")]
             )
         )
         try await store.write(

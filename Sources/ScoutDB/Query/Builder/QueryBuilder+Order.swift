@@ -24,7 +24,12 @@ extension QueryBuilder {
     ///
     public func sort(_ field: String, _ direction: Direction = .ascending) -> Self {
         var builder = self
-        builder.sorts.append(EntityStore.Sort(field: field, ascending: direction == .ascending))
+        builder.sorts.append(
+            EntityStore.Sort(
+                field: field,
+                ascending: direction == .ascending
+            )
+        )
         return builder
     }
 

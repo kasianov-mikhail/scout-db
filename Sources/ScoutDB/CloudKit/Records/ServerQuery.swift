@@ -15,36 +15,14 @@ struct ServerFilter: Equatable, Sendable {
 
     var predicate: NSPredicate {
         let value = value.predicateValue
-        return switch op {
-        case .equals:
-            NSPredicate(format: "%K == %@", field, value)
-        case .notEquals:
-            NSPredicate(format: "%K != %@", field, value)
-        case .greaterThan:
-            NSPredicate(format: "%K > %@", field, value)
-        case .greaterThanOrEquals:
-            NSPredicate(format: "%K >= %@", field, value)
-        case .lessThan:
-            NSPredicate(format: "%K < %@", field, value)
-        case .lessThanOrEquals:
-            NSPredicate(format: "%K <= %@", field, value)
-        case .in:
-            NSPredicate(format: "%K IN %@", field, value)
-        case .notIn:
-            NSPredicate(format: "NOT (%K IN %@)", field, value)
-        case .beginsWith:
-            NSPredicate(format: "%K BEGINSWITH %@", field, value)
-        case .contains:
-            NSPredicate(format: "%K CONTAINS %@", field, value)
-        case .search:
-            NSPredicate(format: "self contains %@", value)
-        }
+        let arguments: [Any] = op == .search ? [value] : [field, value]
+        return NSPredicate(format: op.formatString, argumentArray: arguments)
     }
 }
 
 struct ServerSort: Equatable, Sendable {
     let field: String
-    let ascending: Bool
+    let order: SortOrder
 }
 
 extension CKQuery {
@@ -56,7 +34,7 @@ extension CKQuery {
                 : NSCompoundPredicate(type: .and, subpredicates: filters.map(\.predicate))
         )
         if sort.count > 0 {
-            sortDescriptors = sort.map { NSSortDescriptor(key: $0.field, ascending: $0.ascending) }
+            sortDescriptors = sort.map { NSSortDescriptor(key: $0.field, ascending: $0.order == .forward) }
         }
     }
 }

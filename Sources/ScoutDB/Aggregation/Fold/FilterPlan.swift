@@ -11,6 +11,7 @@ struct FilterPlan {
     var groupField: String?
     var groupKeys: Set<String> = []
     var numericField: String?
+
     private var numericGTE: Double?
     private var numericLT: Double?
 
@@ -44,14 +45,14 @@ struct FilterPlan {
 
     func foldPlan(
         in definition: EntityDefinition, folding kind: Metric, of field: String?, grouping group: String?
-    ) -> AggregateView? {
+    ) -> AggregateDefinition? {
         let grouping = group ?? groupField
 
-        return (definition.views ?? []).first { view in
-            guard grouping == nil || view.groupBy == grouping else {
+        return (definition.aggregates ?? []).first { aggregate in
+            guard grouping == nil || aggregate.groupBy == grouping else {
                 return false
             }
-            return field.map { view.answers(kind, of: $0) } ?? true
+            return field.map { aggregate.answers(kind, of: $0) } ?? true
         }
     }
 
@@ -68,7 +69,7 @@ struct FilterPlan {
         guard case .slot = field.storage, let lower = field.min, let upper = field.max else {
             return
         }
-        guard (definition.views ?? []).contains(where: { $0.groupBy == name }) else {
+        guard (definition.aggregates ?? []).contains(where: { $0.groupBy == name }) else {
             return
         }
 

@@ -77,21 +77,28 @@ extension [CKRecord] {
         guard descriptors.count > 0 else {
             return self
         }
+        return sorted(using: descriptors.compactMap(ColumnOrder.init))
+    }
+}
 
-        return sorted { lhs, rhs in
-            for descriptor in descriptors {
-                guard let key = descriptor.key else {
-                    continue
-                }
+private struct ColumnOrder: SortComparator {
+    let key: String
+    var order: SortOrder
 
-                let order = PredicateEvaluator.compare(lhs[key], rhs[key])
+    init?(_ descriptor: NSSortDescriptor) {
+        guard let key = descriptor.key else {
+            return nil
+        }
+        self.key = key
+        self.order = descriptor.ascending ? .forward : .reverse
+    }
 
-                guard order != .orderedSame else {
-                    continue
-                }
-                return descriptor.ascending ? order == .orderedAscending : order == .orderedDescending
-            }
-            return false
+    func compare(_ lhs: CKRecord, _ rhs: CKRecord) -> ComparisonResult {
+        switch order {
+        case .forward:
+            PredicateEvaluator.compare(lhs[key], rhs[key])
+        case .reverse:
+            PredicateEvaluator.compare(rhs[key], lhs[key])
         }
     }
 }
