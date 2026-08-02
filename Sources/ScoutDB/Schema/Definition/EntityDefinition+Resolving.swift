@@ -49,9 +49,8 @@ extension EntityDefinition {
             }
         }
 
-        let known = fieldsByName(at: version)
-        for name in resolved.keys where known[name] == nil {
-            throw SchemaError.unknownField(name)
+        for name in resolved.keys {
+            try field(name, at: version)
         }
 
         return resolved

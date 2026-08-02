@@ -211,7 +211,7 @@ struct StoreContractTests {
             }
             try await eventually { try await ReadOperation(store: f.store, entity: entity).records().count == 3 }
 
-            let totals = try await f.store.query(entity).totals(by: "product")
+            let totals = try await f.store.query(entity).totals(metric: .sum, group: "product")
             #expect(totals.map(\.group) == ["a", "b"])
             #expect(totals.map(\.count) == [2, 1])
         }

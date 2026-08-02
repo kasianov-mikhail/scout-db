@@ -74,7 +74,7 @@ extension EntityDefinition {
                 aggregate.min,
                 aggregate.max,
             ]
-            .compactMap { $0 }
+            .compactMap(\.self)
 
             guard metrics.count <= 1 else {
                 throw SchemaError.invalidDefinition(.ambiguousMetric(aggregate: aggregate.name))

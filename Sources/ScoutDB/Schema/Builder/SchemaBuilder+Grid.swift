@@ -9,7 +9,7 @@ import Foundation
 
 extension SchemaBuilder {
     static func name(_ metric: String?, of field: String?, by group: String?) -> String {
-        var parts = [metric, field, group.map { "by_\($0)" }].compactMap { $0 }
+        var parts = [metric, field, group.map { "by_\($0)" }].compactMap(\.self)
         if parts.isEmpty {
             parts = ["by_all"]
         }
@@ -31,7 +31,7 @@ extension SchemaBuilder {
         }
         merged += declared.filter { aggregate in !inherited.contains { $0.name == aggregate.name } }
         return merged.filter { aggregate in
-            let fields = [aggregate.groupBy, aggregate.metricField].compactMap { $0 }
+            let fields = [aggregate.groupBy, aggregate.metricField].compactMap(\.self)
             return fields.allSatisfy(active.contains)
         }
     }

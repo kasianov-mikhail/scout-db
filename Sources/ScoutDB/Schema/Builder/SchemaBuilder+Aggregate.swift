@@ -51,7 +51,7 @@ extension SchemaBuilder {
     ///     .sum("amount", by: "product_id")
     ///     .create()
     ///
-    /// let revenue = try await store.query("purchase").totals("amount", by: "product_id")
+    /// let revenue = try await store.query("purchase").totals("amount", metric: .sum, group: "product_id")
     /// ```
     ///
     public func sum(_ field: String, by group: String? = nil, shards: Int? = nil) -> Self {

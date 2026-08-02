@@ -42,7 +42,7 @@ struct GridQueryTests {
 
     @Test("Totals come back for the grouping and metric asked for, no aggregate named")
     func totalsByShape() async throws {
-        let totals = try await store.query("payment").totals("amount", by: "product")
+        let totals = try await store.query("payment").totals("amount", metric: .sum, group: "product")
         #expect(totals.map(\.group) == ["app", "pro"])
         #expect(totals.first { $0.group == "app" }?.value == 20)
         #expect(totals.first { $0.group == "app" }?.count == 2)
@@ -50,7 +50,7 @@ struct GridQueryTests {
 
     @Test("Counting alone needs no metric field")
     func countingRows() async throws {
-        let totals = try await store.query("payment").totals(by: "product")
+        let totals = try await store.query("payment").totals(metric: .sum, group: "product")
         #expect(totals.map(\.group) == ["app", "pro"])
         #expect(totals.map(\.count) == [2, 1])
     }
@@ -58,23 +58,21 @@ struct GridQueryTests {
     @Test("An equality filter on the grouping field narrows to that group")
     func filterNarrowsToOneGroup() async throws {
         let totals = try await store.query("payment").filter("product", .equals, .string("app")).totals(
-            "amount",
-            by: "product"
-        )
+            "amount", metric: .sum, group: "product")
         #expect(totals.map(\.group) == ["app"])
     }
 
     @Test("A filter the grid cannot honor throws instead of being dropped")
     func unhonorableFilterThrows() async throws {
         await #expect(throws: SchemaError.self) {
-            try await store.query("payment").filter("amount" > 10).totals("amount", by: "product")
+            try await store.query("payment").filter("amount" > 10).totals("amount", metric: .sum, group: "product")
         }
     }
 
     @Test("A shape nothing grids says so")
     func missingShapeThrows() async throws {
         await #expect(throws: SchemaError.self) {
-            try await store.query("payment").totals("amount", by: "missing")
+            try await store.query("payment").totals("amount", metric: .sum, group: "missing")
         }
     }
 }

@@ -38,7 +38,6 @@ extension EntityDefinition {
         index.fieldsByName(at: version, of: fields)
     }
 
-    /// The field the entity declares under `name`, as of `version`.
     @discardableResult func field(_ name: String, at version: Int) throws -> FieldDefinition {
         guard let field = fieldsByName(at: version)[name] else {
             throw SchemaError.unknownField(name)
@@ -46,7 +45,6 @@ extension EntityDefinition {
         return field
     }
 
-    /// The field the entity declares under `name` at its current version.
     @discardableResult func field(_ name: String) throws -> FieldDefinition {
         try field(name, at: version)
     }

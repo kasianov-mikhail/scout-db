@@ -536,7 +536,7 @@ struct AggregatesTests {
 
         #expect(try await store.query("reading").max("amount") == 41)
         #expect(try await store.query("reading").filter("product", .equals, "book").max("amount") == 41)
-        let peaks = try await store.query("reading").totals("amount", metric: .max, by: "product")
+        let peaks = try await store.query("reading").totals("amount", metric: .max, group: "product")
         #expect(peaks.map(\.group) == ["app", "book"])
         #expect(peaks.map(\.value) == [10, 41])
 
@@ -548,7 +548,7 @@ struct AggregatesTests {
         try await publishLedger()
         _ = try tamperedBookSlot()
 
-        let totals = try await store.query("ledger").totals("amount", by: "product")
+        let totals = try await store.query("ledger").totals("amount", metric: .sum, group: "product")
         #expect(totals.map(\.group) == ["app", "book"])
         #expect(totals.map(\.value) == [16, 40])
         #expect(totals.map(\.count) == [2, 3])
