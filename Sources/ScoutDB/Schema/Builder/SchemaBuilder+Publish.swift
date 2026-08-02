@@ -90,7 +90,7 @@ extension SchemaBuilder {
                 .fields(at: previous.version)
                 .first { $0.name == declaration.name }
 
-            if let active, active.type == declaration.type, active.storage.isSlot == declaration.wantsSlot {
+            if let active, active.type == declaration.type, isSlot(active.storage) == declaration.wantsSlot {
                 var kept = try allocator.resolve(
                     declaration,
                     since: active.since,
@@ -181,6 +181,10 @@ private func kept(_ aggregates: [AggregateDefinition], over active: Set<String>)
         let fields = [aggregate.groupBy, aggregate.metricField].compactMap(\.self)
         return fields.allSatisfy(active.contains)
     }
+}
+
+private func isSlot(_ storage: Storage) -> Bool {
+    if case .slot = storage { true } else { false }
 }
 
 private func groupable(_ field: FieldDefinition) -> Bool {
