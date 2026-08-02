@@ -37,7 +37,20 @@ extension SchemaBuilder {
             try allocator.resolve($0, since: nil)
         }
 
-        let grid = grid(over: fields, declaring: aggregates)
+        var taken = Set(aggregates.map(\.name))
+        var counted = Set(aggregates.compactMap(\.groupBy))
+        var grid = aggregates
+
+        for field in fields {
+            guard case .slot = field.storage, field.ungrouped != true,
+                [.string, .reference, .int, .double].contains(field.type),
+                taken.insert("by_\(field.name)").inserted,
+                counted.insert(field.name).inserted
+            else {
+                continue
+            }
+            grid.append(AggregateDefinition(by: field.name))
+        }
 
         try await registry.publish(
             EntityDefinition(
@@ -125,10 +138,23 @@ extension SchemaBuilder {
 
         let active = Set(fields.filter { $0.isActive(at: version) }.map(\.name))
 
-        let carriedViews = kept(
-            merge(aggregates, onto: previous.aggregates ?? []),
-            over: active
-        )
+        let inherited = previous.aggregates ?? []
+        let byName = Dictionary(aggregates.map { ($0.name, $0) }, uniquingKeysWith: { _, last in last })
+        let superseded = aggregates.map(\.groupBy)
+
+        var merged = inherited.compactMap { aggregate -> AggregateDefinition? in
+            if let replacement = byName[aggregate.name] {
+                return replacement
+            }
+            return aggregate.metricField == nil && superseded.contains(aggregate.groupBy) ? nil : aggregate
+        }
+        merged += aggregates.filter { aggregate in !inherited.contains { $0.name == aggregate.name } }
+
+        let carriedViews = merged.filter { aggregate in
+            [aggregate.groupBy, aggregate.metricField]
+                .compactMap(\.self)
+                .allSatisfy(active.contains)
+        }
 
         try await registry.publish(
             EntityDefinition(
@@ -142,50 +168,13 @@ extension SchemaBuilder {
 
         let counted = Set(carriedViews.compactMap(\.groupBy))
 
-        return fields.filter {
-            $0.since == version && groupable($0) && !counted.contains($0.name)
+        return fields.filter { field in
+            guard field.since == version, case .slot = field.storage, field.ungrouped != true else {
+                return false
+            }
+            return [.string, .reference, .int, .double].contains(field.type)
+                && !counted.contains(field.name)
         }
         .map(\.name)
     }
-}
-
-private func grid(over fields: [FieldDefinition], declaring declared: [AggregateDefinition]) -> [AggregateDefinition] {
-    var taken = Set(declared.map(\.name))
-    var counted = Set(declared.compactMap(\.groupBy))
-    var grid = declared
-
-    for field in fields where groupable(field) {
-        guard taken.insert("by_\(field.name)").inserted, counted.insert(field.name).inserted else {
-            continue
-        }
-        grid.append(AggregateDefinition(by: field.name))
-    }
-    return grid
-}
-
-private func merge(_ declared: [AggregateDefinition], onto inherited: [AggregateDefinition]) -> [AggregateDefinition] {
-    let byName = Dictionary(declared.map { ($0.name, $0) }, uniquingKeysWith: { _, last in last })
-    let superseded = declared.map(\.groupBy)
-    var merged = inherited.compactMap { aggregate -> AggregateDefinition? in
-        if let replacement = byName[aggregate.name] {
-            return replacement
-        }
-        return aggregate.metricField == nil && superseded.contains(aggregate.groupBy) ? nil : aggregate
-    }
-    merged += declared.filter { aggregate in !inherited.contains { $0.name == aggregate.name } }
-    return merged
-}
-
-private func kept(_ aggregates: [AggregateDefinition], over active: Set<String>) -> [AggregateDefinition] {
-    aggregates.filter { aggregate in
-        let fields = [aggregate.groupBy, aggregate.metricField].compactMap(\.self)
-        return fields.allSatisfy(active.contains)
-    }
-}
-
-private func groupable(_ field: FieldDefinition) -> Bool {
-    guard case .slot = field.storage, field.ungrouped != true else {
-        return false
-    }
-    return [.string, .reference, .int, .double].contains(field.type)
 }
