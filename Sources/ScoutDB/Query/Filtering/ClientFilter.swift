@@ -7,13 +7,13 @@
 
 import Foundation
 
-struct Filter: Equatable, Sendable {
+struct ClientFilter: Equatable, Sendable {
     let field: String
     let op: Operator
     let value: RecordValue
 }
 
-extension Filter {
+extension ClientFilter {
     init?(folding left: [[Self]], _ right: [[Self]]) {
         guard left.count == 1, right.count == 1 else {
             return nil

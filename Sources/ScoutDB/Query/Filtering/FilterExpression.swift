@@ -31,13 +31,13 @@ import Foundation
 /// ```
 ///
 public struct FilterExpression: Sendable {
-    let alternatives: [[Filter]]
+    let alternatives: [[ClientFilter]]
 
-    init(_ alternatives: [[Filter]]) {
+    init(_ alternatives: [[ClientFilter]]) {
         self.alternatives = alternatives
     }
 
-    init(_ filter: Filter) {
+    init(_ filter: ClientFilter) {
         alternatives = [[filter]]
     }
 }
@@ -83,7 +83,7 @@ public func || (lhs: FilterExpression, rhs: FilterExpression) -> FilterExpressio
     let left = lhs.alternatives
     let right = rhs.alternatives
 
-    guard let folded = Filter(folding: left, right) else {
+    guard let folded = ClientFilter(folding: left, right) else {
         return FilterExpression(left + right)
     }
     return FilterExpression([[folded]])

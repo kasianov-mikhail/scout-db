@@ -9,7 +9,7 @@ import CloudKit
 import Foundation
 
 extension EntityDefinition {
-    func serverFilters(_ filters: [Filter]) throws -> [CKQuery.Filter] {
+    func serverFilters(_ filters: [ClientFilter]) throws -> [CKQuery.Filter] {
         var server = [CKQuery.Filter(field: "entity", op: .equals, value: .string(entity))]
 
         let byName = fieldsByName(at: version)
@@ -40,7 +40,7 @@ extension EntityDefinition {
         return server
     }
 
-    func clientFilters(_ filters: [Filter]) throws -> [Filter] {
+    func clientFilters(_ filters: [ClientFilter]) throws -> [ClientFilter] {
         let byName = fieldsByName(at: version)
 
         return try filters.filter { filter in
