@@ -212,7 +212,7 @@ struct BuilderTests {
     func query() async throws {
         let records = try await store.query("purchase")
             .filter("quantity" > 1)
-            .sort("quantity", .descending)
+            .sort("quantity", .reverse)
             .take(1)
         #expect(records.map(\.uuid) == ["p-0"])
     }
@@ -227,7 +227,7 @@ struct BuilderTests {
 
     @Test("first returns the head of the sorted result")
     func first() async throws {
-        let record = try await store.query("purchase").sort("date", .descending).first()
+        let record = try await store.query("purchase").sort("date", .reverse).first()
         #expect(record?.uuid == "p-2")
     }
 
@@ -402,7 +402,7 @@ struct BuilderTests {
         func grouped() -> QueryBuilder {
             store.query("purchase")
                 .filter("product_id" == "sku-0" || "product_id" == "sku-1")
-                .sort("quantity", .descending)
+                .sort("quantity", .reverse)
         }
         let top = try await grouped().page(size: 1)
         #expect(top.records.map(\.uuid) == ["p-0"])

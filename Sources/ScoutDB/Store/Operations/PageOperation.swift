@@ -6,15 +6,16 @@
 // https://opensource.org/licenses/MIT.
 
 import CloudKit
+import Foundation
 
 struct PageOperation: Sendable {
     let database: any CloudDatabase
     let definition: EntityDefinition
     let field: String
-    let descending: Bool
+    let order: SortOrder
 
-    private var order: [FieldOrder] {
-        [FieldOrder(key: .field(field), order: descending ? .reverse : .forward), FieldOrder(key: .uuid)]
+    private var ranking: [FieldOrder] {
+        [FieldOrder(key: .field(field), order: order), FieldOrder(key: .uuid)]
     }
 
     func records(branches: [[ClientFilter]], size: Int, cursor: FieldCursor?) async throws -> FieldPage {
@@ -27,7 +28,7 @@ struct PageOperation: Sendable {
             return try await group.reduce(into: [EntityRecord]()) { $0 += $1 }
         }
 
-        let records = pages.unique().ranked(using: order, limit: size)
+        let records = pages.unique().ranked(using: ranking, limit: size)
 
         let next: FieldCursor? =
             records.count == size
@@ -46,7 +47,7 @@ struct PageOperation: Sendable {
             pageFilters.append(
                 ClientFilter(
                     field: field,
-                    op: descending ? .lessThanOrEquals : .greaterThanOrEquals,
+                    op: order == .reverse ? .lessThanOrEquals : .greaterThanOrEquals,
                     value: cursor.value
                 )
             )
@@ -54,7 +55,7 @@ struct PageOperation: Sendable {
 
         let sort =
             try definition.serverSort(
-                [EntityStore.Sort(field: field, ascending: !descending)]
+                [EntityStore.Sort(field: field, order: order)]
             ) + [CKQuery.Sort(field: "uuid", order: .forward)]
 
         let plan = try definition.plan(matching: pageFilters, sort: sort)
@@ -73,7 +74,7 @@ struct PageOperation: Sendable {
             return beyond(record, cursor)
         }
 
-        return collected.ranked(using: order, limit: size)
+        return collected.ranked(using: ranking, limit: size)
     }
 
     private func beyond(_ record: EntityRecord, _ cursor: FieldCursor) -> Bool {
@@ -81,9 +82,9 @@ struct PageOperation: Sendable {
         case .orderedSame:
             record.uuid > cursor.uuid
         case .orderedAscending:
-            descending
+            order == .reverse
         case .orderedDescending:
-            !descending
+            order == .forward
         }
     }
 }
@@ -109,7 +110,7 @@ extension QueryBuilder {
                 database: store.database,
                 definition: definition,
                 field: sort.field,
-                descending: !sort.ascending
+                order: sort.order
             )
         }
     }

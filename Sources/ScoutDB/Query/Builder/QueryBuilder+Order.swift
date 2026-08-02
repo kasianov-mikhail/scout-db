@@ -17,19 +17,14 @@ extension QueryBuilder {
     ///
     /// ```swift
     /// try await store.query("purchase")
-    ///     .sort("date", .descending)
+    ///     .sort("date", .reverse)
     ///     .sort("quantity")
     ///     .take(20)
     /// ```
     ///
-    public func sort(_ field: String, _ direction: Direction = .ascending) -> Self {
+    public func sort(_ field: String, _ order: SortOrder = .forward) -> Self {
         var builder = self
-        builder.sorts.append(
-            EntityStore.Sort(
-                field: field,
-                ascending: direction == .ascending
-            )
-        )
+        builder.sorts.append(EntityStore.Sort(field: field, order: order))
         return builder
     }
 
@@ -41,7 +36,7 @@ extension QueryBuilder {
     ///
     /// ```swift
     /// let newest = try await store.query("purchase")
-    ///     .sort("date", .descending)
+    ///     .sort("date", .reverse)
     ///     .limit(10)
     ///     .take(50)   // ten come back
     /// ```

@@ -20,7 +20,7 @@ extension QueryBuilder {
     ///
     /// ```swift
     /// let recent = try await store.query("purchase")
-    ///     .sort("date", .descending)
+    ///     .sort("date", .reverse)
     ///     .take(20)
     /// ```
     ///
@@ -36,7 +36,7 @@ extension QueryBuilder {
     /// ```swift
     /// let newest = try await store.query("purchase")
     ///     .filter("product_id" == "sku-42")
-    ///     .sort("date", .descending)
+    ///     .sort("date", .reverse)
     ///     .first()
     /// ```
     ///
