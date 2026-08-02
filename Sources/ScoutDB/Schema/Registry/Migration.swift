@@ -37,6 +37,7 @@ public protocol Migration: Sendable {
     ///
     /// ``EntityStore/migrate(_:)`` awaits each call before it starts the next,
     /// so a migration sees everything the ones ahead of it published.
+    ///
     func prepare(on store: EntityStore) async throws
 
     /// Undoes the change; the default does nothing.
@@ -46,6 +47,7 @@ public protocol Migration: Sendable {
     /// otherwise. A published version is not one of those: the registry only
     /// ever publishes versions, so the way back from a schema mistake is a
     /// further version that spells the shape out again.
+    ///
     func revert(on store: EntityStore) async throws
 }
 
@@ -90,6 +92,7 @@ extension EntityStore {
     /// forward, and a migration takes back only what its own `revert(on:)`
     /// spells out. Like the forward run, this one has no transaction around it
     /// and stops at the first throw.
+    ///
     public func revert(_ migrations: [any Migration]) async throws {
         for migration in migrations.reversed() {
             try await migration.revert(on: self)
