@@ -42,11 +42,16 @@ extension SchemaBuilder {
         var grid = aggregates
 
         for field in fields {
-            guard isSlot(field.storage), field.ungrouped != true,
-                [.string, .reference, .int, .double].contains(field.type),
-                taken.insert("by_\(field.name)").inserted,
-                counted.insert(field.name).inserted
-            else {
+            guard isSlot(field.storage), field.ungrouped != true else {
+                continue
+            }
+            guard [.string, .reference, .int, .double].contains(field.type) else {
+                continue
+            }
+            guard taken.insert("by_\(field.name)").inserted else {
+                continue
+            }
+            guard counted.insert(field.name).inserted else {
                 continue
             }
             grid.append(AggregateDefinition(by: field.name))
