@@ -78,13 +78,7 @@ extension SchemaBuilder {
     ///
     public func field(_ name: String, _ type: FieldType, _ constraints: FieldConstraint...) -> Self {
         var builder = self
-        builder.declarations.append(
-            Declaration(
-                name: name,
-                type: type,
-                constraints: constraints
-            )
-        )
+        builder.declarations.append(Declaration(name: name, type: type, constraints: constraints))
         return builder
     }
 }
