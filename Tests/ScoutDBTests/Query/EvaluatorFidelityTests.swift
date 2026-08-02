@@ -38,15 +38,15 @@ struct EvaluatorFidelityTests {
             entity: "pin")
     }
 
-    private func read(_ filter: Filter) async throws -> [String] {
+    private func read(_ filter: ClientFilter) async throws -> [String] {
         try await ReadOperation(store: store, entity: "pin").read(any: [[filter]]).map(\.uuid)
     }
 
     @Test("A reference field answers equality, inequality and membership")
     func referenceComparisons() async throws {
-        #expect(try await read(Filter(field: "owner", op: .equals, value: .reference("u-1"))) == ["p-1"])
-        #expect(try await read(Filter(field: "owner", op: .notEquals, value: .reference("u-1"))) == ["p-2"])
-        #expect(try await read(Filter(field: "owner", op: .in, value: .strings(["u-2"]))) == ["p-2"])
+        #expect(try await read(ClientFilter(field: "owner", op: .equals, value: .reference("u-1"))) == ["p-1"])
+        #expect(try await read(ClientFilter(field: "owner", op: .notEquals, value: .reference("u-1"))) == ["p-2"])
+        #expect(try await read(ClientFilter(field: "owner", op: .in, value: .strings(["u-2"]))) == ["p-2"])
     }
 
     @Test("Byte ordering is a strict weak ordering")

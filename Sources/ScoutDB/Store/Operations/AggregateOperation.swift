@@ -11,7 +11,7 @@ struct AggregateOperation {
     let store: EntityStore
     let entity: String
 
-    let branches: [[Filter]]
+    let branches: [[ClientFilter]]
     let field: String?
 
     func value(metric: Metric) async throws -> Double? {

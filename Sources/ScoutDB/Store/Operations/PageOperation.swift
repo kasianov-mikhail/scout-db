@@ -20,7 +20,7 @@ struct PageOperation: Sendable {
         [FieldOrder(key: .field(field), order: descending ? .reverse : .forward), FieldOrder(key: .uuid)]
     }
 
-    func page(any branches: [[Filter]]) async throws -> FieldPage {
+    func page(any branches: [[ClientFilter]]) async throws -> FieldPage {
         let pages = try await withThrowingTaskGroup(of: [EntityRecord].self) { group in
             for branch in branches {
                 group.addTask {
@@ -45,12 +45,12 @@ struct PageOperation: Sendable {
         return FieldPage(records: records, cursor: next)
     }
 
-    private func page(matching filters: [Filter]) async throws -> [EntityRecord] {
+    private func page(matching filters: [ClientFilter]) async throws -> [EntityRecord] {
         var pageFilters = filters
 
         if let cursor {
             pageFilters.append(
-                Filter(
+                ClientFilter(
                     field: field,
                     op: descending ? .lessThanOrEquals : .greaterThanOrEquals,
                     value: cursor.value

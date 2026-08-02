@@ -8,7 +8,7 @@
 import Foundation
 
 extension EntityStore {
-    func folder(entity: String, any branches: [[Filter]]) async throws -> FoldOperation? {
+    func folder(entity: String, any branches: [[ClientFilter]]) async throws -> FoldOperation? {
         let definition = try await registry.definition(for: entity)
 
         guard definition.aggregates?.isEmpty == false, var query = FilterPlan(any: branches) else {

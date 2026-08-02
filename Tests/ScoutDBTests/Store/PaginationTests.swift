@@ -97,7 +97,7 @@ struct PaginationTests {
             try await store.write([EntityWrite(values: values, uuid: "p-\(index)")], entity: "purchase")
         }
 
-        let filter = Filter(field: "comment", op: .contains, value: .string("gif"))
+        let filter = ClientFilter(field: "comment", op: .contains, value: .string("gif"))
         let records = try await ReadOperation(
             store: store, entity: "purchase", sort: [EntityStore.Sort(field: "date")], limit: 2
         ).read(any: [[filter]])

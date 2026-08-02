@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension Filter {
+extension ClientFilter {
     func matches(_ record: EntityRecord) -> Bool? {
         let stored = record.values[field]
         let options = value.members ?? [value]

@@ -47,7 +47,7 @@ struct MigratorTests {
         try await registry.publish(makeRenameDefinition(version: 2))
         try await migrator.backfill(entity: "profile")
 
-        let filter = Filter(field: "user_id", op: .equals, value: .string("bob"))
+        let filter = ClientFilter(field: "user_id", op: .equals, value: .string("bob"))
         let records = try await ReadOperation(store: store, entity: "profile").read(any: [[filter]])
         #expect(records.map(\.uuid) == ["u-2"])
     }

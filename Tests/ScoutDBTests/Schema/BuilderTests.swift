@@ -305,7 +305,7 @@ struct BuilderTests {
         func server(_ builder: QueryBuilder, using definition: EntityDefinition) throws -> [CKQuery.Filter] {
             try definition.serverFilters(builder.alternatives[0])
         }
-        func client(_ builder: QueryBuilder, using definition: EntityDefinition) throws -> [Filter] {
+        func client(_ builder: QueryBuilder, using definition: EntityDefinition) throws -> [ClientFilter] {
             try definition.clientFilters(builder.alternatives[0])
         }
 
@@ -322,7 +322,7 @@ struct BuilderTests {
         let payload = store.query("purchase").filter("comment", .notEquals, "gift")
         #expect(
             try client(payload, using: purchase).contains(
-                Filter(field: "comment", op: .notEquals, value: .string("gift"))
+                ClientFilter(field: "comment", op: .notEquals, value: .string("gift"))
             )
         )
 

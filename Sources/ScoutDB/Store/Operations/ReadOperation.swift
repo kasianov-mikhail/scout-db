@@ -24,7 +24,7 @@ struct ReadOperation: Sendable {
         self.decoder = EntityDecoder(definition: definition)
     }
 
-    func read(any branches: [[Filter]] = [[]]) async throws -> [EntityRecord] {
+    func read(any branches: [[ClientFilter]] = [[]]) async throws -> [EntityRecord] {
         if branches.count == 1 {
             return try await records(matching: branches[0], sort: sort, limit: limit)
         }
@@ -62,7 +62,7 @@ struct ReadOperation: Sendable {
         return Array(ranked.prefix(limit))
     }
 
-    private func records(matching filters: [Filter], sort: [EntityStore.Sort] = [], limit: Int? = nil)
+    private func records(matching filters: [ClientFilter], sort: [EntityStore.Sort] = [], limit: Int? = nil)
         async throws -> [EntityRecord]
     {
         if try clientRanked(sort) {
