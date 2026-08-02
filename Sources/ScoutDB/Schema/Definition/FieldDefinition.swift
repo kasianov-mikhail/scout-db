@@ -46,6 +46,18 @@ struct FieldDefinition: Codable, Equatable, Sendable {
     var alwaysPresent: Bool {
         required == true || defaultValue != nil
     }
+
+    var isGroupable: Bool {
+        guard ungrouped != true else {
+            return false
+        }
+        switch type {
+        case .string, .reference, .int, .double:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 enum Storage: Equatable, Sendable {

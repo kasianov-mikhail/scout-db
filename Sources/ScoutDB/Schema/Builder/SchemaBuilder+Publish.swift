@@ -42,10 +42,7 @@ extension SchemaBuilder {
         var grid = aggregates
 
         for field in fields {
-            guard isSlot(field.storage), field.ungrouped != true else {
-                continue
-            }
-            guard [.string, .reference, .int, .double].contains(field.type) else {
+            guard isSlot(field.storage), field.isGroupable else {
                 continue
             }
             guard taken.insert("by_\(field.name)").inserted else {
@@ -174,11 +171,10 @@ extension SchemaBuilder {
         let counted = Set(carriedViews.compactMap(\.groupBy))
 
         return fields.filter { field in
-            guard field.since == version, isSlot(field.storage), field.ungrouped != true else {
+            guard field.since == version, isSlot(field.storage) else {
                 return false
             }
-            return [.string, .reference, .int, .double].contains(field.type)
-                && !counted.contains(field.name)
+            return field.isGroupable && !counted.contains(field.name)
         }
         .map(\.name)
     }
