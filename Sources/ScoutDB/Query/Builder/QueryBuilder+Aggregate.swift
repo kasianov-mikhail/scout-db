@@ -104,7 +104,7 @@ extension QueryBuilder {
 
 extension QueryBuilder {
     private func value(of field: String, metric: Metric) async throws -> Double? {
-        let target = try await store.registry.definition(for: entity).field(field)
+        let target = try await definition.field(field)
 
         guard [.int, .double].contains(target.type) else {
             throw SchemaError.unsupportedQuery(.nonNumericField(field))

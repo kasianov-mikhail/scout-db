@@ -96,7 +96,7 @@ extension QueryBuilder {
                 throw SchemaError.unsupportedQuery(.singleSortRequired)
             }
 
-            let definition = try await store.registry.definition(for: entity)
+            let definition = try await self.definition
             let target = try definition.field(sort.field)
 
             guard [.string, .int, .double, .timestamp].contains(target.type) else {

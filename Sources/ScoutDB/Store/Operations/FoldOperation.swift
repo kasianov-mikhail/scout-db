@@ -45,7 +45,7 @@ extension FilterPlan {
 extension QueryBuilder {
     var fold: FoldOperation? {
         get async throws {
-            let definition = try await store.registry.definition(for: entity)
+            let definition = try await self.definition
 
             guard definition.aggregates?.isEmpty == false, var query = FilterPlan(branches: alternatives) else {
                 return nil

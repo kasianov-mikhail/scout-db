@@ -28,6 +28,12 @@ public struct QueryBuilder: Sendable {
     var flat: [ClientFilter]? {
         alternatives.count == 1 ? alternatives[0] : nil
     }
+
+    var definition: EntityDefinition {
+        get async throws {
+            try await store.registry.definition(for: entity)
+        }
+    }
 }
 
 extension EntityStore {

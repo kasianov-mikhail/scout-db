@@ -111,9 +111,9 @@ extension FieldOrder {
 extension QueryBuilder {
     var read: ReadOperation {
         get async throws {
-            ReadOperation(
+            try await ReadOperation(
                 database: store.database,
-                definition: try await store.registry.definition(for: entity),
+                definition: definition,
                 branches: alternatives,
                 sort: sorts
             )
