@@ -19,17 +19,13 @@ public struct RequestTimeoutError: LocalizedError {
     }
 }
 
-private struct UncheckedBox<T>: @unchecked Sendable {
-    let value: T
-}
-
 func withRequestTimeout<R>(_ timeout: Duration, _ operation: @Sendable @escaping () async throws -> R) async throws -> R
 {
-    let relay = ResultRelay<UncheckedBox<R>>()
+    let relay = ResultRelay<R>()
 
     let operationTask = Task {
         do {
-            await relay.finish(with: .success(UncheckedBox(value: try await operation())))
+            await relay.finish(with: .success(try await operation()))
         } catch {
             await relay.finish(with: .failure(error))
         }
@@ -46,29 +42,34 @@ func withRequestTimeout<R>(_ timeout: Duration, _ operation: @Sendable @escaping
     }
 
     return try await withTaskCancellationHandler {
-        try await relay.value().value
+        try await relay.value()
     } onCancel: {
         Task { await relay.finish(with: .failure(CancellationError())) }
     }
 }
 
-private actor ResultRelay<T: Sendable> {
-    private var result: Result<T, any Error>?
-    private var continuation: CheckedContinuation<T, any Error>?
+private actor ResultRelay<T> {
+    private struct Box: @unchecked Sendable {
+        let value: T
+    }
+
+    private var result: Result<Box, any Error>?
+    private var continuation: CheckedContinuation<Box, any Error>?
 
     func finish(with result: Result<T, any Error>) {
         guard self.result == nil else {
             return
         }
-        self.result = result
-        continuation?.resume(with: result)
+        let boxed = result.map(Box.init)
+        self.result = boxed
+        continuation?.resume(with: boxed)
         continuation = nil
     }
 
-    func value() async throws -> T {
+    func value() async throws -> sending T {
         if let result {
-            return try result.get()
+            return try result.get().value
         }
-        return try await withCheckedThrowingContinuation { continuation = $0 }
+        return try await withCheckedThrowingContinuation { continuation = $0 }.value
     }
 }
