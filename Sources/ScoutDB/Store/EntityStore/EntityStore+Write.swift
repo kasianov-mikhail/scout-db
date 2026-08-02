@@ -14,14 +14,6 @@ extension EntityStore {
         }
         return try await write(entity: entity).save(batch)
     }
-
-    func write(entity: String) async throws -> WriteOperation {
-        WriteOperation(
-            database: database,
-            definition: try await registry.definition(for: entity),
-            aggregator: GridAggregator(database: database, slots: slots)
-        )
-    }
 }
 
 public struct EntityWrite: Sendable {
