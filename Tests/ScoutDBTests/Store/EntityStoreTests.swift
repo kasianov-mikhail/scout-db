@@ -285,11 +285,14 @@ struct EntityStoreTests {
             [EntityWrite(values: ["user_id": .string("alice"), "score": .int(1)])], entity: "profile")
         let second = try await store.write(
             [EntityWrite(values: ["user_id": .string("alice"), "score": .int(2)])], entity: "profile")
+        let other = try await store.write(
+            [EntityWrite(values: ["user_id": .string("bob"), "score": .int(3)])], entity: "profile")
         #expect(first == second)
+        #expect(first != other)
 
         let records = try await EntityReader(store: store, entity: "profile").read()
-        #expect(records.count == 1)
-        #expect(records.first?.values["score"] == .int(2))
+        #expect(records.count == 2)
+        #expect(records.first(where: { $0.values["user_id"] == .string("alice") })?.values["score"] == .int(2))
     }
 
     @Test("List fields support server-side contains filters")
