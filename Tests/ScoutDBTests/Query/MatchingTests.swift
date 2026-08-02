@@ -47,7 +47,7 @@ struct MatchingTests {
 
     private func read(_ field: String, _ op: Operator, _ value: String) async throws -> [String] {
         let filter = ClientFilter(field: field, op: op, value: .string(value))
-        let records = try await ReadOperation(store: store, entity: "note").read(branches: [[filter]])
+        let records = try await ReadOperation(store: store, entity: "note", branches: [[filter]]).records()
         return records.map(\.uuid)
     }
 

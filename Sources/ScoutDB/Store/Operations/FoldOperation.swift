@@ -12,7 +12,7 @@ struct FoldOperation: Sendable {
     let definition: EntityDefinition
     let query: FilterPlan
 
-    func fold(of field: String?, folding kind: Metric) async throws -> GridFold? {
+    func cell(of field: String?, folding kind: Metric) async throws -> GridFold? {
         guard let aggregate = query.foldPlan(in: definition, folding: kind, of: field) else {
             return nil
         }
@@ -55,5 +55,17 @@ extension FoldOperation {
 extension FilterPlan {
     fileprivate var serverGroup: String? {
         groupKeys.count == 1 ? groupKeys.first : nil
+    }
+}
+
+extension QueryBuilder {
+    var fold: FoldOperation? {
+        get async throws {
+            FoldOperation(
+                database: store.database,
+                definition: try await store.registry.definition(for: entity),
+                branches: alternatives
+            )
+        }
     }
 }

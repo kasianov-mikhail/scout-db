@@ -26,15 +26,13 @@ extension QueryBuilder {
     /// ```
     ///
     public func totals(
-        _ field: String? = nil, folding metric: Metric = .sum, by group: String? = nil
+        _ field: String? = nil, metric: Metric = .sum, by group: String? = nil
     ) async throws -> [AggregateTotal] {
-        try await TotalOperation(
-            query: self,
+        try await total.rows(
             field: field,
             metric: metric,
             group: group
         )
-        .totals()
     }
 }
 

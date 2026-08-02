@@ -10,10 +10,9 @@ import CloudKit
 struct TotalOperation {
     let database: any CloudDatabase
     let definition: EntityDefinition
-    let aggregate: String
-    let group: String?
+    let branches: [[ClientFilter]]
 
-    func totals() async throws -> [AggregateTotal] {
+    func rows(aggregate: String, group: String? = nil) async throws -> [AggregateTotal] {
         guard let declared = definition.aggregate(named: aggregate) else {
             throw SchemaError.unknownField(aggregate)
         }
@@ -35,50 +34,41 @@ struct TotalOperation {
         }
         .sorted()
     }
-}
 
-extension TotalOperation {
-    init(store: EntityStore, entity: String, aggregate: String, group: String? = nil) async throws {
-        self.init(
-            database: store.database,
-            definition: try await store.registry.definition(for: entity),
-            aggregate: aggregate,
-            group: group
-        )
-    }
-
-    init(query: QueryBuilder, field: String?, metric: Metric, group: String?) async throws {
-        let store = query.store
-        let definition = try await query.definition
-
+    func rows(field: String?, metric: Metric, group: String?) async throws -> [AggregateTotal] {
         guard let aggregate = definition.aggregate(grouping: group, folding: field, as: metric) else {
             throw SchemaError.unsupportedQuery(
-                .noAggregate(entity: query.entity, grouping: group, folding: field)
+                .noAggregate(entity: definition.entity, grouping: group, folding: field)
             )
         }
 
-        self.init(
-            database: store.database,
-            definition: definition,
-            aggregate: aggregate.name,
-            group: try query.narrowing(to: group)
-        )
+        return try await rows(aggregate: aggregate.name, group: try narrowing(to: group))
     }
-}
 
-extension QueryBuilder {
-    fileprivate func narrowing(to group: String?) throws -> String? {
-        guard let flat else {
+    private func narrowing(to group: String?) throws -> String? {
+        guard branches.count == 1 else {
             throw SchemaError.unsupportedQuery(.disjunctionUnsupported)
         }
 
         var narrowed: String?
-        for filter in flat {
+        for filter in branches[0] {
             guard let group, filter.field == group, filter.op == .equals else {
                 throw SchemaError.unsupportedQuery(.equalityOnly(group: group))
             }
             narrowed = filter.value.canonical
         }
         return narrowed
+    }
+}
+
+extension QueryBuilder {
+    var total: TotalOperation {
+        get async throws {
+            TotalOperation(
+                database: store.database,
+                definition: try await store.registry.definition(for: entity),
+                branches: alternatives
+            )
+        }
     }
 }

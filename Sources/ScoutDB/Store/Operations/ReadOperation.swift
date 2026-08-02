@@ -8,13 +8,18 @@
 struct ReadOperation: Sendable {
     let database: any CloudDatabase
     let definition: EntityDefinition
+    let branches: [[ClientFilter]]
     let sort: [EntityStore.Sort]
-    let limit: Int?
 
-    func read(branches: [[ClientFilter]] = [[]]) async throws -> [EntityRecord] {
+    func records(limit: Int? = nil) async throws -> [EntityRecord] {
         if branches.count == 1 {
-            return try await records(matching: branches[0], sort: sort, limit: limit)
+            return try await records(
+                matching: branches[0],
+                sort: sort,
+                limit: limit
+            )
         }
+
         if let limit, sort.isEmpty {
             var union: [EntityRecord] = []
             for branch in branches {
@@ -25,24 +30,32 @@ struct ReadOperation: Sendable {
             }
             return Array(union.prefix(limit))
         }
+
         let bounded = rankable
         let results = try await branches.orderedBatches { branch in
             try await self.records(
                 matching: branch,
                 sort: bounded ? self.sort : [],
-                limit: bounded ? self.limit : nil
+                limit: bounded ? limit : nil
             )
         }
-        return results.unique().ranked(using: sort.map(FieldOrder.init), limit: limit)
+
+        return results.unique().ranked(
+            using: sort.map(FieldOrder.init),
+            limit: limit
+        )
     }
 
     private func records(matching filters: [ClientFilter], sort: [EntityStore.Sort] = [], limit: Int? = nil)
         async throws -> [EntityRecord]
     {
         if try clientRanked(sort) {
-            return try await records(matching: filters)
-                .ranked(using: sort.map(FieldOrder.init), limit: limit)
+            return try await records(matching: filters).ranked(
+                using: sort.map(FieldOrder.init),
+                limit: limit
+            )
         }
+
         let plan = try definition.plan(
             matching: filters,
             sort: try definition.serverSort(sort)
@@ -89,19 +102,21 @@ struct ReadOperation: Sendable {
     }
 }
 
-extension ReadOperation {
-    init(store: EntityStore, entity: String, sort: [EntityStore.Sort] = [], limit: Int? = nil) async throws {
-        self.init(
-            database: store.database,
-            definition: try await store.registry.definition(for: entity),
-            sort: sort,
-            limit: limit
-        )
-    }
-}
-
 extension FieldOrder {
     init(_ sort: EntityStore.Sort) {
         self.init(key: .field(sort.field), order: sort.ascending ? .forward : .reverse)
+    }
+}
+
+extension QueryBuilder {
+    var read: ReadOperation {
+        get async throws {
+            ReadOperation(
+                database: store.database,
+                definition: try await store.registry.definition(for: entity),
+                branches: alternatives,
+                sort: sorts
+            )
+        }
     }
 }
