@@ -68,7 +68,7 @@ struct EvaluatorFidelityTests {
         let record = CKRecord(recordType: "Entity", recordID: CKRecord.ID(recordName: "r"))
         record["s_00"] = "a"
 
-        let filter = ServerFilter(field: "s_00", op: op, value: value)
+        let filter = CKQuery.Filter(field: "s_00", op: op, value: value)
         #expect(
             PredicateEvaluator.evaluate(CKQuery(recordType: "Entity", filters: [filter]).predicate, record: record)
                 != nil

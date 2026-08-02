@@ -302,7 +302,7 @@ struct BuilderTests {
 
     @Test("A negative match over a slot-backed field runs on the server")
     func negativePushdown() async throws {
-        func server(_ builder: QueryBuilder, using definition: EntityDefinition) throws -> [ServerFilter] {
+        func server(_ builder: QueryBuilder, using definition: EntityDefinition) throws -> [CKQuery.Filter] {
             try definition.serverFilters(builder.alternatives[0])
         }
         func client(_ builder: QueryBuilder, using definition: EntityDefinition) throws -> [Filter] {
@@ -314,7 +314,7 @@ struct BuilderTests {
         let slotted = store.query("purchase").filter("product_id", .notEquals, "sku-1")
         #expect(
             try server(slotted, using: purchase).contains(
-                ServerFilter(field: "s_00", op: .notEquals, value: .string("sku-1"))
+                CKQuery.Filter(field: "s_00", op: .notEquals, value: .string("sku-1"))
             )
         )
         #expect(try client(slotted, using: purchase).isEmpty)
@@ -335,7 +335,7 @@ struct BuilderTests {
         let listed = store.query("shipment").filter("carrier", .notIn, .strings(["ups", "dhl"]))
         #expect(
             try server(listed, using: shipment).contains(
-                ServerFilter(field: "s_00", op: .notIn, value: .strings(["ups", "dhl"]))
+                CKQuery.Filter(field: "s_00", op: .notIn, value: .strings(["ups", "dhl"]))
             )
         )
     }

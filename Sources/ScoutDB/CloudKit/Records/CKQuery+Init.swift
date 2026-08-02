@@ -8,25 +8,25 @@
 import CloudKit
 import Foundation
 
-struct ServerFilter: Equatable, Sendable {
-    let field: String
-    let op: Operator
-    let value: RecordValue
-
-    var predicate: NSPredicate {
-        let value = value.predicateValue
-        let arguments: [Any] = op == .search ? [value] : [field, value]
-        return NSPredicate(format: op.formatString, argumentArray: arguments)
-    }
-}
-
-struct ServerSort: Equatable, Sendable {
-    let field: String
-    let order: SortOrder
-}
-
 extension CKQuery {
-    convenience init(recordType: String, filters: [ServerFilter], sort: [ServerSort] = []) {
+    struct Filter: Equatable, Sendable {
+        let field: String
+        let op: Operator
+        let value: RecordValue
+
+        fileprivate var predicate: NSPredicate {
+            let value = value.predicateValue
+            let arguments: [Any] = op == .search ? [value] : [field, value]
+            return NSPredicate(format: op.formatString, argumentArray: arguments)
+        }
+    }
+
+    struct Sort: Equatable, Sendable {
+        let field: String
+        let order: SortOrder
+    }
+
+    convenience init(recordType: String, filters: [Filter], sort: [Sort] = []) {
         self.init(
             recordType: recordType,
             predicate: filters.isEmpty

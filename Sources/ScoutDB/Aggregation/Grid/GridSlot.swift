@@ -56,11 +56,11 @@ extension CKQuery {
     /// ``GridSlot/date``, so matching on it would narrow nothing.
     static func grid(entity: String, aggregate: String, group: String? = nil) -> CKQuery {
         var filters = [
-            ServerFilter(field: "entity", op: .equals, value: .string(entity)),
-            ServerFilter(field: "aggregate", op: .equals, value: .string(aggregate)),
+            CKQuery.Filter(field: "entity", op: .equals, value: .string(entity)),
+            CKQuery.Filter(field: "aggregate", op: .equals, value: .string(aggregate)),
         ]
         if let group {
-            filters.append(ServerFilter(field: CKRecord.groupCell, op: .equals, value: .string(group)))
+            filters.append(CKQuery.Filter(field: CKRecord.groupCell, op: .equals, value: .string(group)))
         }
         return CKQuery(recordType: GridSlot.recordType, filters: filters)
     }
