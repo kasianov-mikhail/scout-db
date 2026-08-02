@@ -39,11 +39,14 @@ extension SchemaBuilder {
 
         let grid = Self.grid(over: fields, declaring: aggregates)
 
-        try await publish(
-            fields: fields,
-            version: 1,
-            inheriting: nil,
-            publishing: grid
+        try await registry.publish(
+            EntityDefinition(
+                entity: entity,
+                version: 1,
+                fields: fields,
+                unique: unique,
+                aggregates: grid.isEmpty ? nil : grid
+            )
         )
     }
 
@@ -128,11 +131,14 @@ extension SchemaBuilder {
             keeping: active
         )
 
-        try await publish(
-            fields: fields,
-            version: version,
-            inheriting: previous,
-            publishing: carriedViews
+        try await registry.publish(
+            EntityDefinition(
+                entity: entity,
+                version: version,
+                fields: fields,
+                unique: unique ?? previous.unique,
+                aggregates: carriedViews.isEmpty ? nil : carriedViews
+            )
         )
 
         let counted = Set(carriedViews.compactMap(\.groupBy))
@@ -141,19 +147,5 @@ extension SchemaBuilder {
             $0.since == version && Self.groupable($0) && !counted.contains($0.name)
         }
         .map(\.name)
-    }
-
-    func publish(
-        fields: [FieldDefinition], version: Int, inheriting previous: EntityDefinition?,
-        publishing aggregates: [AggregateDefinition]
-    ) async throws {
-        let definition = EntityDefinition(
-            entity: entity,
-            version: version,
-            fields: fields,
-            unique: unique ?? previous?.unique,
-            aggregates: aggregates.isEmpty ? nil : aggregates
-        )
-        try await registry.publish(definition)
     }
 }
