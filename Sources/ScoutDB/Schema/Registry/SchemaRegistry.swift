@@ -58,7 +58,7 @@ public actor SchemaRegistry {
         let definition = try await definition(for: entity)
         return EntitySchema(
             entity: definition.entity,
-            fields: definition.fields(at: definition.version).map {
+            fields: definition.activeFields.map {
                 EntitySchema.Field(
                     name: $0.name,
                     type: $0.type,
