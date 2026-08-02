@@ -21,3 +21,17 @@ extension EntityStore {
         return try await writer.write(batch)
     }
 }
+
+/// One record of a batched `EntityStore.write(_:entity:)` call.
+public struct EntityWrite: Sendable {
+    public let values: [String: RecordValue]
+
+    /// The uuid to write under, replacing any record that already carries it,
+    /// or `nil` to write under a fresh one that no stored record can hold.
+    public let uuid: String?
+
+    public init(values: [String: RecordValue], uuid: String?) {
+        self.values = values
+        self.uuid = uuid
+    }
+}

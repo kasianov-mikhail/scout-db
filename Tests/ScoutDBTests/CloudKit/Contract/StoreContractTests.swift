@@ -62,9 +62,9 @@ struct StoreContractTests {
                 unique: ["user"]
             )
             try await f.store.write(
-                [EntityWrite(values: ["user": .string("u1"), "date": .date(Date())])], entity: entity)
+                [EntityWrite(values: ["user": .string("u1"), "date": .date(Date())], uuid: nil)], entity: entity)
             try await f.store.write(
-                [EntityWrite(values: ["user": .string("u1"), "date": .date(Date())])], entity: entity)
+                [EntityWrite(values: ["user": .string("u1"), "date": .date(Date())], uuid: nil)], entity: entity)
 
             try await eventually { try await EntityReader(store: f.store, entity: entity).read().count == 1 }
         }
