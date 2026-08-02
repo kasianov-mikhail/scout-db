@@ -23,6 +23,7 @@ struct EntityCoder {
         for field in fields where resolved[field.name] == nil {
             resolved[field.name] = field.defaultValue
         }
+
         for field in fields {
             guard let value = resolved[field.name] else {
                 if field.required == true {
@@ -30,17 +31,20 @@ struct EntityCoder {
                 }
                 continue
             }
+
             guard field.type.matches(value) else {
                 throw SchemaError.typeMismatch(field.name)
             }
+
             if let allowed = field.allowed, !value.strings.allSatisfy(allowed.contains) {
                 throw SchemaError.invalidValue(field.name)
             }
-            if let pattern = field.pattern, let regex = Self.patterns.regex(for: pattern),
-                !value.strings.allSatisfy({ $0.wholeMatch(of: regex) != nil })
-            {
-                throw SchemaError.invalidValue(field.name)
+            if let pattern = field.pattern, let regex = Self.patterns.regex(for: pattern) {
+                if !value.strings.allSatisfy({ $0.wholeMatch(of: regex) != nil }) {
+                    throw SchemaError.invalidValue(field.name)
+                }
             }
+
             for scalar in value.scalars {
                 if let min = field.min, scalar < min {
                     throw SchemaError.invalidValue(field.name)
@@ -50,31 +54,13 @@ struct EntityCoder {
                 }
             }
         }
+
         let known = definition.fieldsByName(at: version)
         for name in resolved.keys where known[name] == nil {
             throw SchemaError.unknownField(name)
         }
+
         return resolved
-    }
-
-    func naturalUUID(for values: [String: RecordValue]) throws -> String? {
-        guard let unique = definition.unique else {
-            return nil
-        }
-        let key = try unique.map { name in
-            guard let value = values[name] else {
-                throw SchemaError.missingField(name)
-            }
-            return "\(name)=\(value.canonical)"
-        }
-        return contentDigest(of: key)
-    }
-
-    func rewrite(_ record: CKRecord, transform: (inout EntityRecord) throws -> Void) throws -> CKRecord {
-        var next = try decode(record)
-        try transform(&next)
-        next.values = try resolve(next.values, at: next.schemaVersion)
-        return try encode(next, into: record)
     }
 
     func encode(_ entityRecord: EntityRecord, into base: CKRecord? = nil) throws -> CKRecord {
@@ -133,7 +119,12 @@ struct EntityCoder {
             }
         }
 
-        return EntityRecord(entity: definition.entity, uuid: uuid, schemaVersion: Int(version), values: values)
+        return EntityRecord(
+            entity: definition.entity,
+            uuid: uuid,
+            schemaVersion: Int(version),
+            values: values
+        )
     }
 }
 

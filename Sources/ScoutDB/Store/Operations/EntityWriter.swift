@@ -89,3 +89,18 @@ struct EntityWriter: Sendable {
         return (Array(liveByUUID.values), Array(latest.values))
     }
 }
+
+extension EntityCoder {
+    fileprivate func naturalUUID(for values: [String: RecordValue]) throws -> String? {
+        guard let unique = definition.unique else {
+            return nil
+        }
+        let key = try unique.map { name in
+            guard let value = values[name] else {
+                throw SchemaError.missingField(name)
+            }
+            return "\(name)=\(value.canonical)"
+        }
+        return contentDigest(of: key)
+    }
+}

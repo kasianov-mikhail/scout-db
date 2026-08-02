@@ -26,9 +26,11 @@ public struct Migrator: Sendable {
 
     @discardableResult public func rename(entity: String, from: String, to: String) async throws -> Int {
         let definition = try await registry.definition(for: entity)
+
         guard definition.field(named: to, at: definition.version) != nil else {
             throw SchemaError.unknownField(to)
         }
+
         return try await backfill(entity: entity) { record, previous in
             record.values[to] = record.values[to] ?? previous.values[from]
         }
@@ -38,6 +40,7 @@ public struct Migrator: Sendable {
         entity: String, transform: (inout EntityRecord, _ previous: EntityRecord) throws -> Void
     ) async throws -> Int {
         let definition = try await registry.definition(for: entity)
+
         let query = CKQuery(
             recordType: "Entity",
             filters: [
@@ -45,8 +48,10 @@ public struct Migrator: Sendable {
                 ServerFilter(field: "schema_version", op: .lessThan, value: .int(Int64(definition.version))),
             ]
         )
+
         let coder = EntityCoder(definition: definition)
         var migrated = 0
+
         try await database.forEachPage(matching: query) { page in
             let rewritten = try page.map { record in
                 try coder.rewrite(record) { entityRecord in
@@ -60,14 +65,17 @@ public struct Migrator: Sendable {
                     try transform(&entityRecord, previous)
                 }
             }
+
             guard rewritten.count > 0 else {
                 return
             }
             for chunk in rewritten.chunked(into: maxBatchSize) {
                 try await database.modifyRecords(saving: chunk, deleting: [])
             }
+
             migrated += rewritten.count
         }
+
         return migrated
     }
 
@@ -75,6 +83,7 @@ public struct Migrator: Sendable {
         -> Int
     {
         let definition = try await registry.definition(for: entity)
+
         guard let view = definition.view(named: viewName) else {
             throw SchemaError.unknownField(viewName)
         }
@@ -87,8 +96,10 @@ public struct Migrator: Sendable {
 
         var scoped = definition
         scoped.views = [view]
+
         let coder = EntityCoder(definition: definition)
         let aggregator = GridAggregator(database: database)
+
         var counted = 0
         try await database.forEachPage(
             matching: CKQuery(
@@ -104,6 +115,7 @@ public struct Migrator: Sendable {
                 counted += decoded.count
             }
         }
+
         return counted
     }
 }
@@ -126,5 +138,14 @@ extension EntityDefinition {
             }
         }
         return values
+    }
+}
+
+extension EntityCoder {
+    fileprivate func rewrite(_ record: CKRecord, transform: (inout EntityRecord) throws -> Void) throws -> CKRecord {
+        var next = try decode(record)
+        try transform(&next)
+        next.values = try resolve(next.values, at: next.schemaVersion)
+        return try encode(next, into: record)
     }
 }

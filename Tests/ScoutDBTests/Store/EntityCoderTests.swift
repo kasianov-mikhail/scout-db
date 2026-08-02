@@ -209,24 +209,6 @@ struct EntityCoderTests {
             try coder.resolve(["counts": .ints([1, -1, 2])], at: 2)
         }
     }
-
-    @Test("Natural key produces a deterministic uuid")
-    func naturalKey() throws {
-        let coder = EntityCoder(
-            definition: makeDefinition(
-                entity: "profile",
-                fields: [
-                    FieldDefinition(name: "user_id", type: .string, storage: .slot(.string, "s_00"))
-                ],
-                unique: ["user_id"]
-            ))
-        let first = try coder.naturalUUID(for: ["user_id": .string("alice")])
-        let second = try coder.naturalUUID(for: ["user_id": .string("alice")])
-        let other = try coder.naturalUUID(for: ["user_id": .string("bob")])
-        #expect(first != nil)
-        #expect(first == second)
-        #expect(first != other)
-    }
 }
 
 func makePurchase(uuid: String = "p-1") -> EntityRecord {
