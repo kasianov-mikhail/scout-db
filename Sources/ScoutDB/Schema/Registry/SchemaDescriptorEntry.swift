@@ -37,7 +37,7 @@ extension SchemaDescriptorEntry: Comparable {
 extension [SchemaDescriptorEntry] {
     var latest: EntityDefinition? {
         get throws {
-            guard let entry = max() else {
+            guard let entry = self.max() else {
                 return nil
             }
             let definition = try JSONDecoder().decode(EntityDefinition.self, from: entry.definition)
