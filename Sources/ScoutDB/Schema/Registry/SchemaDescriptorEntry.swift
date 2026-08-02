@@ -46,15 +46,3 @@ extension [SchemaDescriptorEntry] {
         }
     }
 }
-
-extension CKQuery {
-    convenience init(activeSchemasOf entity: String) {
-        self.init(
-            recordType: SchemaDescriptorEntry.recordType,
-            filters: [
-                CKQuery.Filter(field: "entity", op: .equals, value: .string(entity)),
-                CKQuery.Filter(field: "status", op: .equals, value: .string("active")),
-            ]
-        )
-    }
-}

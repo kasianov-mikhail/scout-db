@@ -27,9 +27,14 @@ public actor SchemaRegistry {
         }
 
         let task = Task { () throws -> EntityDefinition in
-            let entries = try await database.allRecords(matching: CKQuery(activeSchemasOf: entity)).map(
-                SchemaDescriptorEntry.init
+            let query = CKQuery(
+                recordType: SchemaDescriptorEntry.recordType,
+                filters: [
+                    CKQuery.Filter(field: "entity", op: .equals, value: .string(entity)),
+                    CKQuery.Filter(field: "status", op: .equals, value: .string("active")),
+                ]
             )
+            let entries = try await database.allRecords(matching: query).map(SchemaDescriptorEntry.init)
             guard let definition = try entries.latest else {
                 throw SchemaError.unknownEntity(entity)
             }
