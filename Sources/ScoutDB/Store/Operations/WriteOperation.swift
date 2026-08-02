@@ -43,11 +43,7 @@ struct WriteOperation: Sendable {
             try await database.modifyRecords(saving: chunk, deleting: [])
         }
 
-        try await aggregator.rebalance(
-            removing: removedFromViews,
-            adding: addedToViews,
-            using: definition
-        )
+        try await aggregator.rebalance(removing: removedFromViews, adding: addedToViews)
 
         return records.map(\.uuid)
     }
@@ -97,10 +93,12 @@ struct WriteOperation: Sendable {
 
 extension EntityStore {
     func write(entity: String) async throws -> WriteOperation {
-        WriteOperation(
+        let definition = try await registry.definition(for: entity)
+
+        return WriteOperation(
             database: database,
-            definition: try await registry.definition(for: entity),
-            aggregator: GridAggregator(database: database, slots: slots)
+            definition: definition,
+            aggregator: GridAggregator(database: database, definition: definition, slots: slots)
         )
     }
 }

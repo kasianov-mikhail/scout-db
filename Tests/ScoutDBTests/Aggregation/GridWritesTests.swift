@@ -55,9 +55,9 @@ struct GridWritesTests {
             AggregateDefinition(name: "revenue", groupBy: "product", sum: "amount"),
         ]
         )
-        let aggregator = GridAggregator(database: database)
+        let aggregator = GridAggregator(database: database, definition: definition)
 
-        try await aggregator.rebalance(removing: [], adding: payments(["app", "pro", "max"]), using: definition)
+        try await aggregator.rebalance(removing: [], adding: payments(["app", "pro", "max"]))
 
         #expect(slots.count == 6)
         #expect(requests(.fetch) == 1)
@@ -68,11 +68,11 @@ struct GridWritesTests {
     @Test("A slot written before stays cached, so the next write only saves")
     func warmSlotSkipsTheFetch() async throws {
         let definition = paymentDefinition(aggregates: [AggregateDefinition(name: "revenue", sum: "amount")])
-        let aggregator = GridAggregator(database: database)
-        try await aggregator.rebalance(removing: [], adding: payments(["app"]), using: definition)
+        let aggregator = GridAggregator(database: database, definition: definition)
+        try await aggregator.rebalance(removing: [], adding: payments(["app"]))
         database.resetRequests()
 
-        try await aggregator.rebalance(removing: [], adding: payments(["pro"]), using: definition)
+        try await aggregator.rebalance(removing: [], adding: payments(["pro"]))
 
         #expect(requests(.fetch) == 0)
         #expect(requests(.conditionalSave) == 1)
@@ -94,15 +94,12 @@ struct GridWritesTests {
     func raisedMinLeavesTheValue() async throws {
         let definition = paymentDefinition(aggregates: [AggregateDefinition(name: "cheapest", min: "amount")])
         let stored = payment(amount: 5)
-        try await GridAggregator(database: database)
-            .rebalance(removing: [], adding: [stored], using: definition)
+        try await GridAggregator(database: database, definition: definition)
+            .rebalance(removing: [], adding: [stored])
         database.resetRequests()
 
-        try await GridAggregator(database: database).rebalance(
-            removing: [stored],
-            adding: [payment(amount: 9)],
-            using: definition
-        )
+        try await GridAggregator(database: database, definition: definition)
+            .rebalance(removing: [stored], adding: [payment(amount: 9)])
 
         #expect(requests(.conditionalSave) == 1)
         #expect(try #require(slots.first)["f_00"] as? Double == 5)
@@ -112,15 +109,12 @@ struct GridWritesTests {
     func loweredMinWritesTheSlot() async throws {
         let definition = paymentDefinition(aggregates: [AggregateDefinition(name: "cheapest", min: "amount")])
         let stored = payment(amount: 5)
-        try await GridAggregator(database: database)
-            .rebalance(removing: [], adding: [stored], using: definition)
+        try await GridAggregator(database: database, definition: definition)
+            .rebalance(removing: [], adding: [stored])
         database.resetRequests()
 
-        try await GridAggregator(database: database).rebalance(
-            removing: [stored],
-            adding: [payment(amount: 2)],
-            using: definition
-        )
+        try await GridAggregator(database: database, definition: definition)
+            .rebalance(removing: [stored], adding: [payment(amount: 2)])
 
         #expect(requests(.conditionalSave) == 1)
         #expect(try #require(slots.first)["f_00"] as? Double == 2)
@@ -129,15 +123,15 @@ struct GridWritesTests {
     @Test("A slot another writer moved on is folded again over the server copy")
     func staleSlotRetriesOverTheServerCopy() async throws {
         let definition = paymentDefinition(aggregates: [AggregateDefinition(name: "revenue", sum: "amount")])
-        let aggregator = GridAggregator(database: database)
-        try await aggregator.rebalance(removing: [], adding: payments(["app"]), using: definition)
+        let aggregator = GridAggregator(database: database, definition: definition)
+        try await aggregator.rebalance(removing: [], adding: payments(["app"]))
 
         let server = try #require(slots.first).copy() as! CKRecord
         server["c_00"] = (server["c_00"] as? Int64 ?? 0) + 5
         try await database.modifyRecords(saving: [server], deleting: [])
         database.resetRequests()
 
-        try await aggregator.rebalance(removing: [], adding: payments(["pro"]), using: definition)
+        try await aggregator.rebalance(removing: [], adding: payments(["pro"]))
 
         #expect(requests(.conditionalSave) == 2)
         let slot = try #require(slots.first)

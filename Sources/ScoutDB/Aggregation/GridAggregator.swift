@@ -10,19 +10,19 @@ import Foundation
 
 struct GridAggregator {
     let database: any CloudDatabase
+    let definition: EntityDefinition
     let slots: GridCache
     let maxRetry = 3
 
-    init(database: any CloudDatabase, slots: GridCache = GridCache()) {
+    init(database: any CloudDatabase, definition: EntityDefinition, slots: GridCache = GridCache()) {
         self.database = database
+        self.definition = definition
         self.slots = slots
     }
 
-    func rebalance(removing old: [EntityRecord], adding new: [EntityRecord], using definition: EntityDefinition)
-        async throws
-    {
-        var merged = deltas(for: old, using: definition, adding: false)
-        for (slot, delta) in deltas(for: new, using: definition, adding: true) {
+    func rebalance(removing old: [EntityRecord], adding new: [EntityRecord]) async throws {
+        var merged = deltas(for: old, adding: false)
+        for (slot, delta) in deltas(for: new, adding: true) {
             merged[slot, default: GridDelta()].merge(delta)
         }
 
@@ -34,9 +34,7 @@ struct GridAggregator {
         try await apply(live)
     }
 
-    private func deltas(for batch: [EntityRecord], using definition: EntityDefinition, adding: Bool) -> [GridSlot:
-        GridDelta]
-    {
+    private func deltas(for batch: [EntityRecord], adding: Bool) -> [GridSlot: GridDelta] {
         let sign: Int64 = adding ? 1 : -1
         var deltas: [GridSlot: GridDelta] = [:]
 
