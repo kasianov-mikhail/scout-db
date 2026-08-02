@@ -64,9 +64,9 @@ struct TotalOperation {
 extension QueryBuilder {
     var total: TotalOperation {
         get async throws {
-            TotalOperation(
+            try await TotalOperation(
                 database: store.database,
-                definition: try await store.registry.definition(for: entity),
+                definition: definition,
                 branches: alternatives
             )
         }
