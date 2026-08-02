@@ -32,3 +32,18 @@ struct AggregateDefinition: Codable, Equatable, Sendable {
         sum ?? min ?? max
     }
 }
+
+extension AggregateDefinition {
+    init(metric: Metric? = nil, of field: String? = nil, by group: String? = nil, shards: Int? = nil) {
+        let parts = [metric?.label, field, group.map { "by_\($0)" }].compactMap(\.self)
+
+        self.init(
+            name: parts.isEmpty ? "by_all" : parts.joined(separator: "_"),
+            groupBy: group,
+            sum: metric?.storage == .sum ? field : nil,
+            min: metric?.storage == .min ? field : nil,
+            max: metric?.storage == .max ? field : nil,
+            shards: shards
+        )
+    }
+}

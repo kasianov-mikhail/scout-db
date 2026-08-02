@@ -27,6 +27,17 @@ extension Metric {
         }
     }
 
+    var label: String {
+        switch self {
+        case .sum, .average:
+            "sum"
+        case .min:
+            "min"
+        case .max:
+            "max"
+        }
+    }
+
     var isReversible: Bool {
         switch self {
         case .sum, .average:
