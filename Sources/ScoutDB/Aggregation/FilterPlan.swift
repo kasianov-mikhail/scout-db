@@ -48,7 +48,9 @@ struct FilterPlan {
             guard groupField == nil || aggregate.groupBy == groupField else {
                 return false
             }
-            return field.map { aggregate.answers(kind, of: $0) } ?? true
+            return field.map {
+                aggregate.metricKind == kind.storage && aggregate.metricField == $0
+            } ?? true
         }
     }
 

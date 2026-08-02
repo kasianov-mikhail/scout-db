@@ -54,7 +54,7 @@ extension EntityDefinition {
             guard let field else {
                 return true
             }
-            return aggregate.answers(metric, of: field)
+            return aggregate.metricKind == metric.storage && aggregate.metricField == field
         }
     }
 }

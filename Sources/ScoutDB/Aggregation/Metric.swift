@@ -16,6 +16,17 @@ public enum Metric: Equatable, Sendable {
 }
 
 extension Metric {
+    var storage: Metric {
+        switch self {
+        case .sum, .average:
+            .sum
+        case .min:
+            .min
+        case .max:
+            .max
+        }
+    }
+
     var isReversible: Bool {
         switch self {
         case .sum, .average:
