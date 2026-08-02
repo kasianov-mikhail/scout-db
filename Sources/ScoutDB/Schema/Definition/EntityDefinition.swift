@@ -31,15 +31,15 @@ struct EntityDefinition: Codable, Equatable, Sendable {
 
 extension EntityDefinition {
     func fields(at version: Int) -> [FieldDefinition] {
-        index.entry(at: version, of: fields).active
+        index.fields(at: version, of: fields)
     }
 
     func field(named name: String, at version: Int) -> FieldDefinition? {
-        index.entry(at: version, of: fields).byName[name]
+        index.fieldsByName(at: version, of: fields)[name]
     }
 
     func fieldsByName(at version: Int) -> [String: FieldDefinition] {
-        index.entry(at: version, of: fields).byName
+        index.fieldsByName(at: version, of: fields)
     }
 }
 
