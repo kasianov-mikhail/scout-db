@@ -34,7 +34,7 @@ extension SchemaBuilder {
         var allocator = SlotAllocator()
 
         let fields = try declarations.map {
-            try resolve($0, allocator: &allocator, since: nil)
+            try allocator.resolve($0, since: nil)
         }
 
         let grid = Self.grid(over: fields, declaring: aggregates)
@@ -88,9 +88,8 @@ extension SchemaBuilder {
                 .first { $0.name == declaration.name }
 
             if let active, active.type == declaration.type, active.storage.isSlot == declaration.wantsSlot {
-                var kept = try resolve(
+                var kept = try allocator.resolve(
                     declaration,
-                    allocator: &allocator,
                     since: active.since,
                     storage: active.storage
                 )
@@ -100,9 +99,8 @@ extension SchemaBuilder {
                 carried.insert(declaration.name)
             } else {
                 fields.append(
-                    try resolve(
+                    try allocator.resolve(
                         declaration,
-                        allocator: &allocator,
                         since: version
                     )
                 )
