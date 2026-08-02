@@ -49,12 +49,13 @@ public struct Migrator: Sendable {
             ]
         )
 
-        let coder = EntityCoder(definition: definition)
+        let encoder = EntityEncoder(definition: definition)
+        let decoder = EntityDecoder(definition: definition)
         var migrated = 0
 
         try await database.forEachPage(matching: query) { page in
             let rewritten = try page.map { record in
-                let previous = try coder.decode(record)
+                let previous = try decoder.decode(record)
                 var entityRecord = EntityRecord(
                     entity: entity,
                     uuid: previous.uuid,
@@ -63,7 +64,7 @@ public struct Migrator: Sendable {
                 )
                 try transform(&entityRecord, previous)
                 entityRecord.values = try definition.resolve(entityRecord.values, at: entityRecord.schemaVersion)
-                return try coder.encode(entityRecord, into: record)
+                return try encoder.encode(entityRecord, into: record)
             }
 
             guard rewritten.count > 0 else {
@@ -97,7 +98,7 @@ public struct Migrator: Sendable {
         var scoped = definition
         scoped.aggregates = [aggregate]
 
-        let coder = EntityCoder(definition: definition)
+        let decoder = EntityDecoder(definition: definition)
         let aggregator = GridAggregator(database: database)
 
         var counted = 0
@@ -110,7 +111,7 @@ public struct Migrator: Sendable {
             )
         ) { page in
             for chunk in page.chunked(into: batchSize) {
-                let decoded = try chunk.map { try coder.decode($0) }
+                let decoded = try chunk.map(decoder.decode)
                 try await aggregator.rebalance(removing: [], adding: decoded, using: scoped)
                 counted += decoded.count
             }
