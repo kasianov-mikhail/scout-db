@@ -52,8 +52,8 @@ extension CKQuery {
         self.init(
             recordType: SchemaDescriptorEntry.recordType,
             filters: [
-                ServerFilter(field: "entity", op: .equals, value: .string(entity)),
-                ServerFilter(field: "status", op: .equals, value: .string("active")),
+                CKQuery.Filter(field: "entity", op: .equals, value: .string(entity)),
+                CKQuery.Filter(field: "status", op: .equals, value: .string("active")),
             ]
         )
     }

@@ -5,11 +5,12 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
 import Foundation
 
 extension EntityDefinition {
-    func serverFilters(_ filters: [Filter]) throws -> [ServerFilter] {
-        var server = [ServerFilter(field: "entity", op: .equals, value: .string(entity))]
+    func serverFilters(_ filters: [Filter]) throws -> [CKQuery.Filter] {
+        var server = [CKQuery.Filter(field: "entity", op: .equals, value: .string(entity))]
 
         let byName = fieldsByName(at: version)
 
@@ -26,13 +27,13 @@ extension EntityDefinition {
                 guard field.type == .text, case .slot(_, let slot) = field.storage else {
                     throw SchemaError.invalidValue(filter.field)
                 }
-                server.append(ServerFilter(field: slot, op: .search, value: filter.value))
+                server.append(CKQuery.Filter(field: slot, op: .search, value: filter.value))
 
             default:
                 guard case .slot(_, let slot) = field.storage else {
                     continue
                 }
-                server.append(ServerFilter(field: slot, op: filter.op, value: filter.value))
+                server.append(CKQuery.Filter(field: slot, op: filter.op, value: filter.value))
             }
         }
 
@@ -66,7 +67,7 @@ extension EntityDefinition {
         }
     }
 
-    func serverSort(_ sort: [EntityStore.Sort]) throws -> [ServerSort] {
+    func serverSort(_ sort: [EntityStore.Sort]) throws -> [CKQuery.Sort] {
         try sort.map { sort in
             guard let field = field(named: sort.field, at: version) else {
                 throw SchemaError.unknownField(sort.field)
@@ -78,7 +79,7 @@ extension EntityDefinition {
                 throw SchemaError.invalidValue(sort.field)
             }
 
-            return ServerSort(field: slot, order: sort.ascending ? .forward : .reverse)
+            return CKQuery.Sort(field: slot, order: sort.ascending ? .forward : .reverse)
         }
     }
 }

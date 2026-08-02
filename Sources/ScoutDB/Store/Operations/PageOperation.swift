@@ -61,7 +61,7 @@ struct PageOperation: Sendable {
         let sort =
             try definition.serverSort(
                 [EntityStore.Sort(field: field, ascending: !descending)]
-            ) + [ServerSort(field: "uuid", order: .forward)]
+            ) + [CKQuery.Sort(field: "uuid", order: .forward)]
 
         let query = CKQuery(
             recordType: "Entity",
