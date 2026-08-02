@@ -20,6 +20,6 @@ public struct EntityStore: Sendable {
 
     struct Sort: Equatable, Sendable {
         let field: String
-        var ascending = true
+        var order: SortOrder = .forward
     }
 }

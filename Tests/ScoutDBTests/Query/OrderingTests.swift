@@ -39,7 +39,7 @@ struct OrderingTests {
         let records = [
             note("n-1", rank: 1, group: "b"), note("n-2", rank: 2, group: "a"), note("n-3", rank: 1, group: "a"),
         ]
-        let sorts = [EntityStore.Sort(field: "group"), EntityStore.Sort(field: "rank", ascending: false)]
+        let sorts = [EntityStore.Sort(field: "group"), EntityStore.Sort(field: "rank", order: .reverse)]
         #expect(records.sorted(using: sorts.map(FieldOrder.init)).map(\.uuid) == ["n-2", "n-3", "n-1"])
     }
 

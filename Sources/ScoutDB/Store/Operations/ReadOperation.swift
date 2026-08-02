@@ -104,7 +104,7 @@ struct ReadOperation: Sendable {
 
 extension FieldOrder {
     init(_ sort: EntityStore.Sort) {
-        self.init(key: .field(sort.field), order: sort.ascending ? .forward : .reverse)
+        self.init(key: .field(sort.field), order: sort.order)
     }
 }
 

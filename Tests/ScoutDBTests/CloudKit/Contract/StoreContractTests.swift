@@ -149,14 +149,14 @@ struct StoreContractTests {
             }
             try await eventually { try await ReadOperation(store: f.store, entity: entity).records().count == 3 }
 
-            let ascending = try await ReadOperation(
+            let forward = try await ReadOperation(
                 store: f.store, entity: entity, sort: [.init(field: "quantity")]
             ).records()
-            #expect(ascending.map(\.uuid) == ["o-1", "o-0", "o-2"])
-            let descending = try await ReadOperation(
-                store: f.store, entity: entity, sort: [.init(field: "quantity", ascending: false)]
+            #expect(forward.map(\.uuid) == ["o-1", "o-0", "o-2"])
+            let reverse = try await ReadOperation(
+                store: f.store, entity: entity, sort: [.init(field: "quantity", order: .reverse)]
             ).records()
-            #expect(descending.map(\.uuid) == ["o-2", "o-0", "o-1"])
+            #expect(reverse.map(\.uuid) == ["o-2", "o-0", "o-1"])
         }
     }
 

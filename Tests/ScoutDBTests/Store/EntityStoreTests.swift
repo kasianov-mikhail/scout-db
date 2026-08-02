@@ -96,15 +96,15 @@ struct EntityStoreTests {
             try await store.write([EntityWrite(values: values, uuid: "p-\(index)")], entity: "purchase")
         }
 
-        let ascending = try await ReadOperation(
+        let forward = try await ReadOperation(
             store: store, entity: "purchase", sort: [EntityStore.Sort(field: "quantity")]
         ).records()
-        #expect(ascending.map(\.uuid) == ["p-1", "p-2", "p-0"])
+        #expect(forward.map(\.uuid) == ["p-1", "p-2", "p-0"])
 
-        let descending = try await ReadOperation(
-            store: store, entity: "purchase", sort: [EntityStore.Sort(field: "quantity", ascending: false)]
+        let reverse = try await ReadOperation(
+            store: store, entity: "purchase", sort: [EntityStore.Sort(field: "quantity", order: .reverse)]
         ).records()
-        #expect(descending.map(\.uuid) == ["p-0", "p-2", "p-1"])
+        #expect(reverse.map(\.uuid) == ["p-0", "p-2", "p-1"])
     }
 
     @Test("Sorting on an unknown field fails")

@@ -65,10 +65,10 @@ struct OperationsTests {
         let second = try await store.query("purchase").sort("quantity").page(size: 2, after: firstCursor)
         #expect(second.records.map(\.uuid) == ["p-3", "p-0"])
 
-        let top = try await store.query("purchase").sort("quantity", .descending).page(size: 3)
+        let top = try await store.query("purchase").sort("quantity", .reverse).page(size: 3)
         #expect(top.records.map(\.uuid) == ["p-0", "p-2", "p-3"])
         let topCursor = try #require(top.cursor)
-        let rest = try await store.query("purchase").sort("quantity", .descending).page(size: 3, after: topCursor)
+        let rest = try await store.query("purchase").sort("quantity", .reverse).page(size: 3, after: topCursor)
         #expect(rest.records.map(\.uuid) == ["p-1"])
         #expect(rest.cursor == nil)
 
@@ -98,11 +98,11 @@ struct OperationsTests {
         #expect(ranked.map(\.uuid) == ["u-3", "u-2", "u-1"])
 
         let top = try await ReadOperation(
-            store: store, entity: "player", sort: [.init(field: "score", ascending: false)]
+            store: store, entity: "player", sort: [.init(field: "score", order: .reverse)]
         )
         .records(limit: 2)
         #expect(top.map(\.uuid) == ["u-1", "u-2"])
-        #expect(try await store.query("player").sort("score", .descending).first()?.uuid == "u-1")
+        #expect(try await store.query("player").sort("score", .reverse).first()?.uuid == "u-1")
 
         await #expect(throws: SchemaError.unknownField("ghost")) {
             _ = try await ReadOperation(store: store, entity: "player", sort: [.init(field: "ghost")]).records()

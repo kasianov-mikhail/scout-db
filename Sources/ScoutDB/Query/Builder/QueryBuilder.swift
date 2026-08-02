@@ -13,7 +13,7 @@ import Foundation
 /// let recent = try await store.query("purchase")
 ///     .filter("quantity" > 2)
 ///     .filter("product_id" == "sku-42")
-///     .sort("date", .descending)
+///     .sort("date", .reverse)
 ///     .take(20)
 /// ```
 ///
@@ -24,11 +24,6 @@ public struct QueryBuilder: Sendable {
     var alternatives: [[ClientFilter]] = [[]]
     var sorts: [EntityStore.Sort] = []
     var ceiling: Int?
-
-    public enum Direction: Sendable {
-        case ascending
-        case descending
-    }
 
     var flat: [ClientFilter]? {
         alternatives.count == 1 ? alternatives[0] : nil
@@ -45,7 +40,7 @@ extension EntityStore {
     /// ```swift
     /// let recent = try await store.query("purchase")
     ///     .filter("quantity" > 2)
-    ///     .sort("date", .descending)
+    ///     .sort("date", .reverse)
     ///     .take(20)
     /// ```
     ///

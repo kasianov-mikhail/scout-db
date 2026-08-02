@@ -70,7 +70,7 @@ extension EntityDefinition {
                 throw SchemaError.unsupportedQuery(.unsortableField(sort.field))
             }
 
-            return CKQuery.Sort(field: slot, order: sort.ascending ? .forward : .reverse)
+            return CKQuery.Sort(field: slot, order: sort.order)
         }
     }
 }
