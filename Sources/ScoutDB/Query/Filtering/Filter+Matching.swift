@@ -8,100 +8,55 @@
 import Foundation
 
 extension Filter {
-    func matcher() -> (EntityRecord) -> Bool {
+    func matches(_ record: EntityRecord) -> Bool? {
+        let stored = record.values[field]
+        let options = value.members ?? [value]
+
         switch op {
         case .equals:
-            return { $0.values[field] == value }
+            return stored.map { $0 == value }
 
         case .notEquals:
-            return { $0.values[field].map { $0 != value } ?? false }
+            return stored.map { $0 != value }
 
         case .greaterThan, .greaterThanOrEquals, .lessThan, .lessThanOrEquals:
-            return comparisonMatcher()
+            return stored?.ranks(op, against: value)
 
         case .in:
-            let options = Set(value.members ?? [value])
-            return { $0.values[field].map(options.contains) ?? false }
+            return stored.map { options.contains($0) }
 
         case .notIn:
-            let options = Set(value.members ?? [value])
-            return { record in record.values[field].map { !options.contains($0) } ?? false }
+            return stored.map { !options.contains($0) }
 
         case .beginsWith:
-            guard case .string(let prefix) = value else {
-                return { _ in false }
+            guard case .string(let prefix) = value, case .string(let text)? = stored else {
+                return nil
             }
-            return Self.stringMatcher(field) { $0.hasPrefix(prefix) }
+            return text.hasPrefix(prefix)
 
         case .contains:
             guard case .string(let needle) = value else {
-                return { _ in false }
+                return nil
             }
-            let field = field
-            return { record in
-                switch record.values[field] {
-                case .string(let text)?:
-                    text.contains(needle)
-                case .strings(let members)?:
-                    members.contains(needle)
-                default:
-                    false
-                }
+            return switch stored {
+            case .string(let text)?:
+                text.contains(needle)
+            case .strings(let members)?:
+                members.contains(needle)
+            default:
+                nil
             }
 
         case .search:
-            guard case .string(let needle) = value else {
-                return { _ in false }
+            guard case .string(let needle) = value, case .string(let text)? = stored else {
+                return nil
             }
-            let needles = needle.searchTokens
-            return Self.stringMatcher(field) { text in
-                let tokens = Set(text.searchTokens)
-                return needles.allSatisfy(tokens.contains)
-            }
-        }
-    }
-
-    private func comparisonMatcher() -> (EntityRecord) -> Bool {
-        { record in
-            guard let stored = record.values[field], Self.comparable(stored, value) else {
-                return false
-            }
-            return switch (op, RecordValue.rank(stored, value)) {
-            case (.greaterThan, .orderedDescending), (.lessThan, .orderedAscending):
-                true
-            case (.greaterThanOrEquals, .orderedDescending), (.greaterThanOrEquals, .orderedSame):
-                true
-            case (.lessThanOrEquals, .orderedAscending), (.lessThanOrEquals, .orderedSame):
-                true
-            default:
-                false
-            }
-        }
-    }
-
-    private static func comparable(_ lhs: RecordValue, _ rhs: RecordValue) -> Bool {
-        switch (lhs, rhs) {
-        case (.string, .string), (.date, .date):
-            true
-        default:
-            lhs.scalar != nil && rhs.scalar != nil
-        }
-    }
-
-    private static func stringMatcher(_ field: String, _ predicate: @escaping (String) -> Bool) -> (EntityRecord) ->
-        Bool
-    {
-        { record in
-            guard case .string(let text)? = record.values[field] else {
-                return false
-            }
-            return predicate(text)
+            return needle.searchTokens.allSatisfy(text.searchTokens.contains)
         }
     }
 }
 
 extension String {
-    /// The lowercased alphanumeric runs a full-text search matches on.
     fileprivate var searchTokens: [Substring] {
         lowercased().split { !$0.isLetter && !$0.isNumber }
     }

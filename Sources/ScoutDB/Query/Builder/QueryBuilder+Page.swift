@@ -23,14 +23,17 @@ extension QueryBuilder {
 
         let definition = try await store.registry.definition(for: entity)
 
-        guard let target = definition.field(named: sort.field, at: definition.version),
-            [.string, .int, .double, .timestamp].contains(target.type),
-            case .slot = target.storage
-        else {
+        guard let target = definition.field(named: sort.field, at: definition.version) else {
+            throw SchemaError.invalidValue(sort.field)
+        }
+        guard [.string, .int, .double, .timestamp].contains(target.type) else {
+            throw SchemaError.invalidValue(sort.field)
+        }
+        guard case .slot = target.storage else {
             throw SchemaError.invalidValue(sort.field)
         }
 
-        return try await EntityPager(
+        return try await PageOperation(
             database: store.database,
             entity: entity,
             field: sort.field,

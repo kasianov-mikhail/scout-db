@@ -19,12 +19,12 @@ struct GridSlot: Hashable {
     static let date = Date(timeIntervalSince1970: 0)
 
     let entity: String
-    let view: String
+    let aggregate: String
     let group: String
     let shard: Int?
 
     private var components: [String] {
-        var components = [entity, view, group, "\(Self.date.millisecondsSince1970)"]
+        var components = [entity, aggregate, group, "\(Self.date.millisecondsSince1970)"]
         if let shard, shard > 0 {
             components.append("shard-\(shard)")
         }
@@ -42,7 +42,7 @@ struct GridSlot: Hashable {
     func blank(named id: CKRecord.ID) -> CKRecord {
         let record = CKRecord(recordType: Self.recordType, recordID: id)
         record["entity"] = entity
-        record["view"] = view
+        record["view"] = aggregate
         record[CKRecord.groupCell] = group
         record["date"] = Self.date
         return record
@@ -50,14 +50,14 @@ struct GridSlot: Hashable {
 }
 
 extension CKQuery {
-    /// The cells of one view, narrowed to a single group when one is named.
+    /// The cells of one aggregate, narrowed to a single group when one is named.
     ///
     /// The date column needs no filter of its own: every cell carries
     /// ``GridSlot/date``, so matching on it would narrow nothing.
-    static func grid(entity: String, view: String, group: String? = nil) -> CKQuery {
+    static func grid(entity: String, aggregate: String, group: String? = nil) -> CKQuery {
         var filters = [
             ServerFilter(field: "entity", op: .equals, value: .string(entity)),
-            ServerFilter(field: "view", op: .equals, value: .string(view)),
+            ServerFilter(field: "view", op: .equals, value: .string(aggregate)),
         ]
         if let group {
             filters.append(ServerFilter(field: CKRecord.groupCell, op: .equals, value: .string(group)))

@@ -7,7 +7,7 @@
 
 import CloudKit
 
-struct EntityFolder: Sendable {
+struct FoldOperation: Sendable {
     let database: any CloudDatabase
     let entity: String
     let definition: EntityDefinition
@@ -17,12 +17,12 @@ struct EntityFolder: Sendable {
         guard group == nil || query.groupField == nil || query.groupField == group else {
             return nil
         }
-        guard let view = query.foldPlan(in: definition, folding: kind, of: field, grouping: group) else {
+        guard let aggregate = query.foldPlan(in: definition, folding: kind, of: field, grouping: group) else {
             return nil
         }
 
         let records = try await database.allRecords(
-            matching: .grid(entity: entity, view: view.name, group: query.serverGroup)
+            matching: .grid(entity: entity, aggregate: aggregate.name, group: query.serverGroup)
         )
 
         var folded: [String: GridFold] = [:]
@@ -42,6 +42,7 @@ struct EntityFolder: Sendable {
             let bucket = group == nil ? "" : key
             let entry = folded[bucket]
             let cell = record[CKRecord.valueCell] as? Double
+
             folded[bucket] = GridFold(
                 count: (entry?.count ?? 0) + count,
                 value: kind.accumulate(entry?.value, cell)
@@ -55,4 +56,9 @@ extension FilterPlan {
     fileprivate var serverGroup: String? {
         groupKeys.count == 1 ? groupKeys.first : nil
     }
+}
+
+struct GridFold: Sendable {
+    let count: Int
+    let value: Double?
 }

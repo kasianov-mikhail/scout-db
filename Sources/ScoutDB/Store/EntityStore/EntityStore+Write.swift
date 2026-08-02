@@ -12,7 +12,7 @@ extension EntityStore {
         guard batch.count > 0 else {
             return []
         }
-        let writer = EntityWriter(
+        let writer = WriteOperation(
             database: database,
             aggregator: GridAggregator(database: database, slots: slots),
             entity: entity,

@@ -39,7 +39,7 @@ struct EvaluatorFidelityTests {
     }
 
     private func read(_ filter: Filter) async throws -> [String] {
-        try await EntityReader(store: store, entity: "pin").read(any: [[filter]]).map(\.uuid)
+        try await ReadOperation(store: store, entity: "pin").read(any: [[filter]]).map(\.uuid)
     }
 
     @Test("A reference field answers equality, inequality and membership")

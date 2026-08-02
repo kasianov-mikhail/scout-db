@@ -7,7 +7,7 @@
 
 import CloudKit
 
-struct EntityPager: Sendable {
+struct PageOperation: Sendable {
     let database: any CloudDatabase
     let entity: String
     let field: String
@@ -61,21 +61,21 @@ struct EntityPager: Sendable {
         let sort =
             try definition.serverSort(
                 [EntityStore.Sort(field: field, ascending: !descending)]
-            ) + [ServerSort(field: "uuid", ascending: true)]
+            ) + [ServerSort(field: "uuid", order: .forward)]
 
         let query = CKQuery(
             recordType: "Entity",
             filters: try definition.serverFilters(pageFilters),
             sort: sort
         )
-        let matchers = try definition.clientFilters(pageFilters).map { $0.matcher() }
+        let matching = try definition.clientFilters(pageFilters)
 
-        let collected = try await database.boundedRecords(
+        let collected = try await database.scan(
             matching: query,
             limit: limit,
             using: definition
         ) { record in
-            guard matchers.allSatisfy({ $0(record) }), record.values[field] != nil else {
+            guard matching.allSatisfy({ $0.matches(record) ?? false }), record.values[field] != nil else {
                 return false
             }
             guard let cursor else {

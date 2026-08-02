@@ -39,14 +39,14 @@ struct GridAggregator {
         var deltas: [GridSlot: GridDelta] = [:]
 
         for entityRecord in batch {
-            for view in definition.views ?? [] {
-                let group = view.groupBy.flatMap { entityRecord.values[$0]?.canonical } ?? ""
-                let shard = view.shards.map { Self.shard(of: entityRecord.uuid, among: $0) }
-                let slot = GridSlot(entity: entityRecord.entity, view: view.name, group: group, shard: shard)
+            for aggregate in definition.aggregates ?? [] {
+                let group = aggregate.groupBy.flatMap { entityRecord.values[$0]?.canonical } ?? ""
+                let shard = aggregate.shards.map { Self.shard(of: entityRecord.uuid, among: $0) }
+                let slot = GridSlot(entity: entityRecord.entity, aggregate: aggregate.name, group: group, shard: shard)
 
                 var delta = deltas[slot] ?? GridDelta()
                 delta.count += sign
-                if let kind = view.metricKind, let field = view.metricField,
+                if let kind = aggregate.metricKind, let field = aggregate.metricField,
                     let value = entityRecord.values[field]?.scalar
                 {
                     delta.kind = kind
@@ -153,7 +153,7 @@ struct GridAggregator {
 
     private func adopt(_ slot: GridSlot) async throws -> CKRecord? {
         try await database.allRecords(
-            matching: .grid(entity: slot.entity, view: slot.view, group: slot.group)
+            matching: .grid(entity: slot.entity, aggregate: slot.aggregate, group: slot.group)
         ).first
     }
 }

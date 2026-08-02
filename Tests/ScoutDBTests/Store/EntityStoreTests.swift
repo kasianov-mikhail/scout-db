@@ -56,7 +56,7 @@ struct EntityStoreTests {
     func read() async throws {
         let purchase = makePurchase()
         try await store.write([EntityWrite(values: purchase.values, uuid: "p-1")], entity: "purchase")
-        let records = try await EntityReader(store: store, entity: "purchase").read()
+        let records = try await ReadOperation(store: store, entity: "purchase").read()
         #expect(records == [purchase])
     }
 
@@ -68,7 +68,7 @@ struct EntityStoreTests {
         try await store.write([EntityWrite(values: other, uuid: "p-2")], entity: "purchase")
 
         let filter = Filter(field: "product_id", op: .equals, value: .string("sku-7"))
-        let records = try await EntityReader(store: store, entity: "purchase").read(any: [[filter]])
+        let records = try await ReadOperation(store: store, entity: "purchase").read(any: [[filter]])
         #expect(records.map(\.uuid) == ["p-2"])
     }
 
@@ -84,7 +84,7 @@ struct EntityStoreTests {
             Filter(field: "quantity", op: .greaterThan, value: .int(1)),
             Filter(field: "date", op: .greaterThan, value: .date(Date(timeIntervalSince1970: 500_000))),
         ]
-        let records = try await EntityReader(store: store, entity: "purchase").read(any: [filters])
+        let records = try await ReadOperation(store: store, entity: "purchase").read(any: [filters])
         #expect(records.map(\.uuid) == ["p-1"])
     }
 
@@ -96,12 +96,12 @@ struct EntityStoreTests {
             try await store.write([EntityWrite(values: values, uuid: "p-\(index)")], entity: "purchase")
         }
 
-        let ascending = try await EntityReader(
+        let ascending = try await ReadOperation(
             store: store, entity: "purchase", sort: [EntityStore.Sort(field: "quantity")]
         ).read()
         #expect(ascending.map(\.uuid) == ["p-1", "p-2", "p-0"])
 
-        let descending = try await EntityReader(
+        let descending = try await ReadOperation(
             store: store, entity: "purchase", sort: [EntityStore.Sort(field: "quantity", ascending: false)]
         ).read()
         #expect(descending.map(\.uuid) == ["p-0", "p-2", "p-1"])
@@ -110,7 +110,7 @@ struct EntityStoreTests {
     @Test("Sorting on an unknown field fails")
     func sortUnknownField() async throws {
         await #expect(throws: SchemaError.unknownField("ghost")) {
-            try await EntityReader(store: store, entity: "purchase", sort: [EntityStore.Sort(field: "ghost")]).read()
+            try await ReadOperation(store: store, entity: "purchase", sort: [EntityStore.Sort(field: "ghost")]).read()
         }
     }
 
@@ -128,7 +128,7 @@ struct EntityStoreTests {
             [Filter(field: "product_id", op: .equals, value: .string("sku-3"))],
             [Filter(field: "quantity", op: .greaterThan, value: .int(2))],
         ]
-        let records = try await EntityReader(
+        let records = try await ReadOperation(
             store: store, entity: "purchase", sort: [EntityStore.Sort(field: "quantity")]
         ).read(any: branches)
         #expect(records.map(\.uuid) == ["p-0", "p-2"])
@@ -142,7 +142,7 @@ struct EntityStoreTests {
         try await store.write([EntityWrite(values: other, uuid: "p-2")], entity: "purchase")
 
         let filter = Filter(field: "product_id", op: .notIn, value: .strings(["sku-42"]))
-        let records = try await EntityReader(store: store, entity: "purchase").read(any: [[filter]])
+        let records = try await ReadOperation(store: store, entity: "purchase").read(any: [[filter]])
         #expect(records.map(\.uuid) == ["p-2"])
     }
 
@@ -206,7 +206,7 @@ struct EntityStoreTests {
                     values: ["codes": .ints([4, 5]), "scores": .doubles([1.0]), "times": .dates([])], uuid: "s-2")
             ], entity: "sample")
 
-        let samples = try await EntityReader(store: store, entity: "sample").read()
+        let samples = try await ReadOperation(store: store, entity: "sample").read()
 
         let record = try #require(samples.first { $0.uuid == "s-1" })
         #expect(record.values["codes"] == .ints([1, 2, 3]))
@@ -217,7 +217,7 @@ struct EntityStoreTests {
         #expect(whole.values["scores"] == .doubles([1.0]))
 
         let filter = Filter(field: "codes", op: .contains, value: .int(2))
-        let matched = try await EntityReader(store: store, entity: "sample").read(any: [[filter]])
+        let matched = try await ReadOperation(store: store, entity: "sample").read(any: [[filter]])
         #expect(matched.map(\.uuid) == ["s-1"])
     }
 
@@ -233,7 +233,7 @@ struct EntityStoreTests {
         )
         try await store.write([EntityWrite(values: ["parent": .reference("node-9")], uuid: "g-1")], entity: "graph")
 
-        let record = try #require(try await EntityReader(store: store, entity: "graph").read().first)
+        let record = try #require(try await ReadOperation(store: store, entity: "graph").read().first)
         #expect(record.values["parent"] == .reference("node-9"))
     }
 
@@ -249,7 +249,7 @@ struct EntityStoreTests {
         )
         let payload = Data([0xDE, 0xAD])
         try await store.write([EntityWrite(values: ["digest": .bytes(payload)], uuid: "b-1")], entity: "blob")
-        let record = try #require(try await EntityReader(store: store, entity: "blob").read().first)
+        let record = try #require(try await ReadOperation(store: store, entity: "blob").read().first)
         #expect(record.values["digest"] == .bytes(payload))
     }
 
@@ -257,14 +257,14 @@ struct EntityStoreTests {
     func unknownFilter() async throws {
         let filter = Filter(field: "ghost", op: .equals, value: .string("x"))
         await #expect(throws: SchemaError.unknownField("ghost")) {
-            try await EntityReader(store: store, entity: "purchase").read(any: [[filter]])
+            try await ReadOperation(store: store, entity: "purchase").read(any: [[filter]])
         }
     }
 
     @Test("Reading an unpublished entity fails")
     func unknownEntity() async throws {
         await #expect(throws: SchemaError.unknownEntity("ghost")) {
-            try await EntityReader(store: store, entity: "ghost").read()
+            try await ReadOperation(store: store, entity: "ghost").read()
         }
     }
 
@@ -290,7 +290,7 @@ struct EntityStoreTests {
         #expect(first == second)
         #expect(first != other)
 
-        let records = try await EntityReader(store: store, entity: "profile").read()
+        let records = try await ReadOperation(store: store, entity: "profile").read()
         #expect(records.count == 2)
         #expect(records.first(where: { $0.values["user_id"] == .string("alice") })?.values["score"] == .int(2))
     }
@@ -314,11 +314,11 @@ struct EntityStoreTests {
             entity: "post")
 
         let filter = Filter(field: "tags", op: .contains, value: .string("swift"))
-        let records = try await EntityReader(store: store, entity: "post").read(any: [[filter]])
+        let records = try await ReadOperation(store: store, entity: "post").read(any: [[filter]])
         #expect(records.map(\.uuid) == ["n-1"])
     }
 
-    @Test("Aggregate views count writes into grid cells")
+    @Test("Aggregate aggregates count writes into grid cells")
     func aggregation() async throws {
         try await registry.publish(
             makeDefinition(
@@ -327,7 +327,7 @@ struct EntityStoreTests {
                     FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
-                views: [AggregateView(name: "by_name", groupBy: "name")]
+                aggregates: [AggregateDefinition(name: "by_name", groupBy: "name")]
             )
         )
 
@@ -343,7 +343,7 @@ struct EntityStoreTests {
         #expect(grids.first?["group_key"] == "open")
     }
 
-    @Test("Sum views accumulate values into double cells")
+    @Test("Sum aggregates accumulate values into double cells")
     func sumView() async throws {
         try await registry.publish(
             makeDefinition(
@@ -352,7 +352,7 @@ struct EntityStoreTests {
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
-                views: [AggregateView(name: "total", sum: "amount")]
+                aggregates: [AggregateDefinition(name: "total", sum: "amount")]
             )
         )
 

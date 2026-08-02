@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct FoldQuery {
+struct AggregateOperation {
     let store: EntityStore
     let entity: String
 
@@ -31,7 +31,7 @@ struct FoldQuery {
             return fold.apply(values: values, count: count)
         }
 
-        let records = try await EntityReader(
+        let records = try await ReadOperation(
             store: store,
             entity: entity
         )
@@ -57,7 +57,7 @@ struct FoldQuery {
             }
         }
 
-        let records = try await EntityReader(
+        let records = try await ReadOperation(
             store: store,
             entity: entity
         )
@@ -89,7 +89,7 @@ struct FoldQuery {
             return gridded
         }
 
-        let records = try await EntityReader(
+        let records = try await ReadOperation(
             store: store,
             entity: entity
         )
@@ -106,7 +106,7 @@ struct FoldQuery {
     }
 }
 
-extension FoldQuery {
+extension AggregateOperation {
     private func gridCounts(group: String) async throws -> [String: Int]? {
         guard try await store.registry.alwaysPresent(group, entity: entity) else {
             return nil

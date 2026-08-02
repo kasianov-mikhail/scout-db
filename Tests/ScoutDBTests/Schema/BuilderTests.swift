@@ -56,11 +56,11 @@ struct BuilderTests {
     @Test("Creation grids every groupable field")
     func implicitGrid() async throws {
         let definition = try await registry.definition(for: "purchase")
-        let views = try #require(definition.views)
-        #expect(Set(views.map(\.name)) == ["by_product_id", "by_quantity", "by_amount"])
-        #expect(views.first { $0.name == "by_product_id" }?.groupBy == "product_id")
+        let aggregates = try #require(definition.aggregates)
+        #expect(Set(aggregates.map(\.name)) == ["by_product_id", "by_quantity", "by_amount"])
+        #expect(aggregates.first { $0.name == "by_product_id" }?.groupBy == "product_id")
 
-        let counted = try await EntityAggregator(store, entity: "purchase", view: "by_product_id").totals()
+        let counted = try await TotalOperation(store, entity: "purchase", aggregate: "by_product_id").totals()
         #expect(counted.map(\.count).reduce(0, +) == 3)
         #expect(try await store.query("purchase").filter("product_id", .equals, "sku-1").count() == 1)
     }
@@ -73,8 +73,8 @@ struct BuilderTests {
             .field("aliases", .stringList)
             .create()
 
-        let views = try #require(try await registry.definition(for: "label").views)
-        #expect(views.map(\.name) == ["by_slug"])
+        let aggregates = try #require(try await registry.definition(for: "label").aggregates)
+        #expect(aggregates.map(\.name) == ["by_slug"])
     }
 
     @Test("A declared metric keeps the grid from counting its field twice")
@@ -86,10 +86,10 @@ struct BuilderTests {
             .sum("weight", by: "carrier")
             .create()
 
-        let views = try #require(try await registry.definition(for: "shipment").views)
-        #expect(views.filter { $0.groupBy == "carrier" }.count == 1)
-        #expect(views.first { $0.groupBy == "carrier" }?.sum == "weight")
-        #expect(Set(views.compactMap(\.groupBy)) == ["carrier", "weight"])
+        let aggregates = try #require(try await registry.definition(for: "shipment").aggregates)
+        #expect(aggregates.filter { $0.groupBy == "carrier" }.count == 1)
+        #expect(aggregates.first { $0.groupBy == "carrier" }?.sum == "weight")
+        #expect(Set(aggregates.compactMap(\.groupBy)) == ["carrier", "weight"])
     }
 
     @Test("A declared extremum reaches the published grid")
@@ -101,9 +101,9 @@ struct BuilderTests {
             .max("value", by: "sensor")
             .create()
 
-        let views = try #require(try await registry.definition(for: "reading").views)
-        #expect(views.first { $0.name == "min_value_by_sensor" }?.min == "value")
-        #expect(views.first { $0.name == "max_value_by_sensor" }?.max == "value")
+        let aggregates = try #require(try await registry.definition(for: "reading").aggregates)
+        #expect(aggregates.first { $0.name == "min_value_by_sensor" }?.min == "value")
+        #expect(aggregates.first { $0.name == "max_value_by_sensor" }?.max == "value")
     }
 
     @Test("An ungrouped field is left out of the grid")
@@ -113,7 +113,7 @@ struct BuilderTests {
             .field("kind", .string, .required)
             .create()
 
-        #expect(try await registry.definition(for: "event").views?.compactMap(\.groupBy) == ["kind"])
+        #expect(try await registry.definition(for: "event").aggregates?.compactMap(\.groupBy) == ["kind"])
     }
 
     @Test("An update inherits the grid instead of building its own")
@@ -128,7 +128,7 @@ struct BuilderTests {
 
         let updated = try await registry.definition(for: "ticket")
         #expect(updated.version == 2)
-        #expect(updated.views?.map(\.name) == ["by_queue"])
+        #expect(updated.aggregates?.map(\.name) == ["by_queue"])
     }
 
     @Test("An update names the fields its new version leaves uncounted")
@@ -173,7 +173,7 @@ struct BuilderTests {
 
         #expect(missing.isEmpty)
         let updated = try await registry.definition(for: "ticket")
-        #expect(updated.views?.compactMap(\.groupBy) == ["queue", "assignee"])
+        #expect(updated.aggregates?.compactMap(\.groupBy) == ["queue", "assignee"])
     }
 
     @Test("An aggregate of the same shape replaces the one the grid built")
@@ -189,7 +189,7 @@ struct BuilderTests {
             .sum("weight", by: "queue")
             .update()
 
-        let updated = try #require(try await registry.definition(for: "ticket").views)
+        let updated = try #require(try await registry.definition(for: "ticket").aggregates)
         #expect(Set(updated.compactMap(\.groupBy)) == ["queue", "weight"])
         #expect(updated.first { $0.groupBy == "queue" }?.sum == "weight")
     }
@@ -205,7 +205,7 @@ struct BuilderTests {
             .field("queue", .string, .required)
             .update()
 
-        #expect(try await registry.definition(for: "ticket").views?.compactMap(\.groupBy) == ["queue"])
+        #expect(try await registry.definition(for: "ticket").aggregates?.compactMap(\.groupBy) == ["queue"])
     }
 
     @Test("Query builder filters, sorts, and limits")

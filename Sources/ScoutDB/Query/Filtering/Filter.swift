@@ -30,11 +30,11 @@ extension Filter {
     fileprivate var values: [RecordValue] {
         switch op {
         case .equals:
-            return [value]
+            [value]
         case .in:
-            return value.members ?? []
+            value.members ?? []
         default:
-            return []
+            []
         }
     }
 }

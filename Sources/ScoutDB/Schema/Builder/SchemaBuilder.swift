@@ -29,7 +29,7 @@ public struct SchemaBuilder {
 
     var declarations: [Declaration] = []
     var unique: [String]?
-    var views: [AggregateView] = []
+    var aggregates: [AggregateDefinition] = []
 
     /// Derives the record id from the named fields, turning writes into
     /// upserts.

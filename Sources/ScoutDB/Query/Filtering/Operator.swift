@@ -22,3 +22,32 @@ public enum Operator: CaseIterable, Sendable {
     case contains
     case search
 }
+
+extension Operator {
+    var formatString: String {
+        switch self {
+        case .equals:
+            "%K == %@"
+        case .notEquals:
+            "%K != %@"
+        case .greaterThan:
+            "%K > %@"
+        case .greaterThanOrEquals:
+            "%K >= %@"
+        case .lessThan:
+            "%K < %@"
+        case .lessThanOrEquals:
+            "%K <= %@"
+        case .in:
+            "%K IN %@"
+        case .notIn:
+            "NOT (%K IN %@)"
+        case .beginsWith:
+            "%K BEGINSWITH %@"
+        case .contains:
+            "%K CONTAINS %@"
+        case .search:
+            "self contains %@"
+        }
+    }
+}

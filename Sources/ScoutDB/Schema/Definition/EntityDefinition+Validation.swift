@@ -66,21 +66,22 @@ extension EntityDefinition {
         for key in unique ?? [] where !names.contains(key) {
             throw SchemaError.invalidDefinition("Unique key '\(key)' is not a field")
         }
-        for view in views ?? [] {
-            if let groupBy = view.groupBy, !names.contains(groupBy) {
-                throw SchemaError.invalidDefinition("View '\(view.name)' groups by unknown '\(groupBy)'")
+        for aggregate in aggregates ?? [] {
+            if let groupBy = aggregate.groupBy, !names.contains(groupBy) {
+                throw SchemaError.invalidDefinition("Aggregate '\(aggregate.name)' groups by unknown '\(groupBy)'")
             }
-            let metrics = [view.sum, view.min, view.max].compactMap { $0 }
+            let metrics = [aggregate.sum, aggregate.min, aggregate.max].compactMap { $0 }
             guard metrics.count <= 1 else {
-                throw SchemaError.invalidDefinition("View '\(view.name)' declares more than one metric")
+                throw SchemaError.invalidDefinition("Aggregate '\(aggregate.name)' declares more than one metric")
             }
             for field in metrics {
                 guard let type = fields.first(where: { $0.name == field })?.type, type == .int || type == .double else {
-                    throw SchemaError.invalidDefinition("View '\(view.name)' aggregates non-numeric '\(field)'")
+                    throw SchemaError.invalidDefinition(
+                        "Aggregate '\(aggregate.name)' aggregates non-numeric '\(field)'")
                 }
             }
-            if let shards = view.shards, !(2...64).contains(shards) {
-                throw SchemaError.invalidDefinition("View '\(view.name)' must shard into 2...64 records")
+            if let shards = aggregate.shards, !(2...64).contains(shards) {
+                throw SchemaError.invalidDefinition("Aggregate '\(aggregate.name)' must shard into 2...64 records")
             }
         }
     }

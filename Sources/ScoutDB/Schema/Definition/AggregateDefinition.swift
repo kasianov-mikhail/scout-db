@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct AggregateView: Codable, Equatable, Sendable {
+struct AggregateDefinition: Codable, Equatable, Sendable {
     let name: String
     var groupBy: String?
     var sum: String?

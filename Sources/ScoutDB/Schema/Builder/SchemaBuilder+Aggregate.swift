@@ -26,8 +26,8 @@ extension SchemaBuilder {
     public func count(by group: String? = nil, shards: Int? = nil) -> Self {
         var builder = self
 
-        builder.views.append(
-            AggregateView(
+        builder.aggregates.append(
+            AggregateDefinition(
                 name: Self.name(nil, of: nil, by: group),
                 groupBy: group,
                 shards: shards
@@ -57,8 +57,8 @@ extension SchemaBuilder {
     public func sum(_ field: String, by group: String? = nil, shards: Int? = nil) -> Self {
         var builder = self
 
-        builder.views.append(
-            AggregateView(
+        builder.aggregates.append(
+            AggregateDefinition(
                 name: Self.name("sum", of: field, by: group),
                 groupBy: group,
                 sum: field,
@@ -72,7 +72,7 @@ extension SchemaBuilder {
     /// Keeps the smallest value of the field a cell has seen.
     ///
     /// The cell holds a running extremum, so removing the record that set it
-    /// leaves the value standing — a read served by the view answers with what
+    /// leaves the value standing — a read served by the aggregate answers with what
     /// the group once reached, not what it holds now.
     ///
     /// ```swift
@@ -85,8 +85,8 @@ extension SchemaBuilder {
     public func min(_ field: String, by group: String? = nil) -> Self {
         var builder = self
 
-        builder.views.append(
-            AggregateView(
+        builder.aggregates.append(
+            AggregateDefinition(
                 name: Self.name("min", of: field, by: group),
                 groupBy: group,
                 min: field
@@ -111,8 +111,8 @@ extension SchemaBuilder {
     public func max(_ field: String, by group: String? = nil) -> Self {
         var builder = self
 
-        builder.views.append(
-            AggregateView(
+        builder.aggregates.append(
+            AggregateDefinition(
                 name: Self.name("max", of: field, by: group),
                 groupBy: group,
                 max: field
@@ -130,25 +130,28 @@ extension SchemaBuilder {
         return parts.joined(separator: "_")
     }
 
-    static func merge(_ declared: [AggregateView], onto inherited: [AggregateView], keeping active: Set<String>)
-        -> [AggregateView]
+    static func merge(
+        _ declared: [AggregateDefinition], onto inherited: [AggregateDefinition], keeping active: Set<String>
+    )
+        -> [AggregateDefinition]
     {
         let byName = Dictionary(declared.map { ($0.name, $0) }, uniquingKeysWith: { _, last in last })
         let superseded = declared.map(\.groupBy)
-        var merged = inherited.compactMap { view -> AggregateView? in
-            if let replacement = byName[view.name] {
+        var merged = inherited.compactMap { aggregate -> AggregateDefinition? in
+            if let replacement = byName[aggregate.name] {
                 return replacement
             }
-            return view.metricField == nil && superseded.contains(view.groupBy) ? nil : view
+            return aggregate.metricField == nil && superseded.contains(aggregate.groupBy) ? nil : aggregate
         }
-        merged += declared.filter { view in !inherited.contains { $0.name == view.name } }
-        return merged.filter { view in
-            let fields = [view.groupBy, view.metricField].compactMap { $0 }
+        merged += declared.filter { aggregate in !inherited.contains { $0.name == aggregate.name } }
+        return merged.filter { aggregate in
+            let fields = [aggregate.groupBy, aggregate.metricField].compactMap { $0 }
             return fields.allSatisfy(active.contains)
         }
     }
 
-    static func grid(over fields: [FieldDefinition], declaring declared: [AggregateView]) -> [AggregateView] {
+    static func grid(over fields: [FieldDefinition], declaring declared: [AggregateDefinition]) -> [AggregateDefinition]
+    {
         var taken = Set(declared.map(\.name))
         var counted = Set(declared.compactMap(\.groupBy))
         var grid = declared
@@ -157,7 +160,7 @@ extension SchemaBuilder {
             guard taken.insert("by_\(field.name)").inserted, counted.insert(field.name).inserted else {
                 continue
             }
-            grid.append(AggregateView(name: "by_\(field.name)", groupBy: field.name))
+            grid.append(AggregateDefinition(name: "by_\(field.name)", groupBy: field.name))
         }
         return grid
     }

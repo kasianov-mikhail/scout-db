@@ -33,7 +33,7 @@ struct MigratorTests {
         let migrated = try await migrator.backfill(entity: "profile")
         #expect(migrated == 1)
 
-        let records = try await EntityReader(store: store, entity: "profile").read()
+        let records = try await ReadOperation(store: store, entity: "profile").read()
         #expect(records.map(\.schemaVersion) == [2])
         #expect(records.first?.values["user_id"] == .string("alice"))
     }
@@ -48,7 +48,7 @@ struct MigratorTests {
         try await migrator.backfill(entity: "profile")
 
         let filter = Filter(field: "user_id", op: .equals, value: .string("bob"))
-        let records = try await EntityReader(store: store, entity: "profile").read(any: [[filter]])
+        let records = try await ReadOperation(store: store, entity: "profile").read(any: [[filter]])
         #expect(records.map(\.uuid) == ["u-2"])
     }
 
@@ -62,7 +62,7 @@ struct MigratorTests {
         let migrated = try await migrator.rename(entity: "member", from: "user", to: "handle")
         #expect(migrated == 1)
 
-        let records = try await EntityReader(store: store, entity: "member").read()
+        let records = try await ReadOperation(store: store, entity: "member").read()
         #expect(records.map(\.schemaVersion) == [2])
         #expect(records.first?.values["handle"] == .string("dana"))
         #expect(records.first?.values["user"] == nil)
@@ -86,7 +86,7 @@ struct MigratorTests {
             record.values["amount"] = .double(Double(cents) / 100)
         }
 
-        let records = try await EntityReader(store: store, entity: "payment").read()
+        let records = try await ReadOperation(store: store, entity: "payment").read()
         #expect(records.first?.values["amount"] == .double(5))
     }
 
@@ -100,15 +100,15 @@ struct MigratorTests {
         #expect(migrated == 0)
     }
 
-    @Test("View backfill recounts existing records into a freshly declared view")
-    func viewBackfill() async throws {
+    @Test("Aggregate backfill recounts existing records into a freshly declared aggregate")
+    func aggregateBackfill() async throws {
         var definition = makeDefinition(
             entity: "sale",
             fields: [
                 FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00")),
                 FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
             ],
-            views: [AggregateView(name: "all_time")]
+            aggregates: [AggregateDefinition(name: "all_time")]
         )
         try await registry.publish(definition)
         let store = EntityStore(database: database, registry: registry)
@@ -119,25 +119,25 @@ struct MigratorTests {
         try await store.write(
             [EntityWrite(values: ["product": .string("book"), "amount": .double(2)], uuid: nil)], entity: "sale")
 
-        definition.views? += [AggregateView(name: "by_product", groupBy: "product", sum: "amount")]
+        definition.aggregates? += [AggregateDefinition(name: "by_product", groupBy: "product", sum: "amount")]
         try await registry.publish(definition)
-        #expect(try await EntityAggregator(store, entity: "sale", view: "by_product").totals().isEmpty)
+        #expect(try await TotalOperation(store, entity: "sale", aggregate: "by_product").totals().isEmpty)
 
-        #expect(try await migrator.backfill(view: "by_product", entity: "sale") == 3)
-        var totals = try await EntityAggregator(store, entity: "sale", view: "by_product").totals()
+        #expect(try await migrator.backfill(aggregate: "by_product", entity: "sale") == 3)
+        var totals = try await TotalOperation(store, entity: "sale", aggregate: "by_product").totals()
         #expect(totals.first { $0.group == "app" }?.count == 2)
         #expect(totals.first { $0.group == "app" }?.value == 15)
         #expect(totals.first { $0.group == "book" }?.count == 1)
-        #expect(try await EntityAggregator(store, entity: "sale", view: "all_time").totals().map(\.count) == [3])
+        #expect(try await TotalOperation(store, entity: "sale", aggregate: "all_time").totals().map(\.count) == [3])
 
-        #expect(try await migrator.backfill(view: "by_product", entity: "sale") == 3)
-        totals = try await EntityAggregator(store, entity: "sale", view: "by_product").totals()
+        #expect(try await migrator.backfill(aggregate: "by_product", entity: "sale") == 3)
+        totals = try await TotalOperation(store, entity: "sale", aggregate: "by_product").totals()
         #expect(totals.first { $0.group == "app" }?.count == 2)
         #expect(totals.first { $0.group == "app" }?.value == 15)
-        #expect(try await EntityAggregator(store, entity: "sale", view: "all_time").totals().map(\.count) == [3])
+        #expect(try await TotalOperation(store, entity: "sale", aggregate: "all_time").totals().map(\.count) == [3])
 
         await #expect(throws: SchemaError.unknownField("ghost")) {
-            try await migrator.backfill(view: "ghost", entity: "sale")
+            try await migrator.backfill(aggregate: "ghost", entity: "sale")
         }
     }
 }

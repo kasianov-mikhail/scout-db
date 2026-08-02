@@ -66,17 +66,17 @@ final class ContractFixture {
     }
 
     @discardableResult func publish(
-        _ name: String, fields: [FieldDefinition], unique: [String]? = nil, views: [AggregateView]? = nil
+        _ name: String, fields: [FieldDefinition], unique: [String]? = nil, aggregates: [AggregateDefinition]? = nil
     ) async throws -> String {
         let entity = entity(name)
         try await registry.publish(
-            EntityDefinition(entity: entity, version: 1, fields: fields, unique: unique, views: views)
+            EntityDefinition(entity: entity, version: 1, fields: fields, unique: unique, aggregates: aggregates)
         )
         published.append(entity)
         return entity
     }
 
-    func publishOrder(views: [AggregateView]? = nil) async throws -> String {
+    func publishOrder(aggregates: [AggregateDefinition]? = nil) async throws -> String {
         try await publish(
             "order",
             fields: [
@@ -86,7 +86,7 @@ final class ContractFixture {
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 FieldDefinition(name: "note", type: .string, storage: .payload),
             ],
-            views: views
+            aggregates: aggregates
         )
     }
 

@@ -8,30 +8,30 @@
 import CloudKit
 import Foundation
 
-struct EntityAggregator {
+struct TotalOperation {
     let store: EntityStore
     let entity: String
-    let view: String
+    let aggregate: String
     var group: String?
 
-    init(_ store: EntityStore, entity: String, view: String, group: String? = nil) {
+    init(_ store: EntityStore, entity: String, aggregate: String, group: String? = nil) {
         self.store = store
         self.entity = entity
-        self.view = view
+        self.aggregate = aggregate
         self.group = group
     }
 
     func totals() async throws -> [AggregateTotal] {
         let definition = try await store.registry.definition(for: entity)
 
-        guard let declared = definition.view(named: view) else {
-            throw SchemaError.unknownField(view)
+        guard let declared = definition.aggregate(named: aggregate) else {
+            throw SchemaError.unknownField(aggregate)
         }
 
         let kind = declared.metricKind
 
         let records = try await store.database.allRecords(
-            matching: .grid(entity: entity, view: view, group: group)
+            matching: .grid(entity: entity, aggregate: aggregate, group: group)
         )
 
         var totals: [String: AggregateTotal] = [:]
@@ -61,12 +61,12 @@ struct EntityAggregator {
     }
 }
 
-extension EntityAggregator {
+extension TotalOperation {
     init(_ query: QueryBuilder, field: String?, group: String?) async throws {
         let store = query.store
         let definition = try await store.registry.definition(for: query.entity)
 
-        guard let view = definition.view(grouping: group, folding: field) else {
+        guard let aggregate = definition.aggregate(grouping: group, folding: field) else {
             let shape = [
                 group.map { "grouped by '\($0)'" },
                 field.map { "folding '\($0)'" },
@@ -79,7 +79,7 @@ extension EntityAggregator {
         self.init(
             store,
             entity: query.entity,
-            view: view.name,
+            aggregate: aggregate.name,
             group: try query.narrowing(to: group)
         )
     }

@@ -40,7 +40,7 @@ struct GridQueryTests {
         }
     }
 
-    @Test("Totals come back for the grouping and metric asked for, no view named")
+    @Test("Totals come back for the grouping and metric asked for, no aggregate named")
     func totalsByShape() async throws {
         let totals = try await store.query("payment").totals("amount", by: "product")
         #expect(totals.map(\.group) == ["app", "pro"])

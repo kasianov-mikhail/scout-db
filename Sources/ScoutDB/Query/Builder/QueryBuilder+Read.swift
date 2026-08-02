@@ -25,8 +25,13 @@ extension QueryBuilder {
     /// ```
     ///
     public func take(_ count: Int) async throws -> [EntityRecord] {
-        try await EntityReader(store: store, entity: entity, sort: sorts, limit: Swift.min(count, ceiling ?? count))
-            .read(any: alternatives)
+        try await ReadOperation(
+            store: store,
+            entity: entity,
+            sort: sorts,
+            limit: Swift.min(count, ceiling ?? count)
+        )
+        .read(any: alternatives)
     }
 
     /// Runs the query and returns the first matching record, if any.

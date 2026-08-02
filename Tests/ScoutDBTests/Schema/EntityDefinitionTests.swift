@@ -101,14 +101,14 @@ struct EntityDefinitionTests {
         #expect(throws: SchemaError.self) { try definition.validate() }
     }
 
-    @Test("Validation rejects a view summing a non-numeric field")
+    @Test("Validation rejects a aggregate summing a non-numeric field")
     func sumType() {
         let definition = makeDefinition(
             fields: [
                 FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
             ],
-            views: [AggregateView(name: "total", sum: "name")]
+            aggregates: [AggregateDefinition(name: "total", sum: "name")]
         )
         #expect(throws: SchemaError.self) { try definition.validate() }
     }
@@ -147,9 +147,9 @@ struct EntityDefinitionTests {
 
 func makeDefinition(
     entity: String = "purchase", version: Int = 2, fields: [FieldDefinition], unique: [String]? = nil,
-    views: [AggregateView]? = nil
+    aggregates: [AggregateDefinition]? = nil
 ) -> EntityDefinition {
-    EntityDefinition(entity: entity, version: version, fields: fields, unique: unique, views: views)
+    EntityDefinition(entity: entity, version: version, fields: fields, unique: unique, aggregates: aggregates)
 }
 
 func makePurchaseDefinition() -> EntityDefinition {
