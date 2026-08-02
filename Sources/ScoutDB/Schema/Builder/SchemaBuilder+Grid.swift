@@ -8,14 +8,6 @@
 import Foundation
 
 extension SchemaBuilder {
-    static func name(_ metric: String?, of field: String?, by group: String?) -> String {
-        var parts = [metric, field, group.map { "by_\($0)" }].compactMap(\.self)
-        if parts.isEmpty {
-            parts = ["by_all"]
-        }
-        return parts.joined(separator: "_")
-    }
-
     static func merge(
         _ declared: [AggregateDefinition], onto inherited: [AggregateDefinition], keeping active: Set<String>
     )
@@ -46,7 +38,7 @@ extension SchemaBuilder {
             guard taken.insert("by_\(field.name)").inserted, counted.insert(field.name).inserted else {
                 continue
             }
-            grid.append(AggregateDefinition(name: "by_\(field.name)", groupBy: field.name))
+            grid.append(AggregateDefinition(by: field.name))
         }
         return grid
     }

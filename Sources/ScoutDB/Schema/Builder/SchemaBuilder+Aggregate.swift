@@ -25,15 +25,7 @@ extension SchemaBuilder {
     ///
     public func count(by group: String? = nil, shards: Int? = nil) -> Self {
         var builder = self
-
-        builder.aggregates.append(
-            AggregateDefinition(
-                name: Self.name(nil, of: nil, by: group),
-                groupBy: group,
-                shards: shards
-            )
-        )
-
+        builder.aggregates.append(AggregateDefinition(by: group, shards: shards))
         return builder
     }
 
@@ -56,16 +48,7 @@ extension SchemaBuilder {
     ///
     public func sum(_ field: String, by group: String? = nil, shards: Int? = nil) -> Self {
         var builder = self
-
-        builder.aggregates.append(
-            AggregateDefinition(
-                name: Self.name("sum", of: field, by: group),
-                groupBy: group,
-                sum: field,
-                shards: shards
-            )
-        )
-
+        builder.aggregates.append(AggregateDefinition(metric: .sum, of: field, by: group, shards: shards))
         return builder
     }
 
@@ -84,15 +67,7 @@ extension SchemaBuilder {
     ///
     public func min(_ field: String, by group: String? = nil) -> Self {
         var builder = self
-
-        builder.aggregates.append(
-            AggregateDefinition(
-                name: Self.name("min", of: field, by: group),
-                groupBy: group,
-                min: field
-            )
-        )
-
+        builder.aggregates.append(AggregateDefinition(metric: .min, of: field, by: group))
         return builder
     }
 
@@ -110,15 +85,7 @@ extension SchemaBuilder {
     ///
     public func max(_ field: String, by group: String? = nil) -> Self {
         var builder = self
-
-        builder.aggregates.append(
-            AggregateDefinition(
-                name: Self.name("max", of: field, by: group),
-                groupBy: group,
-                max: field
-            )
-        )
-
+        builder.aggregates.append(AggregateDefinition(metric: .max, of: field, by: group))
         return builder
     }
 }

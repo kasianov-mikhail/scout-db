@@ -37,14 +37,49 @@ extension SchemaBuilder {
     ///
     public func field(_ name: String, _ type: FieldType, _ constraints: FieldConstraint...) -> Self {
         var builder = self
-        builder.declarations.append(
-            Declaration(
-                name: name,
-                type: type,
-                constraints: constraints
-            )
-        )
+        builder.declarations.append(Declaration(name: name, type: type, constraints: constraints))
         return builder
+    }
+}
+
+extension SlotAllocator {
+    mutating func resolve(_ declaration: SchemaBuilder.Declaration, since: Int?, storage: Storage? = nil)
+        throws -> FieldDefinition
+    {
+        let resolved: Storage
+
+        if let storage {
+            resolved = storage
+        } else if declaration.wantsSlot {
+            let pool = declaration.type
+            resolved = .slot(pool, try next(in: pool))
+        } else {
+            resolved = .payload
+        }
+
+        var field = FieldDefinition(
+            name: declaration.name,
+            type: declaration.type,
+            storage: resolved,
+            since: since
+        )
+
+        for constraint in declaration.constraints {
+            constraint.apply(to: &field)
+        }
+        return field
+    }
+
+    private mutating func next(in pool: FieldType) throws -> String {
+        for index in 0..<pool.capacity {
+            let slot = "\(pool.slotPrefix)_\(String(format: "%02d", index))"
+            if used[pool, default: []].contains(slot) {
+                continue
+            }
+            used[pool, default: []].insert(slot)
+            return slot
+        }
+        throw SchemaError.invalidDefinition(.exhaustedPool(pool))
     }
 }
 
