@@ -5,33 +5,40 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
+import CloudKit
 import Foundation
 
 struct GridDelta {
     var count: Int64 = 0
-    var kind: Metric?
-    var value: Double?
+    var total: GridTotal?
 
-    mutating func merge(_ other: GridDelta) {
-        count += other.count
-
-        guard let kind = other.kind else {
-            return
+    func reversed() -> GridDelta {
+        guard let total, total.kind.isReversible else {
+            return GridDelta(count: -count)
         }
-        self.kind = kind
-
-        if let total = other.value {
-            value = value.map { kind.combine($0, total) } ?? total
-        }
+        return GridDelta(count: -count, total: -total)
     }
 
-    func isNoop() -> Bool {
-        guard count == 0 else {
-            return false
+    static func + (lhs: GridDelta, rhs: GridDelta) -> GridDelta {
+        let count = lhs.count + rhs.count
+
+        guard let left = lhs.total, let right = rhs.total else {
+            return GridDelta(count: count, total: lhs.total ?? rhs.total)
         }
-        guard let kind, let total = value else {
-            return true
+        return GridDelta(count: count, total: left + right)
+    }
+
+    func apply(to record: CKRecord) {
+        record[CKRecord.countCell] = (record[CKRecord.countCell] as? Int64 ?? 0) + count
+
+        guard let total else {
+            return
         }
-        return kind.isReversible && total == 0
+
+        if let cell = record[CKRecord.valueCell] as? Double {
+            record[CKRecord.valueCell] = total.kind.combine(cell, total.value)
+        } else {
+            record[CKRecord.valueCell] = total.value
+        }
     }
 }

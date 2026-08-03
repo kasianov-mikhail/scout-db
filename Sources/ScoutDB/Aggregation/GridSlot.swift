@@ -11,13 +11,6 @@ import Foundation
 struct GridSlot: Hashable {
     static let recordType = "Aggregate"
 
-    /// The date every grid record carries.
-    ///
-    /// The grid keeps one running cell per group rather than a row of them over
-    /// time, so the column the record type declares holds the same value
-    /// throughout.
-    static let date = Date(timeIntervalSince1970: 0)
-
     let entity: String
     let aggregate: String
     let group: String
@@ -40,8 +33,21 @@ struct GridSlot: Hashable {
         record["entity"] = entity
         record["aggregate"] = aggregate
         record[CKRecord.groupCell] = group
-        record["date"] = Self.date
+        record["date"] = Date(timeIntervalSince1970: 0)
         return record
+    }
+}
+
+extension GridSlot {
+    init(for entityRecord: EntityRecord, aggregate: AggregateDefinition) {
+        self.init(
+            entity: entityRecord.entity,
+            aggregate: aggregate.name,
+            group: aggregate.groupBy.flatMap { entityRecord.values[$0]?.canonical } ?? "",
+            shard: aggregate.shards.map { count in
+                Int(entityRecord.uuid.utf8.reduce(UInt64(0)) { $0 &* 31 &+ UInt64($1) } % UInt64(count))
+            }
+        )
     }
 }
 
