@@ -25,6 +25,8 @@ public enum DefinitionFault: Equatable, Sendable {
     case ambiguousMetric(aggregate: String)
     case nonNumericMetric(aggregate: String, field: String)
     case invalidShards(aggregate: String)
+    case groupedHistogram(aggregate: String)
+    case invalidBounds(aggregate: String)
 }
 
 extension DefinitionFault: CustomStringConvertible {
@@ -60,6 +62,10 @@ extension DefinitionFault: CustomStringConvertible {
             "Aggregate '\(aggregate)' aggregates non-numeric '\(field)'"
         case .invalidShards(let aggregate):
             "Aggregate '\(aggregate)' must shard into 2...64 records"
+        case .groupedHistogram(let aggregate):
+            "Aggregate '\(aggregate)' cannot group a histogram: its bucket is the grouping"
+        case .invalidBounds(let aggregate):
+            "Aggregate '\(aggregate)' must bound its histogram with 1...63 ascending, distinct values"
         }
     }
 }

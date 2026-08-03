@@ -39,11 +39,22 @@ struct GridSlot: Hashable {
 }
 
 extension GridSlot {
-    init(for entityRecord: EntityRecord, aggregate: AggregateDefinition) {
+    init?(for entityRecord: EntityRecord, aggregate: AggregateDefinition) {
+        let group: String
+
+        if let histogram = aggregate.histogram {
+            guard let value = entityRecord.values[histogram.field]?.scalar else {
+                return nil
+            }
+            group = histogram.groupKey(of: value)
+        } else {
+            group = aggregate.groupBy.flatMap { entityRecord.values[$0]?.canonical } ?? ""
+        }
+
         self.init(
             entity: entityRecord.entity,
             aggregate: aggregate.name,
-            group: aggregate.groupBy.flatMap { entityRecord.values[$0]?.canonical } ?? "",
+            group: group,
             shard: aggregate.shards.map { count in
                 Int(entityRecord.uuid.utf8.reduce(UInt64(0)) { $0 &* 31 &+ UInt64($1) } % UInt64(count))
             }

@@ -18,6 +18,9 @@ public enum QueryFault: Equatable, Sendable {
     case equalityOnly(group: String?)
     case noAggregate(entity: String, grouping: String?, folding: String?)
     case averageOfOptional(String)
+    case noHistogram(entity: String, field: String)
+    case filteredHistogram
+    case rankOutOfRange(Double)
 }
 
 extension QueryFault: CustomStringConvertible {
@@ -44,6 +47,12 @@ extension QueryFault: CustomStringConvertible {
                 .joined(separator: ", ")
         case .averageOfOptional(let field):
             "An average divides by a count taking in records without '\(field)'"
+        case .noHistogram(let entity, let field):
+            "Entity '\(entity)' keeps no histogram of '\(field)'"
+        case .filteredHistogram:
+            "A percentile reads a histogram grid, whose grouping is the bucket, and cannot honor a filter"
+        case .rankOutOfRange(let rank):
+            "A percentile rank of \(rank) lies outside 0...1"
         }
     }
 }

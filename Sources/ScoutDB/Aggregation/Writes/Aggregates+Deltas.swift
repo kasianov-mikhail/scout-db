@@ -14,7 +14,9 @@ extension [AggregateDefinition] {
         for (batch, adding) in [(old, false), (new, true)] {
             for entityRecord in batch {
                 for aggregate in self {
-                    let slot = GridSlot(for: entityRecord, aggregate: aggregate)
+                    guard let slot = GridSlot(for: entityRecord, aggregate: aggregate) else {
+                        continue
+                    }
                     let one = delta(for: entityRecord, in: aggregate)
 
                     merged[slot] = merged[slot, default: GridDelta()] + (adding ? one : one.reversed())
