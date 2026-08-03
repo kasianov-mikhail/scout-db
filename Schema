@@ -10,8 +10,6 @@ DEFINE SCHEMA
         entity          STRING QUERYABLE SEARCHABLE SORTABLE,
         schema_version  INT64 QUERYABLE SORTABLE,
         uuid            STRING QUERYABLE SEARCHABLE SORTABLE,
-        deleted         INT64 QUERYABLE SORTABLE,
-        expires         TIMESTAMP QUERYABLE SORTABLE,
         s_00            STRING QUERYABLE SORTABLE,
         s_01            STRING QUERYABLE SORTABLE,
         s_02            STRING QUERYABLE SORTABLE,
@@ -412,21 +410,6 @@ DEFINE SCHEMA
         entity_version  INT64 QUERYABLE SORTABLE,
         definition      BYTES,
         status          STRING QUERYABLE SEARCHABLE SORTABLE,
-        GRANT WRITE TO "_creator",
-        GRANT CREATE, WRITE TO "_icloud",
-        GRANT READ TO "_world"
-    );
-
-    RECORD TYPE UniqueClaim (
-        "___createTime" TIMESTAMP,
-        "___createdBy"  REFERENCE,
-        "___etag"       STRING,
-        "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
-        "___modifiedBy" REFERENCE,
-        "___recordID"   REFERENCE QUERYABLE,
-        entity          STRING QUERYABLE SEARCHABLE SORTABLE,
-        key             STRING QUERYABLE SEARCHABLE SORTABLE,
-        owner           STRING QUERYABLE SEARCHABLE SORTABLE,
         GRANT WRITE TO "_creator",
         GRANT CREATE, WRITE TO "_icloud",
         GRANT READ TO "_world"
