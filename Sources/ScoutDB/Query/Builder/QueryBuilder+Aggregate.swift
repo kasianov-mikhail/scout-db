@@ -104,7 +104,8 @@ extension QueryBuilder {
 
 extension QueryBuilder {
     private func value(of field: String, metric: Metric) async throws -> Double? {
-        let target = try await definition.field(field)
+        let definition = try await self.definition
+        let target = try definition.field(field, at: definition.version)
 
         guard [.int, .double].contains(target.type) else {
             throw SchemaError.unsupportedQuery(.nonNumericField(field))

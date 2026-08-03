@@ -100,7 +100,7 @@ extension QueryBuilder {
             }
 
             let definition = try await self.definition
-            let target = try definition.field(sort.field)
+            let target = try definition.field(sort.field, at: definition.version)
 
             guard [.string, .int, .double, .timestamp].contains(target.type) else {
                 throw SchemaError.unsupportedQuery(.unpageableField(sort.field))

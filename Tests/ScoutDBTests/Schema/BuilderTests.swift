@@ -421,7 +421,7 @@ struct BuilderTests {
             .field("email", .string, .matches("[^@]+@[^@]+"))
             .create()
 
-        #expect(try await registry.definition(for: "account").fieldsByName(at: 1)["email"]?.pattern == "[^@]+@[^@]+")
+        #expect(try await registry.definition(for: "account").field("email", at: 1).pattern == "[^@]+@[^@]+")
         await #expect(throws: SchemaError.invalidValue(.patternMismatch(field: "email"))) {
             try await store.write([EntityWrite(values: ["email": .string("nope")], uuid: "a-1")], entity: "account")
         }

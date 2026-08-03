@@ -35,41 +35,13 @@ extension EntityDefinition {
     }
 
     var activeFields: [FieldDefinition] {
-        fields(at: version)
-    }
-
-    func fieldsByName(at version: Int) -> [String: FieldDefinition] {
-        index.fieldsByName(at: version, of: fields)
+        index.fields(at: version, of: fields)
     }
 
     @discardableResult func field(_ name: String, at version: Int) throws -> FieldDefinition {
-        guard let field = fieldsByName(at: version)[name] else {
+        guard let field = index.fieldsByName(at: version, of: fields)[name] else {
             throw SchemaError.unknownField(name)
         }
         return field
-    }
-
-    @discardableResult func field(_ name: String) throws -> FieldDefinition {
-        try field(name, at: version)
-    }
-}
-
-extension EntityDefinition {
-    func aggregate(named name: String) -> AggregateDefinition? {
-        aggregates?.first {
-            $0.name == name
-        }
-    }
-
-    func aggregate(grouping group: String?, folding field: String?, as metric: Metric) -> AggregateDefinition? {
-        aggregates?.first { aggregate in
-            guard aggregate.groupBy == group else {
-                return false
-            }
-            guard let field else {
-                return true
-            }
-            return aggregate.metricKind == metric.storage && aggregate.metricField == field
-        }
     }
 }
