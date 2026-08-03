@@ -93,11 +93,8 @@ public struct Migrator: Sendable {
             }
         }
 
-        var scoped = definition
-        scoped.aggregates = [aggregate]
-
         let decoder = EntityDecoder(definition: definition)
-        let aggregator = GridAggregator(database: database, definition: scoped)
+        let aggregator = GridAggregator(database: database, aggregates: [aggregate])
 
         var counted = 0
         try await database.forEachPage(

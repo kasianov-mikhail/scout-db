@@ -98,7 +98,7 @@ extension EntityStore {
         return WriteOperation(
             database: database,
             definition: definition,
-            aggregator: GridAggregator(database: database, definition: definition, slots: slots)
+            aggregator: GridAggregator(database: database, aggregates: definition.aggregates ?? [], slots: slots)
         )
     }
 }
