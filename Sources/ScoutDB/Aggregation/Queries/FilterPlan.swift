@@ -10,10 +10,7 @@ import Foundation
 struct FilterPlan {
     var groupField: String?
     var groupKeys: Set<String> = []
-    var numericField: String?
-
-    private var numericGTE: Double?
-    private var numericLT: Double?
+    var bounds: Bounds?
 
     init?(branches: [[ClientFilter]]) {
         guard let first = branches.first, var merged = FilterPlan(first) else {
@@ -24,16 +21,7 @@ struct FilterPlan {
             guard let query = FilterPlan(branch) else {
                 return nil
             }
-            guard query.groupField == merged.groupField else {
-                return nil
-            }
-            guard query.numericField == merged.numericField else {
-                return nil
-            }
-            guard query.numericGTE == merged.numericGTE else {
-                return nil
-            }
-            guard query.numericLT == merged.numericLT else {
+            guard query.groupField == merged.groupField, query.bounds == merged.bounds else {
                 return nil
             }
 
@@ -43,22 +31,26 @@ struct FilterPlan {
         self = merged
     }
 
-    func foldPlan(in definition: EntityDefinition, folding kind: Metric, of field: String?) -> AggregateDefinition? {
-        definition.aggregates?.first { aggregate in
-            guard groupField == nil || aggregate.groupBy == groupField else {
-                return false
+    private init?(_ filters: [ClientFilter]) {
+        for filter in filters {
+            if let keys = filter.groupKeys, groupField == nil {
+                groupField = filter.field
+                groupKeys = keys
+            } else if let narrowed = (bounds ?? Bounds(field: filter.field)).narrowed(by: filter) {
+                bounds = narrowed
+            } else {
+                return nil
             }
-            return field.map {
-                aggregate.metricKind == kind.storage && aggregate.metricField == $0
-            } ?? true
         }
     }
+}
 
+extension FilterPlan {
     mutating func expandRange(in definition: EntityDefinition) {
-        guard groupField == nil, let name = numericField else {
+        guard groupField == nil, let bounds else {
             return
         }
-        guard let field = try? definition.field(name) else {
+        guard let field = try? definition.field(bounds.field, at: definition.version) else {
             return
         }
         guard field.type == .int, field.alwaysPresent else {
@@ -67,17 +59,17 @@ struct FilterPlan {
         guard case .slot = field.storage, let lower = field.min, let upper = field.max else {
             return
         }
-        guard (definition.aggregates ?? []).contains(where: { $0.groupBy == name }) else {
+        guard definition.aggregates?.contains(where: { $0.groupBy == bounds.field }) == true else {
             return
         }
 
         let floor = max(
             lower.rounded(.up),
-            numericGTE?.rounded(.up) ?? -.greatestFiniteMagnitude
+            bounds.lower?.rounded(.up) ?? -.greatestFiniteMagnitude
         )
         let ceiling = min(
             upper.rounded(.down),
-            numericLT.map { $0.rounded(.up) - 1 } ?? .greatestFiniteMagnitude
+            bounds.upper.map { $0.rounded(.up) - 1 } ?? .greatestFiniteMagnitude
         )
 
         guard ceiling - floor < 1_024 else {
@@ -87,90 +79,15 @@ struct FilterPlan {
             return
         }
 
-        groupField = name
-        groupKeys = Set((first <= last ? Array(first...last) : []).map { RecordValue.int($0).canonical })
-        numericField = nil
-        numericGTE = nil
-        numericLT = nil
+        groupField = bounds.field
+        groupKeys = Set(stride(from: first, through: last, by: 1).map { RecordValue.int($0).canonical })
+
+        self.bounds = nil
     }
 }
 
-extension FilterPlan {
-    private init?(_ filters: [ClientFilter]) {
-        for filter in filters {
-            switch (filter.op, filter.value) {
-            case (.equals, let value):
-                guard groupField == nil else {
-                    return nil
-                }
-                groupField = filter.field
-                groupKeys = [value.canonical]
-
-            case (.in, let value):
-                guard groupField == nil else {
-                    return nil
-                }
-                guard let members = value.members else {
-                    return nil
-                }
-                groupField = filter.field
-                groupKeys = Set(members.map(\.canonical))
-
-            case (.greaterThanOrEquals, let value):
-                guard let scalar = value.scalar else {
-                    return nil
-                }
-                guard numericField == nil || numericField == filter.field else {
-                    return nil
-                }
-                guard numericGTE == nil else {
-                    return nil
-                }
-                numericField = filter.field
-                numericGTE = scalar
-
-            case (.lessThan, let value):
-                guard let scalar = value.scalar else {
-                    return nil
-                }
-                guard numericField == nil || numericField == filter.field else {
-                    return nil
-                }
-                guard numericLT == nil else {
-                    return nil
-                }
-                numericField = filter.field
-                numericLT = scalar
-
-            case (.greaterThan, .int(let value)):
-                guard value < Int64.max else {
-                    return nil
-                }
-                guard numericField == nil || numericField == filter.field else {
-                    return nil
-                }
-                guard numericGTE == nil else {
-                    return nil
-                }
-                numericField = filter.field
-                numericGTE = Double(value + 1)
-
-            case (.lessThanOrEquals, .int(let value)):
-                guard value < Int64.max else {
-                    return nil
-                }
-                guard numericField == nil || numericField == filter.field else {
-                    return nil
-                }
-                guard numericLT == nil else {
-                    return nil
-                }
-                numericField = filter.field
-                numericLT = Double(value + 1)
-
-            default:
-                return nil
-            }
-        }
+extension ClientFilter {
+    fileprivate var groupKeys: Set<String>? {
+        membershipValues.map { Set($0.map(\.canonical)) }
     }
 }

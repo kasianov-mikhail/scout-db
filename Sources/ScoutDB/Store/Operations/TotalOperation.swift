@@ -13,7 +13,7 @@ struct TotalOperation {
     let branches: [[ClientFilter]]
 
     func rows(aggregate: String, group: String? = nil) async throws -> [AggregateTotal] {
-        guard let declared = definition.aggregate(named: aggregate) else {
+        guard let declared = definition.aggregates?.first(where: { $0.name == aggregate }) else {
             throw SchemaError.unknownField(aggregate)
         }
 
@@ -36,7 +36,12 @@ struct TotalOperation {
     }
 
     func rows(field: String?, metric: Metric, group: String?) async throws -> [AggregateTotal] {
-        guard let aggregate = definition.aggregate(grouping: group, folding: field, as: metric) else {
+        let grouping = definition.aggregates?.filter { $0.groupBy == group } ?? []
+        let folding = field.map { field in
+            grouping.first { $0.metricKind == metric.storage && $0.metricField == field }
+        }
+
+        guard let aggregate = folding ?? grouping.first else {
             throw SchemaError.unsupportedQuery(
                 .noAggregate(entity: definition.entity, grouping: group, folding: field)
             )

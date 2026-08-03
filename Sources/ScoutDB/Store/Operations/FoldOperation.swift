@@ -13,7 +13,13 @@ struct FoldOperation: Sendable {
     let query: FilterPlan
 
     func cell(of field: String?, folding kind: Metric) async throws -> GridFold? {
-        guard let aggregate = query.foldPlan(in: definition, folding: kind, of: field) else {
+        let aggregates = definition.aggregates ?? []
+        let covering = query.groupField.map { group in aggregates.filter { $0.groupBy == group } } ?? aggregates
+        let folding = field.map { field in
+            covering.first { $0.metricKind == kind.storage && $0.metricField == field }
+        }
+
+        guard let aggregate = folding ?? covering.first else {
             return nil
         }
 
@@ -53,7 +59,7 @@ extension QueryBuilder {
 
             query.expandRange(in: definition)
 
-            guard query.numericField == nil else {
+            guard query.bounds == nil else {
                 return nil
             }
 

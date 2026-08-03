@@ -27,7 +27,7 @@ public struct Migrator: Sendable {
     @discardableResult public func rename(entity: String, from: String, to: String) async throws -> Int {
         let definition = try await registry.definition(for: entity)
 
-        try definition.field(to)
+        try definition.field(to, at: definition.version)
 
         return try await backfill(entity: entity) { record, previous in
             record.values[to] = record.values[to] ?? previous.values[from]
@@ -83,7 +83,7 @@ public struct Migrator: Sendable {
     {
         let definition = try await registry.definition(for: entity)
 
-        guard let aggregate = definition.aggregate(named: name) else {
+        guard let aggregate = definition.aggregates?.first(where: { $0.name == name }) else {
             throw SchemaError.unknownField(name)
         }
 

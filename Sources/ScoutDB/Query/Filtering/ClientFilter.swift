@@ -21,20 +21,23 @@ extension ClientFilter {
         guard let lhs = left[0].only, let rhs = right[0].only, lhs.field == rhs.field else {
             return nil
         }
-        guard let values = RecordValue.membership(of: lhs.values + rhs.values) else {
+        guard let members = lhs.membershipValues, let others = rhs.membershipValues else {
+            return nil
+        }
+        guard let values = RecordValue.membership(of: members + others) else {
             return nil
         }
         self.init(field: lhs.field, op: .in, value: values)
     }
 
-    fileprivate var values: [RecordValue] {
+    var membershipValues: [RecordValue]? {
         switch op {
         case .equals:
             [value]
         case .in:
-            value.members ?? []
+            value.members
         default:
-            []
+            nil
         }
     }
 }

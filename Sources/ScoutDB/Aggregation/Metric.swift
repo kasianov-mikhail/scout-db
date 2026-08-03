@@ -8,7 +8,7 @@
 import Foundation
 
 /// The fold a metric applies to the values it gathers.
-public enum Metric: Equatable, Sendable {
+public enum Metric: String, Equatable, Sendable {
     case sum
     case min
     case max
@@ -17,34 +17,15 @@ public enum Metric: Equatable, Sendable {
 
 extension Metric {
     var storage: Metric {
-        switch self {
-        case .sum, .average:
-            .sum
-        case .min:
-            .min
-        case .max:
-            .max
-        }
+        self == .average ? .sum : self
     }
 
     var label: String {
-        switch self {
-        case .sum, .average:
-            "sum"
-        case .min:
-            "min"
-        case .max:
-            "max"
-        }
+        storage.rawValue
     }
 
     var isReversible: Bool {
-        switch self {
-        case .sum, .average:
-            true
-        case .min, .max:
-            false
-        }
+        storage == .sum
     }
 
     func combine(_ lhs: Double, _ rhs: Double) -> Double {
