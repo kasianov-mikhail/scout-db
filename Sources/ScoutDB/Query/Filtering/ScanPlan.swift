@@ -10,9 +10,10 @@ import CloudKit
 struct ScanPlan {
     let query: CKQuery
     let remaining: [ClientFilter]
+    var included: (EntityRecord) -> Bool = { _ in true }
 
     func includes(_ record: EntityRecord) -> Bool {
-        remaining.allSatisfy { $0.matches(record) ?? false }
+        remaining.allSatisfy { $0.matches(record) ?? false } && included(record)
     }
 }
 

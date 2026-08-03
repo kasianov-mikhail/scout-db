@@ -22,7 +22,11 @@ struct PageOperation: Sendable {
         let pages = try await withThrowingTaskGroup(of: [EntityRecord].self) { group in
             for branch in branches {
                 group.addTask {
-                    try await self.records(matching: branch, size: size, cursor: cursor)
+                    try await self.records(
+                        filters: branch,
+                        size: size,
+                        cursor: cursor
+                    )
                 }
             }
             return try await group.reduce(into: [EntityRecord]()) { $0 += $1 }
@@ -38,9 +42,7 @@ struct PageOperation: Sendable {
         return FieldPage(records: records, cursor: next)
     }
 
-    private func records(matching filters: [ClientFilter], size: Int, cursor: FieldCursor?) async throws
-        -> [EntityRecord]
-    {
+    private func records(filters: [ClientFilter], size: Int, cursor: FieldCursor?) async throws -> [EntityRecord] {
         var pageFilters = filters
 
         if let cursor {
@@ -58,14 +60,10 @@ struct PageOperation: Sendable {
                 [EntityStore.Sort(field: field, order: order)]
             ) + [CKQuery.Sort(field: "uuid", order: .forward)]
 
-        let plan = try definition.plan(matching: pageFilters, sort: sort)
+        var plan = try definition.plan(matching: pageFilters, sort: sort)
 
-        let collected = try await database.scan(
-            matching: plan.query,
-            limit: size,
-            using: definition
-        ) { record in
-            guard plan.includes(record), record.values[field] != nil else {
+        plan.included = { record in
+            guard record.values[field] != nil else {
                 return false
             }
             guard let cursor else {
@@ -74,7 +72,12 @@ struct PageOperation: Sendable {
             return beyond(record, cursor)
         }
 
-        return collected.ranked(using: ranking, limit: size)
+        return try await database.scan(
+            matching: plan,
+            limit: size,
+            using: definition
+        )
+        .ranked(using: ranking, limit: size)
     }
 
     private func beyond(_ record: EntityRecord, _ cursor: FieldCursor) -> Bool {

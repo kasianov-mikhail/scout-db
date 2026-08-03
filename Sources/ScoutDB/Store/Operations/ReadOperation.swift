@@ -62,12 +62,11 @@ struct ReadOperation: Sendable {
         )
 
         if let limit {
-            return Array(
-                try await database.scan(
-                    matching: plan.query,
+            return try await Array(
+                database.scan(
+                    matching: plan,
                     limit: limit,
-                    using: definition,
-                    where: plan.includes
+                    using: definition
                 )
                 .prefix(limit)
             )
