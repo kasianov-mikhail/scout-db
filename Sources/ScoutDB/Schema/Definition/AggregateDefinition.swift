@@ -13,6 +13,7 @@ struct AggregateDefinition: Codable, Equatable, Sendable {
     var sum: String?
     var min: String?
     var max: String?
+    var histogram: Histogram?
     var shards: Int?
 
     var metricKind: Metric? {
@@ -44,6 +45,13 @@ extension AggregateDefinition {
             min: metric?.storage == .min ? field : nil,
             max: metric?.storage == .max ? field : nil,
             shards: shards
+        )
+    }
+
+    init(histogramOf field: String, bounds: [Double]) {
+        self.init(
+            name: "histogram_\(field)",
+            histogram: Histogram(field: field, bounds: bounds)
         )
     }
 }

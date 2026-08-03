@@ -73,11 +73,26 @@ extension EntityDefinition {
                 aggregate.sum,
                 aggregate.min,
                 aggregate.max,
+                aggregate.histogram?.field,
             ]
             .compactMap(\.self)
 
             guard metrics.count <= 1 else {
                 throw SchemaError.invalidDefinition(.ambiguousMetric(aggregate: aggregate.name))
+            }
+
+            if let histogram = aggregate.histogram {
+                guard aggregate.groupBy == nil else {
+                    throw SchemaError.invalidDefinition(.groupedHistogram(aggregate: aggregate.name))
+                }
+                guard (1...63).contains(histogram.bounds.count) else {
+                    throw SchemaError.invalidDefinition(.invalidBounds(aggregate: aggregate.name))
+                }
+                guard histogram.bounds == histogram.bounds.sorted(),
+                    Set(histogram.bounds).count == histogram.bounds.count
+                else {
+                    throw SchemaError.invalidDefinition(.invalidBounds(aggregate: aggregate.name))
+                }
             }
 
             for field in metrics {

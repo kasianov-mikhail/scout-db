@@ -88,4 +88,33 @@ extension SchemaBuilder {
         builder.aggregates.append(AggregateDefinition(metric: .max, of: field, by: group))
         return builder
     }
+
+    /// Counts the field's values into the buckets ``QueryBuilder/percentile(_:of:)``
+    /// reads off; the bounds are exclusive upper ones, ascending.
+    ///
+    /// A value lands in the first bucket it falls under, and whatever reaches
+    /// the last bound lands in an overflow bucket past it — so `n` bounds make
+    /// `n + 1` buckets, each its own grid record. The percentile is
+    /// interpolated within the bucket it falls in, so the answer is as fine as
+    /// the bounds are; they are yours to pick, because only you know the
+    /// distribution. A record missing the field is counted nowhere.
+    ///
+    /// The bucket is the grouping, so a histogram takes neither `by:` nor a
+    /// metric. Mark the field `.ungrouped` unless you also want a count per
+    /// distinct value of it.
+    ///
+    /// ```swift
+    /// try await store.schema("request")
+    ///     .field("latency", .double, .ungrouped)
+    ///     .histogram(of: "latency", bounds: [10, 25, 50, 100, 250, 500, 1_000])
+    ///     .create()
+    ///
+    /// let p95 = try await store.query("request").percentile(0.95, of: "latency")
+    /// ```
+    ///
+    public func histogram(of field: String, bounds: [Double]) -> Self {
+        var builder = self
+        builder.aggregates.append(AggregateDefinition(histogramOf: field, bounds: bounds))
+        return builder
+    }
 }
