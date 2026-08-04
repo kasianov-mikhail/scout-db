@@ -343,9 +343,13 @@ struct AggregatesTests {
         #expect(try await store.query("sale").count() == 43)
         #expect(try await store.query("sale").filter("product", .equals, "book").count() == 41)
 
-        #expect(try await store.query("sale").filter("amount" > 4).count() == 2)
-        #expect(try await store.query("sale").filter("product", .notEquals, "app").count() == 1)
-        #expect(try await store.query("sale").filter("product", .equals, "app").filter("amount" > 1).count() == 2)
+        for uncovered in [
+            store.query("sale").filter("amount" > 4),
+            store.query("sale").filter("product", .notEquals, "app"),
+            store.query("sale").filter("product", .equals, "app").filter("amount" > 1),
+        ] {
+            await #expect(throws: SchemaError.self) { try await uncovered.count() }
+        }
     }
 
     @Test("count() honors IN lists and OR groups through the aggregate's grid")
@@ -386,10 +390,9 @@ struct AggregatesTests {
         )
         #expect(try await store.query("ticket").filter("kind", .in, .strings(["a", "b"])).sum("price") == 115)
 
-        #expect(
-            try await store.query("ticket")
-                .filter("kind" == "a" || "price" == .double(2)).count() == 3
-        )
+        await #expect(throws: SchemaError.self) {
+            try await store.query("ticket").filter("kind" == "a" || "price" == .double(2)).count()
+        }
     }
 
     @Test("A threshold on a bounded integer field names the grid keys it covers")
@@ -427,10 +430,12 @@ struct AggregatesTests {
         #expect(try await store.query("crate").filter("units", .lessThanOrEquals, .int(12)).count() == 3)
         #expect(try await store.query("crate").filter("units", .greaterThanOrEquals, .int(21)).count() == 0)
 
-        #expect(try await store.query("crate").filter("weight", .greaterThan, .int(1_500)).count() == 2)
+        await #expect(throws: SchemaError.self) {
+            try await store.query("crate").filter("weight", .greaterThan, .int(1_500)).count()
+        }
     }
 
-    @Test("A date range falls outside what the grid answers and scans")
+    @Test("A date range falls outside what the grid answers, and is refused rather than scanned")
     func countThroughDateRangeScans() async throws {
         try await publishPayment(aggregates: [AggregateDefinition(name: "by_product", groupBy: "product")])
         try await writePayments([1, 2], product: "app")
@@ -448,10 +453,14 @@ struct AggregatesTests {
         grid["c_00"] = Int64(41)
 
         #expect(try await store.query("payment").count() == 41)
-        #expect(
-            try await store.query("payment").filter("date", .greaterThanOrEquals, .date(noon.addingTimeInterval(3_600)))
-                .count() == 1
-        )
+
+        await #expect(
+            throws: SchemaError.unsupportedQuery(.noAggregate(entity: "payment", grouping: nil, folding: nil))
+        ) {
+            try await store.query("payment")
+                .filter("date", .greaterThanOrEquals, .date(noon.addingTimeInterval(3_600)))
+                .count()
+        }
     }
 
     private func publishLedger(required: Bool = true) async throws {
@@ -486,7 +495,7 @@ struct AggregatesTests {
         return grid
     }
 
-    @Test("sum() and average() read a covering aggregate's grid, while min and max still scan")
+    @Test("sum() and average() read a covering aggregate's grid, while min and max find none")
     func foldThroughLifetimeView() async throws {
         try await publishLedger()
         #expect(try await store.query("ledger").sum("amount") == 20)
@@ -499,8 +508,11 @@ struct AggregatesTests {
         #expect(try await store.query("ledger").filter("product", .equals, "book").average("amount") == 40.0 / 3)
         #expect(try await store.query("ledger").filter("product", .equals, "app").sum("amount") == 16)
 
-        #expect(try await store.query("ledger").min("amount") == 4)
-        #expect(try await store.query("ledger").max("amount") == 10)
+        let uncovered = SchemaError.unsupportedQuery(
+            .noAggregate(entity: "ledger", grouping: nil, folding: "amount")
+        )
+        await #expect(throws: uncovered) { try await store.query("ledger").min("amount") }
+        await #expect(throws: uncovered) { try await store.query("ledger").max("amount") }
     }
 
     @Test("An extremum reads its aggregate's grid instead of scanning")
@@ -555,13 +567,16 @@ struct AggregatesTests {
         #expect(totals.map(\.average) == [8, 40.0 / 3])
     }
 
-    @Test("A fold that divides by the grid's row count scans when the field may be absent")
+    @Test("A fold that divides by the grid's row count is refused when the field may be absent")
     func foldFallsBackForOptionalField() async throws {
         try await publishLedger(required: false)
         _ = try tamperedBookSlot()
 
         #expect(try await store.query("ledger").sum("amount") == 56)
-        #expect(try await store.query("ledger").average("amount") == 20.0 / 3)
+
+        await #expect(throws: SchemaError.unsupportedQuery(.averageOfOptional("amount"))) {
+            try await store.query("ledger").average("amount")
+        }
     }
 
     @Test("A fold over one group asks the server for that group's rows only")
@@ -584,7 +599,7 @@ struct AggregatesTests {
         #expect(ungrouped.matched == 2)
     }
 
-    @Test("A fold with no covering aggregate scans")
+    @Test("A fold with no covering aggregate names what is missing")
     func foldWithoutCoveringView() async throws {
         try await registry.publish(
             makeDefinition(
@@ -610,8 +625,14 @@ struct AggregatesTests {
         grid["c_00"] = Int64(3)
         grid["f_00"] = 40.0
 
-        #expect(try await store.query("fee").sum("tax") == 3)
-        #expect(try await store.query("fee").filter("product", .notEquals, "app").sum("amount") == 4)
+        await #expect(
+            throws: SchemaError.unsupportedQuery(.noAggregate(entity: "fee", grouping: nil, folding: "tax"))
+        ) {
+            try await store.query("fee").sum("tax")
+        }
+        await #expect(throws: SchemaError.self) {
+            try await store.query("fee").filter("product", .notEquals, "app").sum("amount")
+        }
     }
 }
 

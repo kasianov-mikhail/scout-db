@@ -17,6 +17,7 @@ public enum QueryFault: Equatable, Sendable {
     case disjunctionUnsupported
     case equalityOnly(group: String?)
     case noAggregate(entity: String, grouping: String?, folding: String?)
+    case averageOfOptional(String)
     case noHistogram(entity: String, field: String)
     case filteredHistogram
     case rankOutOfRange(Double)
@@ -44,6 +45,8 @@ extension QueryFault: CustomStringConvertible {
                 + [grouping.map { "grouped by '\($0)'" }, folding.map { "folding '\($0)'" }]
                 .compactMap(\.self)
                 .joined(separator: ", ")
+        case .averageOfOptional(let field):
+            "An average divides by a count taking in records without '\(field)'"
         case .noHistogram(let entity, let field):
             "Entity '\(entity)' keeps no histogram of '\(field)'"
         case .filteredHistogram:

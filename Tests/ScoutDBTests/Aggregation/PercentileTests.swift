@@ -120,7 +120,12 @@ struct PercentileTests {
 
     @Test("A histogram never answers the folds that count every record")
     func histogramDoesNotServeCount() async throws {
-        try await publishRequest()
+        try await publishRequest(
+            aggregates: [
+                AggregateDefinition(histogramOf: "latency", bounds: PercentileTests.bounds),
+                AggregateDefinition(by: "route"),
+            ]
+        )
         try await write([15, nil, nil])
 
         #expect(try await store.query("request").count() == 3)
