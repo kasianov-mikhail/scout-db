@@ -219,9 +219,9 @@ struct BuilderTests {
 
     @Test("Operator sugar covers ranges and prefixes")
     func operators() async throws {
-        #expect(try await store.query("purchase").filter("quantity" >= 2).count() == 2)
-        #expect(try await store.query("purchase").filter("quantity" != 2).count() == 2)
-        #expect(try await store.query("purchase").filter("product_id" =~ "sku-").count() == 3)
+        #expect(try await store.query("purchase").filter("quantity" >= 2).take(100).count == 2)
+        #expect(try await store.query("purchase").filter("quantity" != 2).take(100).count == 2)
+        #expect(try await store.query("purchase").filter("product_id" =~ "sku-").take(100).count == 3)
         #expect(try await store.query("purchase").filter("product_id", .equals, "sku-1").count() == 1)
     }
 
@@ -295,9 +295,11 @@ struct BuilderTests {
         #expect(records.map(\.uuid) == ["p-0", "p-2"])
 
         #expect(
-            try await store.query("purchase").filter("quantity" > 1).filter("quantity", .notEquals, 3).count() == 1
+            try await store.query("purchase").filter("quantity" > 1).filter("quantity", .notEquals, 3).take(100).count
+                == 1
         )
-        #expect(try await store.query("purchase").filter("product_id", .notIn, .strings(["sku-0"])).count() == 2)
+        #expect(
+            try await store.query("purchase").filter("product_id", .notIn, .strings(["sku-0"])).take(100).count == 2)
     }
 
     @Test("A negative match over a slot-backed field runs on the server")
@@ -348,29 +350,52 @@ struct BuilderTests {
             .take(100)
         #expect(records.map(\.uuid) == ["p-1", "p-2"])
 
-        let count = try await store.query("purchase")
+        let narrowed = try await store.query("purchase")
             .filter("quantity" > 1 && "amount" < 25)
-            .count()
-        #expect(count == 1)
+            .take(100)
+        #expect(narrowed.count == 1)
     }
 
-    @Test("Folds compute over a single projected field")
+    @Test("Folds read the aggregates the declaration asked for")
     func folds() async throws {
-        #expect(try await store.query("purchase").sum("quantity") == 6)
-        #expect(try await store.query("purchase").filter("quantity" > 1).sum("amount") == 50)
-        #expect(try await store.query("purchase").min("quantity") == 1)
-        #expect(try await store.query("purchase").max("amount") == 30)
-        #expect(try await store.query("purchase").average("quantity") == 2)
-        #expect(try await store.query("purchase").filter("quantity" > 9).average("quantity") == nil)
-        #expect(try await store.query("purchase").filter("quantity" > 9).sum("quantity") == 0)
+        try await store.schema("order")
+            .field("product_id", .string, .required)
+            .field("quantity", .int, .required, .min(0), .max(10))
+            .field("amount", .double)
+            .sum("quantity")
+            .sum("quantity", by: "product_id")
+            .sum("amount", by: "quantity")
+            .min("quantity")
+            .max("amount")
+            .create()
 
-        let grouped = try await store.query("purchase")
+        for (index, quantity) in [3, 1, 2].enumerated() {
+            try await store.write(
+                [
+                    EntityWrite(
+                        values: [
+                            "product_id": .string("sku-\(index)"), "quantity": .int(Int64(quantity)),
+                            "amount": .double(Double(quantity) * 10),
+                        ], uuid: "o-\(index)")
+                ], entity: "order")
+        }
+
+        #expect(try await store.query("order").sum("quantity") == 6)
+        #expect(try await store.query("order").min("quantity") == 1)
+        #expect(try await store.query("order").max("amount") == 30)
+        #expect(try await store.query("order").average("quantity") == 2)
+        #expect(try await store.query("order").filter("quantity" > 1).sum("amount") == 50)
+
+        let grouped = try await store.query("order")
             .filter("product_id" == "sku-0" || "product_id" == "sku-2")
             .sum("quantity")
         #expect(grouped == 5)
 
+        #expect(try await store.query("order").filter("product_id" == "sku-9").sum("quantity") == 0)
+        #expect(try await store.query("order").filter("product_id" == "sku-9").average("quantity") == nil)
+
         await #expect(throws: SchemaError.unsupportedQuery(.nonNumericField("product_id"))) {
-            _ = try await store.query("purchase").sum("product_id")
+            _ = try await store.query("order").sum("product_id")
         }
     }
 
