@@ -22,6 +22,17 @@ struct EntityDefinitionTests {
         #expect(decoded == definition)
     }
 
+    @Test("A definition stored without views decodes to an empty grid")
+    func missingViews() throws {
+        let json = Data(
+            #"{"entity":"purchase","version":1,"fields":[{"name":"product_id","type":"string","storage":"s_00"}]}"#
+                .utf8
+        )
+        let decoded = try JSONDecoder().decode(EntityDefinition.self, from: json)
+        #expect(decoded.aggregates.isEmpty)
+        #expect(decoded.unique == nil)
+    }
+
     @Test("Storage decodes from a bare slot name")
     func storageDecoding() throws {
         let json = Data(#""s_03""#.utf8)
@@ -165,7 +176,7 @@ struct EntityDefinitionTests {
 
 func makeDefinition(
     entity: String = "purchase", version: Int = 2, fields: [FieldDefinition], unique: [String]? = nil,
-    aggregates: [AggregateDefinition]? = nil
+    aggregates: [AggregateDefinition] = []
 ) -> EntityDefinition {
     EntityDefinition(entity: entity, version: version, fields: fields, unique: unique, aggregates: aggregates)
 }

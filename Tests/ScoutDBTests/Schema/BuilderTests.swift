@@ -56,7 +56,7 @@ struct BuilderTests {
     @Test("Creation grids every groupable field")
     func implicitGrid() async throws {
         let definition = try await registry.definition(for: "purchase")
-        let aggregates = try #require(definition.aggregates)
+        let aggregates = definition.aggregates
         #expect(Set(aggregates.map(\.name)) == ["by_product_id", "by_quantity", "by_amount"])
         #expect(aggregates.first { $0.name == "by_product_id" }?.groupBy == "product_id")
 
@@ -73,7 +73,7 @@ struct BuilderTests {
             .field("aliases", .stringList)
             .create()
 
-        let aggregates = try #require(try await registry.definition(for: "label").aggregates)
+        let aggregates = try await registry.definition(for: "label").aggregates
         #expect(aggregates.map(\.name) == ["by_slug"])
     }
 
@@ -86,7 +86,7 @@ struct BuilderTests {
             .sum("weight", by: "carrier")
             .create()
 
-        let aggregates = try #require(try await registry.definition(for: "shipment").aggregates)
+        let aggregates = try await registry.definition(for: "shipment").aggregates
         #expect(aggregates.filter { $0.groupBy == "carrier" }.count == 1)
         #expect(aggregates.first { $0.groupBy == "carrier" }?.sum == "weight")
         #expect(Set(aggregates.compactMap(\.groupBy)) == ["carrier", "weight"])
@@ -101,7 +101,7 @@ struct BuilderTests {
             .max("value", by: "sensor")
             .create()
 
-        let aggregates = try #require(try await registry.definition(for: "reading").aggregates)
+        let aggregates = try await registry.definition(for: "reading").aggregates
         #expect(aggregates.first { $0.name == "min_value_by_sensor" }?.min == "value")
         #expect(aggregates.first { $0.name == "max_value_by_sensor" }?.max == "value")
     }
@@ -113,7 +113,7 @@ struct BuilderTests {
             .field("kind", .string, .required)
             .create()
 
-        #expect(try await registry.definition(for: "event").aggregates?.compactMap(\.groupBy) == ["kind"])
+        #expect(try await registry.definition(for: "event").aggregates.compactMap(\.groupBy) == ["kind"])
     }
 
     @Test("An update inherits the grid instead of building its own")
@@ -128,7 +128,7 @@ struct BuilderTests {
 
         let updated = try await registry.definition(for: "ticket")
         #expect(updated.version == 2)
-        #expect(updated.aggregates?.map(\.name) == ["by_queue"])
+        #expect(updated.aggregates.map(\.name) == ["by_queue"])
     }
 
     @Test("An update names the fields its new version leaves uncounted")
@@ -173,7 +173,7 @@ struct BuilderTests {
 
         #expect(missing.isEmpty)
         let updated = try await registry.definition(for: "ticket")
-        #expect(updated.aggregates?.compactMap(\.groupBy) == ["queue", "assignee"])
+        #expect(updated.aggregates.compactMap(\.groupBy) == ["queue", "assignee"])
     }
 
     @Test("An aggregate of the same shape replaces the one the grid built")
@@ -189,7 +189,7 @@ struct BuilderTests {
             .sum("weight", by: "queue")
             .update()
 
-        let updated = try #require(try await registry.definition(for: "ticket").aggregates)
+        let updated = try await registry.definition(for: "ticket").aggregates
         #expect(Set(updated.compactMap(\.groupBy)) == ["queue", "weight"])
         #expect(updated.first { $0.groupBy == "queue" }?.sum == "weight")
     }
@@ -205,7 +205,7 @@ struct BuilderTests {
             .field("queue", .string, .required)
             .update()
 
-        #expect(try await registry.definition(for: "ticket").aggregates?.compactMap(\.groupBy) == ["queue"])
+        #expect(try await registry.definition(for: "ticket").aggregates.compactMap(\.groupBy) == ["queue"])
     }
 
     @Test("Query builder filters, sorts, and limits")

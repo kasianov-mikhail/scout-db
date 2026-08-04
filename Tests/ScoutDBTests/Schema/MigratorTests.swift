@@ -119,7 +119,7 @@ struct MigratorTests {
         try await store.write(
             [EntityWrite(values: ["product": .string("book"), "amount": .double(2)], uuid: nil)], entity: "sale")
 
-        definition.aggregates? += [AggregateDefinition(name: "by_product", groupBy: "product", sum: "amount")]
+        definition.aggregates += [AggregateDefinition(name: "by_product", groupBy: "product", sum: "amount")]
         try await registry.publish(definition)
         #expect(try await TotalOperation(store: store, entity: "sale").rows(aggregate: "by_product").isEmpty)
 

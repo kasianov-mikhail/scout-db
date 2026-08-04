@@ -60,7 +60,7 @@ extension SchemaBuilder {
                 version: 1,
                 fields: fields,
                 unique: unique,
-                aggregates: grid.isEmpty ? nil : grid
+                aggregates: grid
             )
         )
     }
@@ -140,7 +140,7 @@ extension SchemaBuilder {
 
         let active = Set(fields.filter { $0.isActive(at: version) }.map(\.name))
 
-        let inherited = previous.aggregates ?? []
+        let inherited = previous.aggregates
         let byName = Dictionary(aggregates.map { ($0.name, $0) }, uniquingKeysWith: { _, last in last })
         let superseded = aggregates.map(\.groupBy)
 
@@ -164,7 +164,7 @@ extension SchemaBuilder {
                 version: version,
                 fields: fields,
                 unique: unique ?? previous.unique,
-                aggregates: carriedViews.isEmpty ? nil : carriedViews
+                aggregates: carriedViews
             )
         )
 
