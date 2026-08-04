@@ -66,11 +66,11 @@ final class ContractFixture {
     }
 
     @discardableResult func publish(
-        _ name: String, fields: [FieldDefinition], unique: [String]? = nil, aggregates: [AggregateDefinition] = []
+        _ name: String, fields: [FieldDefinition], aggregates: [AggregateDefinition] = []
     ) async throws -> String {
         let entity = entity(name)
         try await registry.publish(
-            EntityDefinition(entity: entity, version: 1, fields: fields, unique: unique, aggregates: aggregates)
+            EntityDefinition(entity: entity, version: 1, fields: fields, aggregates: aggregates)
         )
         published.append(entity)
         return entity

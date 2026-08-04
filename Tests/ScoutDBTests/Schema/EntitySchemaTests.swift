@@ -28,7 +28,6 @@ struct EntitySchemaTests {
             .field("email", .string, .matches("^.+@.+$"))
             .field("comment", .string, .payload)
             .field("date", .timestamp)
-            .unique(on: "product_id", "date")
             .create()
     }
 
@@ -36,6 +35,8 @@ struct EntitySchemaTests {
     func fieldRules() async throws {
         let schema = try await registry.schema(for: "purchase")
         let byName = Dictionary(uniqueKeysWithValues: schema.fields.map { ($0.name, $0) })
+
+        #expect(schema.entity == "purchase")
 
         let product = try #require(byName["product_id"])
         #expect(product.type == .string)
@@ -52,13 +53,6 @@ struct EntitySchemaTests {
         #expect(try #require(byName["email"]).pattern == "^.+@.+$")
         #expect(try #require(byName["comment"]).payload)
         #expect(try #require(byName["date"]).payload == false)
-    }
-
-    @Test("Entity-wide settings come across")
-    func entitySettings() async throws {
-        let schema = try await registry.schema(for: "purchase")
-        #expect(schema.entity == "purchase")
-        #expect(schema.unique == ["product_id", "date"])
     }
 
     @Test("A closed field leaves the schema")

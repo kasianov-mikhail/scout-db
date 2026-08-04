@@ -50,7 +50,7 @@ struct AggregatesTests {
         }
     }
 
-    @Test("A unique-key upsert counts once in aggregates")
+    @Test("An upsert counts once in aggregates")
     func upsertCountsOnce() async throws {
         try await registry.publish(
             makeDefinition(
@@ -59,22 +59,21 @@ struct AggregatesTests {
                     FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_00")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
-                unique: ["user"],
                 aggregates: [AggregateDefinition(name: "by_all")]
             )
         )
 
         try await store.write(
-            [EntityWrite(values: ["user": .string("u1"), "date": .date(noon)], uuid: nil)], entity: "visit")
+            [EntityWrite(values: ["user": .string("u1"), "date": .date(noon)], uuid: "v-1")], entity: "visit")
         try await store.write(
-            [EntityWrite(values: ["user": .string("u1"), "date": .date(noon)], uuid: nil)], entity: "visit")
+            [EntityWrite(values: ["user": .string("u1"), "date": .date(noon)], uuid: "v-1")], entity: "visit")
 
         #expect(try await ReadOperation(store: store, entity: "visit").records().count == 1)
         #expect(
             try await TotalOperation(store: store, entity: "visit").rows(aggregate: "by_all").map(\.count) == [1])
     }
 
-    @Test("A unique-key upsert with a changed value rebalances a sum aggregate")
+    @Test("An upsert with a changed value rebalances a sum aggregate")
     func upsertRebalancesSumView() async throws {
         try await registry.publish(
             makeDefinition(
@@ -84,16 +83,15 @@ struct AggregatesTests {
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
-                unique: ["user"],
                 aggregates: [AggregateDefinition(name: "revenue", sum: "amount")]
             )
         )
 
         try await store.write(
-            [EntityWrite(values: ["user": .string("u1"), "amount": .double(10), "date": .date(noon)], uuid: nil)],
+            [EntityWrite(values: ["user": .string("u1"), "amount": .double(10), "date": .date(noon)], uuid: "m-1")],
             entity: "meter")
         try await store.write(
-            [EntityWrite(values: ["user": .string("u1"), "amount": .double(25), "date": .date(noon)], uuid: nil)],
+            [EntityWrite(values: ["user": .string("u1"), "amount": .double(25), "date": .date(noon)], uuid: "m-1")],
             entity: "meter")
 
         #expect(try await ReadOperation(store: store, entity: "meter").records().count == 1)
@@ -142,19 +140,18 @@ struct AggregatesTests {
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
-                unique: ["user"],
                 aggregates: [AggregateDefinition(name: "low", min: "amount")]
             )
         )
 
         try await store.write(
-            [EntityWrite(values: ["user": .string("u1"), "amount": .double(2), "date": .date(noon)], uuid: nil)],
+            [EntityWrite(values: ["user": .string("u1"), "amount": .double(2), "date": .date(noon)], uuid: "m-1")],
             entity: "meter")
         try await store.write(
-            [EntityWrite(values: ["user": .string("u2"), "amount": .double(8), "date": .date(noon)], uuid: nil)],
+            [EntityWrite(values: ["user": .string("u2"), "amount": .double(8), "date": .date(noon)], uuid: "m-2")],
             entity: "meter")
         try await store.write(
-            [EntityWrite(values: ["user": .string("u1"), "amount": .double(6), "date": .date(noon)], uuid: nil)],
+            [EntityWrite(values: ["user": .string("u1"), "amount": .double(6), "date": .date(noon)], uuid: "m-1")],
             entity: "meter")
 
         let totals = try await TotalOperation(store: store, entity: "meter").rows(aggregate: "low")

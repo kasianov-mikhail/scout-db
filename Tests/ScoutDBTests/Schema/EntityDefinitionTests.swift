@@ -30,7 +30,6 @@ struct EntityDefinitionTests {
         )
         let decoded = try JSONDecoder().decode(EntityDefinition.self, from: json)
         #expect(decoded.aggregates.isEmpty)
-        #expect(decoded.unique == nil)
     }
 
     @Test("Storage decodes from a bare slot name")
@@ -136,19 +135,6 @@ struct EntityDefinitionTests {
         }
     }
 
-    @Test("Validation rejects a unique key that is not a field")
-    func unknownUniqueKey() {
-        let definition = makeDefinition(
-            fields: [
-                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))
-            ],
-            unique: ["user_id"]
-        )
-        #expect(throws: SchemaError.invalidDefinition(.unknownUniqueKey("user_id"))) {
-            try definition.validate()
-        }
-    }
-
     @Test("Validation rejects an allowed domain on a non-string field")
     func allowedWrongType() {
         let definition = makeDefinition(
@@ -175,10 +161,10 @@ struct EntityDefinitionTests {
 }
 
 func makeDefinition(
-    entity: String = "purchase", version: Int = 2, fields: [FieldDefinition], unique: [String]? = nil,
+    entity: String = "purchase", version: Int = 2, fields: [FieldDefinition],
     aggregates: [AggregateDefinition] = []
 ) -> EntityDefinition {
-    EntityDefinition(entity: entity, version: version, fields: fields, unique: unique, aggregates: aggregates)
+    EntityDefinition(entity: entity, version: version, fields: fields, aggregates: aggregates)
 }
 
 func makePurchaseDefinition() -> EntityDefinition {

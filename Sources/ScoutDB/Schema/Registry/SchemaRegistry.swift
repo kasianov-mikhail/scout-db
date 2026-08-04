@@ -70,8 +70,7 @@ public actor SchemaRegistry {
                     max: $0.max,
                     pattern: $0.pattern
                 )
-            },
-            unique: definition.unique
+            }
         )
     }
 

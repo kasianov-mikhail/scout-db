@@ -20,7 +20,6 @@ public enum DefinitionFault: Equatable, Sendable {
     case unsupportedAllowed(field: String, type: FieldType)
     case unsupportedBounds(field: String, type: FieldType)
 
-    case unknownUniqueKey(String)
     case unknownGrouping(aggregate: String, field: String)
     case ambiguousMetric(aggregate: String)
     case nonNumericMetric(aggregate: String, field: String)
@@ -52,8 +51,6 @@ extension DefinitionFault: CustomStringConvertible {
         case .unsupportedBounds(let field, let type):
             "Field '\(field)' of type '\(type.rawValue)' cannot constrain 'minimum'/'maximum'"
 
-        case .unknownUniqueKey(let key):
-            "Unique key '\(key)' is not a field"
         case .unknownGrouping(let aggregate, let field):
             "Aggregate '\(aggregate)' groups by unknown '\(field)'"
         case .ambiguousMetric(let aggregate):
