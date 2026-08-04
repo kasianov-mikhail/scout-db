@@ -16,7 +16,7 @@ struct PercentileOperation {
             throw SchemaError.unsupportedQuery(.rankOutOfRange(rank))
         }
 
-        let declared = definition.aggregates?.first { $0.histogram?.field == field }
+        let declared = definition.aggregates.first { $0.histogram?.field == field }
 
         guard let aggregate = declared, let histogram = aggregate.histogram else {
             throw SchemaError.unsupportedQuery(

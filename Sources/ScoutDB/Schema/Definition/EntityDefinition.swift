@@ -11,10 +11,10 @@ struct EntityDefinition: Codable, Equatable, Sendable {
     let entity: String
     let version: Int
     let fields: [FieldDefinition]
-    var aggregates: [AggregateDefinition]?
+    var aggregates: [AggregateDefinition] = []
     private let index = FieldIndex()
 
-    private enum CodingKeys: String, CodingKey {
+    fileprivate enum CodingKeys: String, CodingKey {
         case entity, version, fields
         case aggregates = "views"
     }
@@ -24,6 +24,16 @@ struct EntityDefinition: Codable, Equatable, Sendable {
             && lhs.version == rhs.version
             && lhs.fields == rhs.fields
             && lhs.aggregates == rhs.aggregates
+    }
+}
+
+extension EntityDefinition {
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        entity = try container.decode(String.self, forKey: .entity)
+        version = try container.decode(Int.self, forKey: .version)
+        fields = try container.decode([FieldDefinition].self, forKey: .fields)
+        aggregates = try container.decodeIfPresent([AggregateDefinition].self, forKey: .aggregates) ?? []
     }
 }
 

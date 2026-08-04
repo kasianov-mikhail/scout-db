@@ -66,7 +66,7 @@ final class ContractFixture {
     }
 
     @discardableResult func publish(
-        _ name: String, fields: [FieldDefinition], aggregates: [AggregateDefinition]? = nil
+        _ name: String, fields: [FieldDefinition], aggregates: [AggregateDefinition] = []
     ) async throws -> String {
         let entity = entity(name)
         try await registry.publish(
@@ -76,7 +76,7 @@ final class ContractFixture {
         return entity
     }
 
-    func publishOrder(aggregates: [AggregateDefinition]? = nil) async throws -> String {
+    func publishOrder(aggregates: [AggregateDefinition] = []) async throws -> String {
         try await publish(
             "order",
             fields: [

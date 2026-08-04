@@ -83,7 +83,7 @@ public struct Migrator: Sendable {
     {
         let definition = try await registry.definition(for: entity)
 
-        guard let aggregate = definition.aggregates?.first(where: { $0.name == name }) else {
+        guard let aggregate = definition.aggregates.first(where: { $0.name == name }) else {
             throw SchemaError.unknownField(name)
         }
 

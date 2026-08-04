@@ -48,7 +48,7 @@ struct WriteOperation: Sendable {
     private func rebalance(_ records: [EntityRecord], stored: Set<String>) async throws -> (
         removing: [EntityRecord], adding: [EntityRecord]
     ) {
-        guard definition.aggregates?.isEmpty == false else {
+        guard !definition.aggregates.isEmpty else {
             return ([], [])
         }
 
@@ -82,7 +82,7 @@ extension EntityStore {
         return WriteOperation(
             database: database,
             definition: definition,
-            aggregator: GridAggregator(database: database, aggregates: definition.aggregates ?? [], slots: slots)
+            aggregator: GridAggregator(database: database, aggregates: definition.aggregates, slots: slots)
         )
     }
 }
