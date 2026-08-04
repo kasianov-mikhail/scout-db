@@ -13,7 +13,7 @@ struct FoldOperation: Sendable {
     let query: FilterPlan
 
     func cell(of field: String?, folding kind: Metric) async throws -> GridFold? {
-        let aggregates = definition.aggregates ?? []
+        let aggregates = (definition.aggregates ?? []).filter { $0.histogram == nil }
         let covering = query.groupField.map { group in aggregates.filter { $0.groupBy == group } } ?? aggregates
         let folding = field.map { field in
             covering.first { $0.metricKind == kind.storage && $0.metricField == field }

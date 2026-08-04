@@ -36,7 +36,7 @@ struct TotalOperation {
     }
 
     func rows(field: String?, metric: Metric, group: String?) async throws -> [AggregateTotal] {
-        let grouping = definition.aggregates?.filter { $0.groupBy == group } ?? []
+        let grouping = definition.aggregates?.filter { $0.groupBy == group && $0.histogram == nil } ?? []
         let folding = field.map { field in
             grouping.first { $0.metricKind == metric.storage && $0.metricField == field }
         }
