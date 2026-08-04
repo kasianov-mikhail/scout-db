@@ -187,7 +187,12 @@ struct StoreContractTests {
     @Test("Folds aggregate matching records")
     func foldSum() async throws {
         try await withContract { f in
-            let entity = try await f.publishOrder()
+            let entity = try await f.publishOrder(
+                aggregates: [
+                    AggregateDefinition(name: "revenue", sum: "total"),
+                    AggregateDefinition(name: "peak", max: "total"),
+                ]
+            )
             for (index, total) in [2.5, 7.5, 10.0].enumerated() {
                 try await f.store.write(
                     [EntityWrite(values: orderValues(total: total), uuid: "fs-\(index)")], entity: entity)

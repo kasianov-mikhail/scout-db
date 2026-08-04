@@ -17,6 +17,7 @@ public enum QueryFault: Equatable, Sendable {
     case disjunctionUnsupported
     case equalityOnly(group: String?)
     case noAggregate(entity: String, grouping: String?, folding: String?)
+    case averageOfOptional(String)
 }
 
 extension QueryFault: CustomStringConvertible {
@@ -41,6 +42,8 @@ extension QueryFault: CustomStringConvertible {
                 + [grouping.map { "grouped by '\($0)'" }, folding.map { "folding '\($0)'" }]
                 .compactMap(\.self)
                 .joined(separator: ", ")
+        case .averageOfOptional(let field):
+            "An average divides by a count taking in records without '\(field)'"
         }
     }
 }
