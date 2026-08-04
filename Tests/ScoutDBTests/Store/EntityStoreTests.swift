@@ -277,25 +277,24 @@ struct EntityStoreTests {
         }
     }
 
-    @Test("Unique key turns writes into upserts")
-    func uniqueUpsert() async throws {
+    @Test("Writing a uuid a second time rewrites the record")
+    func uuidUpsert() async throws {
         try await registry.publish(
             makeDefinition(
                 entity: "profile",
                 fields: [
                     FieldDefinition(name: "user_id", type: .string, storage: .slot(.string, "s_00")),
                     FieldDefinition(name: "score", type: .int, storage: .slot(.int, "i_00")),
-                ],
-                unique: ["user_id"]
+                ]
             )
         )
 
         let first = try await store.write(
-            [EntityWrite(values: ["user_id": .string("alice"), "score": .int(1)], uuid: nil)], entity: "profile")
+            [EntityWrite(values: ["user_id": .string("alice"), "score": .int(1)], uuid: "alice")], entity: "profile")
         let second = try await store.write(
-            [EntityWrite(values: ["user_id": .string("alice"), "score": .int(2)], uuid: nil)], entity: "profile")
+            [EntityWrite(values: ["user_id": .string("alice"), "score": .int(2)], uuid: "alice")], entity: "profile")
         let other = try await store.write(
-            [EntityWrite(values: ["user_id": .string("bob"), "score": .int(3)], uuid: nil)], entity: "profile")
+            [EntityWrite(values: ["user_id": .string("bob"), "score": .int(3)], uuid: "bob")], entity: "profile")
         #expect(first == second)
         #expect(first != other)
 

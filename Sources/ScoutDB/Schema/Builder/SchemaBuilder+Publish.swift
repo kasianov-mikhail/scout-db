@@ -59,7 +59,6 @@ extension SchemaBuilder {
                 entity: entity,
                 version: 1,
                 fields: fields,
-                unique: unique,
                 aggregates: grid.isEmpty ? nil : grid
             )
         )
@@ -71,9 +70,8 @@ extension SchemaBuilder {
     /// A field keeps its slot while its name and type hold; retyping moves it
     /// to a fresh slot and closes the old one at this version; omitting it
     /// closes it outright. Records written under earlier versions stay readable
-    /// through their own, so nothing is rewritten here. Settings carry over
-    /// unless redeclared, and aggregates join rather than replace — one lapses
-    /// only with the field it is kept over.
+    /// through their own, so nothing is rewritten here. Aggregates join rather
+    /// than replace — one lapses only with the field it is kept over.
     ///
     /// A version builds no grid of its own: the entity already holds records,
     /// and a fresh cell counts only what lands after it. The returned names are
@@ -163,7 +161,6 @@ extension SchemaBuilder {
                 entity: entity,
                 version: version,
                 fields: fields,
-                unique: unique ?? previous.unique,
                 aggregates: carriedViews.isEmpty ? nil : carriedViews
             )
         )

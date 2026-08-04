@@ -58,10 +58,6 @@ extension EntityDefinition {
                 }
             }
         }
-        for key in unique ?? [] where !names.contains(key) {
-            throw SchemaError.invalidDefinition(.unknownUniqueKey(key))
-        }
-
         for aggregate in aggregates ?? [] {
             if let groupBy = aggregate.groupBy, !names.contains(groupBy) {
                 throw SchemaError.invalidDefinition(

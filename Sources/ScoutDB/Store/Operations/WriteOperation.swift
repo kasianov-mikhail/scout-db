@@ -18,17 +18,14 @@ struct WriteOperation: Sendable {
 
         let records = try batch.map { entry in
             let resolved = try definition.resolve(entry.values, at: definition.version)
-            let natural = try naturalUUID(for: resolved)
-            let assigned = natural ?? entry.uuid
-            let uuid = assigned ?? UUID().uuidString
 
-            if let assigned {
+            if let assigned = entry.uuid {
                 stored.insert(assigned)
             }
 
             return EntityRecord(
                 entity: definition.entity,
-                uuid: uuid,
+                uuid: entry.uuid ?? UUID().uuidString,
                 schemaVersion: definition.version,
                 values: resolved
             )
@@ -46,19 +43,6 @@ struct WriteOperation: Sendable {
         try await aggregator.rebalance(removing: removedFromViews, adding: addedToViews)
 
         return records.map(\.uuid)
-    }
-
-    private func naturalUUID(for values: [String: RecordValue]) throws -> String? {
-        guard let unique = definition.unique else {
-            return nil
-        }
-        let key = try unique.map { name in
-            guard let value = values[name] else {
-                throw SchemaError.missingField(name)
-            }
-            return "\(name)=\(value.canonical)"
-        }
-        return contentDigest(of: key)
     }
 
     private func rebalance(_ records: [EntityRecord], stored: Set<String>) async throws -> (

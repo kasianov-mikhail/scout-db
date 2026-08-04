@@ -22,10 +22,6 @@ public struct EntitySchema: Sendable, Equatable {
     /// The fields a write may carry, closed ones left out.
     public let fields: [Field]
 
-    /// The fields whose values derive a record's id, turning writes into
-    /// upserts.
-    public let unique: [String]?
-
     /// One field of an entity, as a caller writing records sees it.
     public struct Field: Sendable, Equatable {
         /// The name the field carries in a record's values.

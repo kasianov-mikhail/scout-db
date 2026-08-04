@@ -50,26 +50,6 @@ struct StoreContractTests {
         }
     }
 
-    @Test("A unique key derives the same uuid for the same values")
-    func uniqueKeyNaturalUUID() async throws {
-        try await withContract { f in
-            let entity = try await f.publish(
-                "visit",
-                fields: [
-                    FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_00")),
-                    FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
-                ],
-                unique: ["user"]
-            )
-            try await f.store.write(
-                [EntityWrite(values: ["user": .string("u1"), "date": .date(Date())], uuid: nil)], entity: entity)
-            try await f.store.write(
-                [EntityWrite(values: ["user": .string("u1"), "date": .date(Date())], uuid: nil)], entity: entity)
-
-            try await eventually { try await ReadOperation(store: f.store, entity: entity).records().count == 1 }
-        }
-    }
-
     @Test("Equality and range filters narrow server-side")
     func equalityAndRangeFilters() async throws {
         try await withContract { f in

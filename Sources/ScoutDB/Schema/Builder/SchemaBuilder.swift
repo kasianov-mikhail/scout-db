@@ -15,7 +15,6 @@ import Foundation
 ///     .field("amount", .double)
 ///     .field("date", .timestamp)
 ///     .field("comment", .string, .payload)
-///     .unique(on: "product_id", "date")
 ///     .create()
 /// ```
 ///
@@ -28,30 +27,7 @@ public struct SchemaBuilder {
     let registry: SchemaRegistry
 
     var declarations: [Declaration] = []
-    var unique: [String]?
     var aggregates: [AggregateDefinition] = []
-
-    /// Derives the record id from the named fields, turning writes into
-    /// upserts.
-    ///
-    /// The id is a digest of those values, so writing the same combination
-    /// twice rewrites one record rather than making a second — and a write
-    /// missing any of the fields is rejected. The uuid a caller passes is
-    /// ignored, since identity comes from the values.
-    ///
-    /// ```swift
-    /// try await store.schema("reading")
-    ///     .field("sensor", .string, .required)
-    ///     .field("taken", .timestamp, .required)
-    ///     .unique(on: "sensor", "taken")
-    ///     .create()
-    /// ```
-    ///
-    public func unique(on fields: String...) -> Self {
-        var builder = self
-        builder.unique = fields
-        return builder
-    }
 }
 
 extension EntityStore {
