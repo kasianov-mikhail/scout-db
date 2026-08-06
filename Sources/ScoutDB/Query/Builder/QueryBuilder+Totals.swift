@@ -8,7 +8,7 @@
 import Foundation
 
 extension QueryBuilder {
-    /// One total per group, folded across every hour the grid holds.
+    /// One total per group, folded across every hour the vector holds.
     ///
     /// One row per group, carrying the value the aggregate folds: the metric
     /// over the field, or the count of records when no `field` is named.
@@ -16,7 +16,7 @@ extension QueryBuilder {
     /// aggregates fold — a `min` and a `max` of the same amount — stays
     /// reachable either way; `.average` divides the `sum` aggregate by the
     /// count aggregate over the same grouping, and needs both declared. The
-    /// only clause a grid read can honor is an equality filter on the grouping
+    /// only clause a vector read can honor is an equality filter on the grouping
     /// field, which narrows it to that group server-side; any other filter
     /// throws rather than being quietly dropped.
     ///

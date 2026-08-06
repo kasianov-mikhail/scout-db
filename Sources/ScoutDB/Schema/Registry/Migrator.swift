@@ -87,14 +87,14 @@ public struct Migrator: Sendable {
             throw SchemaError.unknownField(name)
         }
 
-        try await database.forEachPage(matching: CKQuery(gridOf: entity, aggregate: name)) { page in
+        try await database.forEachPage(matching: CKQuery(vectorOf: entity, aggregate: name)) { page in
             for chunk in page.map(\.recordID).chunked(into: batchSize) {
                 try await database.modifyRecords(saving: [], deleting: chunk)
             }
         }
 
         let decoder = EntityDecoder(definition: definition)
-        let aggregator = GridAggregator(database: database, aggregates: [aggregate])
+        let aggregator = VectorAggregator(database: database, aggregates: [aggregate])
 
         var counted = 0
         try await database.forEachPage(

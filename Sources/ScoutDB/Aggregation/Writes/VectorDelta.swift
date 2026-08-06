@@ -8,7 +8,7 @@
 import CloudKit
 import Foundation
 
-struct GridDelta {
+struct VectorDelta {
     let kind: Metric
     var cells: [Int: Double] = [:]
 
@@ -16,16 +16,16 @@ struct GridDelta {
         kind.isReversible ? cells.values.allSatisfy { $0 == 0 } : cells.isEmpty
     }
 
-    func reversed() -> GridDelta {
+    func reversed() -> VectorDelta {
         guard kind.isReversible else {
-            return GridDelta(kind: kind)
+            return VectorDelta(kind: kind)
         }
-        return GridDelta(kind: kind, cells: cells.mapValues(-))
+        return VectorDelta(kind: kind, cells: cells.mapValues(-))
     }
 
     func apply(to record: CKRecord) {
         for (hour, value) in cells {
-            let key = GridSlot.cellKeys[hour]
+            let key = VectorSlot.cellKeys[hour]
 
             if let stored = record[key] as? Double {
                 record[key] = kind.combine(stored, value)

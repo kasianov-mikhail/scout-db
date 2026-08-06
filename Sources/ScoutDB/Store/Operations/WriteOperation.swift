@@ -11,7 +11,7 @@ import Foundation
 struct WriteOperation: Sendable {
     let database: any CloudDatabase
     let definition: EntityDefinition
-    let aggregator: GridAggregator
+    let aggregator: VectorAggregator
 
     func save(_ batch: [EntityWrite]) async throws -> [String] {
         var stored: Set<String> = []
@@ -82,7 +82,7 @@ extension EntityStore {
         return WriteOperation(
             database: database,
             definition: definition,
-            aggregator: GridAggregator(database: database, aggregates: definition.aggregates, slots: slots)
+            aggregator: VectorAggregator(database: database, aggregates: definition.aggregates, slots: slots)
         )
     }
 }

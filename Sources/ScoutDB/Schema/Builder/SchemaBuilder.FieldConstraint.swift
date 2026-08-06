@@ -43,7 +43,7 @@ extension SchemaBuilder {
         /// A regular expression every value of the field must match whole.
         case matches(String)
 
-        /// Keeps the field out of the grid a creation builds: nothing counts by
+        /// Keeps the field out of the vectors a creation builds: nothing counts by
         /// it, and no write pays for its cells. For the fields of many distinct
         /// values — a uuid, a free-form string — that no read groups by.
         case ungrouped

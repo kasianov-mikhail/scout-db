@@ -8,13 +8,13 @@
 import CloudKit
 import Foundation
 
-struct GridAggregator {
+struct VectorAggregator {
     let database: any CloudDatabase
     let aggregates: [AggregateDefinition]
-    let slots: GridCache
+    let slots: VectorCache
     let maxRetry = 3
 
-    init(database: any CloudDatabase, aggregates: [AggregateDefinition], slots: GridCache = GridCache()) {
+    init(database: any CloudDatabase, aggregates: [AggregateDefinition], slots: VectorCache = VectorCache()) {
         self.database = database
         self.aggregates = aggregates
         self.slots = slots
@@ -31,7 +31,7 @@ struct GridAggregator {
             return
         }
 
-        var pending = try await GridLoader(
+        var pending = try await VectorLoader(
             database: database,
             slots: slots
         )
@@ -42,7 +42,7 @@ struct GridAggregator {
                 entry.delta.apply(to: entry.record)
             }
 
-            var retry: [CKRecord.ID: GridLoader.Pending] = [:]
+            var retry: [CKRecord.ID: VectorLoader.Pending] = [:]
 
             for chunk in Array(pending.values).chunked(into: maxBatchSize) {
                 for (id, result) in try await database.saveIfUnchanged(chunk.map(\.record)) {
@@ -56,7 +56,7 @@ struct GridAggregator {
                         await slots.keep(conflict.serverRecord)
 
                         if let delta = pending[id]?.delta {
-                            retry[id] = GridLoader.Pending(
+                            retry[id] = VectorLoader.Pending(
                                 record: conflict.serverRecord,
                                 delta: delta
                             )

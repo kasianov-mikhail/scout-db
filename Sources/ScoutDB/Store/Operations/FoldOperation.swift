@@ -25,13 +25,13 @@ struct FoldOperation: Sendable {
 
         let records = try await database.allRecords(
             matching: CKQuery(
-                gridOf: definition.entity,
+                vectorOf: definition.entity,
                 aggregate: aggregate.name,
                 group: query.serverGroup
             )
         )
 
-        let rows = records.gridRows(folding: kind.storage) { group in
+        let rows = records.vectorRows(folding: kind.storage) { group in
             query.groupField == nil || query.groupKeys.contains(group)
         }
 

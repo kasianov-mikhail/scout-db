@@ -50,13 +50,13 @@ struct TotalOperation: Sendable {
 
         let records = try await database.allRecords(
             matching: CKQuery(
-                gridOf: definition.entity,
+                vectorOf: definition.entity,
                 aggregate: aggregate,
                 group: group
             )
         )
 
-        let rows = records.gridRows(folding: declared.fold)
+        let rows = records.vectorRows(folding: declared.fold)
 
         return declared.measure?.metric == nil ? rows.filter { $0.value != 0 } : rows
     }

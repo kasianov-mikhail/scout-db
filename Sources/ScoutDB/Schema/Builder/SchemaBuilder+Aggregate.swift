@@ -10,13 +10,13 @@ import Foundation
 extension SchemaBuilder {
     /// Counts the records per value of the grouping field.
     ///
-    /// Creation already counts every groupable field, so this is for the grids
+    /// Creation already counts every groupable field, so this is for the counts
     /// nothing infers — a count over a field marked `.ungrouped`, or one
     /// spread over shards. On an `update()` an aggregate joins the ones the
     /// entity already keeps, and one of the same shape replaces its
     /// predecessor.
     ///
-    /// A cell is an hour: the grid keeps one record per group and week, holding
+    /// A cell is an hour: a vector covers one group and week, holding
     /// the 168 hours of that week, so the count is filed under the hour the
     /// record belongs to. `at` names the timestamp field that hour is read
     /// from; without it the hour is the one the write lands in, and a later
@@ -109,7 +109,7 @@ extension SchemaBuilder {
     ///
     /// A value lands in the first bucket it falls under, and whatever reaches
     /// the last bound lands in an overflow bucket past it — so `n` bounds make
-    /// `n + 1` buckets, each its own grid record. The percentile is
+    /// `n + 1` buckets, each its own vector. The percentile is
     /// interpolated within the bucket it falls in, so the answer is as fine as
     /// the bounds are; they are yours to pick, because only you know the
     /// distribution. A record missing the field is counted nowhere.

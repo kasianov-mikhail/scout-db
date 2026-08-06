@@ -52,15 +52,15 @@ struct SchemaConsistencyTests {
         }
     }
 
-    @Test("Aggregate cells match the aggregator addressing")
-    func gridCells() {
-        let cells = Self.fields(of: "Aggregate").filter { $0.name.hasPrefix("c_") }
-        #expect(cells.map(\.name) == GridSlot.cellKeys)
+    @Test("Vector cells match the aggregator addressing")
+    func vectorCells() {
+        let cells = Self.fields(of: "Vector").filter { $0.name.hasPrefix("c_") }
+        #expect(cells.map(\.name) == VectorSlot.cellKeys)
         #expect(cells.allSatisfy { $0.spec == "DOUBLE QUERYABLE SORTABLE" })
 
-        let names = Set(Self.fields(of: "Aggregate").map(\.name))
+        let names = Set(Self.fields(of: "Vector").map(\.name))
         for field in ["entity", "aggregate", "group_key", "date", "schema_version"] {
-            #expect(names.contains(field), "Aggregate is missing '\(field)'")
+            #expect(names.contains(field), "Vector is missing '\(field)'")
         }
     }
 
@@ -78,7 +78,7 @@ struct SchemaConsistencyTests {
         #expect(fields["schema_version"] == "INT64 QUERYABLE SORTABLE")
     }
 
-    @Test("The change feed cursor is queryable", arguments: ["Entity", "Aggregate"])
+    @Test("The change feed cursor is queryable", arguments: ["Entity", "Vector"])
     func modTimeIndexed(type: String) {
         let modTime = Self.fields(of: type).first { $0.name == "\"___modTime\"" }
         #expect(modTime?.spec == "TIMESTAMP QUERYABLE SORTABLE")

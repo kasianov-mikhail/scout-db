@@ -12,8 +12,8 @@ import Testing
 
 @testable import ScoutDB
 
-@Suite("Grid queries, asked for by shape")
-struct GridQueryTests {
+@Suite("Vector queries, asked for by shape")
+struct VectorQueryTests {
     let database = InMemoryDatabase()
     let store: EntityStore
     let registry: SchemaRegistry
@@ -62,14 +62,14 @@ struct GridQueryTests {
         #expect(totals.map(\.group) == ["app"])
     }
 
-    @Test("A filter the grid cannot honor throws instead of being dropped")
+    @Test("A filter a vector cannot honor throws instead of being dropped")
     func unhonorableFilterThrows() async throws {
         await #expect(throws: SchemaError.self) {
             try await store.query("payment").filter("amount" > 10).totals("amount", metric: .sum, group: "product")
         }
     }
 
-    @Test("A shape nothing grids says so")
+    @Test("A shape no vector covers says so")
     func missingShapeThrows() async throws {
         await #expect(throws: SchemaError.self) {
             try await store.query("payment").totals("amount", metric: .sum, group: "missing")

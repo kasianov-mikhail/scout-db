@@ -11,16 +11,16 @@ import CloudKit
 
 extension CKRecord {
     func cells(folding kind: Metric = .sum) -> Double? {
-        kind.fold(GridSlot.cellKeys.compactMap { self[$0] as? Double })
+        kind.fold(VectorSlot.cellKeys.compactMap { self[$0] as? Double })
     }
 
     subscript(cell hour: Int) -> Double? {
-        get { self[GridSlot.cellKeys[hour]] as? Double }
-        set { self[GridSlot.cellKeys[hour]] = newValue }
+        get { self[VectorSlot.cellKeys[hour]] as? Double }
+        set { self[VectorSlot.cellKeys[hour]] = newValue }
     }
 
     func reset(cellsTo value: Double, at hour: Int = 0) {
-        for key in GridSlot.cellKeys where self[key] != nil {
+        for key in VectorSlot.cellKeys where self[key] != nil {
             self[key] = nil
         }
         self[cell: hour] = value

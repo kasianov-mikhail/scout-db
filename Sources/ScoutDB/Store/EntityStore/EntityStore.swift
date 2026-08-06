@@ -10,7 +10,7 @@ import Foundation
 public struct EntityStore: Sendable {
     let database: any CloudDatabase
     let registry: SchemaRegistry
-    let slots = GridCache()
+    let slots = VectorCache()
 
     /// Creates a store backed by any `CloudDatabase` implementation.
     public init(database: any CloudDatabase, registry: SchemaRegistry) {

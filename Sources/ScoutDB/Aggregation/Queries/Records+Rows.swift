@@ -8,7 +8,7 @@
 import CloudKit
 
 extension [CKRecord] {
-    func gridRows(folding kind: Metric, where include: (String) -> Bool = { _ in true }) -> [String: Double] {
+    func vectorRows(folding kind: Metric, where include: (String) -> Bool = { _ in true }) -> [String: Double] {
         var rows: [String: Double] = [:]
 
         for record in self {
