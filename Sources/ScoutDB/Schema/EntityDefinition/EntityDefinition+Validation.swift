@@ -9,6 +9,10 @@ import Foundation
 
 extension EntityDefinition {
     func validate() throws {
+        guard entity != SchemaDescriptorEntry.namespace else {
+            throw SchemaError.invalidDefinition(.reservedEntity(entity))
+        }
+
         let names = Set(fields.map(\.name))
         for field in fields {
             if case .slot(let pool, let slot) = field.storage {

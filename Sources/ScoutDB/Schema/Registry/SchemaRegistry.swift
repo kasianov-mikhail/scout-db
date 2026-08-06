@@ -27,13 +27,7 @@ public actor SchemaRegistry {
         }
 
         let task = Task { () throws -> EntityDefinition in
-            let query = CKQuery(
-                recordType: SchemaDescriptorEntry.recordType,
-                filters: [
-                    CKQuery.Filter(field: "entity", op: .equals, value: .string(entity)),
-                    CKQuery.Filter(field: "status", op: .equals, value: .string("active")),
-                ]
-            )
+            let query = SchemaDescriptorEntry.query(for: entity)
             let entries = try await database.allRecords(matching: query).map(SchemaDescriptorEntry.init)
             guard let definition = try entries.latest else {
                 throw SchemaError.unknownEntity(entity)
@@ -76,14 +70,7 @@ public actor SchemaRegistry {
 
     func publish(_ definition: EntityDefinition) async throws {
         try definition.validate()
-        let record = CKRecord(
-            recordType: SchemaDescriptorEntry.recordType,
-            recordID: CKRecord.ID(recordName: "\(definition.entity)@\(definition.version)")
-        )
-        record["entity"] = definition.entity
-        record["entity_version"] = Int64(definition.version)
-        record["status"] = "active"
-        record["definition"] = try JSONEncoder().encode(definition)
+        let record = try SchemaDescriptorEntry.record(for: definition)
         try await database.modifyRecords(saving: [record], deleting: [])
         cache[definition.entity] = definition
     }
