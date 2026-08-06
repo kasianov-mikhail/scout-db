@@ -51,7 +51,7 @@ extension SchemaBuilder {
             guard taken.insert("by_\(field.name)").inserted else {
                 continue
             }
-            vectors.append(AggregateDefinition(by: field.name))
+            vectors.append(AggregateDefinition(group: field.name))
         }
 
         try await registry.publish(

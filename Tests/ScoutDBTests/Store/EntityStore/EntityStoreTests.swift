@@ -335,7 +335,7 @@ struct EntityStoreTests {
                     FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_01")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
-                aggregates: [AggregateDefinition(groupBy: "name")]
+                aggregates: [AggregateDefinition(group: "name")]
             )
         )
 
@@ -360,7 +360,7 @@ struct EntityStoreTests {
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
-                aggregates: [AggregateDefinition(measure: .sum("amount"))]
+                aggregates: [AggregateDefinition(metric: .sum, field: "amount")]
             )
         )
 
