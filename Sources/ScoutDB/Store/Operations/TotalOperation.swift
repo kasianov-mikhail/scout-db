@@ -58,7 +58,7 @@ struct TotalOperation: Sendable {
 
         let rows = records.gridRows(folding: declared.fold)
 
-        return declared.metricKind == nil ? rows.filter { $0.value != 0 } : rows
+        return declared.measure?.metric == nil ? rows.filter { $0.value != 0 } : rows
     }
 
     private func covering(field: String?, metric: Metric, group: String?) throws -> AggregateDefinition {

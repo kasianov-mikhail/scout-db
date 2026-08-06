@@ -78,7 +78,7 @@ extension EntityDefinition {
                 }
             }
 
-            if let histogram = aggregate.histogram {
+            if let histogram = aggregate.measure?.histogram {
                 guard aggregate.groupBy == nil else {
                     throw SchemaError.invalidDefinition(.groupedHistogram(aggregate: aggregate.name))
                 }
@@ -92,7 +92,7 @@ extension EntityDefinition {
                 }
             }
 
-            if let field = aggregate.metricField ?? aggregate.histogram?.field {
+            if let field = aggregate.measure?.field ?? aggregate.measure?.histogram?.field {
                 guard let type = fields.first(where: { $0.name == field })?.type, type == .int || type == .double else {
                     throw SchemaError.invalidDefinition(
                         .nonNumericMetric(aggregate: aggregate.name, field: field)

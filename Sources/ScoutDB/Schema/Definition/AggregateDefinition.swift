@@ -14,23 +14,16 @@ struct AggregateDefinition: Equatable, Sendable {
     var shards: Int?
     var date: String?
 
-    enum Measure: Equatable, Sendable {
-        case sum(String)
-        case min(String)
-        case max(String)
-        case histogram(Histogram)
-    }
-
     var name: String {
         let parts =
-            if let histogram {
+            if let histogram = measure?.histogram {
                 [
                     "histogram_\(histogram.field)", date.map { "at_\($0)" },
                 ]
             } else {
                 [
-                    metricKind?.label,
-                    metricField,
+                    measure?.metric?.label,
+                    measure?.field,
                     groupBy.map { "by_\($0)" },
                     date.map { "at_\($0)" },
                 ]
@@ -41,45 +34,16 @@ struct AggregateDefinition: Equatable, Sendable {
         return joined.isEmpty ? "by_all" : joined.joined(separator: "_")
     }
 
-    var metricKind: Metric? {
-        switch measure {
-        case .sum:
-            .sum
-        case .min:
-            .min
-        case .max:
-            .max
-        case .histogram, nil:
-            nil
-        }
-    }
-
-    var metricField: String? {
-        switch measure {
-        case .sum(let field), .min(let field), .max(let field):
-            field
-        case .histogram, nil:
-            nil
-        }
-    }
-
-    var histogram: Histogram? {
-        guard case .histogram(let histogram) = measure else {
-            return nil
-        }
-        return histogram
-    }
-
     var fold: Metric {
-        metricKind ?? .sum
+        measure?.metric ?? .sum
     }
 }
 
 extension [AggregateDefinition] {
     func covering(_ field: String?, folding metric: Metric) -> AggregateDefinition? {
         first {
-            $0.histogram == nil && $0.metricField == field
-                && (field == nil || $0.metricKind == metric.storage)
+            $0.measure?.histogram == nil && $0.measure?.field == field
+                && (field == nil || $0.measure?.metric == metric.storage)
         }
     }
 }

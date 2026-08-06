@@ -44,7 +44,7 @@ extension AggregateDefinition {
     }
 
     fileprivate func delta(for entityRecord: EntityRecord, at cell: GridCell) -> GridDelta? {
-        guard let field = metricField else {
+        guard let field = measure?.field else {
             return GridDelta(kind: fold, cells: [cell: 1])
         }
         guard let value = entityRecord.values[field]?.scalar else {
