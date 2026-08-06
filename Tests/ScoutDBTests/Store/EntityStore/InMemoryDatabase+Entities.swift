@@ -14,7 +14,7 @@ import ScoutDBTesting
 extension InMemoryDatabase {
     var entityRecords: [CKRecord] {
         records.filter {
-            $0.recordType == "Entity" && $0["entity"] as? String != SchemaDescriptorEntry.namespace
+            $0.recordType == "Entity" && $0[Envelope.entity] as? String != SchemaDescriptorEntry.namespace
         }
     }
 }

@@ -34,7 +34,7 @@ struct PercentileTests {
             makeDefinition(
                 entity: "request",
                 fields: [
-                    FieldDefinition(name: "route", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "route", type: .string, storage: .slot(.string, "s_02")),
                     FieldDefinition(name: "latency", type: .double, storage: .slot(.double, "d_00")),
                 ],
                 aggregates: aggregates
@@ -111,7 +111,7 @@ struct PercentileTests {
         )
 
         let counts = buckets.reduce(into: [String: Double]()) { counts, record in
-            counts[record["group_key"] as? String ?? ""] = record.cells() ?? 0
+            counts[record[VectorSlot.Key.group] as? String ?? ""] = record.cells() ?? 0
         }
 
         #expect(counts[RecordValue.int(1).canonical] == 0)

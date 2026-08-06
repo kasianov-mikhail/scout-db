@@ -46,8 +46,8 @@ struct BuilderTests {
     func slotAllocation() async throws {
         let definition = try await registry.definition(for: "purchase")
         #expect(definition.version == 1)
-        #expect(definition.fields.first { $0.name == "product_id" }?.storage == .slot(.string, "s_00"))
-        #expect(definition.fields.first { $0.name == "quantity" }?.storage == .slot(.int, "i_00"))
+        #expect(definition.fields.first { $0.name == "product_id" }?.storage == .slot(.string, "s_02"))
+        #expect(definition.fields.first { $0.name == "quantity" }?.storage == .slot(.int, "i_01"))
         #expect(definition.fields.first { $0.name == "amount" }?.storage == .slot(.double, "d_00"))
         #expect(definition.fields.first { $0.name == "comment" }?.storage == .payload)
         #expect(definition.fields.first { $0.name == "quantity" }?.min == 0)
@@ -318,7 +318,7 @@ struct BuilderTests {
         let slotted = store.query("purchase").filter("product_id", .notEquals, "sku-1")
         #expect(
             try server(slotted, using: purchase).contains(
-                CKQuery.Filter(field: "s_00", op: .notEquals, value: .string("sku-1"))
+                CKQuery.Filter(field: "s_02", op: .notEquals, value: .string("sku-1"))
             )
         )
         #expect(try client(slotted, using: purchase).isEmpty)
@@ -339,7 +339,7 @@ struct BuilderTests {
         let listed = store.query("shipment").filter("carrier", .notIn, .strings(["ups", "dhl"]))
         #expect(
             try server(listed, using: shipment).contains(
-                CKQuery.Filter(field: "s_00", op: .notIn, value: .strings(["ups", "dhl"]))
+                CKQuery.Filter(field: "s_02", op: .notIn, value: .strings(["ups", "dhl"]))
             )
         )
     }
@@ -465,10 +465,10 @@ struct BuilderTests {
 
         let definition = try await registry.definition(for: "purchase")
         #expect(definition.version == 2)
-        #expect(definition.fields.first { $0.name == "product_id" }?.storage == .slot(.string, "s_00"))
+        #expect(definition.fields.first { $0.name == "product_id" }?.storage == .slot(.string, "s_02"))
 
         let quantities = definition.fields.filter { $0.name == "quantity" }
-        #expect(quantities.contains { $0.storage == .slot(.int, "i_00") && $0.until == 2 })
+        #expect(quantities.contains { $0.storage == .slot(.int, "i_01") && $0.until == 2 })
         #expect(quantities.contains { $0.storage == .slot(.double, "d_01") && $0.since == 2 })
 
         let amount = try #require(definition.fields.first { $0.name == "amount" })

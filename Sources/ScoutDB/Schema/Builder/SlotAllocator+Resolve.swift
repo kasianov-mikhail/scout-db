@@ -36,7 +36,7 @@ extension SlotAllocator {
     }
 
     private mutating func next(in pool: FieldType) throws -> String {
-        for index in 0..<pool.capacity {
+        for index in pool.reserved..<pool.capacity {
             let slot = "\(pool.slotPrefix)_\(String(format: "%02d", index))"
             if used[pool, default: []].contains(slot) {
                 continue

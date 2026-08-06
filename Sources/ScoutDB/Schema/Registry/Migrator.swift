@@ -42,8 +42,8 @@ public struct Migrator: Sendable {
         let query = CKQuery(
             recordType: "Entity",
             filters: [
-                CKQuery.Filter(field: "entity", op: .equals, value: .string(entity)),
-                CKQuery.Filter(field: "schema_version", op: .lessThan, value: .int(Int64(definition.version))),
+                CKQuery.Filter(field: Envelope.entity, op: .equals, value: .string(entity)),
+                CKQuery.Filter(field: Envelope.version, op: .lessThan, value: .int(Int64(definition.version))),
             ]
         )
 
@@ -101,7 +101,7 @@ public struct Migrator: Sendable {
             matching: CKQuery(
                 recordType: "Entity",
                 filters: [
-                    CKQuery.Filter(field: "entity", op: .equals, value: .string(entity))
+                    CKQuery.Filter(field: Envelope.entity, op: .equals, value: .string(entity))
                 ]
             )
         ) { page in

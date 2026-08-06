@@ -66,9 +66,9 @@ struct EvaluatorFidelityTests {
             default: .string("a")
             }
         let record = CKRecord(recordType: "Entity", recordID: CKRecord.ID(recordName: "r"))
-        record["s_00"] = "a"
+        record["s_02"] = "a"
 
-        let filter = CKQuery.Filter(field: "s_00", op: op, value: value)
+        let filter = CKQuery.Filter(field: "s_02", op: op, value: value)
         #expect(
             PredicateEvaluator.evaluate(CKQuery(recordType: "Entity", filters: [filter]).predicate, record: record)
                 != nil
@@ -78,9 +78,9 @@ struct EvaluatorFidelityTests {
     @Test("An inexpressible predicate is unknown, not false")
     func inexpressiblePredicate() {
         let record = CKRecord(recordType: "Entity", recordID: CKRecord.ID(recordName: "r"))
-        record["s_00"] = "abc"
-        #expect(PredicateEvaluator.evaluate(NSPredicate(format: "s_00 LIKE %@", "a*"), record: record) == nil)
-        #expect(PredicateEvaluator.evaluate(NSPredicate(format: "s_00 == s_01"), record: record) == nil)
-        #expect(PredicateEvaluator.evaluate(NSPredicate(format: "s_00 == %@", "abc"), record: record) == true)
+        record["s_02"] = "abc"
+        #expect(PredicateEvaluator.evaluate(NSPredicate(format: "s_02 LIKE %@", "a*"), record: record) == nil)
+        #expect(PredicateEvaluator.evaluate(NSPredicate(format: "s_02 == s_03"), record: record) == nil)
+        #expect(PredicateEvaluator.evaluate(NSPredicate(format: "s_02 == %@", "abc"), record: record) == true)
     }
 }

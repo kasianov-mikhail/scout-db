@@ -58,7 +58,7 @@ struct PageOperation: Sendable {
         let sort =
             try definition.serverSort(
                 [EntityStore.Sort(field: field, order: order)]
-            ) + [CKQuery.Sort(field: "uuid", order: .forward)]
+            ) + [CKQuery.Sort(field: Envelope.uuid, order: .forward)]
 
         var plan = try definition.plan(matching: pageFilters, sort: sort)
 

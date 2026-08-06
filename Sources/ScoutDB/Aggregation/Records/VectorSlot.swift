@@ -33,11 +33,18 @@ struct VectorSlot: Hashable {
 
     func blank(named id: CKRecord.ID) -> CKRecord {
         let record = CKRecord(recordType: Self.recordType, recordID: id)
-        record["entity"] = entity
-        record["aggregate"] = aggregate
-        record["group_key"] = group
-        record["date"] = week
+        record[Key.entity] = entity
+        record[Key.aggregate] = aggregate
+        record[Key.group] = group
+        record[Key.week] = week
         return record
+    }
+
+    enum Key {
+        static let entity = "s_00"
+        static let aggregate = "s_01"
+        static let group = "s_02"
+        static let week = "t_00"
     }
 }
 
@@ -69,11 +76,11 @@ extension VectorSlot {
 extension CKQuery {
     convenience init(vectorOf entity: String, aggregate: String, group: String? = nil) {
         var filters = [
-            CKQuery.Filter(field: "entity", op: .equals, value: .string(entity)),
-            CKQuery.Filter(field: "aggregate", op: .equals, value: .string(aggregate)),
+            CKQuery.Filter(field: VectorSlot.Key.entity, op: .equals, value: .string(entity)),
+            CKQuery.Filter(field: VectorSlot.Key.aggregate, op: .equals, value: .string(aggregate)),
         ]
         if let group {
-            filters.append(CKQuery.Filter(field: "group_key", op: .equals, value: .string(group)))
+            filters.append(CKQuery.Filter(field: VectorSlot.Key.group, op: .equals, value: .string(group)))
         }
         self.init(recordType: VectorSlot.recordType, filters: filters)
     }
