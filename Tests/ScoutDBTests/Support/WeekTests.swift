@@ -10,23 +10,20 @@ import Testing
 
 @testable import ScoutDB
 
-@Suite("Grid cells, addressed by day and hour")
-struct GridCellTests {
+@Suite("Hours of the week")
+struct WeekTests {
     @Test(
-        "A date lands in the cell of its UTC day and hour, counted from Monday",
+        "A date lands in the hour of the week it falls in, counted from Monday",
         arguments: [
-            (36_000.0, 3, 10),
-            (1_785_937_500.0, 2, 13),
-            (1_785_715_200.0, 0, 0),
-            (1_786_319_999.0, 6, 23),
-            (-68_400.0, 2, 5),
+            (36_000.0, 82),
+            (1_785_937_500.0, 61),
+            (1_785_715_200.0, 0),
+            (1_786_319_999.0, 167),
+            (-68_400.0, 53),
         ]
     )
-    func cellOfADate(seconds: Double, day: Int, hour: Int) {
-        let cell = GridCell(of: Date(timeIntervalSince1970: seconds))
-
-        #expect(cell.day == day)
-        #expect(cell.hour == hour)
+    func hourOfADate(seconds: Double, hour: Int) {
+        #expect(Date(timeIntervalSince1970: seconds).hourOfWeek == hour)
     }
 
     @Test("A week starts on the Monday before the date, at midnight UTC")
@@ -35,13 +32,5 @@ struct GridCellTests {
         #expect(Date(timeIntervalSince1970: 1_785_937_500).weekStart == Date(timeIntervalSince1970: 1_785_715_200))
         #expect(Date(timeIntervalSince1970: 1_785_715_200).weekStart == Date(timeIntervalSince1970: 1_785_715_200))
         #expect(Date(timeIntervalSince1970: 1_786_319_999).weekStart == Date(timeIntervalSince1970: 1_785_715_200))
-    }
-
-    @Test("The grid names one cell per hour of the week")
-    func keysCoverTheWeek() {
-        #expect(GridCell.keys.count == 168)
-        #expect(GridCell.keys.first == "c_00_00")
-        #expect(GridCell.keys.last == "c_06_23")
-        #expect(Set(GridCell.keys).count == GridCell.keys.count)
     }
 }

@@ -55,7 +55,7 @@ struct SchemaConsistencyTests {
     @Test("Aggregate cells match the aggregator addressing")
     func gridCells() {
         let cells = Self.fields(of: "Aggregate").filter { $0.name.hasPrefix("c_") }
-        #expect(cells.map(\.name) == GridCell.keys)
+        #expect(cells.map(\.name) == GridSlot.cellKeys)
         #expect(cells.allSatisfy { $0.spec == "DOUBLE QUERYABLE SORTABLE" })
 
         let names = Set(Self.fields(of: "Aggregate").map(\.name))

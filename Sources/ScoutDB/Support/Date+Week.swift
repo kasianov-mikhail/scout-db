@@ -10,10 +10,15 @@ import Foundation
 extension Date {
     static let secondsPerHour = 3_600.0
     static let secondsPerDay = 86_400.0
+    static let hoursPerWeek = 168
 
     var weekStart: Date {
         let days = (timeIntervalSince1970 / Self.secondsPerDay).rounded(.down)
         let weekday = ((Int(days) + 3) % 7 + 7) % 7
         return Date(timeIntervalSince1970: (days - Double(weekday)) * Self.secondsPerDay)
+    }
+
+    var hourOfWeek: Int {
+        Int((timeIntervalSince(weekStart) / Self.secondsPerHour).rounded(.down))
     }
 }

@@ -10,7 +10,7 @@ import Foundation
 
 struct GridDelta {
     let kind: Metric
-    var cells: [GridCell: Double] = [:]
+    var cells: [Int: Double] = [:]
 
     var isNoop: Bool {
         kind.isReversible ? cells.values.allSatisfy { $0 == 0 } : cells.isEmpty
@@ -24,8 +24,8 @@ struct GridDelta {
     }
 
     func apply(to record: CKRecord) {
-        for (cell, value) in cells {
-            let key = cell.key
+        for (hour, value) in cells {
+            let key = GridSlot.cellKeys[hour]
 
             if let stored = record[key] as? Double {
                 record[key] = kind.combine(stored, value)

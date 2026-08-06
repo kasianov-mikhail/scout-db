@@ -57,11 +57,11 @@ struct AggregateDeltasTests {
         #expect(deltas.count == 4)
 
         let counted = try #require(deltas[slot("by_product", group: "app")])
-        #expect(counted.cells == [GridCell(day: 3, hour: 10): 2])
+        #expect(counted.cells == [noon.hourOfWeek: 2])
 
         let summed = try #require(deltas[slot("sum_amount_by_product", group: "app")])
         #expect(summed.kind == .sum)
-        #expect(summed.cells == [GridCell(day: 3, hour: 10): 5])
+        #expect(summed.cells == [noon.hourOfWeek: 5])
     }
 
     @Test("An aggregate dating its cells reads the hour off the record, not off the write")
@@ -72,7 +72,7 @@ struct AggregateDeltasTests {
         let deltas = aggregates.deltas(removing: [], adding: [payment("p-0", date: stamped)], at: noon)
 
         let delta = try #require(deltas[slot("at_date", week: stamped)])
-        #expect(delta.cells == [GridCell(day: 2, hour: 13): 1])
+        #expect(delta.cells == [stamped.hourOfWeek: 1])
     }
 
     @Test("A record without the dated field falls back to the hour of the write")
@@ -82,7 +82,7 @@ struct AggregateDeltasTests {
         let deltas = aggregates.deltas(removing: [], adding: [payment("p-0")], at: noon)
 
         let delta = try #require(deltas[slot("at_date")])
-        #expect(delta.cells == [GridCell(of: noon): 1])
+        #expect(delta.cells == [noon.hourOfWeek: 1])
     }
 
     @Test("Records of two weeks fold into a slot each")
@@ -96,8 +96,8 @@ struct AggregateDeltasTests {
         )
 
         #expect(deltas.count == 2)
-        #expect(deltas[slot("at_date")]?.cells == [GridCell(of: noon): 1])
-        #expect(deltas[slot("at_date", week: nextWeek)]?.cells == [GridCell(of: nextWeek): 1])
+        #expect(deltas[slot("at_date")]?.cells == [noon.hourOfWeek: 1])
+        #expect(deltas[slot("at_date", week: nextWeek)]?.cells == [nextWeek.hourOfWeek: 1])
     }
 
     @Test("A removal reverses a sum aggregate")
@@ -107,7 +107,7 @@ struct AggregateDeltasTests {
         let deltas = aggregates.deltas(removing: [payment("p-0", amount: 5)], adding: [], at: noon)
 
         let delta = try #require(deltas[slot("sum_amount")])
-        #expect(delta.cells == [GridCell(of: noon): -5])
+        #expect(delta.cells == [noon.hourOfWeek: -5])
     }
 
     @Test("A removal plans nothing for a min aggregate, whose value stands")
@@ -133,7 +133,7 @@ struct AggregateDeltasTests {
         let deltas = aggregates.deltas(removing: [stored], adding: [stored], at: noon)
 
         let delta = try #require(deltas[slot("min_amount")])
-        #expect(delta.cells == [GridCell(of: noon): 5])
+        #expect(delta.cells == [noon.hourOfWeek: 5])
     }
 
     @Test("A record missing the metric field is folded into no cell of it")

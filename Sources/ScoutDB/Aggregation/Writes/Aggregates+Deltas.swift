@@ -19,7 +19,7 @@ extension [AggregateDefinition] {
                     guard let slot = GridSlot(for: entityRecord, aggregate: aggregate, week: stamp.weekStart) else {
                         continue
                     }
-                    guard let one = aggregate.delta(for: entityRecord, at: GridCell(of: stamp)) else {
+                    guard let one = aggregate.delta(for: entityRecord, at: stamp.hourOfWeek) else {
                         continue
                     }
 
@@ -43,13 +43,13 @@ extension AggregateDefinition {
         return value
     }
 
-    fileprivate func delta(for entityRecord: EntityRecord, at cell: GridCell) -> GridDelta? {
+    fileprivate func delta(for entityRecord: EntityRecord, at hour: Int) -> GridDelta? {
         guard let field = measure?.field else {
-            return GridDelta(kind: fold, cells: [cell: 1])
+            return GridDelta(kind: fold, cells: [hour: 1])
         }
         guard let value = entityRecord.values[field]?.scalar else {
             return nil
         }
-        return GridDelta(kind: fold, cells: [cell: value])
+        return GridDelta(kind: fold, cells: [hour: value])
     }
 }

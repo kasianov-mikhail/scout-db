@@ -11,6 +11,8 @@ import Foundation
 struct GridSlot: Hashable {
     static let recordType = "Aggregate"
 
+    static let cellKeys: [String] = (0..<Date.hoursPerWeek).map { String(format: "c_%03d", $0) }
+
     let entity: String
     let aggregate: String
     let group: String
