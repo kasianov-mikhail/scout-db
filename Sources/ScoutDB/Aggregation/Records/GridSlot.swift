@@ -15,9 +15,10 @@ struct GridSlot: Hashable {
     let aggregate: String
     let group: String
     let shard: Int?
+    let week: Date
 
     private var components: [String] {
-        var components = [entity, aggregate, group]
+        var components = [entity, aggregate, group, String(week.millisecondsSince1970)]
         if let shard, shard > 0 {
             components.append("shard-\(shard)")
         }
@@ -32,14 +33,14 @@ struct GridSlot: Hashable {
         let record = CKRecord(recordType: Self.recordType, recordID: id)
         record["entity"] = entity
         record["aggregate"] = aggregate
-        record[CKRecord.groupCell] = group
-        record["date"] = Date(timeIntervalSince1970: 0)
+        record["group_key"] = group
+        record["date"] = week
         return record
     }
 }
 
 extension GridSlot {
-    init?(for entityRecord: EntityRecord, aggregate: AggregateDefinition) {
+    init?(for entityRecord: EntityRecord, aggregate: AggregateDefinition, week: Date) {
         let group: String
 
         if let histogram = aggregate.histogram {
@@ -57,7 +58,8 @@ extension GridSlot {
             group: group,
             shard: aggregate.shards.map { count in
                 Int(entityRecord.uuid.utf8.reduce(UInt64(0)) { $0 &* 31 &+ UInt64($1) } % UInt64(count))
-            }
+            },
+            week: week
         )
     }
 }
@@ -69,7 +71,7 @@ extension CKQuery {
             CKQuery.Filter(field: "aggregate", op: .equals, value: .string(aggregate)),
         ]
         if let group {
-            filters.append(CKQuery.Filter(field: CKRecord.groupCell, op: .equals, value: .string(group)))
+            filters.append(CKQuery.Filter(field: "group_key", op: .equals, value: .string(group)))
         }
         self.init(recordType: GridSlot.recordType, filters: filters)
     }

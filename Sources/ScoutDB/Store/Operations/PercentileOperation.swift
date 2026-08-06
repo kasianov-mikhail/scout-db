@@ -28,8 +28,8 @@ struct PercentileOperation {
             matching: CKQuery(gridOf: definition.entity, aggregate: aggregate.name)
         )
 
-        let rows = records.gridRows(folding: nil) { $0.count > 0 }
-        let counts = histogram.groupKeys.map { rows[$0]?.count ?? 0 }
+        let rows = records.gridRows(folding: aggregate.fold)
+        let counts = histogram.groupKeys.map { rows[$0] ?? 0 }
 
         return histogram.percentile(rank, over: counts)
     }

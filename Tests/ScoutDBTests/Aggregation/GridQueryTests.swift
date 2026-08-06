@@ -45,14 +45,14 @@ struct GridQueryTests {
         let totals = try await store.query("payment").totals("amount", metric: .sum, group: "product")
         #expect(totals.map(\.group) == ["app", "pro"])
         #expect(totals.first { $0.group == "app" }?.value == 20)
-        #expect(totals.first { $0.group == "app" }?.count == 2)
+        #expect(totals.first { $0.group == "pro" }?.value == 25)
     }
 
     @Test("Counting alone needs no metric field")
     func countingRows() async throws {
         let totals = try await store.query("payment").totals(metric: .sum, group: "product")
         #expect(totals.map(\.group) == ["app", "pro"])
-        #expect(totals.map(\.count) == [2, 1])
+        #expect(totals.map(\.value) == [2, 1])
     }
 
     @Test("An equality filter on the grouping field narrows to that group")

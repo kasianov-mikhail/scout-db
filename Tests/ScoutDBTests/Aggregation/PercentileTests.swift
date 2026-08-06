@@ -88,7 +88,7 @@ struct PercentileTests {
         try await write([15, nil, nil])
 
         #expect(buckets.count == 1)
-        #expect(buckets.first?[CKRecord.countCell] as? Int64 == 1)
+        #expect(buckets.first?.cells() == 1)
     }
 
     @Test("Nothing written reads back as no percentile at all")
@@ -110,8 +110,8 @@ struct PercentileTests {
             entity: "request"
         )
 
-        let counts = buckets.reduce(into: [String: Int64]()) { counts, record in
-            counts[record[CKRecord.groupCell] as? String ?? ""] = record[CKRecord.countCell] as? Int64 ?? 0
+        let counts = buckets.reduce(into: [String: Double]()) { counts, record in
+            counts[record["group_key"] as? String ?? ""] = record.cells() ?? 0
         }
 
         #expect(counts[RecordValue.int(1).canonical] == 0)

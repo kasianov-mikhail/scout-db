@@ -12,15 +12,15 @@ struct FoldOperation: Sendable {
     let definition: EntityDefinition
     let query: FilterPlan
 
-    func cell(of field: String?, folding kind: Metric) async throws -> GridFold? {
-        let aggregates = definition.aggregates.filter { $0.histogram == nil }
-        let covering = query.groupField.map { group in aggregates.filter { $0.groupBy == group } } ?? aggregates
-        let folding = field.map { field in
-            covering.first { $0.metricKind == kind.storage && $0.metricField == field }
+    func cell(of field: String?, folding kind: Metric) async throws -> Double? {
+        let covering = query.groupField.map { group in
+            definition.aggregates.filter { $0.groupBy == group }
         }
 
-        guard let aggregate = folding ?? covering.first else {
-            return nil
+        guard let aggregate = (covering ?? definition.aggregates).covering(field, folding: kind) else {
+            throw SchemaError.unsupportedQuery(
+                .noAggregate(entity: definition.entity, grouping: query.groupField, folding: field)
+            )
         }
 
         let records = try await database.allRecords(
@@ -31,14 +31,11 @@ struct FoldOperation: Sendable {
             )
         )
 
-        let rows = records.gridRows(folding: kind) { row in
-            guard row.count > 0 else {
-                return false
-            }
-            return query.groupField == nil || query.groupKeys.contains(row.group)
+        let rows = records.gridRows(folding: kind.storage) { group in
+            query.groupField == nil || query.groupKeys.contains(group)
         }
 
-        return rows.values.reduce(GridFold.empty) { $0.merging($1, folding: kind) }
+        return kind.storage.fold(rows.values)
     }
 }
 

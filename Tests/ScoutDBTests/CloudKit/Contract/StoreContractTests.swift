@@ -198,7 +198,7 @@ struct StoreContractTests {
 
             let totals = try await f.store.query(entity).totals(metric: .sum, group: "product")
             #expect(totals.map(\.group) == ["a", "b"])
-            #expect(totals.map(\.count) == [2, 1])
+            #expect(totals.map(\.value) == [2, 1])
         }
     }
 
@@ -211,7 +211,7 @@ struct StoreContractTests {
 
             try await eventually {
                 let totals = try await TotalOperation(store: f.store, entity: entity).rows(aggregate: "revenue")
-                return totals.first?.count == 2 && totals.first?.value == 5
+                return totals.first?.value == 5
             }
         }
     }

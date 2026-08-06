@@ -8,19 +8,17 @@
 import Foundation
 
 extension AggregateDefinition.Histogram {
-    func percentile(_ rank: Double, over counts: [Int]) -> Double? {
+    func percentile(_ rank: Double, over counts: [Double]) -> Double? {
         let total = counts.reduce(0, +)
 
         guard total > 0 else {
             return nil
         }
 
-        let target = Double(total) * rank
+        let target = total * rank
         var cumulative = 0.0
 
-        for (index, bin) in counts.enumerated() where bin > 0 {
-            let count = Double(bin)
-
+        for (index, count) in counts.enumerated() where count > 0 {
             guard cumulative + count >= target else {
                 cumulative += count
                 continue

@@ -21,13 +21,21 @@ struct GridAggregator {
     }
 
     func rebalance(removing old: [EntityRecord], adding new: [EntityRecord]) async throws {
-        let deltas = aggregates.deltas(removing: old, adding: new)
+        let deltas = aggregates.deltas(
+            removing: old,
+            adding: new,
+            at: Date()
+        )
 
         guard deltas.count > 0 else {
             return
         }
 
-        var pending = try await GridLoader(database: database, slots: slots).open(deltas)
+        var pending = try await GridLoader(
+            database: database,
+            slots: slots
+        )
+        .open(deltas)
 
         for _ in 0..<maxRetry {
             for entry in pending.values {
@@ -48,7 +56,10 @@ struct GridAggregator {
                         await slots.keep(conflict.serverRecord)
 
                         if let delta = pending[id]?.delta {
-                            retry[id] = GridLoader.Pending(record: conflict.serverRecord, delta: delta)
+                            retry[id] = GridLoader.Pending(
+                                record: conflict.serverRecord,
+                                delta: delta
+                            )
                         }
                     }
                 }

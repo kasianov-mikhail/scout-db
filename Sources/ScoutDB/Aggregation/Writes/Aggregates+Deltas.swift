@@ -8,43 +8,48 @@
 import Foundation
 
 extension [AggregateDefinition] {
-    func deltas(removing old: [EntityRecord], adding new: [EntityRecord]) -> [GridSlot: GridDelta] {
+    func deltas(removing old: [EntityRecord], adding new: [EntityRecord], at now: Date) -> [GridSlot: GridDelta] {
         var merged: [GridSlot: GridDelta] = [:]
 
         for (batch, adding) in [(old, false), (new, true)] {
             for entityRecord in batch {
                 for aggregate in self {
-                    guard let slot = GridSlot(for: entityRecord, aggregate: aggregate) else {
+                    let stamp = aggregate.stamp(of: entityRecord, at: now)
+
+                    guard let slot = GridSlot(for: entityRecord, aggregate: aggregate, week: stamp.weekStart) else {
                         continue
                     }
-                    let one = delta(for: entityRecord, in: aggregate)
+                    guard let one = aggregate.delta(for: entityRecord, at: GridCell(of: stamp)) else {
+                        continue
+                    }
 
-                    merged[slot] = merged[slot, default: GridDelta()] + (adding ? one : one.reversed())
+                    let folded = adding ? one : one.reversed()
+                    merged[slot, default: GridDelta(kind: folded.kind)]
+                        .cells
+                        .merge(folded.cells, uniquingKeysWith: folded.kind.combine)
                 }
             }
         }
 
         return merged.filter { !$0.value.isNoop }
     }
-
-    private func delta(for entityRecord: EntityRecord, in aggregate: AggregateDefinition) -> GridDelta {
-        guard let kind = aggregate.metricKind, let field = aggregate.metricField,
-            let value = entityRecord.values[field]?.scalar
-        else {
-            return GridDelta(count: 1)
-        }
-        return GridDelta(count: 1, total: GridTotal(kind: kind, value: value))
-    }
 }
 
-extension GridDelta {
-    var isNoop: Bool {
-        guard count == 0 else {
-            return false
+extension AggregateDefinition {
+    fileprivate func stamp(of entityRecord: EntityRecord, at now: Date) -> Date {
+        guard let date, case .date(let value)? = entityRecord.values[date] else {
+            return now
         }
-        guard let total else {
-            return true
+        return value
+    }
+
+    fileprivate func delta(for entityRecord: EntityRecord, at cell: GridCell) -> GridDelta? {
+        guard let field = metricField else {
+            return GridDelta(kind: fold, cells: [cell: 1])
         }
-        return total.isNoop
+        guard let value = entityRecord.values[field]?.scalar else {
+            return nil
+        }
+        return GridDelta(kind: fold, cells: [cell: value])
     }
 }

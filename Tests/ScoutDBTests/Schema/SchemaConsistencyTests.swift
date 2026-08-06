@@ -54,10 +54,11 @@ struct SchemaConsistencyTests {
 
     @Test("Aggregate cells match the aggregator addressing")
     func gridCells() {
+        let cells = Self.fields(of: "Aggregate").filter { $0.name.hasPrefix("c_") }
+        #expect(cells.map(\.name) == GridCell.keys)
+        #expect(cells.allSatisfy { $0.spec == "DOUBLE QUERYABLE SORTABLE" })
+
         let names = Set(Self.fields(of: "Aggregate").map(\.name))
-        for field in [CKRecord.countCell, CKRecord.valueCell] {
-            #expect(names.contains(field), "Aggregate is missing '\(field)'")
-        }
         for field in ["entity", "aggregate", "group_key", "date", "schema_version"] {
             #expect(names.contains(field), "Aggregate is missing '\(field)'")
         }

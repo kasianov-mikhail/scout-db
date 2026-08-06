@@ -39,14 +39,7 @@ extension Metric {
         }
     }
 
-    func apply(values: [Double], count: Int) -> Double? {
-        switch self {
-        case .sum:
-            values.reduce(0, +)
-        case .average:
-            values.isEmpty || count == 0 ? nil : values.reduce(0, +) / Double(count)
-        case .min, .max:
-            values.first.map { values.dropFirst().reduce($0, combine) }
-        }
+    func fold(_ values: some Collection<Double>) -> Double? {
+        values.first.map { values.dropFirst().reduce($0, combine) }
     }
 }

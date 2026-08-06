@@ -347,7 +347,7 @@ struct EntityStoreTests {
 
         let grids = database.records.filter { $0.recordType == "Aggregate" }
         #expect(grids.count == 1)
-        #expect(grids.first?[CKRecord.countCell] as? Int64 == 2)
+        #expect(grids.first?.cells() == 2)
         #expect(grids.first?["group_key"] == "open")
     }
 
@@ -372,7 +372,6 @@ struct EntityStoreTests {
 
         let grids = database.records.filter { $0.recordType == "Aggregate" }
         #expect(grids.count == 1)
-        #expect(grids.first?[CKRecord.countCell] as? Int64 == 2)
-        #expect(grids.first?[CKRecord.valueCell] as? Double == 4.0)
+        #expect(grids.first?.cells() == 4.0)
     }
 }

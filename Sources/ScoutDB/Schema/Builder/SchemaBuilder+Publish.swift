@@ -13,8 +13,12 @@ extension SchemaBuilder {
     /// Every groupable field — a scalar string, reference, int or double in a
     /// slot — gets an aggregate counting its values. So `count` and `totals(metric:group:)`
     /// are answered from the grid without anyone declaring anything;
-    /// ``sum(_:by:shards:)`` and its siblings remain for the shapes nobody can
-    /// guess, like a metric over a field.
+    /// ``sum(_:by:at:shards:)`` and its siblings remain for the shapes nobody can
+    /// guess, like a metric over a field — and they join the count rather than
+    /// standing in for it, since a cell holds one number.
+    ///
+    /// A grid record covers one group over one week, holding a cell per hour of
+    /// it, so a fold reads a record per week the entity spans.
     ///
     /// The grid costs the writes it saves the reads: an entity carrying one
     /// reads its records before it rewrites them and rewrites its cells after,
@@ -38,7 +42,6 @@ extension SchemaBuilder {
         }
 
         var taken = Set(aggregates.map(\.name))
-        var counted = Set(aggregates.compactMap(\.groupBy))
         var grid = aggregates
 
         for field in fields {
@@ -46,9 +49,6 @@ extension SchemaBuilder {
                 continue
             }
             guard taken.insert("by_\(field.name)").inserted else {
-                continue
-            }
-            guard counted.insert(field.name).inserted else {
                 continue
             }
             grid.append(AggregateDefinition(by: field.name))
@@ -140,13 +140,9 @@ extension SchemaBuilder {
 
         let inherited = previous.aggregates
         let byName = Dictionary(aggregates.map { ($0.name, $0) }, uniquingKeysWith: { _, last in last })
-        let superseded = aggregates.map(\.groupBy)
 
-        var merged = inherited.compactMap { aggregate -> AggregateDefinition? in
-            if let replacement = byName[aggregate.name] {
-                return replacement
-            }
-            return aggregate.metricField == nil && superseded.contains(aggregate.groupBy) ? nil : aggregate
+        var merged = inherited.map { aggregate in
+            byName[aggregate.name] ?? aggregate
         }
         merged += aggregates.filter { aggregate in !inherited.contains { $0.name == aggregate.name } }
 

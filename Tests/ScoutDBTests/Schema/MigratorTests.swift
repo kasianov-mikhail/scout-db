@@ -125,18 +125,16 @@ struct MigratorTests {
 
         #expect(try await migrator.backfill(aggregate: "by_product", entity: "sale") == 3)
         var totals = try await TotalOperation(store: store, entity: "sale").rows(aggregate: "by_product")
-        #expect(totals.first { $0.group == "app" }?.count == 2)
         #expect(totals.first { $0.group == "app" }?.value == 15)
-        #expect(totals.first { $0.group == "book" }?.count == 1)
+        #expect(totals.first { $0.group == "book" }?.value == 2)
         #expect(
-            try await TotalOperation(store: store, entity: "sale").rows(aggregate: "all_time").map(\.count) == [3])
+            try await TotalOperation(store: store, entity: "sale").rows(aggregate: "all_time").map(\.value) == [3])
 
         #expect(try await migrator.backfill(aggregate: "by_product", entity: "sale") == 3)
         totals = try await TotalOperation(store: store, entity: "sale").rows(aggregate: "by_product")
-        #expect(totals.first { $0.group == "app" }?.count == 2)
         #expect(totals.first { $0.group == "app" }?.value == 15)
         #expect(
-            try await TotalOperation(store: store, entity: "sale").rows(aggregate: "all_time").map(\.count) == [3])
+            try await TotalOperation(store: store, entity: "sale").rows(aggregate: "all_time").map(\.value) == [3])
 
         await #expect(throws: SchemaError.unknownField("ghost")) {
             try await migrator.backfill(aggregate: "ghost", entity: "sale")
