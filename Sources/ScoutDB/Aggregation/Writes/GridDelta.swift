@@ -9,36 +9,29 @@ import CloudKit
 import Foundation
 
 struct GridDelta {
-    var count: Int64 = 0
-    var total: GridTotal?
+    let kind: Metric
+    var cells: [GridCell: Double] = [:]
 
-    func reversed() -> GridDelta {
-        guard let total, total.kind.isReversible else {
-            return GridDelta(count: -count)
-        }
-        return GridDelta(count: -count, total: -total)
+    var isNoop: Bool {
+        kind.isReversible ? cells.values.allSatisfy { $0 == 0 } : cells.isEmpty
     }
 
-    static func + (lhs: GridDelta, rhs: GridDelta) -> GridDelta {
-        let count = lhs.count + rhs.count
-
-        guard let left = lhs.total, let right = rhs.total else {
-            return GridDelta(count: count, total: lhs.total ?? rhs.total)
+    func reversed() -> GridDelta {
+        guard kind.isReversible else {
+            return GridDelta(kind: kind)
         }
-        return GridDelta(count: count, total: left + right)
+        return GridDelta(kind: kind, cells: cells.mapValues(-))
     }
 
     func apply(to record: CKRecord) {
-        record[CKRecord.countCell] = (record[CKRecord.countCell] as? Int64 ?? 0) + count
+        for (cell, value) in cells {
+            let key = cell.key
 
-        guard let total else {
-            return
-        }
-
-        if let cell = record[CKRecord.valueCell] as? Double {
-            record[CKRecord.valueCell] = total.kind.combine(cell, total.value)
-        } else {
-            record[CKRecord.valueCell] = total.value
+            if let stored = record[key] as? Double {
+                record[key] = kind.combine(stored, value)
+            } else {
+                record[key] = value
+            }
         }
     }
 }

@@ -65,6 +65,19 @@ extension EntityDefinition {
                 )
             }
 
+            if let date = aggregate.date {
+                guard let field = fields.first(where: { $0.name == date }) else {
+                    throw SchemaError.invalidDefinition(
+                        .unknownDate(aggregate: aggregate.name, field: date)
+                    )
+                }
+                guard field.type == .timestamp else {
+                    throw SchemaError.invalidDefinition(
+                        .nonTemporalDate(aggregate: aggregate.name, field: date)
+                    )
+                }
+            }
+
             let metrics = [
                 aggregate.sum,
                 aggregate.min,

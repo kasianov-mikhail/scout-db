@@ -19,13 +19,15 @@ struct GridLoader {
 
     func open(_ deltas: [GridSlot: GridDelta]) async throws -> [CKRecord.ID: Pending] {
         var pending: [CKRecord.ID: Pending] = [:]
-        var cold: [GridSlot: GridDelta] = [:]
+        var cold: [(id: CKRecord.ID, slot: GridSlot, delta: GridDelta)] = []
 
         for (slot, delta) in deltas {
-            if let cached = await slots.record(slot.recordID) {
-                pending[slot.recordID] = Pending(record: cached, delta: delta)
+            let id = slot.recordID
+
+            if let cached = await slots.record(id) {
+                pending[id] = Pending(record: cached, delta: delta)
             } else {
-                cold[slot] = delta
+                cold.append((id, slot, delta))
             }
         }
 
@@ -34,14 +36,13 @@ struct GridLoader {
         }
 
         var served: [CKRecord.ID: CKRecord] = [:]
-        let ids = cold.keys.map(\.recordID).sorted { $0.recordName < $1.recordName }
+        let ids = cold.map(\.id).sorted { $0.recordName < $1.recordName }
 
         for record in try await database.fetchRecords(ids: ids, batchSize: maxBatchSize) {
             served[record.recordID] = record
         }
 
-        for (slot, delta) in cold {
-            let id = slot.recordID
+        for (id, slot, delta) in cold {
             pending[id] = Pending(record: served[id] ?? slot.blank(named: id), delta: delta)
         }
 

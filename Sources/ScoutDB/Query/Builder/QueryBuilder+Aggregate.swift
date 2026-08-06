@@ -12,16 +12,19 @@ extension QueryBuilder {
     ///
     /// A fold reads the grid or it throws — it never falls back to reading the
     /// records, because the cost of that fallback grows with the entity while
-    /// the call site that asked for a count stays the same. A query a declared
-    /// aggregate covers — filters limited to an equality, `in` list, or
-    /// alternatives of them on the aggregate's grouping — is answered from the
-    /// grid. A threshold on an integer field an aggregate groups by is answered
-    /// from the grid too when the field's `min` and `max` bound it to a domain
-    /// the range can name value by value; a strict threshold counts as the
-    /// half-open one it equals, so `> 15` reads as `>= 16`. Every other query
-    /// throws ``QueryFault/noAggregate(entity:grouping:folding:)``, and the
-    /// answer is to declare the aggregate it names — or to ``take(_:)`` the
-    /// records and count them yourself, knowing what that reads.
+    /// the call site that asked for a count stays the same. The count comes off
+    /// a counting aggregate, one that folds no metric: a cell holds one number,
+    /// so the `sum` of a field is kept apart from the count of the records it
+    /// came from. A query a declared aggregate covers — filters limited to an
+    /// equality, `in` list, or alternatives of them on the aggregate's
+    /// grouping — is answered from the grid. A threshold on an integer field an
+    /// aggregate groups by is answered from the grid too when the field's `min`
+    /// and `max` bound it to a domain the range can name value by value; a
+    /// strict threshold counts as the half-open one it equals, so `> 15` reads
+    /// as `>= 16`. Every other query throws
+    /// ``QueryFault/noAggregate(entity:grouping:folding:)``, and the answer is
+    /// to declare the aggregate it names — or to ``take(_:)`` the records and
+    /// count them yourself, knowing what that reads.
     ///
     /// ```swift
     /// let paid = try await store.query("purchase")
@@ -30,10 +33,13 @@ extension QueryBuilder {
     /// ```
     ///
     public func count() async throws -> Int {
-        guard let folded = try await fold?.cell(of: nil, folding: .sum) else {
+        guard let fold = try await fold else {
             throw uncovered(nil)
         }
-        return Swift.min(folded.count, ceiling ?? Int.max)
+        let folded = try await fold.cell(of: nil, folding: .sum) ?? 0
+        let counted = Int(exactly: folded.rounded()) ?? Int.max
+
+        return Swift.min(counted, ceiling ?? Int.max)
     }
 
     /// Sums a numeric field across the matching records.
@@ -88,11 +94,12 @@ extension QueryBuilder {
 
     /// The mean of a numeric field across the matching records.
     ///
-    /// A grid derives it from the running total and the count it already keeps,
-    /// so an aggregate declaring `sum` of the field answers it; none covering
-    /// the query throws. The field must be `required` or carry a default, since
-    /// the count divides in every record of the group — one missing the field
-    /// would pull the mean down rather than stay out of it.
+    /// A grid divides the running total by the count kept beside it, so this
+    /// reads two aggregates covering the query — one declaring `sum` of the
+    /// field, one counting — and throws when either is missing. The field must
+    /// be `required` or carry a default, since the count divides in every
+    /// record of the group — one missing the field would pull the mean down
+    /// rather than stay out of it.
     ///
     /// ```swift
     /// let basket = try await store.query("purchase")
@@ -116,14 +123,24 @@ extension QueryBuilder {
         guard metric != .average || target.alwaysPresent else {
             throw SchemaError.unsupportedQuery(.averageOfOptional(field))
         }
-        guard let folded = try await fold?.cell(of: field, folding: metric) else {
+        guard let fold = try await fold else {
             throw uncovered(field)
         }
+        guard metric == .average else {
+            return try await fold.cell(of: field, folding: metric)
+        }
 
-        return metric.apply(
-            values: [folded.value].compactMap(\.self),
-            count: folded.count
-        )
+        async let summed = fold.cell(of: field, folding: .sum)
+        async let counted = fold.cell(of: nil, folding: .sum)
+
+        guard let total = try await summed else {
+            return nil
+        }
+        guard let count = try await counted, count != 0 else {
+            return nil
+        }
+
+        return total / count
     }
 
     private func uncovered(_ field: String?) -> SchemaError {

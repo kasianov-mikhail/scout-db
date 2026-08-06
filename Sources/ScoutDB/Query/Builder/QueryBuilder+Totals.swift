@@ -8,21 +8,22 @@
 import Foundation
 
 extension QueryBuilder {
-    /// One total per group, folded across every record the grid counts.
+    /// One total per group, folded across every hour the grid holds.
     ///
-    /// One row per group: the count, the metric's value, and the `average`
-    /// derived from them. Without a `field` the rows count alone. `metric`
-    /// picks which declared aggregate answers the read, so a field two
+    /// One row per group, carrying the value the aggregate folds: the metric
+    /// over the field, or the count of records when no `field` is named.
+    /// `metric` picks which declared aggregate answers the read, so a field two
     /// aggregates fold — a `min` and a `max` of the same amount — stays
-    /// reachable either way. The only
-    /// clause a grid read can honor is an
-    /// equality filter on the grouping field, which narrows it to that group
-    /// server-side; any other filter throws rather than being quietly dropped.
+    /// reachable either way; `.average` divides the `sum` aggregate by the
+    /// count aggregate over the same grouping, and needs both declared. The
+    /// only clause a grid read can honor is an equality filter on the grouping
+    /// field, which narrows it to that group server-side; any other filter
+    /// throws rather than being quietly dropped.
     ///
     /// ```swift
     /// let revenue = try await store.query("purchase")
     ///     .totals("amount", metric: .sum, group: "product_id")
-    /// // [AggregateTotal(group: "sku-42", count: 48211, value: 481628.9), ...]
+    /// // [AggregateTotal(group: "sku-42", value: 481628.9), ...]
     /// ```
     ///
     public func totals(_ field: String? = nil, metric: Metric, group: String? = nil) async throws -> [AggregateTotal] {
@@ -36,15 +37,7 @@ extension QueryBuilder {
 
 public struct AggregateTotal: Equatable, Sendable {
     public let group: String
-    public let count: Int
-    public let value: Double?
-
-    public var average: Double? {
-        guard let value, count > 0 else {
-            return nil
-        }
-        return value / Double(count)
-    }
+    public let value: Double
 }
 
 extension AggregateTotal: Comparable {

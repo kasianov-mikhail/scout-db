@@ -16,39 +16,54 @@ extension SchemaBuilder {
     /// entity already keeps, and one of the same shape replaces its
     /// predecessor.
     ///
+    /// A cell is an hour: the grid keeps one record per group and week, holding
+    /// the 168 hours of that week, so the count is filed under the hour the
+    /// record belongs to. `at` names the timestamp field that hour is read
+    /// from; without it the hour is the one the write lands in, and a later
+    /// rewrite of the same record reverses out of the hour it is rewritten in
+    /// rather than the one it first landed in.
+    ///
     /// ```swift
     /// try await store.schema("visit")
     ///     .field("page", .string, .ungrouped)
-    ///     .count(by: "page")
+    ///     .field("seen_at", .timestamp)
+    ///     .count(by: "page", at: "seen_at")
     ///     .create()
     /// ```
     ///
-    public func count(by group: String? = nil, shards: Int? = nil) -> Self {
+    public func count(by group: String? = nil, at date: String? = nil, shards: Int? = nil) -> Self {
         var builder = self
-        builder.aggregates.append(AggregateDefinition(by: group, shards: shards))
+        builder.aggregates.append(AggregateDefinition(by: group, at: date, shards: shards))
         return builder
     }
 
-    /// Keeps a running total of the field, which `average` derives from.
+    /// Keeps a running total of the field, which `average` divides.
     ///
-    /// The total is folded into the cell on every write, so reading it costs a
-    /// request whatever the entity grows to. `shards` spreads one hot cell over
-    /// several records when many devices write the same group at once —
-    /// readers sum the shards, so declare it only where the contention is real.
+    /// The total is folded into the hour's cell on every write, so reading it
+    /// costs a request whatever the entity grows to. A cell holds one number —
+    /// the total, never a count beside it — so `average` divides this
+    /// aggregate by the count aggregate over the same grouping, and reads it
+    /// only where both are declared. `at` dates the cell as in
+    /// ``count(by:at:shards:)``. `shards` spreads one hot cell over several
+    /// records when many devices write the same group at once — readers sum
+    /// the shards, so declare it only where the contention is real.
     ///
     /// ```swift
     /// try await store.schema("purchase")
     ///     .field("product_id", .string, .required)
     ///     .field("amount", .double)
-    ///     .sum("amount", by: "product_id")
+    ///     .field("date", .timestamp)
+    ///     .sum("amount", by: "product_id", at: "date")
     ///     .create()
     ///
     /// let revenue = try await store.query("purchase").totals("amount", metric: .sum, group: "product_id")
     /// ```
     ///
-    public func sum(_ field: String, by group: String? = nil, shards: Int? = nil) -> Self {
+    public func sum(_ field: String, by group: String? = nil, at date: String? = nil, shards: Int? = nil) -> Self {
         var builder = self
-        builder.aggregates.append(AggregateDefinition(metric: .sum, of: field, by: group, shards: shards))
+        builder.aggregates.append(
+            AggregateDefinition(metric: .sum, of: field, by: group, at: date, shards: shards)
+        )
         return builder
     }
 
@@ -65,14 +80,14 @@ extension SchemaBuilder {
     ///     .create()
     /// ```
     ///
-    public func min(_ field: String, by group: String? = nil) -> Self {
+    public func min(_ field: String, by group: String? = nil, at date: String? = nil) -> Self {
         var builder = self
-        builder.aggregates.append(AggregateDefinition(metric: .min, of: field, by: group))
+        builder.aggregates.append(AggregateDefinition(metric: .min, of: field, by: group, at: date))
         return builder
     }
 
     /// Keeps the largest value of the field a cell has seen, standing after a
-    /// removal as in ``min(_:by:)``.
+    /// removal as in ``min(_:by:at:)``.
     ///
     /// ```swift
     /// try await store.schema("purchase")
@@ -83,9 +98,9 @@ extension SchemaBuilder {
     /// let peak = try await store.query("purchase").max("amount")
     /// ```
     ///
-    public func max(_ field: String, by group: String? = nil) -> Self {
+    public func max(_ field: String, by group: String? = nil, at date: String? = nil) -> Self {
         var builder = self
-        builder.aggregates.append(AggregateDefinition(metric: .max, of: field, by: group))
+        builder.aggregates.append(AggregateDefinition(metric: .max, of: field, by: group, at: date))
         return builder
     }
 
@@ -112,9 +127,9 @@ extension SchemaBuilder {
     /// let p95 = try await store.query("request").percentile(0.95, of: "latency")
     /// ```
     ///
-    public func histogram(of field: String, bounds: [Double]) -> Self {
+    public func histogram(of field: String, bounds: [Double], at date: String? = nil) -> Self {
         var builder = self
-        builder.aggregates.append(AggregateDefinition(histogramOf: field, bounds: bounds))
+        builder.aggregates.append(AggregateDefinition(histogramOf: field, bounds: bounds, at: date))
         return builder
     }
 }

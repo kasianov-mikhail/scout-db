@@ -61,7 +61,7 @@ struct BuilderTests {
         #expect(aggregates.first { $0.name == "by_product_id" }?.groupBy == "product_id")
 
         let counted = try await TotalOperation(store: store, entity: "purchase").rows(aggregate: "by_product_id")
-        #expect(counted.map(\.count).reduce(0, +) == 3)
+        #expect(counted.map(\.value).reduce(0, +) == 3)
         #expect(try await store.query("purchase").filter("product_id", .equals, "sku-1").count() == 1)
     }
 
@@ -77,8 +77,8 @@ struct BuilderTests {
         #expect(aggregates.map(\.name) == ["by_slug"])
     }
 
-    @Test("A declared metric keeps the grid from counting its field twice")
-    func declaredViewWins() async throws {
+    @Test("A declared metric joins the count the grid keeps over the same field")
+    func declaredViewJoinsTheCount() async throws {
         try await store.schema("shipment")
             .field("carrier", .string, .required)
             .field("weight", .double)
@@ -87,8 +87,9 @@ struct BuilderTests {
             .create()
 
         let aggregates = try await registry.definition(for: "shipment").aggregates
-        #expect(aggregates.filter { $0.groupBy == "carrier" }.count == 1)
-        #expect(aggregates.first { $0.groupBy == "carrier" }?.sum == "weight")
+        #expect(aggregates.filter { $0.groupBy == "carrier" }.count == 2)
+        #expect(aggregates.first { $0.groupBy == "carrier" && $0.metricField != nil }?.sum == "weight")
+        #expect(aggregates.contains { $0.name == "by_carrier" && $0.metricField == nil })
         #expect(Set(aggregates.compactMap(\.groupBy)) == ["carrier", "weight"])
     }
 
@@ -176,8 +177,8 @@ struct BuilderTests {
         #expect(updated.aggregates.compactMap(\.groupBy) == ["queue", "assignee"])
     }
 
-    @Test("An aggregate of the same shape replaces the one the grid built")
-    func declaredViewOverridesTheGrid() async throws {
+    @Test("A metric declared later joins the count the grid built")
+    func declaredMetricJoinsTheCount() async throws {
         try await store.schema("ticket")
             .field("queue", .string, .required)
             .field("weight", .double)
@@ -191,7 +192,8 @@ struct BuilderTests {
 
         let updated = try await registry.definition(for: "ticket").aggregates
         #expect(Set(updated.compactMap(\.groupBy)) == ["queue", "weight"])
-        #expect(updated.first { $0.groupBy == "queue" }?.sum == "weight")
+        #expect(updated.contains { $0.groupBy == "queue" && $0.sum == "weight" })
+        #expect(updated.contains { $0.name == "by_queue" && $0.metricField == nil })
     }
 
     @Test("An aggregate over a field the version closes lapses with it")
@@ -412,7 +414,7 @@ struct BuilderTests {
 
         let totals = try await store.query("purchase").totals(metric: .sum, group: "product_id")
         #expect(totals.map(\.group) == ["sku-0", "sku-1", "sku-2"])
-        #expect(totals.map(\.count) == [2, 1, 1])
+        #expect(totals.map(\.value) == [2, 1, 1])
     }
 
     @Test("The builder pages by its sort clause, honoring OR groups")

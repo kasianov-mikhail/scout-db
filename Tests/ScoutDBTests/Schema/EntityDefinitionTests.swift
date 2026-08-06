@@ -135,6 +135,28 @@ struct EntityDefinitionTests {
         }
     }
 
+    @Test("Validation rejects an aggregate dating its cells by an unknown field")
+    func unknownDate() {
+        let definition = makeDefinition(
+            fields: [FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))],
+            aggregates: [AggregateDefinition(name: "by_all", date: "seen")]
+        )
+        #expect(throws: SchemaError.invalidDefinition(.unknownDate(aggregate: "by_all", field: "seen"))) {
+            try definition.validate()
+        }
+    }
+
+    @Test("Validation rejects an aggregate dating its cells by a field that holds no date")
+    func nonTemporalDate() {
+        let definition = makeDefinition(
+            fields: [FieldDefinition(name: "seen", type: .string, storage: .slot(.string, "s_00"))],
+            aggregates: [AggregateDefinition(name: "by_all", date: "seen")]
+        )
+        #expect(throws: SchemaError.invalidDefinition(.nonTemporalDate(aggregate: "by_all", field: "seen"))) {
+            try definition.validate()
+        }
+    }
+
     @Test("Validation rejects an allowed domain on a non-string field")
     func allowedWrongType() {
         let definition = makeDefinition(

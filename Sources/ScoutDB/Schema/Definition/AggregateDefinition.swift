@@ -15,6 +15,7 @@ struct AggregateDefinition: Codable, Equatable, Sendable {
     var max: String?
     var histogram: Histogram?
     var shards: Int?
+    var date: String?
 
     var metricKind: Metric? {
         if sum != nil {
@@ -32,11 +33,33 @@ struct AggregateDefinition: Codable, Equatable, Sendable {
     var metricField: String? {
         sum ?? min ?? max
     }
+
+    var fold: Metric {
+        metricKind ?? .sum
+    }
+}
+
+extension [AggregateDefinition] {
+    func covering(_ field: String?, folding metric: Metric) -> AggregateDefinition? {
+        first {
+            $0.histogram == nil && $0.metricField == field
+                && (field == nil || $0.metricKind == metric.storage)
+        }
+    }
 }
 
 extension AggregateDefinition {
-    init(metric: Metric? = nil, of field: String? = nil, by group: String? = nil, shards: Int? = nil) {
-        let parts = [metric?.label, field, group.map { "by_\($0)" }].compactMap(\.self)
+    init(
+        metric: Metric? = nil, of field: String? = nil, by group: String? = nil, at date: String? = nil,
+        shards: Int? = nil
+    ) {
+        let parts = [
+            metric?.label,
+            field,
+            group.map { "by_\($0)" },
+            date.map { "at_\($0)" },
+        ]
+        .compactMap(\.self)
 
         self.init(
             name: parts.isEmpty ? "by_all" : parts.joined(separator: "_"),
@@ -44,14 +67,16 @@ extension AggregateDefinition {
             sum: metric?.storage == .sum ? field : nil,
             min: metric?.storage == .min ? field : nil,
             max: metric?.storage == .max ? field : nil,
-            shards: shards
+            shards: shards,
+            date: date
         )
     }
 
-    init(histogramOf field: String, bounds: [Double]) {
+    init(histogramOf field: String, bounds: [Double], at date: String? = nil) {
         self.init(
-            name: "histogram_\(field)",
-            histogram: Histogram(field: field, bounds: bounds)
+            name: ["histogram_\(field)", date.map { "at_\($0)" }].compactMap(\.self).joined(separator: "_"),
+            histogram: Histogram(field: field, bounds: bounds),
+            date: date
         )
     }
 }

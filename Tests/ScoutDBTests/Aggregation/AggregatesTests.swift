@@ -24,13 +24,13 @@ struct AggregatesTests {
         store = EntityStore(database: database, registry: registry)
     }
 
-    private func publishPayment(aggregates: [AggregateDefinition]) async throws {
+    private func publishPayment(aggregates: [AggregateDefinition], required: Bool = false) async throws {
         try await registry.publish(
             makeDefinition(
                 entity: "payment",
                 fields: [
                     FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00")),
-                    FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
+                    FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"), required: required),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
                 aggregates: aggregates
@@ -70,7 +70,7 @@ struct AggregatesTests {
 
         #expect(try await ReadOperation(store: store, entity: "visit").records().count == 1)
         #expect(
-            try await TotalOperation(store: store, entity: "visit").rows(aggregate: "by_all").map(\.count) == [1])
+            try await TotalOperation(store: store, entity: "visit").rows(aggregate: "by_all").map(\.value) == [1])
     }
 
     @Test("An upsert with a changed value rebalances a sum aggregate")
@@ -96,13 +96,17 @@ struct AggregatesTests {
 
         #expect(try await ReadOperation(store: store, entity: "meter").records().count == 1)
         let totals = try await TotalOperation(store: store, entity: "meter").rows(aggregate: "revenue")
-        #expect(totals.first?.count == 1)
         #expect(totals.first?.value == 25)
     }
 
     @Test("A sharded aggregate spreads a hot slot over several records and reads back whole")
     func shardedView() async throws {
-        try await publishPayment(aggregates: [AggregateDefinition(name: "revenue", sum: "amount", shards: 3)])
+        try await publishPayment(
+            aggregates: [
+                AggregateDefinition(name: "revenue", sum: "amount", shards: 3),
+                AggregateDefinition(name: "by_all", shards: 3),
+            ]
+        )
         for index in 0..<6 {
             try await store.write(
                 [
@@ -111,13 +115,12 @@ struct AggregatesTests {
                         uuid: "p-\(index)")
                 ], entity: "payment")
         }
-        let cells = database.records.filter { $0.recordType == "Aggregate" }
+        let cells = database.records.filter { $0["aggregate"] as? String == "revenue" }
         #expect(cells.count > 1)
         #expect(cells.count <= 3)
 
         let totals = try await TotalOperation(store: store, entity: "payment").rows(aggregate: "revenue")
         #expect(totals.count == 1)
-        #expect(totals.first?.count == 6)
         #expect(totals.first?.value == 21)
 
         #expect(try await store.query("payment").count() == 6)
@@ -155,7 +158,6 @@ struct AggregatesTests {
             entity: "meter")
 
         let totals = try await TotalOperation(store: store, entity: "meter").rows(aggregate: "low")
-        #expect(totals.first?.count == 2)
         #expect(totals.first?.value == 2)
     }
 
@@ -166,7 +168,6 @@ struct AggregatesTests {
 
         let totals = try await TotalOperation(store: store, entity: "payment").rows(aggregate: "low")
         #expect(totals.count == 1)
-        #expect(totals.first?.count == 3)
         #expect(totals.first?.value == 2)
     }
 
@@ -179,15 +180,72 @@ struct AggregatesTests {
         #expect(totals.first?.value == 8)
     }
 
-    @Test("AVG derives from a sum aggregate")
+    @Test("AVG divides a sum aggregate by the count aggregate beside it")
     func average() async throws {
-        try await publishPayment(aggregates: [AggregateDefinition(name: "revenue", sum: "amount")])
+        try await publishPayment(
+            aggregates: [
+                AggregateDefinition(name: "revenue", sum: "amount"),
+                AggregateDefinition(name: "by_all"),
+            ],
+            required: true
+        )
         try await writePayments([2.5, 1.5])
 
         let total = try #require(
             try await TotalOperation(store: store, entity: "payment").rows(aggregate: "revenue").first)
         #expect(total.value == 4)
-        #expect(total.average == 2)
+        #expect(try await store.query("payment").average("amount") == 2)
+    }
+
+    private func writePayment(_ amount: Double, at date: Date, uuid: String? = nil) async throws {
+        try await store.write(
+            [
+                EntityWrite(
+                    values: ["product": .string("app"), "amount": .double(amount), "date": .date(date)],
+                    uuid: uuid
+                )
+            ],
+            entity: "payment"
+        )
+    }
+
+    @Test("Weeks keep a grid record each, and a fold reads across them")
+    func weeksFoldTogether() async throws {
+        try await publishPayment(
+            aggregates: [
+                AggregateDefinition(name: "by_all", date: "date"),
+                AggregateDefinition(name: "revenue", sum: "amount", date: "date"),
+            ]
+        )
+        try await writePayment(2, at: noon)
+        try await writePayment(3, at: noon.addingTimeInterval(3_600))
+        try await writePayment(10, at: noon.addingTimeInterval(7 * 86_400))
+
+        #expect(database.records.filter { $0["aggregate"] as? String == "by_all" }.count == 2)
+        #expect(try await store.query("payment").count() == 3)
+        #expect(try await store.query("payment").sum("amount") == 15)
+    }
+
+    @Test("A rewrite dated by the record leaves the cell it first landed in")
+    func rewriteMovesBetweenWeeks() async throws {
+        try await publishPayment(
+            aggregates: [
+                AggregateDefinition(name: "by_all", date: "date"),
+                AggregateDefinition(name: "revenue", sum: "amount", date: "date"),
+            ]
+        )
+        let moved = noon.addingTimeInterval(7 * 86_400)
+
+        try await writePayment(10, at: noon, uuid: "p-1")
+        try await writePayment(10, at: moved, uuid: "p-1")
+
+        let counted = database.records.filter { $0["aggregate"] as? String == "by_all" }
+        #expect(counted.count == 2)
+        #expect(counted.first { $0["date"] as? Date == noon.weekStart }?.cells() == 0)
+        #expect(counted.first { $0["date"] as? Date == moved.weekStart }?[cell: GridCell(of: moved)] == 1)
+
+        #expect(try await store.query("payment").count() == 1)
+        #expect(try await store.query("payment").sum("amount") == 10)
     }
 
     @Test("GROUP BY works over totals")
@@ -198,8 +256,7 @@ struct AggregatesTests {
 
         let totals = try await TotalOperation(store: store, entity: "payment").rows(aggregate: "revenue")
         #expect(totals.map(\.group) == ["app", "bundle"])
-        #expect(totals.map(\.count) == [3, 1])
-        #expect(totals.first?.value == 6)
+        #expect(totals.map(\.value) == [6, 10])
     }
 
     @Test("A single-group aggregate read narrows to that group's rows")
@@ -249,7 +306,6 @@ struct AggregatesTests {
         let totals = try await TotalOperation(store: store, entity: "payment").rows(aggregate: "revenue")
 
         #expect(totals.count == 2)
-        #expect(totals.first { $0.group == "app" }?.count == 2)
         #expect(totals.first { $0.group == "app" }?.value == 5)
         #expect(totals.first { $0.group == "book" }?.value == 10)
     }
@@ -266,7 +322,6 @@ struct AggregatesTests {
 
         let totals = try await TotalOperation(store: store, entity: "payment").rows(aggregate: "low")
         #expect(totals.count == 1)
-        #expect(totals.first?.count == 3)
         #expect(totals.first?.value == 2)
     }
 
@@ -304,7 +359,6 @@ struct AggregatesTests {
             [EntityWrite(values: ["product": .string("book"), "amount": .double(2)], uuid: nil)], entity: "sale")
 
         let totals = try await TotalOperation(store: store, entity: "sale").rows(aggregate: "by_product")
-        #expect(totals.first { $0.group == "app" }?.count == 2)
         #expect(totals.first { $0.group == "app" }?.value == 15)
         #expect(totals.first { $0.group == "book" }?.value == 2)
         #expect(database.records.filter { $0.recordType == "Aggregate" }.count == 2)
@@ -336,7 +390,7 @@ struct AggregatesTests {
         let grid = try #require(
             database.records.first { $0.recordType == "Aggregate" && $0["group_key"] as? String == "book" }
         )
-        grid["c_00"] = Int64(41)
+        grid.reset(cellsTo: 41)
         #expect(try await store.query("sale").count() == 43)
         #expect(try await store.query("sale").filter("product", .equals, "book").count() == 41)
 
@@ -358,7 +412,10 @@ struct AggregatesTests {
                     FieldDefinition(name: "kind", type: .string, storage: .slot(.string, "s_00"), required: true),
                     FieldDefinition(name: "price", type: .double, storage: .slot(.double, "d_00")),
                 ],
-                aggregates: [AggregateDefinition(name: "by_kind", groupBy: "kind", sum: "price")]
+                aggregates: [
+                    AggregateDefinition(name: "by_kind", groupBy: "kind"),
+                    AggregateDefinition(name: "revenue_by_kind", groupBy: "kind", sum: "price"),
+                ]
             )
         )
         try await store.write(
@@ -370,11 +427,17 @@ struct AggregatesTests {
         try await store.write(
             [EntityWrite(values: ["kind": .string("c"), "price": .double(4)], uuid: nil)], entity: "ticket")
 
-        let grid = try #require(
-            database.records.first { $0.recordType == "Aggregate" && $0["group_key"] as? String == "b" }
+        let counted = try #require(
+            database.records.first { $0["aggregate"] as? String == "by_kind" && $0["group_key"] as? String == "b" }
         )
-        grid["c_00"] = Int64(41)
-        grid["f_00"] = Double(100)
+        counted.reset(cellsTo: 41)
+
+        let summed = try #require(
+            database.records.first {
+                $0["aggregate"] as? String == "revenue_by_kind" && $0["group_key"] as? String == "b"
+            }
+        )
+        summed.reset(cellsTo: 100)
 
         #expect(try await store.query("ticket").filter("kind", .in, .strings(["b", "c"])).count() == 42)
         #expect(
@@ -419,7 +482,7 @@ struct AggregatesTests {
         let grid = try #require(
             database.records.first { $0.recordType == "Aggregate" && $0["group_key"] as? String == "i16" }
         )
-        grid["c_00"] = Int64(41)
+        grid.reset(cellsTo: 41)
 
         #expect(try await store.query("crate").filter("units", .greaterThan, .int(15)).count() == 42)
         #expect(try await store.query("crate").filter("units", .greaterThanOrEquals, .int(16)).count() == 42)
@@ -447,7 +510,7 @@ struct AggregatesTests {
             ], entity: "payment")
 
         let grid = try #require(database.records.first { $0.recordType == "Aggregate" })
-        grid["c_00"] = Int64(41)
+        grid.reset(cellsTo: 41)
 
         #expect(try await store.query("payment").count() == 41)
 
@@ -473,7 +536,10 @@ struct AggregatesTests {
                     ),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"), required: required),
                 ],
-                aggregates: [AggregateDefinition(name: "by_product", groupBy: "product", sum: "amount")]
+                aggregates: [
+                    AggregateDefinition(name: "by_product", groupBy: "product"),
+                    AggregateDefinition(name: "revenue", groupBy: "product", sum: "amount"),
+                ]
             )
         )
         for (product, amount) in [("app", 10.0), ("app", 6.0), ("book", 4.0)] {
@@ -483,13 +549,18 @@ struct AggregatesTests {
         }
     }
 
-    private func tamperedBookSlot() throws -> CKRecord {
-        let grid = try #require(
-            database.records.first { $0.recordType == "Aggregate" && $0["group_key"] as? String == "book" }
+    private func tamperBookSlots() throws {
+        let counted = try #require(
+            database.records.first {
+                $0["aggregate"] as? String == "by_product" && $0["group_key"] as? String == "book"
+            }
         )
-        grid["c_00"] = Int64(3)
-        grid["f_00"] = 40.0
-        return grid
+        counted.reset(cellsTo: 3)
+
+        let summed = try #require(
+            database.records.first { $0["aggregate"] as? String == "revenue" && $0["group_key"] as? String == "book" }
+        )
+        summed.reset(cellsTo: 40)
     }
 
     @Test("sum() and average() read a covering aggregate's grid, while min and max find none")
@@ -498,7 +569,7 @@ struct AggregatesTests {
         #expect(try await store.query("ledger").sum("amount") == 20)
         #expect(try await store.query("ledger").average("amount") == 20.0 / 3)
 
-        _ = try tamperedBookSlot()
+        try tamperBookSlots()
         #expect(try await store.query("ledger").sum("amount") == 56)
         #expect(try await store.query("ledger").average("amount") == 56.0 / 5)
         #expect(try await store.query("ledger").filter("product", .equals, "book").sum("amount") == 40)
@@ -540,7 +611,7 @@ struct AggregatesTests {
                         && $0["group_key"] as? String == "book"
                 }
             )
-            grid["f_00"] = aggregate == "peak" ? 41.0 : 1.0
+            grid.reset(cellsTo: aggregate == "peak" ? 41 : 1)
         }
 
         #expect(try await store.query("reading").max("amount") == 41)
@@ -555,19 +626,20 @@ struct AggregatesTests {
     @Test("Grouped totals read the grouping aggregate's grid")
     func groupedFoldThroughLifetimeView() async throws {
         try await publishLedger()
-        _ = try tamperedBookSlot()
+        try tamperBookSlots()
 
         let totals = try await store.query("ledger").totals("amount", metric: .sum, group: "product")
         #expect(totals.map(\.group) == ["app", "book"])
         #expect(totals.map(\.value) == [16, 40])
-        #expect(totals.map(\.count) == [2, 3])
-        #expect(totals.map(\.average) == [8, 40.0 / 3])
+
+        let averages = try await store.query("ledger").totals("amount", metric: .average, group: "product")
+        #expect(averages.map(\.value) == [8, 40.0 / 3])
     }
 
     @Test("A fold that divides by the grid's row count is refused when the field may be absent")
     func foldFallsBackForOptionalField() async throws {
         try await publishLedger(required: false)
-        _ = try tamperedBookSlot()
+        try tamperBookSlots()
 
         #expect(try await store.query("ledger").sum("amount") == 56)
 
@@ -581,7 +653,7 @@ struct AggregatesTests {
         try await publishLedger()
         let watched = GridQueries(backing: database)
         let reader = EntityStore(database: watched, registry: registry)
-        #expect(database.records.filter { $0.recordType == "Aggregate" }.count == 2)
+        #expect(database.records.filter { $0.recordType == "Aggregate" }.count == 4)
 
         let scoped = try await reader.query("ledger").filter("product", .equals, "book").sum("amount")
         #expect(scoped == 4)
@@ -615,12 +687,6 @@ struct AggregatesTests {
         try await store.write(
             [EntityWrite(values: ["product": .string("book"), "amount": .double(4), "tax": .double(2)], uuid: nil)],
             entity: "fee")
-
-        let grid = try #require(
-            database.records.first { $0.recordType == "Aggregate" && $0["group_key"] as? String == "book" }
-        )
-        grid["c_00"] = Int64(3)
-        grid["f_00"] = 40.0
 
         await #expect(
             throws: SchemaError.unsupportedQuery(.noAggregate(entity: "fee", grouping: nil, folding: "tax"))

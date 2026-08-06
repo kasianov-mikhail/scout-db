@@ -28,6 +28,10 @@ struct GridWritesTests {
         }
     }
 
+    private var cell: GridCell {
+        GridCell(of: noon)
+    }
+
     private func requests(_ kind: RequestTally.Kind) -> Int {
         database.requests[kind]
     }
@@ -41,8 +45,8 @@ struct GridWritesTests {
         let aggregator = GridAggregator(
             database: database,
             aggregates: [
-                AggregateDefinition(name: "by_product", groupBy: "product"),
-                AggregateDefinition(name: "revenue", groupBy: "product", sum: "amount"),
+                AggregateDefinition(name: "by_product", groupBy: "product", date: "date"),
+                AggregateDefinition(name: "revenue", groupBy: "product", sum: "amount", date: "date"),
             ]
         )
 
@@ -58,7 +62,7 @@ struct GridWritesTests {
     func warmSlotSkipsTheFetch() async throws {
         let aggregator = GridAggregator(
             database: database,
-            aggregates: [AggregateDefinition(name: "revenue", sum: "amount")]
+            aggregates: [AggregateDefinition(name: "revenue", sum: "amount", date: "date")]
         )
         try await aggregator.rebalance(removing: [], adding: payments(["app"]))
         database.resetRequests()
@@ -67,9 +71,7 @@ struct GridWritesTests {
 
         #expect(requests(.fetch) == 0)
         #expect(requests(.conditionalSave) == 1)
-        let slot = try #require(slots.first)
-        #expect(slot["c_00"] as? Int64 == 2)
-        #expect(slot["f_00"] as? Double == 2)
+        #expect(try #require(slots.first)[cell: cell] == 2)
     }
 
     private func payment(amount: Double) -> EntityRecord {
@@ -83,7 +85,7 @@ struct GridWritesTests {
 
     @Test("An update that raises a min aggregate's value leaves the value standing")
     func raisedMinLeavesTheValue() async throws {
-        let aggregates = [AggregateDefinition(name: "cheapest", min: "amount")]
+        let aggregates = [AggregateDefinition(name: "cheapest", min: "amount", date: "date")]
         let stored = payment(amount: 5)
         try await GridAggregator(database: database, aggregates: aggregates)
             .rebalance(removing: [], adding: [stored])
@@ -93,12 +95,12 @@ struct GridWritesTests {
             .rebalance(removing: [stored], adding: [payment(amount: 9)])
 
         #expect(requests(.conditionalSave) == 1)
-        #expect(try #require(slots.first)["f_00"] as? Double == 5)
+        #expect(try #require(slots.first)[cell: cell] == 5)
     }
 
     @Test("An update that lowers a min aggregate's value still writes the slot")
     func loweredMinWritesTheSlot() async throws {
-        let aggregates = [AggregateDefinition(name: "cheapest", min: "amount")]
+        let aggregates = [AggregateDefinition(name: "cheapest", min: "amount", date: "date")]
         let stored = payment(amount: 5)
         try await GridAggregator(database: database, aggregates: aggregates)
             .rebalance(removing: [], adding: [stored])
@@ -108,26 +110,25 @@ struct GridWritesTests {
             .rebalance(removing: [stored], adding: [payment(amount: 2)])
 
         #expect(requests(.conditionalSave) == 1)
-        #expect(try #require(slots.first)["f_00"] as? Double == 2)
+        #expect(try #require(slots.first)[cell: cell] == 2)
     }
 
     @Test("A slot another writer moved on is folded again over the server copy")
     func staleSlotRetriesOverTheServerCopy() async throws {
         let aggregator = GridAggregator(
             database: database,
-            aggregates: [AggregateDefinition(name: "revenue", sum: "amount")]
+            aggregates: [AggregateDefinition(name: "revenue", sum: "amount", date: "date")]
         )
         try await aggregator.rebalance(removing: [], adding: payments(["app"]))
 
         let server = try #require(slots.first).copy() as! CKRecord
-        server["c_00"] = (server["c_00"] as? Int64 ?? 0) + 5
+        server[cell: cell] = (server[cell: cell] ?? 0) + 5
         try await database.modifyRecords(saving: [server], deleting: [])
         database.resetRequests()
 
         try await aggregator.rebalance(removing: [], adding: payments(["pro"]))
 
         #expect(requests(.conditionalSave) == 2)
-        let slot = try #require(slots.first)
-        #expect(slot["c_00"] as? Int64 == 7)
+        #expect(try #require(slots.first)[cell: cell] == 7)
     }
 }

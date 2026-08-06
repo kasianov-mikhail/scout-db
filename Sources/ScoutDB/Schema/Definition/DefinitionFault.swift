@@ -21,6 +21,8 @@ public enum DefinitionFault: Equatable, Sendable {
     case unsupportedBounds(field: String, type: FieldType)
 
     case unknownGrouping(aggregate: String, field: String)
+    case unknownDate(aggregate: String, field: String)
+    case nonTemporalDate(aggregate: String, field: String)
     case ambiguousMetric(aggregate: String)
     case nonNumericMetric(aggregate: String, field: String)
     case invalidShards(aggregate: String)
@@ -53,6 +55,10 @@ extension DefinitionFault: CustomStringConvertible {
 
         case .unknownGrouping(let aggregate, let field):
             "Aggregate '\(aggregate)' groups by unknown '\(field)'"
+        case .unknownDate(let aggregate, let field):
+            "Aggregate '\(aggregate)' dates its cells by unknown '\(field)'"
+        case .nonTemporalDate(let aggregate, let field):
+            "Aggregate '\(aggregate)' dates its cells by non-timestamp '\(field)'"
         case .ambiguousMetric(let aggregate):
             "Aggregate '\(aggregate)' declares more than one metric"
         case .nonNumericMetric(let aggregate, let field):

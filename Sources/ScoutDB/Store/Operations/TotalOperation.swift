@@ -7,12 +7,43 @@
 
 import CloudKit
 
-struct TotalOperation {
+struct TotalOperation: Sendable {
     let database: any CloudDatabase
     let definition: EntityDefinition
     let branches: [[ClientFilter]]
 
     func rows(aggregate: String, group: String? = nil) async throws -> [AggregateTotal] {
+        try await folds(aggregate: aggregate, group: group)
+            .map { AggregateTotal(group: $0.key, value: $0.value) }
+            .sorted()
+    }
+
+    func rows(field: String?, metric: Metric, group: String?) async throws -> [AggregateTotal] {
+        let narrowed = try narrowing(to: group)
+
+        guard metric == .average, let field else {
+            let aggregate = try covering(field: field, metric: metric, group: group)
+            return try await rows(aggregate: aggregate.name, group: narrowed)
+        }
+
+        let summing = try covering(field: field, metric: .sum, group: group)
+        let counting = try covering(field: nil, metric: .sum, group: group)
+
+        async let summed = folds(aggregate: summing.name, group: narrowed)
+        async let counted = folds(aggregate: counting.name, group: narrowed)
+
+        let (sums, counts) = try await (summed, counted)
+
+        return sums.compactMap { key, sum in
+            guard let count = counts[key], count != 0 else {
+                return nil
+            }
+            return AggregateTotal(group: key, value: sum / count)
+        }
+        .sorted()
+    }
+
+    private func folds(aggregate: String, group: String?) async throws -> [String: Double] {
         guard let declared = definition.aggregates.first(where: { $0.name == aggregate }) else {
             throw SchemaError.unknownField(aggregate)
         }
@@ -25,29 +56,20 @@ struct TotalOperation {
             )
         )
 
-        let rows = records.gridRows(folding: declared.metricKind) { row in
-            row.count != 0 || row.value != nil
-        }
+        let rows = records.gridRows(folding: declared.fold)
 
-        return rows.map { key, fold in
-            AggregateTotal(group: key, count: fold.count, value: fold.value)
-        }
-        .sorted()
+        return declared.metricKind == nil ? rows.filter { $0.value != 0 } : rows
     }
 
-    func rows(field: String?, metric: Metric, group: String?) async throws -> [AggregateTotal] {
-        let grouping = definition.aggregates.filter { $0.groupBy == group && $0.histogram == nil }
-        let folding = field.map { field in
-            grouping.first { $0.metricKind == metric.storage && $0.metricField == field }
-        }
+    private func covering(field: String?, metric: Metric, group: String?) throws -> AggregateDefinition {
+        let grouping = definition.aggregates.filter { $0.groupBy == group }
 
-        guard let aggregate = folding ?? grouping.first else {
+        guard let aggregate = grouping.covering(field, folding: metric) else {
             throw SchemaError.unsupportedQuery(
                 .noAggregate(entity: definition.entity, grouping: group, folding: field)
             )
         }
-
-        return try await rows(aggregate: aggregate.name, group: try narrowing(to: group))
+        return aggregate
     }
 
     private func narrowing(to group: String?) throws -> String? {

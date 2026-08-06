@@ -11,10 +11,10 @@ extension QueryBuilder {
     /// The value a `rank` share of the field's records falls under, read off a
     /// declared histogram.
     ///
-    /// The read costs one bucket record per bound, whatever the entity grows
-    /// to — the records themselves are never touched. `rank` runs 0 through 1,
+    /// The read costs one bucket record per bound and week, whatever the entity
+    /// grows to — the records themselves are never touched. `rank` runs 0 through 1,
     /// so a 95th percentile is `0.95`, and the answer is interpolated inside
-    /// the bucket it lands in: it is as fine as ``SchemaBuilder/histogram(of:bounds:)``
+    /// the bucket it lands in: it is as fine as ``SchemaBuilder/histogram(of:bounds:at:)``
     /// made its bounds, and never finer. `nil` when nothing carries the field.
     ///
     /// A value under the first bound or over the last answers with that bound,
