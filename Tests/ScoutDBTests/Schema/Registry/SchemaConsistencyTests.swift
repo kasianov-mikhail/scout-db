@@ -61,10 +61,8 @@ struct SchemaConsistencyTests {
         #expect(cells.map(\.name) == VectorSlot.cellKeys)
         #expect(cells.allSatisfy { $0.spec == "DOUBLE QUERYABLE SORTABLE" })
 
-        let names = Set(Self.fields(of: "Vector").map(\.name))
-        for field in [VectorSlot.Key.entity, VectorSlot.Key.aggregate, VectorSlot.Key.group, VectorSlot.Key.week] {
-            #expect(names.contains(field), "Vector is missing '\(field)'")
-        }
+        let named = Self.fields(of: "Vector").filter { !$0.name.hasPrefix("c_") && !$0.name.hasPrefix("\"___") }
+        #expect(named.isEmpty, "A vector is addressed by name and carries nothing but cells")
     }
 
     @Test("The registry files its descriptors in Entity")

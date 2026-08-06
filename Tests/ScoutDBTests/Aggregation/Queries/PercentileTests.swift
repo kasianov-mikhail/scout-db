@@ -110,8 +110,11 @@ struct PercentileTests {
             entity: "request"
         )
 
-        let counts = buckets.reduce(into: [String: Double]()) { counts, record in
-            counts[record[VectorSlot.Key.group] as? String ?? ""] = record.cells() ?? 0
+        var counts: [String: Double] = [:]
+        for bin in 0...PercentileTests.bounds.count {
+            let group = RecordValue.int(Int64(bin)).canonical
+            let vector = database.vector("request", "histogram_latency", group: group, week: Date().weekStart)
+            counts[group] = vector?.cells() ?? 0
         }
 
         #expect(counts[RecordValue.int(1).canonical] == 0)

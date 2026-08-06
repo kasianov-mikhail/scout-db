@@ -17,7 +17,15 @@ struct VectorLoader {
         let delta: VectorDelta
     }
 
-    func open(_ deltas: [VectorSlot: VectorDelta]) async throws -> [CKRecord.ID: Pending] {
+    struct Opened {
+        let pending: [CKRecord.ID: Pending]
+
+        /// The slots this batch had to reach for, rather than finding them in
+        /// the cache — the ones whose names the index may not carry yet.
+        let cold: [VectorSlot]
+    }
+
+    func open(_ deltas: [VectorSlot: VectorDelta]) async throws -> Opened {
         var pending: [CKRecord.ID: Pending] = [:]
         var cold: [(id: CKRecord.ID, slot: VectorSlot, delta: VectorDelta)] = []
 
@@ -32,7 +40,7 @@ struct VectorLoader {
         }
 
         guard cold.count > 0 else {
-            return pending
+            return Opened(pending: pending, cold: [])
         }
 
         var served: [CKRecord.ID: CKRecord] = [:]
@@ -46,6 +54,6 @@ struct VectorLoader {
             pending[id] = Pending(record: served[id] ?? slot.blank(named: id), delta: delta)
         }
 
-        return pending
+        return Opened(pending: pending, cold: cold.map(\.slot))
     }
 }

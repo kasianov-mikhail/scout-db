@@ -345,10 +345,10 @@ struct EntityStoreTests {
         try await store.write(
             [EntityWrite(values: ["name": .string("open"), "date": .date(date)], uuid: nil)], entity: "tap")
 
-        let vectors = database.records.filter { $0.recordType == "Vector" }
+        let vectors = database.vectors
         #expect(vectors.count == 1)
         #expect(vectors.first?.cells() == 2)
-        #expect(vectors.first?[VectorSlot.Key.group] == "open")
+        #expect(database.vector("tap", "by_name", group: "open", week: Date().weekStart)?.cells() == 2)
     }
 
     @Test("Sum aggregates accumulate values into double cells")

@@ -40,7 +40,7 @@ struct VectorWritesTests {
         database.records.filter { $0.recordType == VectorSlot.recordType }
     }
 
-    @Test("Every slot a batch touches is read and written in one request each")
+    @Test("Every slot a batch touches is read and written in one request each, and the index in one more")
     func batchedSlots() async throws {
         let aggregator = VectorAggregator(
             database: database,
@@ -53,8 +53,8 @@ struct VectorWritesTests {
         try await aggregator.rebalance(removing: [], adding: payments(["app", "pro", "max"]))
 
         #expect(slots.count == 6)
-        #expect(requests(.fetch) == 1)
-        #expect(requests(.conditionalSave) == 1)
+        #expect(requests(.fetch) == 2)
+        #expect(requests(.conditionalSave) == 2)
         #expect(requests(.query) == 0)
     }
 

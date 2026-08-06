@@ -24,11 +24,9 @@ struct PercentileOperation {
             )
         }
 
-        let records = try await database.allRecords(
-            matching: CKQuery(vectorOf: definition.entity, aggregate: aggregate.name)
-        )
-
-        let rows = records.vectorRows(folding: aggregate.fold)
+        let rows = try await VectorReader(database: database, definition: definition, aggregate: aggregate)
+            .rows(groups: histogram.groupKeys)
+            .vectorRows(folding: aggregate.fold)
         let counts = histogram.groupKeys.map { rows[$0] ?? 0 }
 
         return histogram.percentile(rank, over: counts)

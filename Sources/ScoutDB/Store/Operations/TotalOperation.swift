@@ -48,15 +48,9 @@ struct TotalOperation: Sendable {
             throw SchemaError.unknownField(aggregate)
         }
 
-        let records = try await database.allRecords(
-            matching: CKQuery(
-                vectorOf: definition.entity,
-                aggregate: aggregate,
-                group: group
-            )
-        )
-
-        let rows = records.vectorRows(folding: declared.fold)
+        let rows = try await VectorReader(database: database, definition: definition, aggregate: declared)
+            .rows(groups: group.map { [$0] })
+            .vectorRows(folding: declared.fold)
 
         return declared.measure?.metric == nil ? rows.filter { $0.value != 0 } : rows
     }

@@ -17,14 +17,18 @@ extension SchemaBuilder {
     /// guess, like a metric over a field — and they join the count rather than
     /// standing in for it, since a cell holds one number.
     ///
-    /// A vector covers one group over one week, holding a cell per hour of it,
-    /// so a fold reads a record per week the entity spans.
+    /// A vector covers one group over one week, holding a cell per hour of it.
+    /// Nothing filters them server-side: a vector is reached by the digest of
+    /// its key, and an index record per aggregate — with one per week under it
+    /// — names the weeks and groups that exist, so a fold over every group
+    /// knows what to reach for.
     ///
     /// The vectors cost the writes they save the reads: an entity carrying them
     /// reads its records before it rewrites them and rewrites its cells after,
-    /// three requests per write batch on top of the save. `update()` inherits
-    /// whatever this published — it never builds vectors of its own, so a field
-    /// added later needs its aggregate declared.
+    /// and a group or week seen for the first time costs a read and a write of
+    /// the index besides. `update()` inherits whatever this published — it
+    /// never builds vectors of its own, so a field added later needs its
+    /// aggregate declared.
     ///
     /// ```swift
     /// try await store.schema("purchase")

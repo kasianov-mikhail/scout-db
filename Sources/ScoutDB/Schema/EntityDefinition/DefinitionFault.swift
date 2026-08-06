@@ -36,7 +36,7 @@ extension DefinitionFault: CustomStringConvertible {
     public var description: String {
         switch self {
         case .reservedEntity(let name):
-            "Entity '\(name)' is reserved for the records the registry keeps for itself"
+            "Entity '\(name)' starts with the '__' the library keeps for its own records"
 
         case .slotTypeMismatch(let field, let type, let pool):
             "Field '\(field)' of type '\(type.rawValue)' cannot live in the '\(pool.rawValue)' pool"
