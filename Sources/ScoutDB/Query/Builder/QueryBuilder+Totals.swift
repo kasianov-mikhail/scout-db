@@ -27,11 +27,12 @@ extension QueryBuilder {
     /// ```
     ///
     public func totals(_ field: String? = nil, metric: Metric, group: String? = nil) async throws -> [AggregateTotal] {
-        try await total.rows(
-            field: field,
-            metric: metric,
-            group: group
-        )
+        let total = try await total
+
+        guard metric == .average, field != nil else {
+            return try await total.rows(field: field, metric: metric, group: group)
+        }
+        return try await total.averages(field: field, group: group)
     }
 }
 

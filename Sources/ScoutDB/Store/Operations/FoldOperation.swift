@@ -23,15 +23,13 @@ struct FoldOperation: Sendable {
             )
         }
 
-        let records = try await database.allRecords(
-            matching: CKQuery(
-                vectorOf: definition.entity,
-                aggregate: aggregate.name,
-                group: query.serverGroup
-            )
+        let rows = try await VectorReader(
+            database: database,
+            definition: definition,
+            aggregate: aggregate
         )
-
-        let rows = records.vectorRows(folding: kind.storage) { group in
+        .rows(groups: query.serverGroups)
+        .vectorRows(folding: kind.storage) { group in
             query.groupField == nil || query.groupKeys.contains(group)
         }
 
@@ -40,8 +38,8 @@ struct FoldOperation: Sendable {
 }
 
 extension FilterPlan {
-    fileprivate var serverGroup: String? {
-        groupKeys.count == 1 ? groupKeys.first : nil
+    fileprivate var serverGroups: [String]? {
+        groupField == nil || groupKeys.isEmpty ? nil : Array(groupKeys)
     }
 }
 

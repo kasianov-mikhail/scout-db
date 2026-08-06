@@ -212,7 +212,8 @@ struct StoreContractTests {
             try await f.store.write([EntityWrite(values: orderValues(total: 3), uuid: "v-2")], entity: entity)
 
             try await eventually {
-                let totals = try await TotalOperation(store: f.store, entity: entity).rows(aggregate: "sum_total")
+                let totals = try await TotalOperation(store: f.store, entity: entity).rows(
+                    field: "total", metric: .sum, group: nil)
                 return totals.first?.value == 5
             }
         }

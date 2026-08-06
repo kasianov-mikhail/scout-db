@@ -9,7 +9,7 @@ import Foundation
 
 extension EntityDefinition {
     func validate() throws {
-        guard entity != SchemaDescriptorEntry.namespace else {
+        guard !entity.hasPrefix("__") else {
             throw SchemaError.invalidDefinition(.reservedEntity(entity))
         }
 

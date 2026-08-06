@@ -11,7 +11,7 @@ extension EntityStore {
     public func fetch(entity: String, uuids: [String]) async throws -> [EntityRecord] {
         let definition = try await registry.definition(for: entity)
         let decoder = EntityDecoder(definition: definition)
-        let ids = uuids.map { CKRecord.ID(recordName: $0) }
+        let ids = uuids.map(CKRecord.ID.init(recordName:))
         let records = try await database.fetchRecords(ids: ids, batchSize: 100)
             .filter { $0[Envelope.entity] as? String == entity }
         return try records.map(decoder.decode).sorted(using: FieldOrder(key: .uuid))

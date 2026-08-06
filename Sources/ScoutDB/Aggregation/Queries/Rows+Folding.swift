@@ -7,15 +7,12 @@
 
 import CloudKit
 
-extension [CKRecord] {
-    func vectorRows(folding kind: Metric, where include: (String) -> Bool = { _ in true }) -> [String: Double] {
+extension [VectorReader.Row] {
+    func vectorRows(folding kind: Metric, where include: ((String) -> Bool)?) -> [String: Double] {
         var rows: [String: Double] = [:]
 
-        for record in self {
-            guard let key = record[VectorSlot.Key.group] as? String, include(key) else {
-                continue
-            }
-            guard let value = kind.fold(record.cells) else {
+        for (key, record) in self {
+            guard include?(key) != false, let value = kind.fold(record.cells) else {
                 continue
             }
             rows[key] = rows[key].map { kind.combine($0, value) } ?? value

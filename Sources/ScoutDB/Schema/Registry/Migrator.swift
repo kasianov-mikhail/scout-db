@@ -87,10 +87,11 @@ public struct Migrator: Sendable {
             throw SchemaError.unknownField(name)
         }
 
-        try await database.forEachPage(matching: CKQuery(vectorOf: entity, aggregate: name)) { page in
-            for chunk in page.map(\.recordID).chunked(into: batchSize) {
-                try await database.modifyRecords(saving: [], deleting: chunk)
-            }
+        let reader = VectorReader(database: database, entity: entity, aggregate: aggregate)
+        let stale = try await reader.rows(groups: nil).map(\.record.recordID) + reader.indexIDs()
+
+        for chunk in stale.chunked(into: batchSize) {
+            try await database.modifyRecords(saving: [], deleting: chunk)
         }
 
         let decoder = EntityDecoder(definition: definition)

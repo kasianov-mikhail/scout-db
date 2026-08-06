@@ -121,20 +121,30 @@ struct MigratorTests {
 
         definition.aggregates += [AggregateDefinition(groupBy: "product", measure: .sum("amount"))]
         try await registry.publish(definition)
-        #expect(try await TotalOperation(store: store, entity: "sale").rows(aggregate: "sum_amount_by_product").isEmpty)
+        #expect(
+            try await TotalOperation(store: store, entity: "sale").rows(field: "amount", metric: .sum, group: "product")
+                .isEmpty)
 
         #expect(try await migrator.backfill(aggregate: "sum_amount_by_product", entity: "sale") == 3)
-        var totals = try await TotalOperation(store: store, entity: "sale").rows(aggregate: "sum_amount_by_product")
+        var totals = try await TotalOperation(store: store, entity: "sale").rows(
+            field: "amount", metric: .sum, group: "product")
         #expect(totals.first { $0.group == "app" }?.value == 15)
         #expect(totals.first { $0.group == "book" }?.value == 2)
         #expect(
-            try await TotalOperation(store: store, entity: "sale").rows(aggregate: "by_all").map(\.value) == [3])
+            try await TotalOperation(store: store, entity: "sale")
+                .rows(field: nil, metric: .sum, group: nil)
+                .map(\.value) == [3]
+        )
 
         #expect(try await migrator.backfill(aggregate: "sum_amount_by_product", entity: "sale") == 3)
-        totals = try await TotalOperation(store: store, entity: "sale").rows(aggregate: "sum_amount_by_product")
+        totals = try await TotalOperation(store: store, entity: "sale").rows(
+            field: "amount", metric: .sum, group: "product")
         #expect(totals.first { $0.group == "app" }?.value == 15)
         #expect(
-            try await TotalOperation(store: store, entity: "sale").rows(aggregate: "by_all").map(\.value) == [3])
+            try await TotalOperation(store: store, entity: "sale")
+                .rows(field: nil, metric: .sum, group: nil)
+                .map(\.value) == [3]
+        )
 
         await #expect(throws: SchemaError.unknownField("ghost")) {
             try await migrator.backfill(aggregate: "ghost", entity: "sale")

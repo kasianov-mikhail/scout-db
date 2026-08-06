@@ -17,7 +17,13 @@ struct VectorLoader {
         let delta: VectorDelta
     }
 
-    func open(_ deltas: [VectorSlot: VectorDelta]) async throws -> [CKRecord.ID: Pending] {
+    struct Opened {
+        let pending: [CKRecord.ID: Pending]
+
+        let cold: [VectorSlot]
+    }
+
+    func open(_ deltas: [VectorSlot: VectorDelta]) async throws -> Opened {
         var pending: [CKRecord.ID: Pending] = [:]
         var cold: [(id: CKRecord.ID, slot: VectorSlot, delta: VectorDelta)] = []
 
@@ -32,7 +38,7 @@ struct VectorLoader {
         }
 
         guard cold.count > 0 else {
-            return pending
+            return Opened(pending: pending, cold: [])
         }
 
         var served: [CKRecord.ID: CKRecord] = [:]
@@ -42,10 +48,11 @@ struct VectorLoader {
             served[record.recordID] = record
         }
 
-        for (id, slot, delta) in cold {
-            pending[id] = Pending(record: served[id] ?? slot.blank(named: id), delta: delta)
+        for (id, _, delta) in cold {
+            let record = served[id] ?? CKRecord(recordType: VectorSlot.recordType, recordID: id)
+            pending[id] = Pending(record: record, delta: delta)
         }
 
-        return pending
+        return Opened(pending: pending, cold: cold.map(\.slot))
     }
 }

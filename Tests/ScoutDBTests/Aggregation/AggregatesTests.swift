@@ -70,7 +70,10 @@ struct AggregatesTests {
 
         #expect(try await ReadOperation(store: store, entity: "visit").records().count == 1)
         #expect(
-            try await TotalOperation(store: store, entity: "visit").rows(aggregate: "by_all").map(\.value) == [1])
+            try await TotalOperation(store: store, entity: "visit")
+                .rows(field: nil, metric: .sum, group: nil)
+                .map(\.value) == [1]
+        )
     }
 
     @Test("An upsert with a changed value rebalances a sum aggregate")
@@ -95,7 +98,8 @@ struct AggregatesTests {
             entity: "meter")
 
         #expect(try await ReadOperation(store: store, entity: "meter").records().count == 1)
-        let totals = try await TotalOperation(store: store, entity: "meter").rows(aggregate: "sum_amount")
+        let totals = try await TotalOperation(store: store, entity: "meter").rows(
+            field: "amount", metric: .sum, group: nil)
         #expect(totals.first?.value == 25)
     }
 
@@ -115,11 +119,12 @@ struct AggregatesTests {
                         uuid: "p-\(index)")
                 ], entity: "payment")
         }
-        let cells = database.records.filter { $0[VectorSlot.Key.aggregate] as? String == "sum_amount" }
+        let cells = database.shards("payment", "sum_amount", week: Date().weekStart, over: 3)
         #expect(cells.count > 1)
         #expect(cells.count <= 3)
 
-        let totals = try await TotalOperation(store: store, entity: "payment").rows(aggregate: "sum_amount")
+        let totals = try await TotalOperation(store: store, entity: "payment").rows(
+            field: "amount", metric: .sum, group: nil)
         #expect(totals.count == 1)
         #expect(totals.first?.value == 21)
 
@@ -157,7 +162,8 @@ struct AggregatesTests {
             [EntityWrite(values: ["user": .string("u1"), "amount": .double(6), "date": .date(noon)], uuid: "m-1")],
             entity: "meter")
 
-        let totals = try await TotalOperation(store: store, entity: "meter").rows(aggregate: "min_amount")
+        let totals = try await TotalOperation(store: store, entity: "meter")
+            .rows(field: "amount", metric: .min, group: nil)
         #expect(totals.first?.value == 2)
     }
 
@@ -166,7 +172,8 @@ struct AggregatesTests {
         try await publishPayment(aggregates: [AggregateDefinition(measure: .min("amount"))])
         try await writePayments([5, 2, 8])
 
-        let totals = try await TotalOperation(store: store, entity: "payment").rows(aggregate: "min_amount")
+        let totals = try await TotalOperation(store: store, entity: "payment")
+            .rows(field: "amount", metric: .min, group: nil)
         #expect(totals.count == 1)
         #expect(totals.first?.value == 2)
     }
@@ -176,7 +183,8 @@ struct AggregatesTests {
         try await publishPayment(aggregates: [AggregateDefinition(measure: .max("amount"))])
         try await writePayments([5, 2, 8])
 
-        let totals = try await TotalOperation(store: store, entity: "payment").rows(aggregate: "max_amount")
+        let totals = try await TotalOperation(store: store, entity: "payment")
+            .rows(field: "amount", metric: .max, group: nil)
         #expect(totals.first?.value == 8)
     }
 
@@ -192,7 +200,8 @@ struct AggregatesTests {
         try await writePayments([2.5, 1.5])
 
         let total = try #require(
-            try await TotalOperation(store: store, entity: "payment").rows(aggregate: "sum_amount").first)
+            try await TotalOperation(store: store, entity: "payment").rows(field: "amount", metric: .sum, group: nil)
+                .first)
         #expect(total.value == 4)
         #expect(try await store.query("payment").average("amount") == 2)
     }
@@ -221,7 +230,9 @@ struct AggregatesTests {
         try await writePayment(3, at: noon.addingTimeInterval(3_600))
         try await writePayment(10, at: noon.addingTimeInterval(7 * 86_400))
 
-        #expect(database.records.filter { $0[VectorSlot.Key.aggregate] as? String == "at_date" }.count == 2)
+        #expect(database.vector("payment", "at_date", week: noon.weekStart) != nil)
+        #expect(database.vector("payment", "at_date", week: noon.addingTimeInterval(7 * 86_400).weekStart) != nil)
+        #expect(database.vectors.filter { $0.cells() != nil }.count == 4)
         #expect(try await store.query("payment").count() == 3)
         #expect(try await store.query("payment").sum("amount") == 15)
     }
@@ -239,10 +250,8 @@ struct AggregatesTests {
         try await writePayment(10, at: noon, uuid: "p-1")
         try await writePayment(10, at: moved, uuid: "p-1")
 
-        let counted = database.records.filter { $0[VectorSlot.Key.aggregate] as? String == "at_date" }
-        #expect(counted.count == 2)
-        #expect(counted.first { $0[VectorSlot.Key.week] as? Date == noon.weekStart }?.cells() == 0)
-        #expect(counted.first { $0[VectorSlot.Key.week] as? Date == moved.weekStart }?[cell: moved.hourOfWeek] == 1)
+        #expect(database.vector("payment", "at_date", week: noon.weekStart)?.cells() == 0)
+        #expect(database.vector("payment", "at_date", week: moved.weekStart)?[cell: moved.hourOfWeek] == 1)
 
         #expect(try await store.query("payment").count() == 1)
         #expect(try await store.query("payment").sum("amount") == 10)
@@ -256,7 +265,8 @@ struct AggregatesTests {
         try await writePayments([1, 2, 3], product: "app")
         try await writePayments([10], product: "bundle")
 
-        let totals = try await TotalOperation(store: store, entity: "payment").rows(aggregate: "sum_amount_by_product")
+        let totals = try await TotalOperation(store: store, entity: "payment").rows(
+            field: "amount", metric: .sum, group: "product")
         #expect(totals.map(\.group) == ["app", "bundle"])
         #expect(totals.map(\.value) == [6, 10])
     }
@@ -269,16 +279,19 @@ struct AggregatesTests {
         try await writePayments([10, 5], product: "app")
         try await writePayments([2], product: "book")
 
-        let totals = try await TotalOperation(store: store, entity: "payment").rows(
-            aggregate: "sum_amount_by_product", group: "book")
+        let totals = try await totals(of: "book")
         #expect(totals.map(\.group) == ["book"])
         #expect(totals.first?.value == 2)
-        #expect(
-            try await TotalOperation(store: store, entity: "payment").rows(
-                aggregate: "sum_amount_by_product", group: "app"
-            )
-            .map(\.value) == [15]
+        #expect(try await self.totals(of: "app").map(\.value) == [15])
+    }
+
+    private func totals(of product: String) async throws -> [AggregateTotal] {
+        try await TotalOperation(
+            store: store,
+            entity: "payment",
+            branches: [[ClientFilter(field: "product", op: .equals, value: .string(product))]]
         )
+        .rows(field: "amount", metric: .sum, group: "product")
     }
 
     @Test("A aggregate with two metrics is rejected")
@@ -304,7 +317,8 @@ struct AggregatesTests {
             entity: "payment"
         )
 
-        let totals = try await TotalOperation(store: store, entity: "payment").rows(aggregate: "sum_amount_by_product")
+        let totals = try await TotalOperation(store: store, entity: "payment").rows(
+            field: "amount", metric: .sum, group: "product")
 
         #expect(totals.count == 2)
         #expect(totals.first { $0.group == "app" }?.value == 5)
@@ -321,7 +335,8 @@ struct AggregatesTests {
             entity: "payment"
         )
 
-        let totals = try await TotalOperation(store: store, entity: "payment").rows(aggregate: "min_amount")
+        let totals = try await TotalOperation(store: store, entity: "payment")
+            .rows(field: "amount", metric: .min, group: nil)
         #expect(totals.count == 1)
         #expect(totals.first?.value == 2)
     }
@@ -361,7 +376,8 @@ struct AggregatesTests {
         try await store.write(
             [EntityWrite(values: ["product": .string("book"), "amount": .double(2)], uuid: nil)], entity: "sale")
 
-        let totals = try await TotalOperation(store: store, entity: "sale").rows(aggregate: "sum_amount_by_product")
+        let totals = try await TotalOperation(store: store, entity: "sale").rows(
+            field: "amount", metric: .sum, group: "product")
         #expect(totals.first { $0.group == "app" }?.value == 15)
         #expect(totals.first { $0.group == "book" }?.value == 2)
         #expect(database.records.filter { $0.recordType == "Vector" }.count == 2)
@@ -391,7 +407,7 @@ struct AggregatesTests {
         #expect(try await store.query("sale").limit(1).count() == 1)
 
         let vector = try #require(
-            database.records.first { $0.recordType == "Vector" && $0[VectorSlot.Key.group] as? String == "book" }
+            database.vector("sale", "by_product", group: "book", week: Date().weekStart)
         )
         vector.reset(cellsTo: 41)
         #expect(try await store.query("sale").count() == 43)
@@ -431,18 +447,12 @@ struct AggregatesTests {
             [EntityWrite(values: ["kind": .string("c"), "price": .double(4)], uuid: nil)], entity: "ticket")
 
         let counted = try #require(
-            database.records.first {
-                $0[VectorSlot.Key.aggregate] as? String == "by_kind"
-                    && $0[VectorSlot.Key.group] as? String == "b"
-            }
+            database.vector("ticket", "by_kind", group: "b", week: Date().weekStart)
         )
         counted.reset(cellsTo: 41)
 
         let summed = try #require(
-            database.records.first {
-                $0[VectorSlot.Key.aggregate] as? String == "sum_price_by_kind"
-                    && $0[VectorSlot.Key.group] as? String == "b"
-            }
+            database.vector("ticket", "sum_price_by_kind", group: "b", week: Date().weekStart)
         )
         summed.reset(cellsTo: 100)
 
@@ -487,7 +497,7 @@ struct AggregatesTests {
         }
 
         let vector = try #require(
-            database.records.first { $0.recordType == "Vector" && $0[VectorSlot.Key.group] as? String == "i16" }
+            database.vector("crate", "by_units", group: "i16", week: Date().weekStart)
         )
         vector.reset(cellsTo: 41)
 
@@ -558,17 +568,12 @@ struct AggregatesTests {
 
     private func tamperBookSlots() throws {
         let counted = try #require(
-            database.records.first {
-                $0[VectorSlot.Key.aggregate] as? String == "by_product" && $0[VectorSlot.Key.group] as? String == "book"
-            }
+            database.vector("ledger", "by_product", group: "book", week: Date().weekStart)
         )
         counted.reset(cellsTo: 3)
 
         let summed = try #require(
-            database.records.first {
-                $0[VectorSlot.Key.aggregate] as? String == "sum_amount_by_product"
-                    && $0[VectorSlot.Key.group] as? String == "book"
-            }
+            database.vector("ledger", "sum_amount_by_product", group: "book", week: Date().weekStart)
         )
         summed.reset(cellsTo: 40)
     }
@@ -616,10 +621,7 @@ struct AggregatesTests {
 
         for aggregate in ["max_amount_by_product", "min_amount_by_product"] {
             let vector = try #require(
-                database.records.first {
-                    $0.recordType == "Vector" && $0[VectorSlot.Key.aggregate] as? String == aggregate
-                        && $0[VectorSlot.Key.group] as? String == "book"
-                }
+                database.vector("reading", aggregate, group: "book", week: Date().weekStart)
             )
             vector.reset(cellsTo: aggregate == "max_amount_by_product" ? 41 : 1)
         }
@@ -658,24 +660,22 @@ struct AggregatesTests {
         }
     }
 
-    @Test("A fold over one group asks the server for that group's rows only")
+    @Test("A fold over one group reaches for that group's vectors only")
     func groupScopedVectorQuery() async throws {
         try await publishLedger()
-        let watched = VectorQueries(backing: database)
+        let watched = VectorFetches(backing: database)
         let reader = EntityStore(database: watched, registry: registry)
-        #expect(database.records.filter { $0.recordType == "Vector" }.count == 4)
+        #expect(database.vectors.count == 4)
 
         let scoped = try await reader.query("ledger").filter("product", .equals, "book").sum("amount")
         #expect(scoped == 4)
-        let grouped = try #require(watched.vectors.last)
-        #expect(grouped.query.predicate.predicateFormat.contains("\(VectorSlot.Key.group) == \"book\""))
-        #expect(grouped.matched == 1)
+        #expect(watched.fetched(of: "ledger", aggregate: "sum_amount_by_product") == ["book"])
+
+        watched.forget()
 
         let whole = try await reader.query("ledger").sum("amount")
         #expect(whole == 20)
-        let ungrouped = try #require(watched.vectors.last)
-        #expect(ungrouped.query.predicate.predicateFormat.contains("group_key") == false)
-        #expect(ungrouped.matched == 2)
+        #expect(watched.fetched(of: "ledger", aggregate: "sum_amount_by_product").sorted() == ["app", "book"])
     }
 
     @Test("A fold with no covering aggregate names what is missing")
@@ -709,23 +709,36 @@ struct AggregatesTests {
     }
 }
 
-private final class VectorQueries: CloudDatabase, @unchecked Sendable {
+private final class VectorFetches: CloudDatabase, @unchecked Sendable {
     private let backing: InMemoryDatabase
     private let lock = NSLock()
-    private var log: [(query: CKQuery, matched: Int)] = []
+    private var log: [CKRecord.ID] = []
 
     init(backing: InMemoryDatabase) {
         self.backing = backing
     }
 
-    var vectors: [(query: CKQuery, matched: Int)] {
-        lock.withLock { log.filter { $0.query.recordType == VectorSlot.recordType } }
+    func fetched(of entity: String, aggregate: String, week: Date = Date()) -> [String] {
+        let asked = Set(lock.withLock { log })
+
+        return ["app", "book", "toy"].filter { group in
+            let slot = VectorSlot(
+                entity: entity,
+                aggregate: aggregate,
+                group: group,
+                shard: nil,
+                week: week.weekStart
+            )
+            return asked.contains(slot.recordID)
+        }
+    }
+
+    func forget() {
+        lock.withLock { log.removeAll() }
     }
 
     func records(matching query: CKQuery, resultsLimit: Int) async throws -> QueryPage {
-        let response = try await backing.records(matching: query, resultsLimit: resultsLimit)
-        lock.withLock { log.append((query, response.matchResults.count)) }
-        return response
+        try await backing.records(matching: query, resultsLimit: resultsLimit)
     }
 
     func records(continuingMatchFrom cursor: QueryCursor, resultsLimit: Int) async throws -> QueryPage {
@@ -745,6 +758,7 @@ private final class VectorQueries: CloudDatabase, @unchecked Sendable {
     }
 
     func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
-        try await backing.fetchRecords(ids: ids)
+        lock.withLock { log.append(contentsOf: ids) }
+        return try await backing.fetchRecords(ids: ids)
     }
 }
