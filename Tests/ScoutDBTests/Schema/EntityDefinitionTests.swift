@@ -128,9 +128,9 @@ struct EntityDefinitionTests {
                 FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
             ],
-            aggregates: [AggregateDefinition(name: "total", measure: .sum("name"))]
+            aggregates: [AggregateDefinition(measure: .sum("name"))]
         )
-        #expect(throws: SchemaError.invalidDefinition(.nonNumericMetric(aggregate: "total", field: "name"))) {
+        #expect(throws: SchemaError.invalidDefinition(.nonNumericMetric(aggregate: "sum_name", field: "name"))) {
             try definition.validate()
         }
     }
@@ -139,9 +139,9 @@ struct EntityDefinitionTests {
     func unknownDate() {
         let definition = makeDefinition(
             fields: [FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))],
-            aggregates: [AggregateDefinition(name: "by_all", date: "seen")]
+            aggregates: [AggregateDefinition(date: "seen")]
         )
-        #expect(throws: SchemaError.invalidDefinition(.unknownDate(aggregate: "by_all", field: "seen"))) {
+        #expect(throws: SchemaError.invalidDefinition(.unknownDate(aggregate: "at_seen", field: "seen"))) {
             try definition.validate()
         }
     }
@@ -150,9 +150,9 @@ struct EntityDefinitionTests {
     func nonTemporalDate() {
         let definition = makeDefinition(
             fields: [FieldDefinition(name: "seen", type: .string, storage: .slot(.string, "s_00"))],
-            aggregates: [AggregateDefinition(name: "by_all", date: "seen")]
+            aggregates: [AggregateDefinition(date: "seen")]
         )
-        #expect(throws: SchemaError.invalidDefinition(.nonTemporalDate(aggregate: "by_all", field: "seen"))) {
+        #expect(throws: SchemaError.invalidDefinition(.nonTemporalDate(aggregate: "at_seen", field: "seen"))) {
             try definition.validate()
         }
     }

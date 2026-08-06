@@ -9,7 +9,6 @@
 import Foundation
 
 struct AggregateDefinition: Equatable, Sendable {
-    let name: String
     var groupBy: String?
     var measure: Measure?
     var shards: Int?
@@ -20,6 +19,26 @@ struct AggregateDefinition: Equatable, Sendable {
         case min(String)
         case max(String)
         case histogram(Histogram)
+    }
+
+    var name: String {
+        let parts =
+            if let histogram {
+                [
+                    "histogram_\(histogram.field)", date.map { "at_\($0)" },
+                ]
+            } else {
+                [
+                    metricKind?.label,
+                    metricField,
+                    groupBy.map { "by_\($0)" },
+                    date.map { "at_\($0)" },
+                ]
+            }
+
+        let joined = parts.compactMap(\.self)
+
+        return joined.isEmpty ? "by_all" : joined.joined(separator: "_")
     }
 
     var metricKind: Metric? {
@@ -70,14 +89,6 @@ extension AggregateDefinition {
         metric: Metric? = nil, of field: String? = nil, by group: String? = nil, at date: String? = nil,
         shards: Int? = nil
     ) {
-        let parts = [
-            metric?.label,
-            field,
-            group.map { "by_\($0)" },
-            date.map { "at_\($0)" },
-        ]
-        .compactMap(\.self)
-
         let measure: Measure? =
             switch (metric?.storage, field) {
             case (.sum, let field?):
@@ -90,20 +101,6 @@ extension AggregateDefinition {
                 nil
             }
 
-        self.init(
-            name: parts.isEmpty ? "by_all" : parts.joined(separator: "_"),
-            groupBy: group,
-            measure: measure,
-            shards: shards,
-            date: date
-        )
-    }
-
-    init(histogramOf field: String, bounds: [Double], at date: String? = nil) {
-        self.init(
-            name: ["histogram_\(field)", date.map { "at_\($0)" }].compactMap(\.self).joined(separator: "_"),
-            measure: .histogram(Histogram(field: field, bounds: bounds)),
-            date: date
-        )
+        self.init(groupBy: group, measure: measure, shards: shards, date: date)
     }
 }

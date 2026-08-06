@@ -169,8 +169,8 @@ struct StoreContractTests {
         try await withContract { f in
             let entity = try await f.publishOrder(
                 aggregates: [
-                    AggregateDefinition(name: "revenue", measure: .sum("total")),
-                    AggregateDefinition(name: "peak", measure: .max("total")),
+                    AggregateDefinition(measure: .sum("total")),
+                    AggregateDefinition(measure: .max("total")),
                 ]
             )
             for (index, total) in [2.5, 7.5, 10.0].enumerated() {
@@ -188,7 +188,7 @@ struct StoreContractTests {
     func countsByGroup() async throws {
         try await withContract { f in
             let entity = try await f.publishOrder(
-                aggregates: [AggregateDefinition(name: "by_product", groupBy: "product")]
+                aggregates: [AggregateDefinition(groupBy: "product")]
             )
             for (index, product) in ["a", "a", "b"].enumerated() {
                 try await f.store.write(
@@ -206,13 +206,13 @@ struct StoreContractTests {
     func aggregateViewTotals() async throws {
         try await withContract { f in
             let entity = try await f.publishOrder(aggregates: [
-                AggregateDefinition(name: "revenue", measure: .sum("total"))
+                AggregateDefinition(measure: .sum("total"))
             ])
             try await f.store.write([EntityWrite(values: orderValues(total: 2), uuid: "v-1")], entity: entity)
             try await f.store.write([EntityWrite(values: orderValues(total: 3), uuid: "v-2")], entity: entity)
 
             try await eventually {
-                let totals = try await TotalOperation(store: f.store, entity: entity).rows(aggregate: "revenue")
+                let totals = try await TotalOperation(store: f.store, entity: entity).rows(aggregate: "sum_total")
                 return totals.first?.value == 5
             }
         }
