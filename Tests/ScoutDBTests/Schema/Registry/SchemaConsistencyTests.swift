@@ -58,7 +58,8 @@ struct SchemaConsistencyTests {
     @Test("Vector cells match the aggregator addressing")
     func vectorCells() {
         let cells = Self.fields(of: "Vector").filter { $0.name.hasPrefix("c_") }
-        #expect(cells.map(\.name) == VectorSlot.cellKeys)
+        #expect(cells.map(\.name) == (0..<256).map { String(format: "c_%03d", $0) })
+        #expect(cells.map(\.name).starts(with: VectorSlot.cellKeys))
         #expect(cells.allSatisfy { $0.spec == "DOUBLE QUERYABLE SORTABLE" })
 
         let named = Self.fields(of: "Vector").filter { !$0.name.hasPrefix("c_") && !$0.name.hasPrefix("\"___") }
