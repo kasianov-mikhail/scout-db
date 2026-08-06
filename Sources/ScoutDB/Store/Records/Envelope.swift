@@ -16,8 +16,11 @@ import Foundation
 ///
 enum Envelope {
     static let entity = "s_00"
-    static let uuid = "s_01"
     static let version = "i_00"
+
+    /// The record's own name, which is the uuid the store writes it under, so
+    /// no slot holds a second copy of it.
+    static let uuid = "___recordID"
 }
 
 extension FieldType {
@@ -26,7 +29,7 @@ extension FieldType {
     var reserved: Int {
         switch self {
         case .string:
-            2
+            1
         case .int:
             1
         default:

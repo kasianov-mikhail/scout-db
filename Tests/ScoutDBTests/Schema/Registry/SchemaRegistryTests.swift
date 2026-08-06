@@ -33,8 +33,8 @@ struct SchemaRegistryTests {
 
         #expect(record.recordType == "Entity")
         #expect(record[Envelope.entity] as? String == SchemaDescriptorEntry.namespace)
-        #expect(record["s_02"] as? String == "purchase")
-        #expect(record["s_03"] as? String == "active")
+        #expect(record["s_01"] as? String == "purchase")
+        #expect(record["s_02"] as? String == "active")
         #expect(record[Envelope.version] as? Int64 == 1)
         #expect(record["b_00"] is Data)
     }

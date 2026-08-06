@@ -47,9 +47,12 @@ struct SchemaConsistencyTests {
     @Test("Entity carries the envelope the coder stamps")
     func itemEnvelope() {
         let names = Set(Self.fields(of: "Entity").map(\.name))
-        for field in [Envelope.entity, Envelope.uuid, Envelope.version, "payload"] {
+        for field in [Envelope.entity, Envelope.version, "payload"] {
             #expect(names.contains(field), "Entity is missing '\(field)'")
         }
+
+        let recordID = Self.fields(of: "Entity").first { $0.name == "\"\(Envelope.uuid)\"" }
+        #expect(recordID?.spec == "REFERENCE QUERYABLE SORTABLE", "A page breaks its ties on the record name")
     }
 
     @Test("Vector cells match the aggregator addressing")
@@ -72,8 +75,8 @@ struct SchemaConsistencyTests {
             Self.fields(of: "Entity").map { ($0.name, $0.spec) },
             uniquingKeysWith: { first, _ in first }
         )
+        #expect(fields["s_01"] == "STRING QUERYABLE SORTABLE")
         #expect(fields["s_02"] == "STRING QUERYABLE SORTABLE")
-        #expect(fields["s_03"] == "STRING QUERYABLE SORTABLE")
         #expect(fields["b_00"] == "BYTES QUERYABLE")
         #expect(fields[Envelope.version] == "INT64 QUERYABLE SORTABLE")
     }

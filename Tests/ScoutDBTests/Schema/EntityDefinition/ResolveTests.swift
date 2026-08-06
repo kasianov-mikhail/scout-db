@@ -40,7 +40,7 @@ struct ResolveTests {
                 FieldDefinition(
                     name: "level",
                     type: .string,
-                    storage: .slot(.string, "s_02"),
+                    storage: .slot(.string, "s_01"),
                     defaultValue: .string("info")
                 )
             ]
@@ -54,7 +54,7 @@ struct ResolveTests {
         let definition = makeDefinition(
             entity: "log",
             fields: [
-                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_02"), required: true)
+                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_01"), required: true)
             ]
         )
         #expect(throws: SchemaError.missingField("name")) {
@@ -70,7 +70,7 @@ struct ResolveTests {
                 FieldDefinition(
                     name: "level",
                     type: .string,
-                    storage: .slot(.string, "s_02"),
+                    storage: .slot(.string, "s_01"),
                     allowed: ["info", "error"]
                 )
             ]

@@ -105,7 +105,7 @@ struct MigratorTests {
         var definition = makeDefinition(
             entity: "sale",
             fields: [
-                FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_02")),
+                FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_01")),
                 FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
             ],
             aggregates: [AggregateDefinition()]
@@ -147,8 +147,8 @@ func makeRenameDefinition(version: Int) -> EntityDefinition {
         entity: "profile",
         version: version,
         fields: [
-            FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_02"), until: 2),
-            FieldDefinition(name: "user_id", type: .string, storage: .slot(.string, "s_02"), since: 2),
+            FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_01"), until: 2),
+            FieldDefinition(name: "user_id", type: .string, storage: .slot(.string, "s_01"), since: 2),
         ]
     )
 }
@@ -158,8 +158,8 @@ func makeReslotDefinition(version: Int) -> EntityDefinition {
         entity: "member",
         version: version,
         fields: [
-            FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_02"), until: 2),
-            FieldDefinition(name: "handle", type: .string, storage: .slot(.string, "s_03"), since: 2),
+            FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_01"), until: 2),
+            FieldDefinition(name: "handle", type: .string, storage: .slot(.string, "s_02"), since: 2),
         ]
     )
 }

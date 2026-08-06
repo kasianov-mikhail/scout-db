@@ -29,7 +29,7 @@ struct AggregatesTests {
             makeDefinition(
                 entity: "payment",
                 fields: [
-                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_02")),
+                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_01")),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"), required: required),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
@@ -56,7 +56,7 @@ struct AggregatesTests {
             makeDefinition(
                 entity: "visit",
                 fields: [
-                    FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_02")),
+                    FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_01")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
                 aggregates: [AggregateDefinition()]
@@ -79,7 +79,7 @@ struct AggregatesTests {
             makeDefinition(
                 entity: "meter",
                 fields: [
-                    FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_02")),
+                    FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_01")),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
@@ -127,7 +127,7 @@ struct AggregatesTests {
 
         let invalid = makeDefinition(
             entity: "e",
-            fields: [FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_02"))],
+            fields: [FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_01"))],
             aggregates: [AggregateDefinition(shards: 1)]
         )
         #expect(throws: SchemaError.invalidDefinition(.invalidShards(aggregate: "by_all"))) { try invalid.validate() }
@@ -139,7 +139,7 @@ struct AggregatesTests {
             makeDefinition(
                 entity: "meter",
                 fields: [
-                    FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_02")),
+                    FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_01")),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
@@ -347,7 +347,7 @@ struct AggregatesTests {
             makeDefinition(
                 entity: "sale",
                 fields: [
-                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_02")),
+                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_01")),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                 ],
                 aggregates: [AggregateDefinition(groupBy: "product", measure: .sum("amount"))]
@@ -373,7 +373,7 @@ struct AggregatesTests {
             makeDefinition(
                 entity: "sale",
                 fields: [
-                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_02")),
+                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_01")),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                 ],
                 aggregates: [AggregateDefinition(groupBy: "product")]
@@ -412,7 +412,7 @@ struct AggregatesTests {
             makeDefinition(
                 entity: "ticket",
                 fields: [
-                    FieldDefinition(name: "kind", type: .string, storage: .slot(.string, "s_02"), required: true),
+                    FieldDefinition(name: "kind", type: .string, storage: .slot(.string, "s_01"), required: true),
                     FieldDefinition(name: "price", type: .double, storage: .slot(.double, "d_00")),
                 ],
                 aggregates: [
@@ -538,7 +538,7 @@ struct AggregatesTests {
                     FieldDefinition(
                         name: "product",
                         type: .string,
-                        storage: .slot(.string, "s_02"),
+                        storage: .slot(.string, "s_01"),
                         required: required
                     ),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"), required: required),
@@ -599,7 +599,7 @@ struct AggregatesTests {
             makeDefinition(
                 entity: "reading",
                 fields: [
-                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_02"), required: true),
+                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_01"), required: true),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"), required: true),
                 ],
                 aggregates: [
@@ -668,7 +668,7 @@ struct AggregatesTests {
         let scoped = try await reader.query("ledger").filter("product", .equals, "book").sum("amount")
         #expect(scoped == 4)
         let grouped = try #require(watched.vectors.last)
-        #expect(grouped.query.predicate.predicateFormat.contains("s_02 == \"book\""))
+        #expect(grouped.query.predicate.predicateFormat.contains("\(VectorSlot.Key.group) == \"book\""))
         #expect(grouped.matched == 1)
 
         let whole = try await reader.query("ledger").sum("amount")
@@ -684,7 +684,7 @@ struct AggregatesTests {
             makeDefinition(
                 entity: "fee",
                 fields: [
-                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_02"), required: true),
+                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_01"), required: true),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"), required: true),
                     FieldDefinition(name: "tax", type: .double, storage: .slot(.double, "d_01"), required: true),
                 ],
