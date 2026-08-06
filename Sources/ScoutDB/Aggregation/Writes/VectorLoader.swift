@@ -8,24 +8,24 @@
 import CloudKit
 import Foundation
 
-struct VectorLoader {
+struct VectorLoader<Holder: Vector> {
     let database: any CloudDatabase
     let slots: VectorCache
 
     struct Pending {
         var record: CKRecord
-        let delta: VectorDelta
+        let delta: VectorDelta<Holder>
     }
 
     struct Opened {
         let pending: [CKRecord.ID: Pending]
 
-        let cold: [VectorSlot]
+        let cold: [VectorSlot<Holder>]
     }
 
-    func open(_ deltas: [VectorSlot: VectorDelta]) async throws -> Opened {
+    func open(_ deltas: [VectorSlot<Holder>: VectorDelta<Holder>]) async throws -> Opened {
         var pending: [CKRecord.ID: Pending] = [:]
-        var cold: [(id: CKRecord.ID, slot: VectorSlot, delta: VectorDelta)] = []
+        var cold: [(id: CKRecord.ID, slot: VectorSlot<Holder>, delta: VectorDelta<Holder>)] = []
 
         for (slot, delta) in deltas {
             let id = slot.recordID
@@ -49,7 +49,7 @@ struct VectorLoader {
         }
 
         for (id, _, delta) in cold {
-            let record = served[id] ?? CKRecord(recordType: VectorSlot.recordType, recordID: id)
+            let record = served[id] ?? CKRecord(recordType: Holder.recordType, recordID: id)
             pending[id] = Pending(record: record, delta: delta)
         }
 

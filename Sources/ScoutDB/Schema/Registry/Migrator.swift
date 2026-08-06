@@ -87,7 +87,7 @@ public struct Migrator: Sendable {
             throw SchemaError.unknownField(name)
         }
 
-        let reader = VectorReader(database: database, entity: entity, aggregate: aggregate)
+        let reader = VectorReader<DoubleVector>(database: database, entity: entity, aggregate: aggregate)
         let stale = try await reader.rows(groups: nil).map(\.record.recordID) + reader.indexIDs()
 
         for chunk in stale.chunked(into: batchSize) {

@@ -31,7 +31,7 @@ struct VectorAggregator {
             return
         }
 
-        let opened = try await VectorLoader(
+        let opened = try await VectorLoader<DoubleVector>(
             database: database,
             slots: slots
         )
@@ -46,7 +46,7 @@ struct VectorAggregator {
                 entry.delta.apply(to: entry.record)
             }
 
-            var retry: [CKRecord.ID: VectorLoader.Pending] = [:]
+            var retry: [CKRecord.ID: VectorLoader<DoubleVector>.Pending] = [:]
 
             for chunk in Array(pending.values).chunked(into: maxBatchSize) {
                 for (id, result) in try await database.saveIfUnchanged(chunk.map(\.record)) {
@@ -60,7 +60,7 @@ struct VectorAggregator {
                         await slots.keep(conflict.serverRecord)
 
                         if let delta = pending[id]?.delta {
-                            retry[id] = VectorLoader.Pending(
+                            retry[id] = VectorLoader<DoubleVector>.Pending(
                                 record: conflict.serverRecord,
                                 delta: delta
                             )

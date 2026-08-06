@@ -31,7 +31,9 @@ struct AggregateDeltasTests {
         return EntityRecord(entity: "payment", uuid: uuid, schemaVersion: 2, values: values)
     }
 
-    private func slot(_ aggregate: String, group: String = "", shard: Int? = nil, week: Date? = nil) -> VectorSlot {
+    private func slot(_ aggregate: String, group: String = "", shard: Int? = nil, week: Date? = nil) -> VectorSlot<
+        DoubleVector
+    > {
         VectorSlot(
             entity: "payment",
             aggregate: aggregate,

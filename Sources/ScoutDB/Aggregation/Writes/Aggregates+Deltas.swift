@@ -8,15 +8,20 @@
 import Foundation
 
 extension [AggregateDefinition] {
-    func deltas(removing old: [EntityRecord], adding new: [EntityRecord], at now: Date) -> [VectorSlot: VectorDelta] {
-        var merged: [VectorSlot: VectorDelta] = [:]
+    func deltas(removing old: [EntityRecord], adding new: [EntityRecord], at now: Date) -> [VectorSlot<DoubleVector>:
+        VectorDelta<DoubleVector>]
+    {
+        var merged: [VectorSlot<DoubleVector>: VectorDelta<DoubleVector>] = [:]
 
         for (batch, adding) in [(old, false), (new, true)] {
             for entityRecord in batch {
                 for aggregate in self {
                     let stamp = aggregate.stamp(of: entityRecord, at: now)
 
-                    guard let slot = VectorSlot(for: entityRecord, aggregate: aggregate, week: stamp.weekStart) else {
+                    guard
+                        let slot = VectorSlot<DoubleVector>(
+                            for: entityRecord, aggregate: aggregate, week: stamp.weekStart)
+                    else {
                         continue
                     }
                     guard let one = aggregate.delta(for: entityRecord, at: stamp.hourOfWeek) else {
@@ -43,7 +48,7 @@ extension AggregateDefinition {
         return value
     }
 
-    fileprivate func delta(for entityRecord: EntityRecord, at hour: Int) -> VectorDelta? {
+    fileprivate func delta(for entityRecord: EntityRecord, at hour: Int) -> VectorDelta<DoubleVector>? {
         guard let field = measure?.field else {
             return VectorDelta(kind: fold, cells: [hour: 1])
         }
