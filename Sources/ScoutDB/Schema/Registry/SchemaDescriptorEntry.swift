@@ -21,7 +21,7 @@ struct SchemaDescriptorEntry {
     let definition: Data
 
     init(record: CKRecord) throws {
-        guard let entity = record[Slot.entity] as? String, let version = record["schema_version"] as? Int64 else {
+        guard let entity = record[Slot.entity] as? String, let version = record[Envelope.version] as? Int64 else {
             throw SchemaError.malformedRecord(record.recordID.recordName)
         }
         guard let definition = record[Slot.definition] as? Data else {
@@ -33,8 +33,8 @@ struct SchemaDescriptorEntry {
     }
 
     fileprivate enum Slot {
-        static let entity = "s_00"
-        static let status = "s_01"
+        static let entity = "s_02"
+        static let status = "s_03"
         static let definition = "b_00"
     }
 }
@@ -44,7 +44,7 @@ extension SchemaDescriptorEntry {
         CKQuery(
             recordType: recordType,
             filters: [
-                CKQuery.Filter(field: "entity", op: .equals, value: .string(namespace)),
+                CKQuery.Filter(field: Envelope.entity, op: .equals, value: .string(namespace)),
                 CKQuery.Filter(field: Slot.entity, op: .equals, value: .string(entity)),
                 CKQuery.Filter(field: Slot.status, op: .equals, value: .string("active")),
             ]
@@ -56,8 +56,9 @@ extension SchemaDescriptorEntry {
             recordType: recordType,
             recordID: CKRecord.ID(recordName: "\(definition.entity)@\(definition.version)")
         )
-        record["entity"] = namespace
-        record["schema_version"] = Int64(definition.version)
+        record[Envelope.entity] = namespace
+        record[Envelope.uuid] = record.recordID.recordName
+        record[Envelope.version] = Int64(definition.version)
         record[Slot.entity] = definition.entity
         record[Slot.status] = "active"
         record[Slot.definition] = try JSONEncoder().encode(definition)

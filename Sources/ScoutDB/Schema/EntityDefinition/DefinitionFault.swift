@@ -14,6 +14,7 @@ public enum DefinitionFault: Equatable, Sendable {
     case slotTypeMismatch(field: String, type: FieldType, pool: FieldType)
     case slotOutsidePool(String, pool: FieldType)
     case slotBeyondCapacity(String, pool: FieldType)
+    case reservedSlot(String, pool: FieldType)
     case sharedSlot(String, String, slot: String)
     case exhaustedPool(FieldType)
 
@@ -43,6 +44,8 @@ extension DefinitionFault: CustomStringConvertible {
             "Slot '\(slot)' does not belong to the '\(pool.rawValue)' pool"
         case .slotBeyondCapacity(let slot, let pool):
             "Slot '\(slot)' is beyond the '\(pool.rawValue)' pool capacity of \(pool.capacity)"
+        case .reservedSlot(let slot, let pool):
+            "Slot '\(slot)' is one of the \(pool.reserved) the record's envelope keeps"
         case .sharedSlot(let lhs, let rhs, let slot):
             "Fields '\(lhs)' and '\(rhs)' share slot '\(slot)'"
         case .exhaustedPool(let pool):

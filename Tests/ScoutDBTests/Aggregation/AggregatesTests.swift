@@ -29,7 +29,7 @@ struct AggregatesTests {
             makeDefinition(
                 entity: "payment",
                 fields: [
-                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_02")),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"), required: required),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
@@ -56,7 +56,7 @@ struct AggregatesTests {
             makeDefinition(
                 entity: "visit",
                 fields: [
-                    FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_02")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
                 aggregates: [AggregateDefinition()]
@@ -79,7 +79,7 @@ struct AggregatesTests {
             makeDefinition(
                 entity: "meter",
                 fields: [
-                    FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_02")),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
@@ -115,7 +115,7 @@ struct AggregatesTests {
                         uuid: "p-\(index)")
                 ], entity: "payment")
         }
-        let cells = database.records.filter { $0["aggregate"] as? String == "sum_amount" }
+        let cells = database.records.filter { $0[VectorSlot.Key.aggregate] as? String == "sum_amount" }
         #expect(cells.count > 1)
         #expect(cells.count <= 3)
 
@@ -127,7 +127,7 @@ struct AggregatesTests {
 
         let invalid = makeDefinition(
             entity: "e",
-            fields: [FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00"))],
+            fields: [FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_02"))],
             aggregates: [AggregateDefinition(shards: 1)]
         )
         #expect(throws: SchemaError.invalidDefinition(.invalidShards(aggregate: "by_all"))) { try invalid.validate() }
@@ -139,7 +139,7 @@ struct AggregatesTests {
             makeDefinition(
                 entity: "meter",
                 fields: [
-                    FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_02")),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
@@ -221,7 +221,7 @@ struct AggregatesTests {
         try await writePayment(3, at: noon.addingTimeInterval(3_600))
         try await writePayment(10, at: noon.addingTimeInterval(7 * 86_400))
 
-        #expect(database.records.filter { $0["aggregate"] as? String == "at_date" }.count == 2)
+        #expect(database.records.filter { $0[VectorSlot.Key.aggregate] as? String == "at_date" }.count == 2)
         #expect(try await store.query("payment").count() == 3)
         #expect(try await store.query("payment").sum("amount") == 15)
     }
@@ -239,10 +239,10 @@ struct AggregatesTests {
         try await writePayment(10, at: noon, uuid: "p-1")
         try await writePayment(10, at: moved, uuid: "p-1")
 
-        let counted = database.records.filter { $0["aggregate"] as? String == "at_date" }
+        let counted = database.records.filter { $0[VectorSlot.Key.aggregate] as? String == "at_date" }
         #expect(counted.count == 2)
-        #expect(counted.first { $0["date"] as? Date == noon.weekStart }?.cells() == 0)
-        #expect(counted.first { $0["date"] as? Date == moved.weekStart }?[cell: moved.hourOfWeek] == 1)
+        #expect(counted.first { $0[VectorSlot.Key.week] as? Date == noon.weekStart }?.cells() == 0)
+        #expect(counted.first { $0[VectorSlot.Key.week] as? Date == moved.weekStart }?[cell: moved.hourOfWeek] == 1)
 
         #expect(try await store.query("payment").count() == 1)
         #expect(try await store.query("payment").sum("amount") == 10)
@@ -347,7 +347,7 @@ struct AggregatesTests {
             makeDefinition(
                 entity: "sale",
                 fields: [
-                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_02")),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                 ],
                 aggregates: [AggregateDefinition(groupBy: "product", measure: .sum("amount"))]
@@ -373,7 +373,7 @@ struct AggregatesTests {
             makeDefinition(
                 entity: "sale",
                 fields: [
-                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_02")),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                 ],
                 aggregates: [AggregateDefinition(groupBy: "product")]
@@ -391,7 +391,7 @@ struct AggregatesTests {
         #expect(try await store.query("sale").limit(1).count() == 1)
 
         let vector = try #require(
-            database.records.first { $0.recordType == "Vector" && $0["group_key"] as? String == "book" }
+            database.records.first { $0.recordType == "Vector" && $0[VectorSlot.Key.group] as? String == "book" }
         )
         vector.reset(cellsTo: 41)
         #expect(try await store.query("sale").count() == 43)
@@ -412,7 +412,7 @@ struct AggregatesTests {
             makeDefinition(
                 entity: "ticket",
                 fields: [
-                    FieldDefinition(name: "kind", type: .string, storage: .slot(.string, "s_00"), required: true),
+                    FieldDefinition(name: "kind", type: .string, storage: .slot(.string, "s_02"), required: true),
                     FieldDefinition(name: "price", type: .double, storage: .slot(.double, "d_00")),
                 ],
                 aggregates: [
@@ -431,13 +431,17 @@ struct AggregatesTests {
             [EntityWrite(values: ["kind": .string("c"), "price": .double(4)], uuid: nil)], entity: "ticket")
 
         let counted = try #require(
-            database.records.first { $0["aggregate"] as? String == "by_kind" && $0["group_key"] as? String == "b" }
+            database.records.first {
+                $0[VectorSlot.Key.aggregate] as? String == "by_kind"
+                    && $0[VectorSlot.Key.group] as? String == "b"
+            }
         )
         counted.reset(cellsTo: 41)
 
         let summed = try #require(
             database.records.first {
-                $0["aggregate"] as? String == "sum_price_by_kind" && $0["group_key"] as? String == "b"
+                $0[VectorSlot.Key.aggregate] as? String == "sum_price_by_kind"
+                    && $0[VectorSlot.Key.group] as? String == "b"
             }
         )
         summed.reset(cellsTo: 100)
@@ -467,12 +471,12 @@ struct AggregatesTests {
                     FieldDefinition(
                         name: "units",
                         type: .int,
-                        storage: .slot(.int, "i_00"),
+                        storage: .slot(.int, "i_01"),
                         required: true,
                         min: 1,
                         max: 20
                     ),
-                    FieldDefinition(name: "weight", type: .int, storage: .slot(.int, "i_01"), required: true),
+                    FieldDefinition(name: "weight", type: .int, storage: .slot(.int, "i_02"), required: true),
                 ],
                 aggregates: [AggregateDefinition(groupBy: "units")]
             )
@@ -483,7 +487,7 @@ struct AggregatesTests {
         }
 
         let vector = try #require(
-            database.records.first { $0.recordType == "Vector" && $0["group_key"] as? String == "i16" }
+            database.records.first { $0.recordType == "Vector" && $0[VectorSlot.Key.group] as? String == "i16" }
         )
         vector.reset(cellsTo: 41)
 
@@ -534,7 +538,7 @@ struct AggregatesTests {
                     FieldDefinition(
                         name: "product",
                         type: .string,
-                        storage: .slot(.string, "s_00"),
+                        storage: .slot(.string, "s_02"),
                         required: required
                     ),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"), required: required),
@@ -555,14 +559,15 @@ struct AggregatesTests {
     private func tamperBookSlots() throws {
         let counted = try #require(
             database.records.first {
-                $0["aggregate"] as? String == "by_product" && $0["group_key"] as? String == "book"
+                $0[VectorSlot.Key.aggregate] as? String == "by_product" && $0[VectorSlot.Key.group] as? String == "book"
             }
         )
         counted.reset(cellsTo: 3)
 
         let summed = try #require(
             database.records.first {
-                $0["aggregate"] as? String == "sum_amount_by_product" && $0["group_key"] as? String == "book"
+                $0[VectorSlot.Key.aggregate] as? String == "sum_amount_by_product"
+                    && $0[VectorSlot.Key.group] as? String == "book"
             }
         )
         summed.reset(cellsTo: 40)
@@ -594,7 +599,7 @@ struct AggregatesTests {
             makeDefinition(
                 entity: "reading",
                 fields: [
-                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00"), required: true),
+                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_02"), required: true),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"), required: true),
                 ],
                 aggregates: [
@@ -612,8 +617,8 @@ struct AggregatesTests {
         for aggregate in ["max_amount_by_product", "min_amount_by_product"] {
             let vector = try #require(
                 database.records.first {
-                    $0.recordType == "Vector" && $0["aggregate"] as? String == aggregate
-                        && $0["group_key"] as? String == "book"
+                    $0.recordType == "Vector" && $0[VectorSlot.Key.aggregate] as? String == aggregate
+                        && $0[VectorSlot.Key.group] as? String == "book"
                 }
             )
             vector.reset(cellsTo: aggregate == "max_amount_by_product" ? 41 : 1)
@@ -663,7 +668,7 @@ struct AggregatesTests {
         let scoped = try await reader.query("ledger").filter("product", .equals, "book").sum("amount")
         #expect(scoped == 4)
         let grouped = try #require(watched.vectors.last)
-        #expect(grouped.query.predicate.predicateFormat.contains("group_key == \"book\""))
+        #expect(grouped.query.predicate.predicateFormat.contains("s_02 == \"book\""))
         #expect(grouped.matched == 1)
 
         let whole = try await reader.query("ledger").sum("amount")
@@ -679,7 +684,7 @@ struct AggregatesTests {
             makeDefinition(
                 entity: "fee",
                 fields: [
-                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_00"), required: true),
+                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_02"), required: true),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"), required: true),
                     FieldDefinition(name: "tax", type: .double, storage: .slot(.double, "d_01"), required: true),
                 ],

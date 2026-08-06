@@ -12,7 +12,7 @@ extension [CKRecord] {
         var rows: [String: Double] = [:]
 
         for record in self {
-            guard let key = record["group_key"] as? String, include(key) else {
+            guard let key = record[VectorSlot.Key.group] as? String, include(key) else {
                 continue
             }
             guard let value = kind.fold(record.cells) else {

@@ -19,7 +19,7 @@ struct InMemoryCASTests {
 
     private func makeRecord() -> CKRecord {
         let record = CKRecord(recordType: "Thing", recordID: id)
-        record["s_00"] = "base"
+        record["s_02"] = "base"
         return record
     }
 
@@ -37,16 +37,16 @@ struct InMemoryCASTests {
         let fresh = try #require(try await database.fetchRecord(id: id))
         let stale = try #require(try await database.fetchRecord(id: id))
 
-        fresh["s_00"] = "winner"
+        fresh["s_02"] = "winner"
         _ = try await save(fresh).get()
 
-        stale["s_00"] = "loser"
+        stale["s_02"] = "loser"
         guard case .failure(let error) = try await save(stale) else {
             Issue.record("Expected the stale record to conflict")
             return
         }
-        #expect((error as? RecordConflictError)?.serverRecord["s_00"] == "winner")
-        #expect(database.records.first?["s_00"] == "winner")
+        #expect((error as? RecordConflictError)?.serverRecord["s_02"] == "winner")
+        #expect(database.records.first?["s_02"] == "winner")
     }
 
     @Test("A batch conditional save fails only its stale records")
@@ -54,10 +54,10 @@ struct InMemoryCASTests {
         _ = try await save(makeRecord()).get()
         let stale = try #require(try await database.fetchRecord(id: id))
         let fresh = try #require(try await database.fetchRecord(id: id))
-        fresh["s_00"] = "winner"
+        fresh["s_02"] = "winner"
         _ = try await save(fresh).get()
 
-        stale["s_00"] = "loser"
+        stale["s_02"] = "loser"
         let newcomer = CKRecord(recordType: "Thing", recordID: CKRecord.ID(recordName: "t-2"))
         let results = try await database.saveIfUnchanged([stale, newcomer])
 
@@ -85,10 +85,10 @@ struct InMemoryCASTests {
         #expect(error is RecordConflictError)
 
         let overwrite = makeRecord()
-        overwrite["s_00"] = "rewritten"
+        overwrite["s_02"] = "rewritten"
         try await database.modifyRecords(saving: [overwrite], deleting: [])
         #expect(database.records.count == 1)
-        #expect(database.records.first?["s_00"] == "rewritten")
+        #expect(database.records.first?["s_02"] == "rewritten")
 
         let refetched = try #require(try await database.fetchRecord(id: id))
         _ = try await save(refetched).get()
@@ -99,10 +99,10 @@ struct InMemoryCASTests {
         _ = try await save(makeRecord()).get()
         let fetched = try #require(try await database.fetchRecord(id: id))
 
-        fetched["s_00"] = "second"
+        fetched["s_02"] = "second"
         _ = try await save(fetched).get()
-        fetched["s_00"] = "third"
+        fetched["s_02"] = "third"
         _ = try await save(fetched).get()
-        #expect(database.records.first?["s_00"] == "third")
+        #expect(database.records.first?["s_02"] == "third")
     }
 }

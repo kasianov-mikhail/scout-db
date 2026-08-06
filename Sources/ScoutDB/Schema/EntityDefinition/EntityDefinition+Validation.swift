@@ -24,6 +24,9 @@ extension EntityDefinition {
                 guard let index = pool.slotIndex(slot) else {
                     throw SchemaError.invalidDefinition(.slotOutsidePool(slot, pool: pool))
                 }
+                guard index >= pool.reserved else {
+                    throw SchemaError.invalidDefinition(.reservedSlot(slot, pool: pool))
+                }
                 guard index < pool.capacity else {
                     throw SchemaError.invalidDefinition(.slotBeyondCapacity(slot, pool: pool))
                 }

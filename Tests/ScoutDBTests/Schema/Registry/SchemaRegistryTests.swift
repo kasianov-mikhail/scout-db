@@ -32,10 +32,10 @@ struct SchemaRegistryTests {
         let record = try #require(await database.records.first { $0.recordID.recordName == "purchase@1" })
 
         #expect(record.recordType == "Entity")
-        #expect(record["entity"] as? String == SchemaDescriptorEntry.namespace)
-        #expect(record["s_00"] as? String == "purchase")
-        #expect(record["s_01"] as? String == "active")
-        #expect(record["schema_version"] as? Int64 == 1)
+        #expect(record[Envelope.entity] as? String == SchemaDescriptorEntry.namespace)
+        #expect(record["s_02"] as? String == "purchase")
+        #expect(record["s_03"] as? String == "active")
+        #expect(record[Envelope.version] as? Int64 == 1)
         #expect(record["b_00"] is Data)
     }
 

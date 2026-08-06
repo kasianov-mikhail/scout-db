@@ -45,9 +45,9 @@ struct EntityDecoderTests {
     @Test("Decode refuses records newer than the definition")
     func staleSchema() throws {
         let record = CKRecord(recordType: "Entity", recordID: CKRecord.ID(recordName: "p-3"))
-        record["entity"] = "purchase"
-        record["schema_version"] = Int64(3)
-        record["uuid"] = "p-3"
+        record[Envelope.entity] = "purchase"
+        record[Envelope.version] = Int64(3)
+        record[Envelope.uuid] = "p-3"
         #expect(throws: SchemaError.staleSchema(entity: "purchase", version: 3)) {
             try decoder.decode(record)
         }

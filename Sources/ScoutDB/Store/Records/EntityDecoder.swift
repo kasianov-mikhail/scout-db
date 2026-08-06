@@ -14,7 +14,7 @@ struct EntityDecoder {
     private let jsonDecoder = JSONDecoder()
 
     func decode(_ record: CKRecord) throws -> EntityRecord {
-        guard let version = record["schema_version"] as? Int64, let uuid = record["uuid"] as? String else {
+        guard let version = record[Envelope.version] as? Int64, let uuid = record[Envelope.uuid] as? String else {
             throw SchemaError.staleSchema(entity: definition.entity, version: 0)
         }
         guard version <= definition.version else {

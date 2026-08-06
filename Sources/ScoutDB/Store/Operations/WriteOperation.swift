@@ -63,7 +63,7 @@ struct WriteOperation: Sendable {
 
         let decoder = EntityDecoder(definition: definition)
         let live = try await database.fetchRecords(ids: ids, batchSize: 100)
-            .filter { $0["entity"] as? String == definition.entity }
+            .filter { $0[Envelope.entity] as? String == definition.entity }
             .map(decoder.decode)
 
         let liveByUUID = Dictionary(

@@ -24,12 +24,12 @@ struct SyncContractTests {
             let fresh = try #require(try await f.database.fetchRecord(id: id))
             let stale = try #require(try await f.database.fetchRecord(id: id))
 
-            fresh["s_00"] = "winner"
+            fresh["s_02"] = "winner"
             for (_, result) in try await f.database.saveIfUnchanged([fresh]) {
                 _ = try result.get()
             }
 
-            stale["s_00"] = "loser"
+            stale["s_02"] = "loser"
             let results = try await f.database.saveIfUnchanged([stale])
             #expect(
                 results.contains { _, result in

@@ -47,7 +47,7 @@ struct SchemaConsistencyTests {
     @Test("Entity carries the envelope the coder stamps")
     func itemEnvelope() {
         let names = Set(Self.fields(of: "Entity").map(\.name))
-        for field in ["entity", "schema_version", "uuid", "payload"] {
+        for field in [Envelope.entity, Envelope.uuid, Envelope.version, "payload"] {
             #expect(names.contains(field), "Entity is missing '\(field)'")
         }
     }
@@ -59,7 +59,7 @@ struct SchemaConsistencyTests {
         #expect(cells.allSatisfy { $0.spec == "DOUBLE QUERYABLE SORTABLE" })
 
         let names = Set(Self.fields(of: "Vector").map(\.name))
-        for field in ["entity", "aggregate", "group_key", "date", "schema_version"] {
+        for field in [VectorSlot.Key.entity, VectorSlot.Key.aggregate, VectorSlot.Key.group, VectorSlot.Key.week] {
             #expect(names.contains(field), "Vector is missing '\(field)'")
         }
     }
@@ -72,10 +72,10 @@ struct SchemaConsistencyTests {
             Self.fields(of: "Entity").map { ($0.name, $0.spec) },
             uniquingKeysWith: { first, _ in first }
         )
-        #expect(fields["s_00"] == "STRING QUERYABLE SORTABLE")
-        #expect(fields["s_01"] == "STRING QUERYABLE SORTABLE")
+        #expect(fields["s_02"] == "STRING QUERYABLE SORTABLE")
+        #expect(fields["s_03"] == "STRING QUERYABLE SORTABLE")
         #expect(fields["b_00"] == "BYTES QUERYABLE")
-        #expect(fields["schema_version"] == "INT64 QUERYABLE SORTABLE")
+        #expect(fields[Envelope.version] == "INT64 QUERYABLE SORTABLE")
     }
 
     @Test("The change feed cursor is queryable", arguments: ["Entity", "Vector"])

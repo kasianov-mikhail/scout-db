@@ -10,7 +10,7 @@ import Foundation
 
 extension EntityDefinition {
     func serverFilters(_ filters: [ClientFilter]) throws -> [CKQuery.Filter] {
-        var server = [CKQuery.Filter(field: "entity", op: .equals, value: .string(entity))]
+        var server = [CKQuery.Filter(field: Envelope.entity, op: .equals, value: .string(entity))]
 
         for filter in filters {
             let field = try field(filter.field, at: version)

@@ -83,7 +83,7 @@ struct OperationsTests {
             makeDefinition(
                 entity: "player",
                 fields: [
-                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_02")),
                     FieldDefinition(name: "score", type: .int, storage: .payload),
                 ]
             )
@@ -115,7 +115,7 @@ struct OperationsTests {
             makeDefinition(
                 entity: "profile",
                 fields: [
-                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_02")),
                     FieldDefinition(name: "score", type: .int, storage: .payload),
                     FieldDefinition(name: "tags", type: .stringList, storage: .payload),
                 ]
@@ -173,7 +173,7 @@ struct OperationsTests {
                     FieldDefinition(
                         name: "email",
                         type: .string,
-                        storage: .slot(.string, "s_00"),
+                        storage: .slot(.string, "s_02"),
                         pattern: "[^@]+@[^@]+\\.[a-z]+"
                     ),
                     FieldDefinition(
@@ -209,14 +209,14 @@ struct OperationsTests {
         }
 
         let numeric = makeDefinition(fields: [
-            FieldDefinition(name: "count", type: .int, storage: .slot(.int, "i_00"), pattern: "[0-9]+")
+            FieldDefinition(name: "count", type: .int, storage: .slot(.int, "i_01"), pattern: "[0-9]+")
         ]
         )
         #expect(throws: SchemaError.invalidDefinition(.unsupportedPattern(field: "count", type: .int))) {
             try numeric.validate()
         }
         let broken = makeDefinition(fields: [
-            FieldDefinition(name: "email", type: .string, storage: .slot(.string, "s_00"), pattern: "([")
+            FieldDefinition(name: "email", type: .string, storage: .slot(.string, "s_02"), pattern: "([")
         ]
         )
         #expect(throws: SchemaError.invalidDefinition(.malformedPattern(field: "email"))) { try broken.validate() }
@@ -239,7 +239,7 @@ struct OperationsTests {
             makeDefinition(
                 entity: "ticket",
                 fields: [
-                    FieldDefinition(name: "label", type: .string, storage: .slot(.string, "s_00"))
+                    FieldDefinition(name: "label", type: .string, storage: .slot(.string, "s_02"))
                 ]
             )
         )
@@ -260,7 +260,7 @@ struct OperationsTests {
         let definition = try await registry.definition(for: "purchase")
         let server = try definition.serverFilters(filters)
         let client = try definition.clientFilters(filters)
-        #expect(server.contains(CKQuery.Filter(field: "s_00", op: .equals, value: .string("sku-42"))))
+        #expect(server.contains(CKQuery.Filter(field: "s_02", op: .equals, value: .string("sku-42"))))
         #expect(client == [filters[1]])
         #expect(
             try definition.serverSort([EntityStore.Sort(field: "date")]) == [
