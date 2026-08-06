@@ -27,7 +27,7 @@ struct EntityStoreTests {
     @Test("Write persists a single Entity record")
     func write() async throws {
         try await store.write([EntityWrite(values: makePurchase().values, uuid: "p-1")], entity: "purchase")
-        #expect(database.records.filter { $0.recordType == "Entity" }.count == 1)
+        #expect(database.entityRecords.count == 1)
     }
 
     @Test("A batched write persists every Entity and returns uuids in batch order")
@@ -42,14 +42,14 @@ struct EntityStoreTests {
         )
 
         #expect(uuids == ["p-1", "p-2", "p-3"])
-        #expect(database.records.filter { $0.recordType == "Entity" }.count == 3)
+        #expect(database.entityRecords.count == 3)
     }
 
     @Test("An empty batch writes nothing")
     func emptyBatch() async throws {
         let uuids = try await store.write([], entity: "purchase")
         #expect(uuids.count == 0)
-        #expect(database.records.filter { $0.recordType == "Entity" }.count == 0)
+        #expect(database.entityRecords.count == 0)
     }
 
     @Test("Read restores entity records")

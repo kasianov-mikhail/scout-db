@@ -64,13 +64,21 @@ struct SchemaConsistencyTests {
         }
     }
 
-    @Test("SchemaDescriptor carries the registry fields")
+    @Test("The registry files its descriptors in Entity")
     func metaFields() {
-        let names = Set(Self.fields(of: "SchemaDescriptor").map(\.name))
-        #expect(names.isSuperset(of: ["entity", "entity_version", "definition", "status"]))
+        #expect(SchemaDescriptorEntry.recordType == "Entity")
+
+        let fields = Dictionary(
+            Self.fields(of: "Entity").map { ($0.name, $0.spec) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        #expect(fields["s_00"] == "STRING QUERYABLE SORTABLE")
+        #expect(fields["s_01"] == "STRING QUERYABLE SORTABLE")
+        #expect(fields["b_00"] == "BYTES QUERYABLE")
+        #expect(fields["schema_version"] == "INT64 QUERYABLE SORTABLE")
     }
 
-    @Test("The change feed cursor is queryable", arguments: ["Entity", "Aggregate", "SchemaDescriptor"])
+    @Test("The change feed cursor is queryable", arguments: ["Entity", "Aggregate"])
     func modTimeIndexed(type: String) {
         let modTime = Self.fields(of: type).first { $0.name == "\"___modTime\"" }
         #expect(modTime?.spec == "TIMESTAMP QUERYABLE SORTABLE")
