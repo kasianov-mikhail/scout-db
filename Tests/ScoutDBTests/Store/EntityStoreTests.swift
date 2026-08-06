@@ -360,7 +360,7 @@ struct EntityStoreTests {
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
-                aggregates: [AggregateDefinition(name: "total", sum: "amount")]
+                aggregates: [AggregateDefinition(name: "total", measure: .sum("amount"))]
             )
         )
 

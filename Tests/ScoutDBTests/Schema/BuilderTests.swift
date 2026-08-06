@@ -88,7 +88,7 @@ struct BuilderTests {
 
         let aggregates = try await registry.definition(for: "shipment").aggregates
         #expect(aggregates.filter { $0.groupBy == "carrier" }.count == 2)
-        #expect(aggregates.first { $0.groupBy == "carrier" && $0.metricField != nil }?.sum == "weight")
+        #expect(aggregates.first { $0.groupBy == "carrier" && $0.metricField != nil }?.measure == .sum("weight"))
         #expect(aggregates.contains { $0.name == "by_carrier" && $0.metricField == nil })
         #expect(Set(aggregates.compactMap(\.groupBy)) == ["carrier", "weight"])
     }
@@ -103,8 +103,8 @@ struct BuilderTests {
             .create()
 
         let aggregates = try await registry.definition(for: "reading").aggregates
-        #expect(aggregates.first { $0.name == "min_value_by_sensor" }?.min == "value")
-        #expect(aggregates.first { $0.name == "max_value_by_sensor" }?.max == "value")
+        #expect(aggregates.first { $0.name == "min_value_by_sensor" }?.measure == .min("value"))
+        #expect(aggregates.first { $0.name == "max_value_by_sensor" }?.measure == .max("value"))
     }
 
     @Test("An ungrouped field is left out of the grid")
@@ -192,7 +192,7 @@ struct BuilderTests {
 
         let updated = try await registry.definition(for: "ticket").aggregates
         #expect(Set(updated.compactMap(\.groupBy)) == ["queue", "weight"])
-        #expect(updated.contains { $0.groupBy == "queue" && $0.sum == "weight" })
+        #expect(updated.contains { $0.groupBy == "queue" && $0.measure == .sum("weight") })
         #expect(updated.contains { $0.name == "by_queue" && $0.metricField == nil })
     }
 

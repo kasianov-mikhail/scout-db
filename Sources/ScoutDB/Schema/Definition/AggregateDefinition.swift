@@ -4,34 +4,51 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
+//
 
 import Foundation
 
-struct AggregateDefinition: Codable, Equatable, Sendable {
+struct AggregateDefinition: Equatable, Sendable {
     let name: String
     var groupBy: String?
-    var sum: String?
-    var min: String?
-    var max: String?
-    var histogram: Histogram?
+    var measure: Measure?
     var shards: Int?
     var date: String?
 
+    enum Measure: Equatable, Sendable {
+        case sum(String)
+        case min(String)
+        case max(String)
+        case histogram(Histogram)
+    }
+
     var metricKind: Metric? {
-        if sum != nil {
-            return .sum
+        switch measure {
+        case .sum:
+            .sum
+        case .min:
+            .min
+        case .max:
+            .max
+        case .histogram, nil:
+            nil
         }
-        if min != nil {
-            return .min
-        }
-        if max != nil {
-            return .max
-        }
-        return nil
     }
 
     var metricField: String? {
-        sum ?? min ?? max
+        switch measure {
+        case .sum(let field), .min(let field), .max(let field):
+            field
+        case .histogram, nil:
+            nil
+        }
+    }
+
+    var histogram: Histogram? {
+        guard case .histogram(let histogram) = measure else {
+            return nil
+        }
+        return histogram
     }
 
     var fold: Metric {
@@ -61,12 +78,22 @@ extension AggregateDefinition {
         ]
         .compactMap(\.self)
 
+        let measure: Measure? =
+            switch (metric?.storage, field) {
+            case (.sum, let field?):
+                .sum(field)
+            case (.min, let field?):
+                .min(field)
+            case (.max, let field?):
+                .max(field)
+            default:
+                nil
+            }
+
         self.init(
             name: parts.isEmpty ? "by_all" : parts.joined(separator: "_"),
             groupBy: group,
-            sum: metric?.storage == .sum ? field : nil,
-            min: metric?.storage == .min ? field : nil,
-            max: metric?.storage == .max ? field : nil,
+            measure: measure,
             shards: shards,
             date: date
         )
@@ -75,7 +102,7 @@ extension AggregateDefinition {
     init(histogramOf field: String, bounds: [Double], at date: String? = nil) {
         self.init(
             name: ["histogram_\(field)", date.map { "at_\($0)" }].compactMap(\.self).joined(separator: "_"),
-            histogram: Histogram(field: field, bounds: bounds),
+            measure: .histogram(Histogram(field: field, bounds: bounds)),
             date: date
         )
     }

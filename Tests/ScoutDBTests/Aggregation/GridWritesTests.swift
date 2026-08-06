@@ -46,7 +46,7 @@ struct GridWritesTests {
             database: database,
             aggregates: [
                 AggregateDefinition(name: "by_product", groupBy: "product", date: "date"),
-                AggregateDefinition(name: "revenue", groupBy: "product", sum: "amount", date: "date"),
+                AggregateDefinition(name: "revenue", groupBy: "product", measure: .sum("amount"), date: "date"),
             ]
         )
 
@@ -62,7 +62,7 @@ struct GridWritesTests {
     func warmSlotSkipsTheFetch() async throws {
         let aggregator = GridAggregator(
             database: database,
-            aggregates: [AggregateDefinition(name: "revenue", sum: "amount", date: "date")]
+            aggregates: [AggregateDefinition(name: "revenue", measure: .sum("amount"), date: "date")]
         )
         try await aggregator.rebalance(removing: [], adding: payments(["app"]))
         database.resetRequests()
@@ -85,7 +85,7 @@ struct GridWritesTests {
 
     @Test("An update that raises a min aggregate's value leaves the value standing")
     func raisedMinLeavesTheValue() async throws {
-        let aggregates = [AggregateDefinition(name: "cheapest", min: "amount", date: "date")]
+        let aggregates = [AggregateDefinition(name: "cheapest", measure: .min("amount"), date: "date")]
         let stored = payment(amount: 5)
         try await GridAggregator(database: database, aggregates: aggregates)
             .rebalance(removing: [], adding: [stored])
@@ -100,7 +100,7 @@ struct GridWritesTests {
 
     @Test("An update that lowers a min aggregate's value still writes the slot")
     func loweredMinWritesTheSlot() async throws {
-        let aggregates = [AggregateDefinition(name: "cheapest", min: "amount", date: "date")]
+        let aggregates = [AggregateDefinition(name: "cheapest", measure: .min("amount"), date: "date")]
         let stored = payment(amount: 5)
         try await GridAggregator(database: database, aggregates: aggregates)
             .rebalance(removing: [], adding: [stored])
@@ -117,7 +117,7 @@ struct GridWritesTests {
     func staleSlotRetriesOverTheServerCopy() async throws {
         let aggregator = GridAggregator(
             database: database,
-            aggregates: [AggregateDefinition(name: "revenue", sum: "amount", date: "date")]
+            aggregates: [AggregateDefinition(name: "revenue", measure: .sum("amount"), date: "date")]
         )
         try await aggregator.rebalance(removing: [], adding: payments(["app"]))
 

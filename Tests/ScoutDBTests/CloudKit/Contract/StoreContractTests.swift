@@ -169,8 +169,8 @@ struct StoreContractTests {
         try await withContract { f in
             let entity = try await f.publishOrder(
                 aggregates: [
-                    AggregateDefinition(name: "revenue", sum: "total"),
-                    AggregateDefinition(name: "peak", max: "total"),
+                    AggregateDefinition(name: "revenue", measure: .sum("total")),
+                    AggregateDefinition(name: "peak", measure: .max("total")),
                 ]
             )
             for (index, total) in [2.5, 7.5, 10.0].enumerated() {
@@ -205,7 +205,9 @@ struct StoreContractTests {
     @Test("Aggregate aggregates fold writes into totals")
     func aggregateViewTotals() async throws {
         try await withContract { f in
-            let entity = try await f.publishOrder(aggregates: [AggregateDefinition(name: "revenue", sum: "total")])
+            let entity = try await f.publishOrder(aggregates: [
+                AggregateDefinition(name: "revenue", measure: .sum("total"))
+            ])
             try await f.store.write([EntityWrite(values: orderValues(total: 2), uuid: "v-1")], entity: entity)
             try await f.store.write([EntityWrite(values: orderValues(total: 3), uuid: "v-2")], entity: entity)
 
