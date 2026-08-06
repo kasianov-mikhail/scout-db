@@ -25,7 +25,7 @@ struct EntityDefinitionTests {
     @Test("A definition stored without views decodes to no aggregates")
     func missingViews() throws {
         let json = Data(
-            #"{"entity":"purchase","version":1,"fields":[{"name":"product_id","type":"string","storage":"s_02"}]}"#
+            #"{"entity":"purchase","version":1,"fields":[{"name":"product_id","type":"string","storage":"s_01"}]}"#
                 .utf8
         )
         let decoded = try JSONDecoder().decode(EntityDefinition.self, from: json)
@@ -34,9 +34,9 @@ struct EntityDefinitionTests {
 
     @Test("Storage decodes from a bare slot name")
     func storageDecoding() throws {
-        let json = Data(#""s_05""#.utf8)
+        let json = Data(#""s_04""#.utf8)
         let storage = try JSONDecoder().decode(Storage.self, from: json)
-        #expect(storage == .slot(.string, "s_05"))
+        #expect(storage == .slot(.string, "s_04"))
     }
 
     @Test("Fields are filtered by since and until")
@@ -49,7 +49,7 @@ struct EntityDefinitionTests {
     @Test("Validation rejects a slot in the wrong pool")
     func wrongPool() {
         let definition = makeDefinition(fields: [
-            FieldDefinition(name: "count", type: .int, storage: .slot(.string, "s_02"))
+            FieldDefinition(name: "count", type: .int, storage: .slot(.string, "s_01"))
         ]
         )
         #expect(throws: SchemaError.invalidDefinition(.slotTypeMismatch(field: "count", type: .int, pool: .string))) {
@@ -102,7 +102,7 @@ struct EntityDefinitionTests {
     @Test("Validation rejects a text field in the plain string pool")
     func textInPlainPool() {
         let definition = makeDefinition(fields: [
-            FieldDefinition(name: "title", type: .text, storage: .slot(.string, "s_02"))
+            FieldDefinition(name: "title", type: .text, storage: .slot(.string, "s_01"))
         ]
         )
         #expect(throws: SchemaError.invalidDefinition(.slotTypeMismatch(field: "title", type: .text, pool: .string))) {
@@ -125,7 +125,7 @@ struct EntityDefinitionTests {
     func sumType() {
         let definition = makeDefinition(
             fields: [
-                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_02")),
+                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_01")),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
             ],
             aggregates: [AggregateDefinition(measure: .sum("name"))]
@@ -138,7 +138,7 @@ struct EntityDefinitionTests {
     @Test("Validation rejects an aggregate dating its cells by an unknown field")
     func unknownDate() {
         let definition = makeDefinition(
-            fields: [FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_02"))],
+            fields: [FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_01"))],
             aggregates: [AggregateDefinition(date: "seen")]
         )
         #expect(throws: SchemaError.invalidDefinition(.unknownDate(aggregate: "at_seen", field: "seen"))) {
@@ -149,7 +149,7 @@ struct EntityDefinitionTests {
     @Test("Validation rejects an aggregate dating its cells by a field that holds no date")
     func nonTemporalDate() {
         let definition = makeDefinition(
-            fields: [FieldDefinition(name: "seen", type: .string, storage: .slot(.string, "s_02"))],
+            fields: [FieldDefinition(name: "seen", type: .string, storage: .slot(.string, "s_01"))],
             aggregates: [AggregateDefinition(date: "seen")]
         )
         #expect(throws: SchemaError.invalidDefinition(.nonTemporalDate(aggregate: "at_seen", field: "seen"))) {
@@ -173,7 +173,7 @@ struct EntityDefinitionTests {
     func boundWrongType() {
         let definition = makeDefinition(
             fields: [
-                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_02"), min: 0)
+                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_01"), min: 0)
             ]
         )
         #expect(throws: SchemaError.invalidDefinition(.unsupportedBounds(field: "name", type: .string))) {
@@ -192,7 +192,7 @@ func makeDefinition(
 func makePurchaseDefinition() -> EntityDefinition {
     makeDefinition(
         fields: [
-            FieldDefinition(name: "product_id", type: .string, storage: .slot(.string, "s_02")),
+            FieldDefinition(name: "product_id", type: .string, storage: .slot(.string, "s_01")),
             FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
             FieldDefinition(name: "amount", type: .int, storage: .slot(.int, "i_01"), until: 2),
             FieldDefinition(name: "quantity", type: .int, storage: .slot(.int, "i_02"), since: 2),

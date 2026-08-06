@@ -283,7 +283,7 @@ struct EntityStoreTests {
             makeDefinition(
                 entity: "profile",
                 fields: [
-                    FieldDefinition(name: "user_id", type: .string, storage: .slot(.string, "s_02")),
+                    FieldDefinition(name: "user_id", type: .string, storage: .slot(.string, "s_01")),
                     FieldDefinition(name: "score", type: .int, storage: .slot(.int, "i_01")),
                 ]
             )
@@ -309,7 +309,7 @@ struct EntityStoreTests {
             makeDefinition(
                 entity: "post",
                 fields: [
-                    FieldDefinition(name: "title", type: .string, storage: .slot(.string, "s_02")),
+                    FieldDefinition(name: "title", type: .string, storage: .slot(.string, "s_01")),
                     FieldDefinition(name: "tags", type: .stringList, storage: .slot(.stringList, "ls_00")),
                 ]
             )
@@ -332,7 +332,7 @@ struct EntityStoreTests {
             makeDefinition(
                 entity: "tap",
                 fields: [
-                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_02")),
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_01")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
                 aggregates: [AggregateDefinition(groupBy: "name")]

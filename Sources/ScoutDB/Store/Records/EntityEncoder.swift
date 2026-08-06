@@ -22,7 +22,6 @@ struct EntityEncoder {
 
         record[Envelope.entity] = entityRecord.entity
         record[Envelope.version] = Int64(entityRecord.schemaVersion)
-        record[Envelope.uuid] = entityRecord.uuid
 
         var payload: [String: RecordValue] = [:]
         for field in fields {

@@ -83,7 +83,7 @@ struct OperationsTests {
             makeDefinition(
                 entity: "player",
                 fields: [
-                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_02")),
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_01")),
                     FieldDefinition(name: "score", type: .int, storage: .payload),
                 ]
             )
@@ -115,7 +115,7 @@ struct OperationsTests {
             makeDefinition(
                 entity: "profile",
                 fields: [
-                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_02")),
+                    FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_01")),
                     FieldDefinition(name: "score", type: .int, storage: .payload),
                     FieldDefinition(name: "tags", type: .stringList, storage: .payload),
                 ]
@@ -173,7 +173,7 @@ struct OperationsTests {
                     FieldDefinition(
                         name: "email",
                         type: .string,
-                        storage: .slot(.string, "s_02"),
+                        storage: .slot(.string, "s_01"),
                         pattern: "[^@]+@[^@]+\\.[a-z]+"
                     ),
                     FieldDefinition(
@@ -216,7 +216,7 @@ struct OperationsTests {
             try numeric.validate()
         }
         let broken = makeDefinition(fields: [
-            FieldDefinition(name: "email", type: .string, storage: .slot(.string, "s_02"), pattern: "([")
+            FieldDefinition(name: "email", type: .string, storage: .slot(.string, "s_01"), pattern: "([")
         ]
         )
         #expect(throws: SchemaError.invalidDefinition(.malformedPattern(field: "email"))) { try broken.validate() }
@@ -239,7 +239,7 @@ struct OperationsTests {
             makeDefinition(
                 entity: "ticket",
                 fields: [
-                    FieldDefinition(name: "label", type: .string, storage: .slot(.string, "s_02"))
+                    FieldDefinition(name: "label", type: .string, storage: .slot(.string, "s_01"))
                 ]
             )
         )
@@ -260,7 +260,7 @@ struct OperationsTests {
         let definition = try await registry.definition(for: "purchase")
         let server = try definition.serverFilters(filters)
         let client = try definition.clientFilters(filters)
-        #expect(server.contains(CKQuery.Filter(field: "s_02", op: .equals, value: .string("sku-42"))))
+        #expect(server.contains(CKQuery.Filter(field: "s_01", op: .equals, value: .string("sku-42"))))
         #expect(client == [filters[1]])
         #expect(
             try definition.serverSort([EntityStore.Sort(field: "date")]) == [

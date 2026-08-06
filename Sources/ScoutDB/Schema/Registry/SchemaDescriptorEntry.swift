@@ -33,8 +33,8 @@ struct SchemaDescriptorEntry {
     }
 
     fileprivate enum Slot {
-        static let entity = "s_02"
-        static let status = "s_03"
+        static let entity = "s_01"
+        static let status = "s_02"
         static let definition = "b_00"
     }
 }
@@ -57,7 +57,6 @@ extension SchemaDescriptorEntry {
             recordID: CKRecord.ID(recordName: "\(definition.entity)@\(definition.version)")
         )
         record[Envelope.entity] = namespace
-        record[Envelope.uuid] = record.recordID.recordName
         record[Envelope.version] = Int64(definition.version)
         record[Slot.entity] = definition.entity
         record[Slot.status] = "active"

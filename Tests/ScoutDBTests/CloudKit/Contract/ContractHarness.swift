@@ -80,7 +80,7 @@ final class ContractFixture {
         try await publish(
             "order",
             fields: [
-                FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_02")),
+                FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_01")),
                 FieldDefinition(name: "quantity", type: .int, storage: .slot(.int, "i_01")),
                 FieldDefinition(name: "total", type: .double, storage: .slot(.double, "d_00")),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),

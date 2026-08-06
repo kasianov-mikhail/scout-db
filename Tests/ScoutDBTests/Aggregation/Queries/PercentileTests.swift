@@ -34,7 +34,7 @@ struct PercentileTests {
             makeDefinition(
                 entity: "request",
                 fields: [
-                    FieldDefinition(name: "route", type: .string, storage: .slot(.string, "s_02")),
+                    FieldDefinition(name: "route", type: .string, storage: .slot(.string, "s_01")),
                     FieldDefinition(name: "latency", type: .double, storage: .slot(.double, "d_00")),
                 ],
                 aggregates: aggregates
