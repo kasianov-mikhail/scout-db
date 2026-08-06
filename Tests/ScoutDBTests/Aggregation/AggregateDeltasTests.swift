@@ -44,8 +44,8 @@ struct AggregateDeltasTests {
     @Test("Records sharing a group and an hour fold into one cell, and each aggregate keeps its own")
     func groupsFoldPerAggregate() throws {
         let aggregates = [
-            AggregateDefinition(name: "by_product", groupBy: "product"),
-            AggregateDefinition(name: "revenue", groupBy: "product", measure: .sum("amount")),
+            AggregateDefinition(groupBy: "product"),
+            AggregateDefinition(groupBy: "product", measure: .sum("amount")),
         ]
 
         let deltas = aggregates.deltas(
@@ -59,35 +59,35 @@ struct AggregateDeltasTests {
         let counted = try #require(deltas[slot("by_product", group: "app")])
         #expect(counted.cells == [GridCell(day: 3, hour: 10): 2])
 
-        let summed = try #require(deltas[slot("revenue", group: "app")])
+        let summed = try #require(deltas[slot("sum_amount_by_product", group: "app")])
         #expect(summed.kind == .sum)
         #expect(summed.cells == [GridCell(day: 3, hour: 10): 5])
     }
 
     @Test("An aggregate dating its cells reads the hour off the record, not off the write")
     func declaredDateAddressesTheCell() throws {
-        let aggregates = [AggregateDefinition(name: "by_all", date: "date")]
+        let aggregates = [AggregateDefinition(date: "date")]
         let stamped = Date(timeIntervalSince1970: 1_785_937_500)
 
         let deltas = aggregates.deltas(removing: [], adding: [payment("p-0", date: stamped)], at: noon)
 
-        let delta = try #require(deltas[slot("by_all", week: stamped)])
+        let delta = try #require(deltas[slot("at_date", week: stamped)])
         #expect(delta.cells == [GridCell(day: 2, hour: 13): 1])
     }
 
     @Test("A record without the dated field falls back to the hour of the write")
     func missingDateFallsBackToTheWrite() throws {
-        let aggregates = [AggregateDefinition(name: "by_all", date: "date")]
+        let aggregates = [AggregateDefinition(date: "date")]
 
         let deltas = aggregates.deltas(removing: [], adding: [payment("p-0")], at: noon)
 
-        let delta = try #require(deltas[slot("by_all")])
+        let delta = try #require(deltas[slot("at_date")])
         #expect(delta.cells == [GridCell(of: noon): 1])
     }
 
     @Test("Records of two weeks fold into a slot each")
     func weeksFoldApart() throws {
-        let aggregates = [AggregateDefinition(name: "by_all", date: "date")]
+        let aggregates = [AggregateDefinition(date: "date")]
 
         let deltas = aggregates.deltas(
             removing: [],
@@ -96,30 +96,30 @@ struct AggregateDeltasTests {
         )
 
         #expect(deltas.count == 2)
-        #expect(deltas[slot("by_all")]?.cells == [GridCell(of: noon): 1])
-        #expect(deltas[slot("by_all", week: nextWeek)]?.cells == [GridCell(of: nextWeek): 1])
+        #expect(deltas[slot("at_date")]?.cells == [GridCell(of: noon): 1])
+        #expect(deltas[slot("at_date", week: nextWeek)]?.cells == [GridCell(of: nextWeek): 1])
     }
 
     @Test("A removal reverses a sum aggregate")
     func removalReversesASum() throws {
-        let aggregates = [AggregateDefinition(name: "revenue", measure: .sum("amount"))]
+        let aggregates = [AggregateDefinition(measure: .sum("amount"))]
 
         let deltas = aggregates.deltas(removing: [payment("p-0", amount: 5)], adding: [], at: noon)
 
-        let delta = try #require(deltas[slot("revenue")])
+        let delta = try #require(deltas[slot("sum_amount")])
         #expect(delta.cells == [GridCell(of: noon): -5])
     }
 
     @Test("A removal plans nothing for a min aggregate, whose value stands")
     func removalHoldsAMinValue() {
-        let aggregates = [AggregateDefinition(name: "cheapest", measure: .min("amount"))]
+        let aggregates = [AggregateDefinition(measure: .min("amount"))]
 
         #expect(aggregates.deltas(removing: [payment("p-0", amount: 5)], adding: [], at: noon).isEmpty)
     }
 
     @Test("A record rewritten unchanged plans nothing for a sum aggregate")
     func unchangedRewritePlansNothing() {
-        let aggregates = [AggregateDefinition(name: "revenue", measure: .sum("amount"))]
+        let aggregates = [AggregateDefinition(measure: .sum("amount"))]
         let stored = payment("p-0", amount: 5)
 
         #expect(aggregates.deltas(removing: [stored], adding: [stored], at: noon).isEmpty)
@@ -127,25 +127,25 @@ struct AggregateDeltasTests {
 
     @Test("A record rewritten unchanged still plans a write for a min aggregate")
     func unchangedRewriteStillPlansAMin() throws {
-        let aggregates = [AggregateDefinition(name: "cheapest", measure: .min("amount"))]
+        let aggregates = [AggregateDefinition(measure: .min("amount"))]
         let stored = payment("p-0", amount: 5)
 
         let deltas = aggregates.deltas(removing: [stored], adding: [stored], at: noon)
 
-        let delta = try #require(deltas[slot("cheapest")])
+        let delta = try #require(deltas[slot("min_amount")])
         #expect(delta.cells == [GridCell(of: noon): 5])
     }
 
     @Test("A record missing the metric field is folded into no cell of it")
     func missingMetricFieldFoldsNowhere() {
-        let aggregates = [AggregateDefinition(name: "revenue", measure: .sum("amount"))]
+        let aggregates = [AggregateDefinition(measure: .sum("amount"))]
 
         #expect(aggregates.deltas(removing: [], adding: [payment("p-0", amount: nil)], at: noon).isEmpty)
     }
 
     @Test("Shards spread one group over slots without losing a record")
     func shardsSpreadTheGroup() {
-        let aggregates = [AggregateDefinition(name: "by_all", shards: 4)]
+        let aggregates = [AggregateDefinition(shards: 4)]
         let batch = (0..<20).map { payment("p-\($0)") }
 
         let deltas = aggregates.deltas(removing: [], adding: batch, at: noon)
@@ -157,7 +157,7 @@ struct AggregateDeltasTests {
 
     @Test("A shard follows the record's uuid, so a rewrite lands on the slot it left")
     func shardFollowsTheUUID() {
-        let aggregates = [AggregateDefinition(name: "by_all", shards: 4)]
+        let aggregates = [AggregateDefinition(shards: 4)]
 
         let deltas = aggregates.deltas(
             removing: [payment("p-7", amount: 2)],
