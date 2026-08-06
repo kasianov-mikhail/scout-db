@@ -78,18 +78,6 @@ extension EntityDefinition {
                 }
             }
 
-            let metrics = [
-                aggregate.sum,
-                aggregate.min,
-                aggregate.max,
-                aggregate.histogram?.field,
-            ]
-            .compactMap(\.self)
-
-            guard metrics.count <= 1 else {
-                throw SchemaError.invalidDefinition(.ambiguousMetric(aggregate: aggregate.name))
-            }
-
             if let histogram = aggregate.histogram {
                 guard aggregate.groupBy == nil else {
                     throw SchemaError.invalidDefinition(.groupedHistogram(aggregate: aggregate.name))
@@ -104,7 +92,7 @@ extension EntityDefinition {
                 }
             }
 
-            for field in metrics {
+            if let field = aggregate.metricField ?? aggregate.histogram?.field {
                 guard let type = fields.first(where: { $0.name == field })?.type, type == .int || type == .double else {
                     throw SchemaError.invalidDefinition(
                         .nonNumericMetric(aggregate: aggregate.name, field: field)

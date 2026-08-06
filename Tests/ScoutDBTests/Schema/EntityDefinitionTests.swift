@@ -128,7 +128,7 @@ struct EntityDefinitionTests {
                 FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_00")),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
             ],
-            aggregates: [AggregateDefinition(name: "total", sum: "name")]
+            aggregates: [AggregateDefinition(name: "total", measure: .sum("name"))]
         )
         #expect(throws: SchemaError.invalidDefinition(.nonNumericMetric(aggregate: "total", field: "name"))) {
             try definition.validate()
