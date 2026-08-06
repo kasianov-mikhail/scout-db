@@ -37,6 +37,8 @@ struct VectorAggregator {
         )
         .open(deltas)
 
+        try await VectorIndexWriter(database: database).note(opened.cold)
+
         var pending = opened.pending
 
         for _ in 0..<maxRetry {
@@ -68,7 +70,7 @@ struct VectorAggregator {
             }
 
             guard retry.count > 0 else {
-                return try await VectorIndexWriter(database: database).note(opened.cold)
+                return
             }
             pending = retry
         }

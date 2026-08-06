@@ -20,8 +20,6 @@ struct VectorLoader {
     struct Opened {
         let pending: [CKRecord.ID: Pending]
 
-        /// The slots this batch had to reach for, rather than finding them in
-        /// the cache — the ones whose names the index may not carry yet.
         let cold: [VectorSlot]
     }
 
@@ -50,8 +48,9 @@ struct VectorLoader {
             served[record.recordID] = record
         }
 
-        for (id, slot, delta) in cold {
-            pending[id] = Pending(record: served[id] ?? slot.blank(named: id), delta: delta)
+        for (id, _, delta) in cold {
+            let record = served[id] ?? CKRecord(recordType: VectorSlot.recordType, recordID: id)
+            pending[id] = Pending(record: record, delta: delta)
         }
 
         return Opened(pending: pending, cold: cold.map(\.slot))

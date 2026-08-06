@@ -30,13 +30,10 @@ struct VectorIndexTests {
         }
     }
 
-    private func page(week: Date?) throws -> VectorIndex.Page {
+    private func page(week: Date?) -> VectorIndex.Page {
         let index = VectorIndex(entity: "payment", aggregate: counting.name, week: week)
 
-        guard let record = database.records.first(where: { $0.recordID == index.recordID }) else {
-            return VectorIndex.Page()
-        }
-        return try VectorIndex.page(of: record)
+        return database.records.first { $0.recordID == index.recordID }?.indexPage ?? VectorIndex.Page()
     }
 
     private func aggregator(_ slots: VectorCache = VectorCache()) -> VectorAggregator {
@@ -47,8 +44,8 @@ struct VectorIndexTests {
     func namesWhatItWrote() async throws {
         try await aggregator().rebalance(removing: [], adding: payments(["app", "book"]))
 
-        #expect(try page(week: nil).weeks == [noon.weekStart.millisecondsSince1970])
-        #expect(try page(week: noon.weekStart).groups == ["app", "book"])
+        #expect(page(week: nil).weeks == [noon.weekStart.millisecondsSince1970])
+        #expect(page(week: noon.weekStart).groups == ["app", "book"])
     }
 
     @Test("A second week joins the first rather than replacing it")
@@ -59,11 +56,11 @@ struct VectorIndexTests {
         try await aggregator().rebalance(removing: [], adding: payments(["app"], at: later))
 
         #expect(
-            try page(week: nil).weeks == [
+            page(week: nil).weeks == [
                 noon.weekStart.millisecondsSince1970, later.weekStart.millisecondsSince1970,
             ]
         )
-        #expect(try page(week: later.weekStart).groups == ["app"])
+        #expect(page(week: later.weekStart).groups == ["app"])
     }
 
     @Test("A group already named is not written twice")
@@ -73,7 +70,7 @@ struct VectorIndexTests {
 
         try await aggregator().rebalance(removing: [], adding: payments(["app"]))
 
-        #expect(try page(week: noon.weekStart).groups == ["app"])
+        #expect(page(week: noon.weekStart).groups == ["app"])
         #expect(database.requests[.conditionalSave] == 1)
     }
 
@@ -87,8 +84,44 @@ struct VectorIndexTests {
 
         try await aggregator().rebalance(removing: [], adding: payments(["app"]))
 
-        #expect(try page(week: nil).weeks == [noon.weekStart.millisecondsSince1970])
-        #expect(try page(week: noon.weekStart).groups == ["app"])
+        #expect(page(week: nil).weeks == [noon.weekStart.millisecondsSince1970])
+        #expect(page(week: noon.weekStart).groups == ["app"])
+    }
+
+    @Test("A failed index write leaves no vector behind")
+    func indexPrecedesTheVector() async throws {
+        database.writeErrors = [CKError(.networkFailure)]
+
+        await #expect(throws: (any Error).self) {
+            try await aggregator().rebalance(removing: [], adding: payments(["app"]))
+        }
+
+        #expect(database.records.filter { $0.recordType == VectorSlot.recordType }.isEmpty)
+    }
+
+    @Test("A page that does not decode is refused rather than read as empty")
+    func malformedPageIsRefused() async throws {
+        try await aggregator().rebalance(removing: [], adding: payments(["app"]))
+
+        let head = VectorIndex(entity: "payment", aggregate: counting.name, week: nil)
+        let record = try #require(database.records.first { $0.recordID == head.recordID })
+        record[VectorIndex.pageKey] = Data([0x7b, 0x00])
+
+        await #expect(throws: SchemaError.malformedRecord(head.recordID.recordName)) {
+            try await VectorReader(database: database, entity: "payment", aggregate: counting)
+                .rows(groups: nil)
+        }
+        await #expect(throws: SchemaError.malformedRecord(head.recordID.recordName)) {
+            try await VectorIndexWriter(database: database).note([
+                VectorSlot(
+                    entity: "payment",
+                    aggregate: counting.name,
+                    group: "book",
+                    shard: nil,
+                    week: noon.weekStart
+                )
+            ])
+        }
     }
 
     @Test("A fold reads every group the index names")
@@ -96,8 +129,8 @@ struct VectorIndexTests {
         try await aggregator().rebalance(removing: [], adding: payments(["app", "book", "toy"]))
 
         let rows = try await VectorReader(database: database, entity: "payment", aggregate: counting)
-            .rows()
-            .vectorRows(folding: .sum)
+            .rows(groups: nil)
+            .vectorRows(folding: .sum, where: nil)
 
         #expect(rows.keys.sorted() == ["app", "book", "toy"])
         #expect(rows.values.reduce(0, +) == 3)

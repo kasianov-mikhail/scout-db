@@ -30,10 +30,6 @@ struct VectorSlot: Hashable {
     var recordID: CKRecord.ID {
         CKRecord.ID(recordName: "vector-" + contentDigest(of: components))
     }
-
-    func blank(named id: CKRecord.ID) -> CKRecord {
-        CKRecord(recordType: Self.recordType, recordID: id)
-    }
 }
 
 extension VectorSlot {

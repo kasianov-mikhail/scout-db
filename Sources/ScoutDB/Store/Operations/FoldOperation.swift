@@ -23,11 +23,15 @@ struct FoldOperation: Sendable {
             )
         }
 
-        let rows = try await VectorReader(database: database, definition: definition, aggregate: aggregate)
-            .rows(groups: query.serverGroups)
-            .vectorRows(folding: kind.storage) { group in
-                query.groupField == nil || query.groupKeys.contains(group)
-            }
+        let rows = try await VectorReader(
+            database: database,
+            definition: definition,
+            aggregate: aggregate
+        )
+        .rows(groups: query.serverGroups)
+        .vectorRows(folding: kind.storage) { group in
+            query.groupField == nil || query.groupKeys.contains(group)
+        }
 
         return kind.storage.fold(rows.values)
     }

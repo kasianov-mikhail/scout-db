@@ -8,14 +8,6 @@
 import CloudKit
 import Foundation
 
-/// The names of the vectors an aggregate keeps, which a vector no longer
-/// carries itself.
-///
-/// A vector is reached by the digest of its key, so nothing has to be filtered
-/// server-side — but a fold over every group has to know which groups exist.
-/// That list lives here: one record per aggregate holding the weeks it spans,
-/// and one record per week holding the groups seen in it.
-///
 struct VectorIndex: Hashable {
     static let namespace = "__index"
 
@@ -41,25 +33,37 @@ struct VectorIndex: Hashable {
 
 extension VectorIndex {
     struct Page: Codable, Equatable {
-        var weeks: [Int64] = []
-        var groups: [String] = []
+        let weeks: [Int64]
+        let groups: [String]
 
-        var isEmpty: Bool {
-            weeks.isEmpty && groups.isEmpty
+        init(weeks: [Int64] = [], groups: [String] = []) {
+            self.weeks = weeks
+            self.groups = groups
         }
     }
 
     static let pageKey = "b_00"
+}
 
-    static func page(of record: CKRecord) throws -> Page {
-        guard let data = record[pageKey] as? Data else {
-            return Page()
+extension CKRecord {
+    var indexPage: VectorIndex.Page? {
+        get {
+            guard let data = self[VectorIndex.pageKey] as? Data else {
+                return nil
+            }
+            return try? JSONDecoder().decode(VectorIndex.Page.self, from: data)
         }
-        return try JSONDecoder().decode(Page.self, from: data)
+        set {
+            let encoded: Data? = newValue.flatMap { try? JSONEncoder().encode($0) }
+            self[VectorIndex.pageKey] = encoded
+        }
     }
 
-    static func store(_ page: Page, in record: CKRecord) throws {
-        record[pageKey] = try JSONEncoder().encode(page)
+    func indexPage(named id: CKRecord.ID) throws -> VectorIndex.Page {
+        guard let page = indexPage else {
+            throw SchemaError.malformedRecord(id.recordName)
+        }
+        return page
     }
 }
 

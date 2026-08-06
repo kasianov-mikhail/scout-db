@@ -17,13 +17,17 @@ struct VectorIndexWriter {
             return
         }
 
-        var wanted: [VectorIndex: VectorIndex.Page] = [:]
+        var weeks: [VectorIndex: Set<Int64>] = [:]
+        var groups: [VectorIndex: Set<String>] = [:]
 
         for slot in slots {
             let (head, week) = slot.index
-            wanted[head, default: VectorIndex.Page()].weeks.append(slot.week.millisecondsSince1970)
-            wanted[week, default: VectorIndex.Page()].groups.append(slot.group)
+            weeks[head, default: []].insert(slot.week.millisecondsSince1970)
+            groups[week, default: []].insert(slot.group)
         }
+
+        var wanted = weeks.mapValues { VectorIndex.Page(weeks: $0.sorted()) }
+        wanted.merge(groups.mapValues { VectorIndex.Page(groups: $0.sorted()) }) { first, _ in first }
 
         var pending = wanted
         for _ in 0..<maxRetry {
@@ -49,13 +53,13 @@ struct VectorIndexWriter {
 
         for (index, additions) in wanted {
             let record = stored[index.recordID] ?? index.blank()
-            let page = try VectorIndex.page(of: record)
+            let page = stored[index.recordID] == nil ? VectorIndex.Page() : try record.indexPage(named: index.recordID)
             let merged = page.merging(additions)
 
             guard merged != page else {
                 continue
             }
-            try VectorIndex.store(merged, in: record)
+            record.indexPage = merged
             saving[index.recordID] = (index, additions, record)
         }
 
@@ -84,8 +88,8 @@ struct VectorIndexWriter {
 extension VectorIndex.Page {
     fileprivate func merging(_ other: Self) -> Self {
         Self(
-            weeks: weeks.count > 0 || other.weeks.count > 0 ? Array(Set(weeks).union(other.weeks)).sorted() : [],
-            groups: groups.count > 0 || other.groups.count > 0 ? Array(Set(groups).union(other.groups)).sorted() : []
+            weeks: Set(weeks).union(other.weeks).sorted(),
+            groups: Set(groups).union(other.groups).sorted()
         )
     }
 }

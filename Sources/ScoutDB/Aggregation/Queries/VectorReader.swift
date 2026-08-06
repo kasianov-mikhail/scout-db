@@ -15,14 +15,7 @@ struct VectorReader {
 
     typealias Row = (group: String, record: CKRecord)
 
-    /// Reads the vectors of the aggregate, naming each by the group it counts.
-    ///
-    /// `groups` names the groups to read when the caller knows them — a filter
-    /// narrowed to a value, or the buckets of a histogram — and the index is
-    /// only consulted for the weeks. Without them every group the index has
-    /// seen is read.
-    ///
-    func rows(groups: [String]? = nil) async throws -> [Row] {
+    func rows(groups: [String]?) async throws -> [Row] {
         let weeks = try await weeks()
 
         guard weeks.count > 0 else {
@@ -59,12 +52,6 @@ struct VectorReader {
             }
     }
 
-    /// The record IDs the aggregate holds, whatever they count.
-    func recordIDs() async throws -> [CKRecord.ID] {
-        try await rows().map(\.record.recordID)
-    }
-
-    /// The index records naming those vectors, which a rebuild drops with them.
     func indexIDs() async throws -> [CKRecord.ID] {
         let head = VectorIndex(entity: entity, aggregate: aggregate.name, week: nil)
         let weeks = try await weeks().map {
@@ -77,7 +64,7 @@ struct VectorReader {
         guard let count = aggregate.shards else {
             return [nil]
         }
-        return (0..<count).map { $0 }
+        return (0..<count).map(Optional.init)
     }
 
     private func weeks() async throws -> [Date] {
@@ -86,7 +73,7 @@ struct VectorReader {
         guard let record = try await database.fetchRecord(id: head.recordID) else {
             return []
         }
-        return try VectorIndex.page(of: record).weeks.map(Date.init(millisecondsSince1970:))
+        return try record.indexPage(named: head.recordID).weeks.map(Date.init(millisecondsSince1970:))
     }
 
     private func groups(in weeks: [Date]) async throws -> [(group: String, week: Date)] {
@@ -100,7 +87,7 @@ struct VectorReader {
             guard let week = dated[record.recordID] else {
                 continue
             }
-            for group in try VectorIndex.page(of: record).groups {
+            for group in try record.indexPage(named: record.recordID).groups {
                 keys.append((group: group, week: week))
             }
         }

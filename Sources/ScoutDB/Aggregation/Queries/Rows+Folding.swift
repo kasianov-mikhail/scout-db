@@ -8,11 +8,11 @@
 import CloudKit
 
 extension [VectorReader.Row] {
-    func vectorRows(folding kind: Metric, where include: (String) -> Bool = { _ in true }) -> [String: Double] {
+    func vectorRows(folding kind: Metric, where include: ((String) -> Bool)?) -> [String: Double] {
         var rows: [String: Double] = [:]
 
         for (key, record) in self {
-            guard include(key), let value = kind.fold(record.cells) else {
+            guard include?(key) != false, let value = kind.fold(record.cells) else {
                 continue
             }
             rows[key] = rows[key].map { kind.combine($0, value) } ?? value

@@ -88,7 +88,7 @@ public struct Migrator: Sendable {
         }
 
         let reader = VectorReader(database: database, entity: entity, aggregate: aggregate)
-        let stale = try await reader.recordIDs() + reader.indexIDs()
+        let stale = try await reader.rows(groups: nil).map(\.record.recordID) + reader.indexIDs()
 
         for chunk in stale.chunked(into: batchSize) {
             try await database.modifyRecords(saving: [], deleting: chunk)
