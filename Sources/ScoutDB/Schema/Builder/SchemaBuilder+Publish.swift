@@ -147,7 +147,7 @@ extension SchemaBuilder {
         merged += aggregates.filter { aggregate in !inherited.contains { $0.name == aggregate.name } }
 
         let carriedViews = merged.filter { aggregate in
-            [aggregate.groupBy, aggregate.metricField, aggregate.histogram?.field]
+            [aggregate.groupBy, aggregate.measure?.field, aggregate.measure?.histogram?.field]
                 .compactMap(\.self)
                 .allSatisfy(active.contains)
         }

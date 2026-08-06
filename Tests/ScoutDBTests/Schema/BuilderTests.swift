@@ -88,8 +88,8 @@ struct BuilderTests {
 
         let aggregates = try await registry.definition(for: "shipment").aggregates
         #expect(aggregates.filter { $0.groupBy == "carrier" }.count == 2)
-        #expect(aggregates.first { $0.groupBy == "carrier" && $0.metricField != nil }?.measure == .sum("weight"))
-        #expect(aggregates.contains { $0.name == "by_carrier" && $0.metricField == nil })
+        #expect(aggregates.first { $0.groupBy == "carrier" && $0.measure?.field != nil }?.measure == .sum("weight"))
+        #expect(aggregates.contains { $0.name == "by_carrier" && $0.measure?.field == nil })
         #expect(Set(aggregates.compactMap(\.groupBy)) == ["carrier", "weight"])
     }
 
@@ -193,7 +193,7 @@ struct BuilderTests {
         let updated = try await registry.definition(for: "ticket").aggregates
         #expect(Set(updated.compactMap(\.groupBy)) == ["queue", "weight"])
         #expect(updated.contains { $0.groupBy == "queue" && $0.measure == .sum("weight") })
-        #expect(updated.contains { $0.name == "by_queue" && $0.metricField == nil })
+        #expect(updated.contains { $0.name == "by_queue" && $0.measure?.field == nil })
     }
 
     @Test("An aggregate over a field the version closes lapses with it")

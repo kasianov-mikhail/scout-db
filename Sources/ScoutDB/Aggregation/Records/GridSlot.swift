@@ -43,7 +43,7 @@ extension GridSlot {
     init?(for entityRecord: EntityRecord, aggregate: AggregateDefinition, week: Date) {
         let group: String
 
-        if let histogram = aggregate.histogram {
+        if let histogram = aggregate.measure?.histogram {
             guard let value = entityRecord.values[histogram.field]?.scalar else {
                 return nil
             }
