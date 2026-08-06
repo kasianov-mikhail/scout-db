@@ -242,7 +242,7 @@ struct AggregatesTests {
         let counted = database.records.filter { $0["aggregate"] as? String == "at_date" }
         #expect(counted.count == 2)
         #expect(counted.first { $0["date"] as? Date == noon.weekStart }?.cells() == 0)
-        #expect(counted.first { $0["date"] as? Date == moved.weekStart }?[cell: GridCell(of: moved)] == 1)
+        #expect(counted.first { $0["date"] as? Date == moved.weekStart }?[cell: moved.hourOfWeek] == 1)
 
         #expect(try await store.query("payment").count() == 1)
         #expect(try await store.query("payment").sum("amount") == 10)

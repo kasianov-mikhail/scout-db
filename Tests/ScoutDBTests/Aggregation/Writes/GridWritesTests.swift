@@ -28,8 +28,8 @@ struct GridWritesTests {
         }
     }
 
-    private var cell: GridCell {
-        GridCell(of: noon)
+    private var hour: Int {
+        noon.hourOfWeek
     }
 
     private func requests(_ kind: RequestTally.Kind) -> Int {
@@ -71,7 +71,7 @@ struct GridWritesTests {
 
         #expect(requests(.fetch) == 0)
         #expect(requests(.conditionalSave) == 1)
-        #expect(try #require(slots.first)[cell: cell] == 2)
+        #expect(try #require(slots.first)[cell: hour] == 2)
     }
 
     private func payment(amount: Double) -> EntityRecord {
@@ -95,7 +95,7 @@ struct GridWritesTests {
             .rebalance(removing: [stored], adding: [payment(amount: 9)])
 
         #expect(requests(.conditionalSave) == 1)
-        #expect(try #require(slots.first)[cell: cell] == 5)
+        #expect(try #require(slots.first)[cell: hour] == 5)
     }
 
     @Test("An update that lowers a min aggregate's value still writes the slot")
@@ -110,7 +110,7 @@ struct GridWritesTests {
             .rebalance(removing: [stored], adding: [payment(amount: 2)])
 
         #expect(requests(.conditionalSave) == 1)
-        #expect(try #require(slots.first)[cell: cell] == 2)
+        #expect(try #require(slots.first)[cell: hour] == 2)
     }
 
     @Test("A slot another writer moved on is folded again over the server copy")
@@ -122,13 +122,13 @@ struct GridWritesTests {
         try await aggregator.rebalance(removing: [], adding: payments(["app"]))
 
         let server = try #require(slots.first).copy() as! CKRecord
-        server[cell: cell] = (server[cell: cell] ?? 0) + 5
+        server[cell: hour] = (server[cell: hour] ?? 0) + 5
         try await database.modifyRecords(saving: [server], deleting: [])
         database.resetRequests()
 
         try await aggregator.rebalance(removing: [], adding: payments(["pro"]))
 
         #expect(requests(.conditionalSave) == 2)
-        #expect(try #require(slots.first)[cell: cell] == 7)
+        #expect(try #require(slots.first)[cell: hour] == 7)
     }
 }
