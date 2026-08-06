@@ -9,18 +9,40 @@ import CloudKit
 
 @testable import ScoutDB
 
+private let cellKeys = DoubleVector.cellKeys
+
 extension CKRecord {
+    var counts: Bool {
+        recordType == IntVector.recordType
+    }
+
     func cells(folding kind: Metric = .sum) -> Double? {
-        kind.fold(DoubleVector.cellKeys.compactMap { self[$0] as? Double })
+        counts
+            ? kind.fold(cellKeys.compactMap { Int64.cell(of: self, at: $0) })?.scalar
+            : kind.fold(cellKeys.compactMap { Double.cell(of: self, at: $0) })?.scalar
     }
 
     subscript(cell hour: Int) -> Double? {
-        get { self[DoubleVector.cellKeys[hour]] as? Double }
-        set { self[DoubleVector.cellKeys[hour]] = newValue }
+        get {
+            counts
+                ? Int64.cell(of: self, at: cellKeys[hour])?.scalar
+                : Double.cell(of: self, at: cellKeys[hour])
+        }
+        set {
+            guard let newValue else {
+                self[cellKeys[hour]] = nil
+                return
+            }
+            if counts {
+                Int64(newValue).store(in: self, at: cellKeys[hour])
+            } else {
+                newValue.store(in: self, at: cellKeys[hour])
+            }
+        }
     }
 
     func reset(cellsTo value: Double, at hour: Int = 0) {
-        for key in DoubleVector.cellKeys where self[key] != nil {
+        for key in cellKeys where self[key] != nil {
             self[key] = nil
         }
         self[cell: hour] = value
