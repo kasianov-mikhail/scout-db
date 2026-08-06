@@ -209,7 +209,7 @@ struct AggregatesTests {
         )
     }
 
-    @Test("Weeks keep a grid record each, and a fold reads across them")
+    @Test("Weeks keep a vector each, and a fold reads across them")
     func weeksFoldTogether() async throws {
         try await publishPayment(
             aggregates: [
@@ -326,8 +326,8 @@ struct AggregatesTests {
         #expect(totals.first?.value == 2)
     }
 
-    @Test("A batched write touches each grid record once")
-    func batchGridWrites() async throws {
+    @Test("A batched write touches each vector once")
+    func batchVectorWrites() async throws {
         try await publishPayment(aggregates: [
             AggregateDefinition(groupBy: "product", measure: .sum("amount"))
         ])
@@ -338,7 +338,7 @@ struct AggregatesTests {
             entity: "payment"
         )
 
-        #expect(database.records.filter { $0.recordType == "Aggregate" }.count == 1)
+        #expect(database.records.filter { $0.recordType == "Vector" }.count == 1)
     }
 
     @Test("A aggregate keeps one running total per category")
@@ -364,10 +364,10 @@ struct AggregatesTests {
         let totals = try await TotalOperation(store: store, entity: "sale").rows(aggregate: "sum_amount_by_product")
         #expect(totals.first { $0.group == "app" }?.value == 15)
         #expect(totals.first { $0.group == "book" }?.value == 2)
-        #expect(database.records.filter { $0.recordType == "Aggregate" }.count == 2)
+        #expect(database.records.filter { $0.recordType == "Vector" }.count == 2)
     }
 
-    @Test("count() reads a covering aggregate's grid instead of scanning")
+    @Test("count() reads a covering aggregate's vector instead of scanning")
     func countThroughLifetimeView() async throws {
         try await registry.publish(
             makeDefinition(
@@ -390,10 +390,10 @@ struct AggregatesTests {
         #expect(try await store.query("sale").filter("product", .equals, "app").count() == 2)
         #expect(try await store.query("sale").limit(1).count() == 1)
 
-        let grid = try #require(
-            database.records.first { $0.recordType == "Aggregate" && $0["group_key"] as? String == "book" }
+        let vector = try #require(
+            database.records.first { $0.recordType == "Vector" && $0["group_key"] as? String == "book" }
         )
-        grid.reset(cellsTo: 41)
+        vector.reset(cellsTo: 41)
         #expect(try await store.query("sale").count() == 43)
         #expect(try await store.query("sale").filter("product", .equals, "book").count() == 41)
 
@@ -406,7 +406,7 @@ struct AggregatesTests {
         }
     }
 
-    @Test("count() honors IN lists and OR groups through the aggregate's grid")
+    @Test("count() honors IN lists and OR groups through the aggregate's vector")
     func countThroughKeySets() async throws {
         try await registry.publish(
             makeDefinition(
@@ -458,7 +458,7 @@ struct AggregatesTests {
         }
     }
 
-    @Test("A threshold on a bounded integer field names the grid keys it covers")
+    @Test("A threshold on a bounded integer field names the vector keys it covers")
     func countThroughNamedDomain() async throws {
         try await registry.publish(
             makeDefinition(
@@ -482,10 +482,10 @@ struct AggregatesTests {
                 [EntityWrite(values: ["units": .int(units), "weight": .int(units * 100)], uuid: nil)], entity: "crate")
         }
 
-        let grid = try #require(
-            database.records.first { $0.recordType == "Aggregate" && $0["group_key"] as? String == "i16" }
+        let vector = try #require(
+            database.records.first { $0.recordType == "Vector" && $0["group_key"] as? String == "i16" }
         )
-        grid.reset(cellsTo: 41)
+        vector.reset(cellsTo: 41)
 
         #expect(try await store.query("crate").filter("units", .greaterThan, .int(15)).count() == 42)
         #expect(try await store.query("crate").filter("units", .greaterThanOrEquals, .int(16)).count() == 42)
@@ -498,7 +498,7 @@ struct AggregatesTests {
         }
     }
 
-    @Test("A date range falls outside what the grid answers, and is refused rather than scanned")
+    @Test("A date range falls outside what a vector answers, and is refused rather than scanned")
     func countThroughDateRangeScans() async throws {
         try await publishPayment(aggregates: [AggregateDefinition(groupBy: "product")])
         try await writePayments([1, 2], product: "app")
@@ -512,8 +512,8 @@ struct AggregatesTests {
                 )
             ], entity: "payment")
 
-        let grid = try #require(database.records.first { $0.recordType == "Aggregate" })
-        grid.reset(cellsTo: 41)
+        let vector = try #require(database.records.first { $0.recordType == "Vector" })
+        vector.reset(cellsTo: 41)
 
         #expect(try await store.query("payment").count() == 41)
 
@@ -568,7 +568,7 @@ struct AggregatesTests {
         summed.reset(cellsTo: 40)
     }
 
-    @Test("sum() and average() read a covering aggregate's grid, while min and max find none")
+    @Test("sum() and average() read a covering aggregate's vector, while min and max find none")
     func foldThroughLifetimeView() async throws {
         try await publishLedger()
         #expect(try await store.query("ledger").sum("amount") == 20)
@@ -588,7 +588,7 @@ struct AggregatesTests {
         await #expect(throws: uncovered) { try await store.query("ledger").max("amount") }
     }
 
-    @Test("An extremum reads its aggregate's grid instead of scanning")
+    @Test("An extremum reads its aggregate's vector instead of scanning")
     func extremumThroughView() async throws {
         try await registry.publish(
             makeDefinition(
@@ -610,13 +610,13 @@ struct AggregatesTests {
         }
 
         for aggregate in ["max_amount_by_product", "min_amount_by_product"] {
-            let grid = try #require(
+            let vector = try #require(
                 database.records.first {
-                    $0.recordType == "Aggregate" && $0["aggregate"] as? String == aggregate
+                    $0.recordType == "Vector" && $0["aggregate"] as? String == aggregate
                         && $0["group_key"] as? String == "book"
                 }
             )
-            grid.reset(cellsTo: aggregate == "max_amount_by_product" ? 41 : 1)
+            vector.reset(cellsTo: aggregate == "max_amount_by_product" ? 41 : 1)
         }
 
         #expect(try await store.query("reading").max("amount") == 41)
@@ -628,7 +628,7 @@ struct AggregatesTests {
         #expect(try await store.query("reading").min("amount") == 1)
     }
 
-    @Test("Grouped totals read the grouping aggregate's grid")
+    @Test("Grouped totals read the grouping aggregate's vector")
     func groupedFoldThroughLifetimeView() async throws {
         try await publishLedger()
         try tamperBookSlots()
@@ -641,7 +641,7 @@ struct AggregatesTests {
         #expect(averages.map(\.value) == [8, 40.0 / 3])
     }
 
-    @Test("A fold that divides by the grid's row count is refused when the field may be absent")
+    @Test("A fold that divides by the vector's row count is refused when the field may be absent")
     func foldFallsBackForOptionalField() async throws {
         try await publishLedger(required: false)
         try tamperBookSlots()
@@ -654,21 +654,21 @@ struct AggregatesTests {
     }
 
     @Test("A fold over one group asks the server for that group's rows only")
-    func groupScopedGridQuery() async throws {
+    func groupScopedVectorQuery() async throws {
         try await publishLedger()
-        let watched = GridQueries(backing: database)
+        let watched = VectorQueries(backing: database)
         let reader = EntityStore(database: watched, registry: registry)
-        #expect(database.records.filter { $0.recordType == "Aggregate" }.count == 4)
+        #expect(database.records.filter { $0.recordType == "Vector" }.count == 4)
 
         let scoped = try await reader.query("ledger").filter("product", .equals, "book").sum("amount")
         #expect(scoped == 4)
-        let grouped = try #require(watched.grid.last)
+        let grouped = try #require(watched.vectors.last)
         #expect(grouped.query.predicate.predicateFormat.contains("group_key == \"book\""))
         #expect(grouped.matched == 1)
 
         let whole = try await reader.query("ledger").sum("amount")
         #expect(whole == 20)
-        let ungrouped = try #require(watched.grid.last)
+        let ungrouped = try #require(watched.vectors.last)
         #expect(ungrouped.query.predicate.predicateFormat.contains("group_key") == false)
         #expect(ungrouped.matched == 2)
     }
@@ -704,7 +704,7 @@ struct AggregatesTests {
     }
 }
 
-private final class GridQueries: CloudDatabase, @unchecked Sendable {
+private final class VectorQueries: CloudDatabase, @unchecked Sendable {
     private let backing: InMemoryDatabase
     private let lock = NSLock()
     private var log: [(query: CKQuery, matched: Int)] = []
@@ -713,8 +713,8 @@ private final class GridQueries: CloudDatabase, @unchecked Sendable {
         self.backing = backing
     }
 
-    var grid: [(query: CKQuery, matched: Int)] {
-        lock.withLock { log.filter { $0.query.recordType == GridSlot.recordType } }
+    var vectors: [(query: CKQuery, matched: Int)] {
+        lock.withLock { log.filter { $0.query.recordType == VectorSlot.recordType } }
     }
 
     func records(matching query: CKQuery, resultsLimit: Int) async throws -> QueryPage {

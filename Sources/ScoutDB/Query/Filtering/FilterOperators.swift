@@ -47,7 +47,7 @@ public func != (field: String, value: RecordValue) -> FilterExpression {
 /// Matches the records whose field is greater than the value.
 ///
 /// Comparisons are server-side over a slot-backed scalar. On an integer field
-/// bounded by `min` and `max`, a threshold can be answered off the grid without
+/// bounded by `min` and `max`, a threshold can be answered off a vector without
 /// reading records at all — see ``QueryBuilder/count()``.
 ///
 /// ```swift

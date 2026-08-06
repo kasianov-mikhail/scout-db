@@ -22,7 +22,7 @@ struct EntityDefinitionTests {
         #expect(decoded == definition)
     }
 
-    @Test("A definition stored without views decodes to an empty grid")
+    @Test("A definition stored without views decodes to no aggregates")
     func missingViews() throws {
         let json = Data(
             #"{"entity":"purchase","version":1,"fields":[{"name":"product_id","type":"string","storage":"s_00"}]}"#

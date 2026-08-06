@@ -8,7 +8,7 @@
 import CloudKit
 import Foundation
 
-actor GridCache {
+actor VectorCache {
     private var entries: [CKRecord.ID: Entry] = [:]
     private var clock: Int64 = 0
     private let limit: Int

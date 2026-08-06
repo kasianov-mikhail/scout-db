@@ -8,22 +8,22 @@
 import Foundation
 
 extension SchemaBuilder {
-    /// Publishes version 1 of the entity, over a grid it builds itself.
+    /// Publishes version 1 of the entity, over the vectors it builds itself.
     ///
     /// Every groupable field — a scalar string, reference, int or double in a
     /// slot — gets an aggregate counting its values. So `count` and `totals(metric:group:)`
-    /// are answered from the grid without anyone declaring anything;
+    /// are answered from a vector without anyone declaring anything;
     /// ``sum(_:by:at:shards:)`` and its siblings remain for the shapes nobody can
     /// guess, like a metric over a field — and they join the count rather than
     /// standing in for it, since a cell holds one number.
     ///
-    /// A grid record covers one group over one week, holding a cell per hour of
-    /// it, so a fold reads a record per week the entity spans.
+    /// A vector covers one group over one week, holding a cell per hour of it,
+    /// so a fold reads a record per week the entity spans.
     ///
-    /// The grid costs the writes it saves the reads: an entity carrying one
+    /// The vectors cost the writes they save the reads: an entity carrying them
     /// reads its records before it rewrites them and rewrites its cells after,
     /// three requests per write batch on top of the save. `update()` inherits
-    /// whatever this published — it never builds a grid of its own, so a field
+    /// whatever this published — it never builds vectors of its own, so a field
     /// added later needs its aggregate declared.
     ///
     /// ```swift
@@ -42,7 +42,7 @@ extension SchemaBuilder {
         }
 
         var taken = Set(aggregates.map(\.name))
-        var grid = aggregates
+        var vectors = aggregates
 
         for field in fields {
             guard isSlot(field.storage), field.isGroupable else {
@@ -51,7 +51,7 @@ extension SchemaBuilder {
             guard taken.insert("by_\(field.name)").inserted else {
                 continue
             }
-            grid.append(AggregateDefinition(by: field.name))
+            vectors.append(AggregateDefinition(by: field.name))
         }
 
         try await registry.publish(
@@ -59,7 +59,7 @@ extension SchemaBuilder {
                 entity: entity,
                 version: 1,
                 fields: fields,
-                aggregates: grid
+                aggregates: vectors
             )
         )
     }
@@ -73,7 +73,7 @@ extension SchemaBuilder {
     /// through their own, so nothing is rewritten here. Aggregates join rather
     /// than replace — one lapses only with the field it is kept over.
     ///
-    /// A version builds no grid of its own: the entity already holds records,
+    /// A version builds no vector of its own: the entity already holds records,
     /// and a fresh cell counts only what lands after it. The returned names are
     /// that missing coverage — declare `count(by:)` for them on a further
     /// version and backfill with `Migrator.backfill(aggregate:entity:)`, mark them

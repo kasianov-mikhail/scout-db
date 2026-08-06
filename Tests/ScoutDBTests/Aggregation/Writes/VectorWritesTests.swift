@@ -12,8 +12,8 @@ import Testing
 
 @testable import ScoutDB
 
-@Suite("Grid writes")
-struct GridWritesTests {
+@Suite("Vector writes")
+struct VectorWritesTests {
     let database = InMemoryDatabase()
     let noon = Date(timeIntervalSince1970: 36_000)
 
@@ -37,12 +37,12 @@ struct GridWritesTests {
     }
 
     private var slots: [CKRecord] {
-        database.records.filter { $0.recordType == GridSlot.recordType }
+        database.records.filter { $0.recordType == VectorSlot.recordType }
     }
 
     @Test("Every slot a batch touches is read and written in one request each")
     func batchedSlots() async throws {
-        let aggregator = GridAggregator(
+        let aggregator = VectorAggregator(
             database: database,
             aggregates: [
                 AggregateDefinition(groupBy: "product", date: "date"),
@@ -60,7 +60,7 @@ struct GridWritesTests {
 
     @Test("A slot written before stays cached, so the next write only saves")
     func warmSlotSkipsTheFetch() async throws {
-        let aggregator = GridAggregator(
+        let aggregator = VectorAggregator(
             database: database,
             aggregates: [AggregateDefinition(measure: .sum("amount"), date: "date")]
         )
@@ -87,11 +87,11 @@ struct GridWritesTests {
     func raisedMinLeavesTheValue() async throws {
         let aggregates = [AggregateDefinition(measure: .min("amount"), date: "date")]
         let stored = payment(amount: 5)
-        try await GridAggregator(database: database, aggregates: aggregates)
+        try await VectorAggregator(database: database, aggregates: aggregates)
             .rebalance(removing: [], adding: [stored])
         database.resetRequests()
 
-        try await GridAggregator(database: database, aggregates: aggregates)
+        try await VectorAggregator(database: database, aggregates: aggregates)
             .rebalance(removing: [stored], adding: [payment(amount: 9)])
 
         #expect(requests(.conditionalSave) == 1)
@@ -102,11 +102,11 @@ struct GridWritesTests {
     func loweredMinWritesTheSlot() async throws {
         let aggregates = [AggregateDefinition(measure: .min("amount"), date: "date")]
         let stored = payment(amount: 5)
-        try await GridAggregator(database: database, aggregates: aggregates)
+        try await VectorAggregator(database: database, aggregates: aggregates)
             .rebalance(removing: [], adding: [stored])
         database.resetRequests()
 
-        try await GridAggregator(database: database, aggregates: aggregates)
+        try await VectorAggregator(database: database, aggregates: aggregates)
             .rebalance(removing: [stored], adding: [payment(amount: 2)])
 
         #expect(requests(.conditionalSave) == 1)
@@ -115,7 +115,7 @@ struct GridWritesTests {
 
     @Test("A slot another writer moved on is folded again over the server copy")
     func staleSlotRetriesOverTheServerCopy() async throws {
-        let aggregator = GridAggregator(
+        let aggregator = VectorAggregator(
             database: database,
             aggregates: [AggregateDefinition(measure: .sum("amount"), date: "date")]
         )

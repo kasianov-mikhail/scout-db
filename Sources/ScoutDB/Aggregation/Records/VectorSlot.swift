@@ -8,8 +8,8 @@
 import CloudKit
 import Foundation
 
-struct GridSlot: Hashable {
-    static let recordType = "Aggregate"
+struct VectorSlot: Hashable {
+    static let recordType = "Vector"
 
     static let cellKeys: [String] = (0..<Date.hoursPerWeek).map { String(format: "c_%03d", $0) }
 
@@ -28,7 +28,7 @@ struct GridSlot: Hashable {
     }
 
     var recordID: CKRecord.ID {
-        CKRecord.ID(recordName: "grid-" + contentDigest(of: components))
+        CKRecord.ID(recordName: "vector-" + contentDigest(of: components))
     }
 
     func blank(named id: CKRecord.ID) -> CKRecord {
@@ -41,7 +41,7 @@ struct GridSlot: Hashable {
     }
 }
 
-extension GridSlot {
+extension VectorSlot {
     init?(for entityRecord: EntityRecord, aggregate: AggregateDefinition, week: Date) {
         let group: String
 
@@ -67,7 +67,7 @@ extension GridSlot {
 }
 
 extension CKQuery {
-    convenience init(gridOf entity: String, aggregate: String, group: String? = nil) {
+    convenience init(vectorOf entity: String, aggregate: String, group: String? = nil) {
         var filters = [
             CKQuery.Filter(field: "entity", op: .equals, value: .string(entity)),
             CKQuery.Filter(field: "aggregate", op: .equals, value: .string(aggregate)),
@@ -75,6 +75,6 @@ extension CKQuery {
         if let group {
             filters.append(CKQuery.Filter(field: "group_key", op: .equals, value: .string(group)))
         }
-        self.init(recordType: GridSlot.recordType, filters: filters)
+        self.init(recordType: VectorSlot.recordType, filters: filters)
     }
 }

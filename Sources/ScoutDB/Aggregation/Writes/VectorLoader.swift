@@ -8,18 +8,18 @@
 import CloudKit
 import Foundation
 
-struct GridLoader {
+struct VectorLoader {
     let database: any CloudDatabase
-    let slots: GridCache
+    let slots: VectorCache
 
     struct Pending {
         var record: CKRecord
-        let delta: GridDelta
+        let delta: VectorDelta
     }
 
-    func open(_ deltas: [GridSlot: GridDelta]) async throws -> [CKRecord.ID: Pending] {
+    func open(_ deltas: [VectorSlot: VectorDelta]) async throws -> [CKRecord.ID: Pending] {
         var pending: [CKRecord.ID: Pending] = [:]
-        var cold: [(id: CKRecord.ID, slot: GridSlot, delta: GridDelta)] = []
+        var cold: [(id: CKRecord.ID, slot: VectorSlot, delta: VectorDelta)] = []
 
         for (slot, delta) in deltas {
             let id = slot.recordID

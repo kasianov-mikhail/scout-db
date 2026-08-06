@@ -10,15 +10,15 @@ import Foundation
 extension QueryBuilder {
     /// Runs the query and returns the number of matching records.
     ///
-    /// A fold reads the grid or it throws — it never falls back to reading the
+    /// A fold reads a vector or it throws — it never falls back to reading the
     /// records, because the cost of that fallback grows with the entity while
     /// the call site that asked for a count stays the same. The count comes off
     /// a counting aggregate, one that folds no metric: a cell holds one number,
     /// so the `sum` of a field is kept apart from the count of the records it
     /// came from. A query a declared aggregate covers — filters limited to an
     /// equality, `in` list, or alternatives of them on the aggregate's
-    /// grouping — is answered from the grid. A threshold on an integer field an
-    /// aggregate groups by is answered from the grid too when the field's `min`
+    /// grouping — is answered from a vector. A threshold on an integer field an
+    /// aggregate groups by is answered from a vector too when the field's `min`
     /// and `max` bound it to a domain the range can name value by value; a
     /// strict threshold counts as the half-open one it equals, so `> 15` reads
     /// as `>= 16`. Every other query throws
@@ -44,7 +44,7 @@ extension QueryBuilder {
 
     /// Sums a numeric field across the matching records.
     ///
-    /// Answered from the grid of an aggregate declaring `sum` of the field, and
+    /// Answered from the vector of an aggregate declaring `sum` of the field, and
     /// throws when none covers the query — as in ``count()``, there is no scan
     /// behind it. Records missing the field contribute nothing; with no match
     /// at all the sum is zero.
@@ -61,9 +61,9 @@ extension QueryBuilder {
 
     /// The smallest value of a numeric field across the matching records.
     ///
-    /// Answered from the grid of an aggregate declaring `min` of the field, and
+    /// Answered from the vector of an aggregate declaring `min` of the field, and
     /// throws when none covers the query. `nil` when nothing matches or no
-    /// match carries the field. The grid keeps a running extremum, so removing
+    /// match carries the field. The vector keeps a running extremum, so removing
     /// the record that set it leaves the value standing.
     ///
     /// ```swift
@@ -78,7 +78,7 @@ extension QueryBuilder {
 
     /// The largest value of a numeric field across the matching records.
     ///
-    /// Answered from the grid of an aggregate declaring `max` of the field, and
+    /// Answered from the vector of an aggregate declaring `max` of the field, and
     /// throws when none covers the query, standing after a removal as in
     /// ``min(_:)``.
     ///
@@ -94,7 +94,7 @@ extension QueryBuilder {
 
     /// The mean of a numeric field across the matching records.
     ///
-    /// A grid divides the running total by the count kept beside it, so this
+    /// A vector divides the running total by the count kept beside it, so this
     /// reads two aggregates covering the query — one declaring `sum` of the
     /// field, one counting — and throws when either is missing. The field must
     /// be `required` or carry a default, since the count divides in every

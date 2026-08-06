@@ -326,7 +326,7 @@ struct EntityStoreTests {
         #expect(records.map(\.uuid) == ["n-1"])
     }
 
-    @Test("Aggregate aggregates count writes into grid cells")
+    @Test("Aggregate aggregates count writes into vector cells")
     func aggregation() async throws {
         try await registry.publish(
             makeDefinition(
@@ -345,10 +345,10 @@ struct EntityStoreTests {
         try await store.write(
             [EntityWrite(values: ["name": .string("open"), "date": .date(date)], uuid: nil)], entity: "tap")
 
-        let grids = database.records.filter { $0.recordType == "Aggregate" }
-        #expect(grids.count == 1)
-        #expect(grids.first?.cells() == 2)
-        #expect(grids.first?["group_key"] == "open")
+        let vectors = database.records.filter { $0.recordType == "Vector" }
+        #expect(vectors.count == 1)
+        #expect(vectors.first?.cells() == 2)
+        #expect(vectors.first?["group_key"] == "open")
     }
 
     @Test("Sum aggregates accumulate values into double cells")
@@ -370,8 +370,8 @@ struct EntityStoreTests {
         try await store.write(
             [EntityWrite(values: ["amount": .double(1.5), "date": .date(date)], uuid: nil)], entity: "payment")
 
-        let grids = database.records.filter { $0.recordType == "Aggregate" }
-        #expect(grids.count == 1)
-        #expect(grids.first?.cells() == 4.0)
+        let vectors = database.records.filter { $0.recordType == "Vector" }
+        #expect(vectors.count == 1)
+        #expect(vectors.first?.cells() == 4.0)
     }
 }

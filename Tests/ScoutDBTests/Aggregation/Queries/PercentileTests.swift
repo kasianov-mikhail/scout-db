@@ -53,7 +53,7 @@ struct PercentileTests {
     }
 
     private var buckets: [CKRecord] {
-        database.records.filter { $0.recordType == "Aggregate" }
+        database.records.filter { $0.recordType == "Vector" }
     }
 
     @Test("A percentile lands inside its bucket and reads only the buckets")

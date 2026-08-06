@@ -37,9 +37,9 @@ extension QueryFault: CustomStringConvertible {
         case .nonNumericField(let field):
             "Field '\(field)' is not numeric"
         case .disjunctionUnsupported:
-            "An aggregate reads the grid and cannot honor a disjunction"
+            "An aggregate reads a vector and cannot honor a disjunction"
         case .equalityOnly(let group):
-            "An aggregate reads the grid and can only be filtered by an equal '\(group ?? "group")'"
+            "An aggregate reads a vector and can only be filtered by an equal '\(group ?? "group")'"
         case .noAggregate(let entity, let grouping, let folding):
             "Entity '\(entity)' keeps no aggregate "
                 + [grouping.map { "grouped by '\($0)'" }, folding.map { "folding '\($0)'" }]
@@ -50,7 +50,7 @@ extension QueryFault: CustomStringConvertible {
         case .noHistogram(let entity, let field):
             "Entity '\(entity)' keeps no histogram of '\(field)'"
         case .filteredHistogram:
-            "A percentile reads a histogram grid, whose grouping is the bucket, and cannot honor a filter"
+            "A percentile reads a histogram vector, whose grouping is the bucket, and cannot honor a filter"
         case .rankOutOfRange(let rank):
             "A percentile rank of \(rank) lies outside 0...1"
         }

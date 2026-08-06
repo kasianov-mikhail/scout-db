@@ -8,15 +8,15 @@
 import Foundation
 
 extension [AggregateDefinition] {
-    func deltas(removing old: [EntityRecord], adding new: [EntityRecord], at now: Date) -> [GridSlot: GridDelta] {
-        var merged: [GridSlot: GridDelta] = [:]
+    func deltas(removing old: [EntityRecord], adding new: [EntityRecord], at now: Date) -> [VectorSlot: VectorDelta] {
+        var merged: [VectorSlot: VectorDelta] = [:]
 
         for (batch, adding) in [(old, false), (new, true)] {
             for entityRecord in batch {
                 for aggregate in self {
                     let stamp = aggregate.stamp(of: entityRecord, at: now)
 
-                    guard let slot = GridSlot(for: entityRecord, aggregate: aggregate, week: stamp.weekStart) else {
+                    guard let slot = VectorSlot(for: entityRecord, aggregate: aggregate, week: stamp.weekStart) else {
                         continue
                     }
                     guard let one = aggregate.delta(for: entityRecord, at: stamp.hourOfWeek) else {
@@ -24,7 +24,7 @@ extension [AggregateDefinition] {
                     }
 
                     let folded = adding ? one : one.reversed()
-                    merged[slot, default: GridDelta(kind: folded.kind)]
+                    merged[slot, default: VectorDelta(kind: folded.kind)]
                         .cells
                         .merge(folded.cells, uniquingKeysWith: folded.kind.combine)
                 }
@@ -43,13 +43,13 @@ extension AggregateDefinition {
         return value
     }
 
-    fileprivate func delta(for entityRecord: EntityRecord, at hour: Int) -> GridDelta? {
+    fileprivate func delta(for entityRecord: EntityRecord, at hour: Int) -> VectorDelta? {
         guard let field = measure?.field else {
-            return GridDelta(kind: fold, cells: [hour: 1])
+            return VectorDelta(kind: fold, cells: [hour: 1])
         }
         guard let value = entityRecord.values[field]?.scalar else {
             return nil
         }
-        return GridDelta(kind: fold, cells: [hour: value])
+        return VectorDelta(kind: fold, cells: [hour: value])
     }
 }

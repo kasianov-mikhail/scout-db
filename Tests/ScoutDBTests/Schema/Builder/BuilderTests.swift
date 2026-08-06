@@ -53,8 +53,8 @@ struct BuilderTests {
         #expect(definition.fields.first { $0.name == "quantity" }?.min == 0)
     }
 
-    @Test("Creation grids every groupable field")
-    func implicitGrid() async throws {
+    @Test("Creation vectors every groupable field")
+    func implicitVectors() async throws {
         let definition = try await registry.definition(for: "purchase")
         let aggregates = definition.aggregates
         #expect(Set(aggregates.map(\.name)) == ["by_product_id", "by_quantity", "by_amount"])
@@ -65,8 +65,8 @@ struct BuilderTests {
         #expect(try await store.query("purchase").filter("product_id", .equals, "sku-1").count() == 1)
     }
 
-    @Test("Creation leaves the fields it cannot group by out of the grid")
-    func implicitGridWithoutDates() async throws {
+    @Test("Creation leaves the fields it cannot group by out of the vectors")
+    func implicitVectorsWithoutDates() async throws {
         try await store.schema("label")
             .field("slug", .string, .required)
             .field("caption", .text)
@@ -77,7 +77,7 @@ struct BuilderTests {
         #expect(aggregates.map(\.name) == ["by_slug"])
     }
 
-    @Test("A declared metric joins the count the grid keeps over the same field")
+    @Test("A declared metric joins the count the vector keeps over the same field")
     func declaredViewJoinsTheCount() async throws {
         try await store.schema("shipment")
             .field("carrier", .string, .required)
@@ -93,7 +93,7 @@ struct BuilderTests {
         #expect(Set(aggregates.compactMap(\.groupBy)) == ["carrier", "weight"])
     }
 
-    @Test("A declared extremum reaches the published grid")
+    @Test("A declared extremum reaches the published vectors")
     func declaredExtremum() async throws {
         try await store.schema("reading")
             .field("sensor", .string, .required)
@@ -107,7 +107,7 @@ struct BuilderTests {
         #expect(aggregates.first { $0.name == "max_value_by_sensor" }?.measure == .max("value"))
     }
 
-    @Test("An ungrouped field is left out of the grid")
+    @Test("An ungrouped field is left out of the vectors")
     func ungroupedField() async throws {
         try await store.schema("event")
             .field("session", .string, .required, .ungrouped)
@@ -117,8 +117,8 @@ struct BuilderTests {
         #expect(try await registry.definition(for: "event").aggregates.compactMap(\.groupBy) == ["kind"])
     }
 
-    @Test("An update inherits the grid instead of building its own")
-    func updateKeepsTheGrid() async throws {
+    @Test("An update inherits the vectors instead of building its own")
+    func updateKeepsTheVectors() async throws {
         try await store.schema("ticket")
             .field("queue", .string, .required)
             .create()
@@ -160,8 +160,8 @@ struct BuilderTests {
         #expect(missing.isEmpty)
     }
 
-    @Test("An aggregate declared on an update joins the grid instead of replacing it")
-    func declaredViewJoinsTheGrid() async throws {
+    @Test("An aggregate declared on an update joins the vectors instead of replacing it")
+    func declaredViewJoinsTheVectors() async throws {
         try await store.schema("ticket")
             .field("queue", .string, .required)
             .create()
@@ -177,7 +177,7 @@ struct BuilderTests {
         #expect(updated.aggregates.compactMap(\.groupBy) == ["queue", "assignee"])
     }
 
-    @Test("A metric declared later joins the count the grid built")
+    @Test("A metric declared later joins the count the vectors built")
     func declaredMetricJoinsTheCount() async throws {
         try await store.schema("ticket")
             .field("queue", .string, .required)

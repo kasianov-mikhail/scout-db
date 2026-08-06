@@ -256,7 +256,7 @@ DEFINE SCHEMA
         GRANT READ TO "_world"
     );
 
-    RECORD TYPE Aggregate (
+    RECORD TYPE Vector (
         "___createTime" TIMESTAMP,
         "___createdBy"  REFERENCE,
         "___etag"       STRING,
