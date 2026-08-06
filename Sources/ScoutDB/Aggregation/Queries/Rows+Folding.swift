@@ -7,7 +7,7 @@
 
 import CloudKit
 
-extension [VectorReader.Row] {
+extension [VectorReader<DoubleVector>.Row] {
     func vectorRows(folding kind: Metric, where include: ((String) -> Bool)?) -> [String: Double] {
         var rows: [String: Double] = [:]
 

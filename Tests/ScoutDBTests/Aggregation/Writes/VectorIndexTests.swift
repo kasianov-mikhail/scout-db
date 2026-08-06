@@ -31,7 +31,7 @@ struct VectorIndexTests {
     }
 
     private func page(week: Date?) -> VectorIndex.Page {
-        let index = VectorIndex(entity: "payment", aggregate: counting.name, week: week)
+        let index = VectorIndex(slug: DoubleVector.slug, entity: "payment", aggregate: counting.name, week: week)
 
         return database.records.first { $0.recordID == index.recordID }?.indexPage ?? VectorIndex.Page()
     }
@@ -96,24 +96,24 @@ struct VectorIndexTests {
             try await aggregator().rebalance(removing: [], adding: payments(["app"]))
         }
 
-        #expect(database.records.filter { $0.recordType == VectorSlot.recordType }.isEmpty)
+        #expect(database.records.filter { $0.recordType == DoubleVector.recordType }.isEmpty)
     }
 
     @Test("A page that does not decode is refused rather than read as empty")
     func malformedPageIsRefused() async throws {
         try await aggregator().rebalance(removing: [], adding: payments(["app"]))
 
-        let head = VectorIndex(entity: "payment", aggregate: counting.name, week: nil)
+        let head = VectorIndex(slug: DoubleVector.slug, entity: "payment", aggregate: counting.name, week: nil)
         let record = try #require(database.records.first { $0.recordID == head.recordID })
         record[VectorIndex.pageKey] = Data([0x7b, 0x00])
 
         await #expect(throws: SchemaError.malformedRecord(head.recordID.recordName)) {
-            try await VectorReader(database: database, entity: "payment", aggregate: counting)
+            try await VectorReader<DoubleVector>(database: database, entity: "payment", aggregate: counting)
                 .rows(groups: nil)
         }
         await #expect(throws: SchemaError.malformedRecord(head.recordID.recordName)) {
             try await VectorIndexWriter(database: database).note([
-                VectorSlot(
+                VectorSlot<DoubleVector>(
                     entity: "payment",
                     aggregate: counting.name,
                     group: "book",
@@ -128,7 +128,7 @@ struct VectorIndexTests {
     func foldSeesEveryGroup() async throws {
         try await aggregator().rebalance(removing: [], adding: payments(["app", "book", "toy"]))
 
-        let rows = try await VectorReader(database: database, entity: "payment", aggregate: counting)
+        let rows = try await VectorReader<DoubleVector>(database: database, entity: "payment", aggregate: counting)
             .rows(groups: nil)
             .vectorRows(folding: .sum, where: nil)
 

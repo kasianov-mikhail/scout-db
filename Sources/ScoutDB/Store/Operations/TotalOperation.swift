@@ -41,7 +41,7 @@ struct TotalOperation: Sendable {
     private func folds(of aggregate: AggregateDefinition, group: String?) async throws -> [String: Double] {
         let narrowed = try narrowing(to: group)
 
-        let rows = try await VectorReader(
+        let rows = try await VectorReader<DoubleVector>(
             database: database,
             definition: definition,
             aggregate: aggregate

@@ -11,6 +11,7 @@ import Foundation
 struct VectorIndex: Hashable {
     static let namespace = "__index"
 
+    let slug: String
     let entity: String
     let aggregate: String
     let week: Date?
@@ -20,7 +21,7 @@ struct VectorIndex: Hashable {
         if let week {
             components.append(String(week.millisecondsSince1970))
         }
-        return CKRecord.ID(recordName: "index-" + contentDigest(of: components))
+        return CKRecord.ID(recordName: "\(slug)-index-" + contentDigest(of: components))
     }
 
     func blank() -> CKRecord {
@@ -70,8 +71,8 @@ extension CKRecord {
 extension VectorSlot {
     var index: (head: VectorIndex, week: VectorIndex) {
         (
-            VectorIndex(entity: entity, aggregate: aggregate, week: nil),
-            VectorIndex(entity: entity, aggregate: aggregate, week: week)
+            VectorIndex(slug: Holder.slug, entity: entity, aggregate: aggregate, week: nil),
+            VectorIndex(slug: Holder.slug, entity: entity, aggregate: aggregate, week: week)
         )
     }
 }

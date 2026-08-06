@@ -353,7 +353,7 @@ struct AggregatesTests {
             entity: "payment"
         )
 
-        #expect(database.records.filter { $0.recordType == "Vector" }.count == 1)
+        #expect(database.records.filter { $0.recordType == DoubleVector.recordType }.count == 1)
     }
 
     @Test("A aggregate keeps one running total per category")
@@ -380,7 +380,7 @@ struct AggregatesTests {
             field: "amount", metric: .sum, group: "product")
         #expect(totals.first { $0.group == "app" }?.value == 15)
         #expect(totals.first { $0.group == "book" }?.value == 2)
-        #expect(database.records.filter { $0.recordType == "Vector" }.count == 2)
+        #expect(database.records.filter { $0.recordType == DoubleVector.recordType }.count == 2)
     }
 
     @Test("count() reads a covering aggregate's vector instead of scanning")
@@ -526,7 +526,7 @@ struct AggregatesTests {
                 )
             ], entity: "payment")
 
-        let vector = try #require(database.records.first { $0.recordType == "Vector" })
+        let vector = try #require(database.records.first { $0.recordType == DoubleVector.recordType })
         vector.reset(cellsTo: 41)
 
         #expect(try await store.query("payment").count() == 41)
@@ -722,7 +722,7 @@ private final class VectorFetches: CloudDatabase, @unchecked Sendable {
         let asked = Set(lock.withLock { log })
 
         return ["app", "book", "toy"].filter { group in
-            let slot = VectorSlot(
+            let slot = VectorSlot<DoubleVector>(
                 entity: entity,
                 aggregate: aggregate,
                 group: group,

@@ -8,7 +8,7 @@
 import CloudKit
 import Foundation
 
-struct VectorReader {
+struct VectorReader<Holder: Vector> {
     let database: any CloudDatabase
     let entity: String
     let aggregate: AggregateDefinition
@@ -33,7 +33,7 @@ struct VectorReader {
 
         for (group, week) in keys {
             for shard in shards {
-                let slot = VectorSlot(
+                let slot = VectorSlot<Holder>(
                     entity: entity,
                     aggregate: aggregate.name,
                     group: group,
@@ -53,9 +53,9 @@ struct VectorReader {
     }
 
     func indexIDs() async throws -> [CKRecord.ID] {
-        let head = VectorIndex(entity: entity, aggregate: aggregate.name, week: nil)
+        let head = VectorIndex(slug: Holder.slug, entity: entity, aggregate: aggregate.name, week: nil)
         let weeks = try await weeks().map {
-            VectorIndex(entity: entity, aggregate: aggregate.name, week: $0)
+            VectorIndex(slug: Holder.slug, entity: entity, aggregate: aggregate.name, week: $0)
         }
         return ([head] + weeks).map(\.recordID)
     }
@@ -68,7 +68,7 @@ struct VectorReader {
     }
 
     private func weeks() async throws -> [Date] {
-        let head = VectorIndex(entity: entity, aggregate: aggregate.name, week: nil)
+        let head = VectorIndex(slug: Holder.slug, entity: entity, aggregate: aggregate.name, week: nil)
 
         guard let record = try await database.fetchRecord(id: head.recordID) else {
             return []
@@ -77,7 +77,7 @@ struct VectorReader {
     }
 
     private func groups(in weeks: [Date]) async throws -> [(group: String, week: Date)] {
-        let pages = weeks.map { VectorIndex(entity: entity, aggregate: aggregate.name, week: $0) }
+        let pages = weeks.map { VectorIndex(slug: Holder.slug, entity: entity, aggregate: aggregate.name, week: $0) }
         let dated = Dictionary(uniqueKeysWithValues: zip(pages.map(\.recordID), weeks))
 
         let ids = pages.map(\.recordID).sorted { $0.recordName < $1.recordName }

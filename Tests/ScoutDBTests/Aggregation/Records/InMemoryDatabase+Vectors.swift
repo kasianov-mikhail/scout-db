@@ -15,7 +15,7 @@ extension InMemoryDatabase {
     func vector(
         _ entity: String, _ aggregate: String, group: String = "", week: Date, shard: Int? = nil
     ) -> CKRecord? {
-        let slot = VectorSlot(
+        let slot = VectorSlot<DoubleVector>(
             entity: entity,
             aggregate: aggregate,
             group: group,
@@ -32,6 +32,6 @@ extension InMemoryDatabase {
     }
 
     var vectors: [CKRecord] {
-        records.filter { $0.recordType == VectorSlot.recordType }
+        records.filter { $0.recordType == DoubleVector.recordType }
     }
 }

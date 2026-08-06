@@ -37,7 +37,7 @@ struct VectorWritesTests {
     }
 
     private var slots: [CKRecord] {
-        database.records.filter { $0.recordType == VectorSlot.recordType }
+        database.records.filter { $0.recordType == DoubleVector.recordType }
     }
 
     @Test("Every slot a batch touches is read and written in one request each, and the index in one more")

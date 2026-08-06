@@ -24,7 +24,7 @@ struct PercentileOperation {
             )
         }
 
-        let rows = try await VectorReader(
+        let rows = try await VectorReader<DoubleVector>(
             database: database,
             definition: definition,
             aggregate: aggregate

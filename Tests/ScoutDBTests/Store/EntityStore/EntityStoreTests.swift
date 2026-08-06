@@ -370,7 +370,7 @@ struct EntityStoreTests {
         try await store.write(
             [EntityWrite(values: ["amount": .double(1.5), "date": .date(date)], uuid: nil)], entity: "payment")
 
-        let vectors = database.records.filter { $0.recordType == "Vector" }
+        let vectors = database.records.filter { $0.recordType == DoubleVector.recordType }
         #expect(vectors.count == 1)
         #expect(vectors.first?.cells() == 4.0)
     }
