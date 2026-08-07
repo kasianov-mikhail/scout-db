@@ -109,6 +109,44 @@ struct OperationsTests {
         }
     }
 
+    @Test("A sort the server cannot serve is refused on one alternative as on many")
+    func unsortableAcrossAlternatives() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "doc",
+                fields: [
+                    FieldDefinition(name: "kind", type: .string, storage: .slot(.string, "s_01")),
+                    FieldDefinition(name: "blob", type: .bytes, storage: .slot(.bytes, "b_00")),
+                ]
+            )
+        )
+        for index in 0..<8 {
+            try await store.write(
+                [
+                    EntityWrite(
+                        values: [
+                            "kind": .string(index.isMultiple(of: 2) ? "a" : "b"),
+                            "blob": .bytes(Data([UInt8(index)])),
+                        ],
+                        uuid: "d-\(index)"
+                    )
+                ],
+                entity: "doc"
+            )
+        }
+
+        let refusal = SchemaError.unsupportedQuery(.unsortableField("blob"))
+
+        await #expect(throws: refusal) {
+            try await store.query("doc").filter("kind" == "a").sort("blob").take(2)
+        }
+        await #expect(throws: refusal) {
+            try await store.query("doc").filter("kind" == "a" || "kind" == "b" && "blob" == .bytes(Data([1])))
+                .sort("blob")
+                .take(2)
+        }
+    }
+
     @Test("Filters on payload fields fall back to client-side matching")
     func payloadFilters() async throws {
         try await registry.publish(
