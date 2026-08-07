@@ -120,8 +120,8 @@ extension QueryBuilder {
         guard [.int, .double].contains(target.type) else {
             throw SchemaError.unsupportedQuery(.nonNumericField(field))
         }
-        guard metric != .average || target.alwaysPresent else {
-            throw SchemaError.unsupportedQuery(.averageOfOptional(field))
+        if metric == .average {
+            try definition.requireAverageable(field)
         }
         guard let fold = try await fold else {
             throw uncovered(field)

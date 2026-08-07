@@ -52,4 +52,10 @@ extension EntityDefinition {
         }
         return field
     }
+
+    func requireAverageable(_ name: String) throws {
+        guard try field(name, at: version).alwaysPresent else {
+            throw SchemaError.unsupportedQuery(.averageOfOptional(name))
+        }
+    }
 }

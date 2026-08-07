@@ -204,6 +204,35 @@ struct AggregatesTests {
                 .first)
         #expect(total.value == 4)
         #expect(try await store.query("payment").average("amount") == 2)
+        #expect(try await store.query("payment").totals("amount", metric: .average).map(\.value) == [2])
+    }
+
+    @Test("AVG over an optional field refuses on the grouped read as on the scalar one")
+    func averageOfOptionalRefuses() async throws {
+        try await publishPayment(
+            aggregates: [
+                AggregateDefinition(metric: .sum, field: "amount", group: "product"),
+                AggregateDefinition(group: "product"),
+            ]
+        )
+        try await store.write(
+            [
+                EntityWrite(
+                    values: ["product": .string("app"), "amount": .double(10), "date": .date(noon)], uuid: nil
+                ),
+                EntityWrite(values: ["product": .string("app"), "date": .date(noon)], uuid: nil),
+            ],
+            entity: "payment"
+        )
+
+        let refusal = SchemaError.unsupportedQuery(.averageOfOptional("amount"))
+
+        await #expect(throws: refusal) {
+            try await store.query("payment").totals("amount", metric: .average, group: "product")
+        }
+        await #expect(throws: refusal) {
+            try await store.query("payment").average("amount")
+        }
     }
 
     private func writePayment(_ amount: Double, at date: Date, uuid: String? = nil) async throws {
