@@ -46,8 +46,8 @@ struct AggregateDeltasTests {
     @Test("Records sharing a group and an hour fold into one cell, and each aggregate keeps its own")
     func groupsFoldPerAggregate() throws {
         let aggregates = [
-            AggregateDefinition(groupBy: "product"),
-            AggregateDefinition(groupBy: "product", measure: .sum("amount")),
+            AggregateDefinition(group: "product"),
+            AggregateDefinition(metric: .sum, field: "amount", group: "product"),
         ]
 
         let deltas = aggregates.deltas(
@@ -104,7 +104,7 @@ struct AggregateDeltasTests {
 
     @Test("A removal reverses a sum aggregate")
     func removalReversesASum() throws {
-        let aggregates = [AggregateDefinition(measure: .sum("amount"))]
+        let aggregates = [AggregateDefinition(metric: .sum, field: "amount")]
 
         let deltas = aggregates.deltas(removing: [payment("p-0", amount: 5)], adding: [], at: noon)
 
@@ -114,14 +114,14 @@ struct AggregateDeltasTests {
 
     @Test("A removal plans nothing for a min aggregate, whose value stands")
     func removalHoldsAMinValue() {
-        let aggregates = [AggregateDefinition(measure: .min("amount"))]
+        let aggregates = [AggregateDefinition(metric: .min, field: "amount")]
 
         #expect(aggregates.deltas(removing: [payment("p-0", amount: 5)], adding: [], at: noon).isEmpty)
     }
 
     @Test("A record rewritten unchanged plans nothing for a sum aggregate")
     func unchangedRewritePlansNothing() {
-        let aggregates = [AggregateDefinition(measure: .sum("amount"))]
+        let aggregates = [AggregateDefinition(metric: .sum, field: "amount")]
         let stored = payment("p-0", amount: 5)
 
         #expect(aggregates.deltas(removing: [stored], adding: [stored], at: noon).isEmpty)
@@ -129,7 +129,7 @@ struct AggregateDeltasTests {
 
     @Test("A record rewritten unchanged still plans a write for a min aggregate")
     func unchangedRewriteStillPlansAMin() throws {
-        let aggregates = [AggregateDefinition(measure: .min("amount"))]
+        let aggregates = [AggregateDefinition(metric: .min, field: "amount")]
         let stored = payment("p-0", amount: 5)
 
         let deltas = aggregates.deltas(removing: [stored], adding: [stored], at: noon)
@@ -140,7 +140,7 @@ struct AggregateDeltasTests {
 
     @Test("A record missing the metric field is folded into no cell of it")
     func missingMetricFieldFoldsNowhere() {
-        let aggregates = [AggregateDefinition(measure: .sum("amount"))]
+        let aggregates = [AggregateDefinition(metric: .sum, field: "amount")]
 
         #expect(aggregates.deltas(removing: [], adding: [payment("p-0", amount: nil)], at: noon).isEmpty)
     }

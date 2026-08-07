@@ -9,10 +9,10 @@
 import Foundation
 
 struct AggregateDefinition: Equatable, Sendable {
-    var groupBy: String?
-    var measure: Measure?
-    var shards: Int?
-    var date: String?
+    let groupBy: String?
+    let measure: Measure?
+    let shards: Int?
+    let date: String?
 
     var name: String {
         let parts =
@@ -50,7 +50,7 @@ extension [AggregateDefinition] {
 
 extension AggregateDefinition {
     init(
-        metric: Metric? = nil, of field: String? = nil, by group: String? = nil, at date: String? = nil,
+        metric: Metric? = nil, field: String? = nil, group: String? = nil, date: String? = nil,
         shards: Int? = nil
     ) {
         let measure: Measure? =
@@ -66,5 +66,14 @@ extension AggregateDefinition {
             }
 
         self.init(groupBy: group, measure: measure, shards: shards, date: date)
+    }
+
+    init(histogram field: String, bounds: [Double], group: String? = nil, date: String? = nil) {
+        self.init(
+            groupBy: group,
+            measure: .histogram(.init(field: field, bounds: bounds)),
+            shards: nil,
+            date: date
+        )
     }
 }

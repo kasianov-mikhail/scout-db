@@ -33,7 +33,7 @@ extension SchemaBuilder {
     ///
     public func count(by group: String? = nil, at date: String? = nil, shards: Int? = nil) -> Self {
         var builder = self
-        builder.aggregates.append(AggregateDefinition(by: group, at: date, shards: shards))
+        builder.aggregates.append(AggregateDefinition(group: group, date: date, shards: shards))
         return builder
     }
 
@@ -62,7 +62,7 @@ extension SchemaBuilder {
     public func sum(_ field: String, by group: String? = nil, at date: String? = nil, shards: Int? = nil) -> Self {
         var builder = self
         builder.aggregates.append(
-            AggregateDefinition(metric: .sum, of: field, by: group, at: date, shards: shards)
+            AggregateDefinition(metric: .sum, field: field, group: group, date: date, shards: shards)
         )
         return builder
     }
@@ -82,7 +82,7 @@ extension SchemaBuilder {
     ///
     public func min(_ field: String, by group: String? = nil, at date: String? = nil) -> Self {
         var builder = self
-        builder.aggregates.append(AggregateDefinition(metric: .min, of: field, by: group, at: date))
+        builder.aggregates.append(AggregateDefinition(metric: .min, field: field, group: group, date: date))
         return builder
     }
 
@@ -100,7 +100,7 @@ extension SchemaBuilder {
     ///
     public func max(_ field: String, by group: String? = nil, at date: String? = nil) -> Self {
         var builder = self
-        builder.aggregates.append(AggregateDefinition(metric: .max, of: field, by: group, at: date))
+        builder.aggregates.append(AggregateDefinition(metric: .max, field: field, group: group, date: date))
         return builder
     }
 
@@ -129,9 +129,7 @@ extension SchemaBuilder {
     ///
     public func histogram(of field: String, bounds: [Double], at date: String? = nil) -> Self {
         var builder = self
-        builder.aggregates.append(
-            AggregateDefinition(measure: .histogram(.init(field: field, bounds: bounds)), date: date)
-        )
+        builder.aggregates.append(AggregateDefinition(histogram: field, bounds: bounds, date: date))
         return builder
     }
 }

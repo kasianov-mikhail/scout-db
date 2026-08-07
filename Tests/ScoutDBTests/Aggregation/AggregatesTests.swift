@@ -86,7 +86,7 @@ struct AggregatesTests {
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
-                aggregates: [AggregateDefinition(measure: .sum("amount"))]
+                aggregates: [AggregateDefinition(metric: .sum, field: "amount")]
             )
         )
 
@@ -107,7 +107,7 @@ struct AggregatesTests {
     func shardedView() async throws {
         try await publishPayment(
             aggregates: [
-                AggregateDefinition(measure: .sum("amount"), shards: 3),
+                AggregateDefinition(metric: .sum, field: "amount", shards: 3),
                 AggregateDefinition(shards: 3),
             ]
         )
@@ -148,7 +148,7 @@ struct AggregatesTests {
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                     FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
                 ],
-                aggregates: [AggregateDefinition(measure: .min("amount"))]
+                aggregates: [AggregateDefinition(metric: .min, field: "amount")]
             )
         )
 
@@ -169,7 +169,7 @@ struct AggregatesTests {
 
     @Test("MIN aggregate keeps the smallest value")
     func minView() async throws {
-        try await publishPayment(aggregates: [AggregateDefinition(measure: .min("amount"))])
+        try await publishPayment(aggregates: [AggregateDefinition(metric: .min, field: "amount")])
         try await writePayments([5, 2, 8])
 
         let totals = try await TotalOperation(store: store, entity: "payment")
@@ -180,7 +180,7 @@ struct AggregatesTests {
 
     @Test("MAX aggregate keeps the largest value")
     func maxView() async throws {
-        try await publishPayment(aggregates: [AggregateDefinition(measure: .max("amount"))])
+        try await publishPayment(aggregates: [AggregateDefinition(metric: .max, field: "amount")])
         try await writePayments([5, 2, 8])
 
         let totals = try await TotalOperation(store: store, entity: "payment")
@@ -192,7 +192,7 @@ struct AggregatesTests {
     func average() async throws {
         try await publishPayment(
             aggregates: [
-                AggregateDefinition(measure: .sum("amount")),
+                AggregateDefinition(metric: .sum, field: "amount"),
                 AggregateDefinition(),
             ],
             required: true
@@ -223,7 +223,7 @@ struct AggregatesTests {
         try await publishPayment(
             aggregates: [
                 AggregateDefinition(date: "date"),
-                AggregateDefinition(measure: .sum("amount"), date: "date"),
+                AggregateDefinition(metric: .sum, field: "amount", date: "date"),
             ]
         )
         try await writePayment(2, at: noon)
@@ -242,7 +242,7 @@ struct AggregatesTests {
         try await publishPayment(
             aggregates: [
                 AggregateDefinition(date: "date"),
-                AggregateDefinition(measure: .sum("amount"), date: "date"),
+                AggregateDefinition(metric: .sum, field: "amount", date: "date"),
             ]
         )
         let moved = noon.addingTimeInterval(7 * 86_400)
@@ -260,7 +260,7 @@ struct AggregatesTests {
     @Test("GROUP BY works over totals")
     func groupByTotals() async throws {
         try await publishPayment(aggregates: [
-            AggregateDefinition(groupBy: "product", measure: .sum("amount"))
+            AggregateDefinition(metric: .sum, field: "amount", group: "product")
         ])
         try await writePayments([1, 2, 3], product: "app")
         try await writePayments([10], product: "bundle")
@@ -274,7 +274,7 @@ struct AggregatesTests {
     @Test("A single-group aggregate read narrows to that group's rows")
     func aggregateOneGroup() async throws {
         try await publishPayment(aggregates: [
-            AggregateDefinition(groupBy: "product", measure: .sum("amount"))
+            AggregateDefinition(metric: .sum, field: "amount", group: "product")
         ])
         try await writePayments([10, 5], product: "app")
         try await writePayments([2], product: "book")
@@ -305,7 +305,7 @@ struct AggregatesTests {
     @Test("A batched write aggregates like the equivalent single writes")
     func batchAggregation() async throws {
         try await publishPayment(aggregates: [
-            AggregateDefinition(groupBy: "product", measure: .sum("amount"))
+            AggregateDefinition(metric: .sum, field: "amount", group: "product")
         ])
         try await store.write(
             [
@@ -327,7 +327,7 @@ struct AggregatesTests {
 
     @Test("A batched write folds MIN across the whole batch")
     func batchMinFold() async throws {
-        try await publishPayment(aggregates: [AggregateDefinition(measure: .min("amount"))])
+        try await publishPayment(aggregates: [AggregateDefinition(metric: .min, field: "amount")])
         try await store.write(
             [5, 2, 8].map {
                 EntityWrite(values: ["product": .string("app"), "amount": .double($0), "date": .date(noon)], uuid: nil)
@@ -344,7 +344,7 @@ struct AggregatesTests {
     @Test("A batched write touches each vector once")
     func batchVectorWrites() async throws {
         try await publishPayment(aggregates: [
-            AggregateDefinition(groupBy: "product", measure: .sum("amount"))
+            AggregateDefinition(metric: .sum, field: "amount", group: "product")
         ])
         try await store.write(
             [1, 2, 3, 4].map {
@@ -365,7 +365,7 @@ struct AggregatesTests {
                     FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_01")),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                 ],
-                aggregates: [AggregateDefinition(groupBy: "product", measure: .sum("amount"))]
+                aggregates: [AggregateDefinition(metric: .sum, field: "amount", group: "product")]
             )
         )
 
@@ -392,7 +392,7 @@ struct AggregatesTests {
                     FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_01")),
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
                 ],
-                aggregates: [AggregateDefinition(groupBy: "product")]
+                aggregates: [AggregateDefinition(group: "product")]
             )
         )
         try await store.write(
@@ -432,8 +432,8 @@ struct AggregatesTests {
                     FieldDefinition(name: "price", type: .double, storage: .slot(.double, "d_00")),
                 ],
                 aggregates: [
-                    AggregateDefinition(groupBy: "kind"),
-                    AggregateDefinition(groupBy: "kind", measure: .sum("price")),
+                    AggregateDefinition(group: "kind"),
+                    AggregateDefinition(metric: .sum, field: "price", group: "kind"),
                 ]
             )
         )
@@ -488,7 +488,7 @@ struct AggregatesTests {
                     ),
                     FieldDefinition(name: "weight", type: .int, storage: .slot(.int, "i_02"), required: true),
                 ],
-                aggregates: [AggregateDefinition(groupBy: "units")]
+                aggregates: [AggregateDefinition(group: "units")]
             )
         )
         for units: Int64 in [1, 5, 12, 16, 20] {
@@ -514,7 +514,7 @@ struct AggregatesTests {
 
     @Test("A date range falls outside what a vector answers, and is refused rather than scanned")
     func countThroughDateRangeScans() async throws {
-        try await publishPayment(aggregates: [AggregateDefinition(groupBy: "product")])
+        try await publishPayment(aggregates: [AggregateDefinition(group: "product")])
         try await writePayments([1, 2], product: "app")
         try await store.write(
             [
@@ -554,8 +554,8 @@ struct AggregatesTests {
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"), required: required),
                 ],
                 aggregates: [
-                    AggregateDefinition(groupBy: "product"),
-                    AggregateDefinition(groupBy: "product", measure: .sum("amount")),
+                    AggregateDefinition(group: "product"),
+                    AggregateDefinition(metric: .sum, field: "amount", group: "product"),
                 ]
             )
         )
@@ -608,8 +608,8 @@ struct AggregatesTests {
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"), required: true),
                 ],
                 aggregates: [
-                    AggregateDefinition(groupBy: "product", measure: .max("amount")),
-                    AggregateDefinition(groupBy: "product", measure: .min("amount")),
+                    AggregateDefinition(metric: .max, field: "amount", group: "product"),
+                    AggregateDefinition(metric: .min, field: "amount", group: "product"),
                 ]
             )
         )
@@ -688,7 +688,7 @@ struct AggregatesTests {
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00"), required: true),
                     FieldDefinition(name: "tax", type: .double, storage: .slot(.double, "d_01"), required: true),
                 ],
-                aggregates: [AggregateDefinition(groupBy: "product", measure: .sum("amount"))]
+                aggregates: [AggregateDefinition(metric: .sum, field: "amount", group: "product")]
             )
         )
         try await store.write(

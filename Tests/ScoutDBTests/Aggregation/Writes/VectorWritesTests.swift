@@ -45,8 +45,8 @@ struct VectorWritesTests {
         let aggregator = VectorAggregator(
             database: database,
             aggregates: [
-                AggregateDefinition(groupBy: "product", date: "date"),
-                AggregateDefinition(groupBy: "product", measure: .sum("amount"), date: "date"),
+                AggregateDefinition(group: "product", date: "date"),
+                AggregateDefinition(metric: .sum, field: "amount", group: "product", date: "date"),
             ]
         )
 
@@ -62,7 +62,7 @@ struct VectorWritesTests {
     func warmSlotSkipsTheFetch() async throws {
         let aggregator = VectorAggregator(
             database: database,
-            aggregates: [AggregateDefinition(measure: .sum("amount"), date: "date")]
+            aggregates: [AggregateDefinition(metric: .sum, field: "amount", date: "date")]
         )
         try await aggregator.rebalance(removing: [], adding: payments(["app"]))
         database.resetRequests()
@@ -85,7 +85,7 @@ struct VectorWritesTests {
 
     @Test("An update that raises a min aggregate's value leaves the value standing")
     func raisedMinLeavesTheValue() async throws {
-        let aggregates = [AggregateDefinition(measure: .min("amount"), date: "date")]
+        let aggregates = [AggregateDefinition(metric: .min, field: "amount", date: "date")]
         let stored = payment(amount: 5)
         try await VectorAggregator(database: database, aggregates: aggregates)
             .rebalance(removing: [], adding: [stored])
@@ -100,7 +100,7 @@ struct VectorWritesTests {
 
     @Test("An update that lowers a min aggregate's value still writes the slot")
     func loweredMinWritesTheSlot() async throws {
-        let aggregates = [AggregateDefinition(measure: .min("amount"), date: "date")]
+        let aggregates = [AggregateDefinition(metric: .min, field: "amount", date: "date")]
         let stored = payment(amount: 5)
         try await VectorAggregator(database: database, aggregates: aggregates)
             .rebalance(removing: [], adding: [stored])
@@ -117,7 +117,7 @@ struct VectorWritesTests {
     func staleSlotRetriesOverTheServerCopy() async throws {
         let aggregator = VectorAggregator(
             database: database,
-            aggregates: [AggregateDefinition(measure: .sum("amount"), date: "date")]
+            aggregates: [AggregateDefinition(metric: .sum, field: "amount", date: "date")]
         )
         try await aggregator.rebalance(removing: [], adding: payments(["app"]))
 

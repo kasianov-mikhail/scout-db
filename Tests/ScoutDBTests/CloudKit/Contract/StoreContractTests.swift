@@ -169,8 +169,8 @@ struct StoreContractTests {
         try await withContract { f in
             let entity = try await f.publishOrder(
                 aggregates: [
-                    AggregateDefinition(measure: .sum("total")),
-                    AggregateDefinition(measure: .max("total")),
+                    AggregateDefinition(metric: .sum, field: "total"),
+                    AggregateDefinition(metric: .max, field: "total"),
                 ]
             )
             for (index, total) in [2.5, 7.5, 10.0].enumerated() {
@@ -188,7 +188,7 @@ struct StoreContractTests {
     func countsByGroup() async throws {
         try await withContract { f in
             let entity = try await f.publishOrder(
-                aggregates: [AggregateDefinition(groupBy: "product")]
+                aggregates: [AggregateDefinition(group: "product")]
             )
             for (index, product) in ["a", "a", "b"].enumerated() {
                 try await f.store.write(
@@ -206,7 +206,7 @@ struct StoreContractTests {
     func aggregateViewTotals() async throws {
         try await withContract { f in
             let entity = try await f.publishOrder(aggregates: [
-                AggregateDefinition(measure: .sum("total"))
+                AggregateDefinition(metric: .sum, field: "total")
             ])
             try await f.store.write([EntityWrite(values: orderValues(total: 2), uuid: "v-1")], entity: entity)
             try await f.store.write([EntityWrite(values: orderValues(total: 3), uuid: "v-2")], entity: entity)
