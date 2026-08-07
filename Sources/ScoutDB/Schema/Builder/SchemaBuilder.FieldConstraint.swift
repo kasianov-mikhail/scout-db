@@ -36,9 +36,16 @@ extension SchemaBuilder {
         case defaultValue(RecordValue)
 
         /// The inclusive lower bound every numeric scalar must clear.
+        ///
+        /// A bound describes the records the entity holds, not only the next
+        /// write: ``QueryBuilder/count()`` reads `min` and `max` as the whole
+        /// domain of an integer field an aggregate groups by. So a version may
+        /// widen it or drop it, and ``SchemaBuilder/update()`` refuses to narrow
+        /// it over records already written outside the narrower range.
         case min(Double)
 
-        /// The inclusive upper bound every numeric scalar must stay under.
+        /// The inclusive upper bound every numeric scalar must stay under,
+        /// widenable across versions but not narrowable as in ``min(_:)``.
         case max(Double)
 
         /// A regular expression every value of the field must match whole.

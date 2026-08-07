@@ -77,6 +77,11 @@ extension SchemaBuilder {
     /// through their own, so nothing is rewritten here. Aggregates join rather
     /// than replace — one lapses only with the field it is kept over.
     ///
+    /// A kept field may widen its `min` and `max` or drop them, never narrow
+    /// them: nothing rewrites the records already outside the narrower range,
+    /// and ``QueryBuilder/count()`` reads the bounds as the field's whole
+    /// domain. Narrowing one throws instead of publishing.
+    ///
     /// A version builds no vector of its own: the entity already holds records,
     /// and a fresh cell counts only what lands after it. The returned names are
     /// that missing coverage — declare `count(by:)` for them on a further
@@ -110,6 +115,10 @@ extension SchemaBuilder {
                     since: active.since,
                     storage: active.storage
                 )
+
+                guard kept.coversBounds(of: active) else {
+                    throw SchemaError.invalidDefinition(.narrowedBounds(field: declaration.name))
+                }
 
                 kept.until = active.until
                 fields.append(kept)
@@ -172,5 +181,11 @@ extension SchemaBuilder {
             return field.isGroupable && !counted.contains(field.name)
         }
         .map(\.name)
+    }
+}
+
+extension FieldDefinition {
+    fileprivate func coversBounds(of other: Self) -> Bool {
+        (min ?? -.infinity) <= (other.min ?? -.infinity) && (max ?? .infinity) >= (other.max ?? .infinity)
     }
 }
