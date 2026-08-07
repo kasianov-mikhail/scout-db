@@ -71,6 +71,10 @@ extension EntityDefinition {
                 }
             }
         }
+        var declared: Set<String> = []
+        for aggregate in aggregates where !declared.insert(aggregate.name).inserted {
+            throw SchemaError.invalidDefinition(.duplicateAggregate(aggregate.name))
+        }
         for aggregate in aggregates {
             if let groupBy = aggregate.groupBy, !names.contains(groupBy) {
                 throw SchemaError.invalidDefinition(

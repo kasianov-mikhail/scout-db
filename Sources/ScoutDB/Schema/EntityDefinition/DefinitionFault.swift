@@ -27,6 +27,7 @@ enum DefinitionFault: Equatable, Sendable {
     case unsupportedAllowed(field: String, type: FieldType)
     case unsupportedBounds(field: String, type: FieldType)
 
+    case duplicateAggregate(String)
     case unknownGrouping(aggregate: String, field: String)
     case unknownDate(aggregate: String, field: String)
     case nonTemporalDate(aggregate: String, field: String)
@@ -71,6 +72,8 @@ extension DefinitionFault: CustomStringConvertible {
         case .unsupportedBounds(let field, let type):
             "Field '\(field)' of type '\(type.rawValue)' cannot constrain 'minimum'/'maximum'"
 
+        case .duplicateAggregate(let aggregate):
+            "Aggregate '\(aggregate)' is declared twice, and every write would fold into its cells twice over"
         case .unknownGrouping(let aggregate, let field):
             "Aggregate '\(aggregate)' groups by unknown '\(field)'"
         case .unknownDate(let aggregate, let field):
