@@ -92,17 +92,13 @@ extension CloudContainer {
 /// while `.couldNotDetermine` and `.temporarilyUnavailable` are worth
 /// retrying later.
 ///
-public struct AccountUnavailableError: LocalizedError {
+struct AccountUnavailableError: LocalizedError {
     /// The status the container reported instead of `.available`.
-    public let status: CKAccountStatus
-
-    public init(status: CKAccountStatus) {
-        self.status = status
-    }
+    let status: CKAccountStatus
 
     /// A diagnostic string carrying the raw status — not a message to show a
     /// user, who needs wording chosen per ``status``.
-    public var errorDescription: String? {
+    var errorDescription: String? {
         "iCloud account unavailable (status \(status.rawValue))"
     }
 }

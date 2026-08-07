@@ -7,7 +7,7 @@
 
 import Foundation
 
-public enum SchemaError: Error, Equatable {
+enum SchemaError: Error, Equatable {
     case unknownEntity(String)
     case unknownField(String)
     case typeMismatch(String)
@@ -20,7 +20,7 @@ public enum SchemaError: Error, Equatable {
 }
 
 extension SchemaError: LocalizedError {
-    public var errorDescription: String? {
+    var errorDescription: String? {
         switch self {
         case .unknownEntity(let name):
             "Unknown entity '\(name)'"

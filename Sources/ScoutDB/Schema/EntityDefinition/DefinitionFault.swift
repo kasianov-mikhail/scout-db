@@ -8,7 +8,7 @@
 import Foundation
 
 /// The rule an entity definition broke.
-public enum DefinitionFault: Equatable, Sendable {
+enum DefinitionFault: Equatable, Sendable {
     case reservedEntity(String)
 
     case slotTypeMismatch(field: String, type: FieldType, pool: FieldType)
@@ -37,7 +37,7 @@ public enum DefinitionFault: Equatable, Sendable {
 }
 
 extension DefinitionFault: CustomStringConvertible {
-    public var description: String {
+    var description: String {
         switch self {
         case .reservedEntity(let name):
             "Entity '\(name)' starts with the '__' the library keeps for its own records"

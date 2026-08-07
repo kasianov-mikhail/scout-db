@@ -10,11 +10,11 @@ import Foundation
 /// Thrown when a CloudKit request outlives the scout-db backstop timeout; the
 /// caller is unblocked immediately while the request is cancelled and abandoned
 /// to finish in the background.
-public struct RequestTimeoutError: LocalizedError {
+struct RequestTimeoutError: LocalizedError {
     /// The elapsed limit, in seconds, the request exceeded before cancellation.
-    public let seconds: Int
+    let seconds: Int
 
-    public var errorDescription: String? {
+    var errorDescription: String? {
         "The CloudKit request exceeded the \(seconds)s scout-db timeout and was cancelled."
     }
 }

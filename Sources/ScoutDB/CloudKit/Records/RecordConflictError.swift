@@ -8,10 +8,10 @@
 import CloudKit
 
 /// Thrown when a write loses a compare-and-swap race; carries the winning record.
-public struct RecordConflictError: LocalizedError {
-    public let serverRecord: CKRecord
+package struct RecordConflictError: LocalizedError {
+    package let serverRecord: CKRecord
 
-    public init(serverRecord: CKRecord) {
+    package init(serverRecord: CKRecord) {
         self.serverRecord = serverRecord
     }
 
@@ -21,7 +21,7 @@ public struct RecordConflictError: LocalizedError {
     /// Nil for anything else — a permission, quota or validation failure is
     /// not a lost race and must not be retried as one.
     ///
-    public init?(_ error: any Error) {
+    package init?(_ error: any Error) {
         if let conflict = error as? RecordConflictError {
             self = conflict
             return
@@ -35,5 +35,5 @@ public struct RecordConflictError: LocalizedError {
         self.init(serverRecord: server)
     }
 
-    public let errorDescription: String? = "The record was changed on the server"
+    package let errorDescription: String? = "The record was changed on the server"
 }
