@@ -135,6 +135,17 @@ struct EntityDefinitionTests {
         }
     }
 
+    @Test("Validation rejects two aggregates of the same shape")
+    func duplicateAggregate() {
+        let definition = makeDefinition(
+            fields: [FieldDefinition(name: "page", type: .string, storage: .slot(.string, "s_01"))],
+            aggregates: [AggregateDefinition(group: "page"), AggregateDefinition(group: "page")]
+        )
+        #expect(throws: SchemaError.invalidDefinition(.duplicateAggregate("by_page"))) {
+            try definition.validate()
+        }
+    }
+
     @Test("Validation rejects an aggregate dating its cells by an unknown field")
     func unknownDate() {
         let definition = makeDefinition(

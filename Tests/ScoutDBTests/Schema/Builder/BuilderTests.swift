@@ -513,6 +513,25 @@ struct BuilderTests {
         #expect(total.storage == .slot(.double, "d_02"))
     }
 
+    @Test("A count declared twice is refused rather than folded twice into a cell")
+    func duplicateCount() async throws {
+        await #expect(throws: SchemaError.invalidDefinition(.duplicateAggregate("by_page"))) {
+            try await store.schema("visit")
+                .field("page", .string, .ungrouped)
+                .count(by: "page")
+                .count(by: "page")
+                .create()
+        }
+
+        try await store.schema("visit")
+            .field("page", .string, .ungrouped)
+            .count(by: "page")
+            .create()
+        try await store.write([EntityWrite(values: ["page": .string("home")], uuid: "v-1")], entity: "visit")
+
+        #expect(try await store.query("visit").filter("page", .equals, .string("home")).count() == 1)
+    }
+
     @Test("Migrations run in order and are repeatable")
     func migrations() async throws {
         struct CreateNote: Migration {
