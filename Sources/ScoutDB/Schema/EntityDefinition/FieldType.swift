@@ -68,14 +68,6 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
         return index
     }
 
-    static func type(forSlot slot: String) -> FieldType? {
-        guard let separator = slot.firstIndex(of: "_") else {
-            return nil
-        }
-        let prefix = String(slot[..<separator])
-        return allCases.first { $0.slotPrefix == prefix }
-    }
-
     var isList: Bool {
         switch self {
         case .stringList, .intList, .doubleList, .timestampList:
