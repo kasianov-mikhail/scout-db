@@ -48,7 +48,7 @@ struct TotalOperation: Sendable {
             definition: definition,
             aggregate: aggregate
         )
-        .rows(groups: narrowed.map { [$0] })
+        .rows(groups: narrowed)
         .vectorRows(folding: aggregate.fold, where: nil)
 
         return aggregate.measure?.metric == nil ? rows.filter { $0.value != 0 } : rows
@@ -69,19 +69,20 @@ struct TotalOperation: Sendable {
         return aggregate
     }
 
-    private func narrowing(to group: String?) throws -> String? {
+    private func narrowing(to group: String?) throws -> [String]? {
         guard branches.count == 1 else {
             throw SchemaError.unsupportedQuery(.disjunctionUnsupported)
         }
 
-        var narrowed: String?
+        var narrowed: [String]?
         for filter in branches[0] {
             guard let group, filter.field == group, filter.op == .equals else {
                 throw SchemaError.unsupportedQuery(
                     .equalityOnly(group: group)
                 )
             }
-            narrowed = filter.value.canonical
+            let key = filter.value.canonical
+            narrowed = narrowed.map { $0.contains(key) ? [key] : [] } ?? [key]
         }
         return narrowed
     }
