@@ -20,7 +20,9 @@ struct TotalOperation: Sendable {
             .sorted()
     }
 
-    func averages(field: String?, group: String?) async throws -> [AggregateTotal] {
+    func averages(field: String, group: String?) async throws -> [AggregateTotal] {
+        try definition.requireAverageable(field)
+
         let totaling = try covering(field: field, metric: .sum, group: group)
         let counting = try covering(field: nil, metric: .sum, group: group)
 
