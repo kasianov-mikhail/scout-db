@@ -8,6 +8,8 @@
 import CloudKit
 import Foundation
 
+typealias Deltas = [VectorSlot: VectorDelta]
+
 struct VectorDelta {
     let kind: Metric
     var cells: [Int: Double] = [:]

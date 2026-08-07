@@ -30,11 +30,11 @@ struct VectorIndexTests {
         }
     }
 
-    private func page(week: Date?) -> VectorIndex.Page {
+    private func page(week: Date?) -> IndexPage {
         let index = VectorIndex(entity: "payment", aggregate: counting.name, week: week)
 
         let stored = database.records.first { $0.recordID == index.recordID }
-        return stored?.indexPage ?? VectorIndex.Page(weeks: [], groups: [])
+        return stored?.indexPage ?? IndexPage(weeks: [], groups: [])
     }
 
     private func aggregator(_ slots: VectorCache = VectorCache()) -> VectorAggregator {
@@ -106,7 +106,7 @@ struct VectorIndexTests {
 
         let head = VectorIndex(entity: "payment", aggregate: counting.name, week: nil)
         let record = try #require(database.records.first { $0.recordID == head.recordID })
-        record[VectorIndex.pageKey] = Data([0x7b, 0x00])
+        record[IndexPage.key] = Data([0x7b, 0x00])
 
         await #expect(throws: SchemaError.malformedRecord(head.recordID.recordName)) {
             try await VectorReader(database: database, entity: "payment", aggregate: counting)

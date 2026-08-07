@@ -16,11 +16,14 @@ struct VectorReader {
     typealias Row = (group: String, record: CKRecord)
 
     func rows(groups: [String]?) async throws -> [Row] {
-        let weeks = try await weeks()
+        let head = try await head()
+        let weeks = head.weeks.map(Date.init(millisecondsSince1970:))
 
         guard weeks.count > 0 else {
             return []
         }
+
+        let plan = ShardPlan(floor: aggregate.shards, grown: head.shards)
 
         let keys: [(group: String, week: Date)] =
             if let groups {
@@ -32,6 +35,11 @@ struct VectorReader {
         var named: [CKRecord.ID: String] = [:]
 
         for (group, week) in keys {
+            let shards =
+                plan.count(for: week).map {
+                    (0..<$0).map(Optional.init)
+                } ?? [nil]
+
             for shard in shards {
                 let slot = VectorSlot(
                     entity: entity,
@@ -44,37 +52,54 @@ struct VectorReader {
             }
         }
 
-        let ids = named.keys.sorted { $0.recordName < $1.recordName }
-
-        return try await database.fetchRecords(ids: ids, batchSize: maxBatchSize)
-            .compactMap { record in
-                named[record.recordID].map { (group: $0, record: record) }
-            }
-    }
-
-    private var shards: [Int?] {
-        guard let count = aggregate.shards else {
-            return [nil]
+        let ids = named.keys.sorted {
+            $0.recordName < $1.recordName
         }
-        return (0..<count).map(Optional.init)
+
+        return try await database.fetchRecords(
+            ids: ids,
+            batchSize: maxBatchSize
+        )
+        .compactMap { record in
+            named[record.recordID].map { (group: $0, record: record) }
+        }
     }
 
-    private func weeks() async throws -> [Date] {
-        let head = VectorIndex(entity: entity, aggregate: aggregate.name, week: nil)
+    private func head() async throws -> IndexPage {
+        let head = VectorIndex(
+            entity: entity,
+            aggregate: aggregate.name,
+            week: nil
+        )
 
         guard let record = try await database.fetchRecord(id: head.recordID) else {
-            return []
+            return IndexPage(
+                weeks: [],
+                groups: []
+            )
         }
-        return try record.indexPage(named: head.recordID).weeks.map(Date.init(millisecondsSince1970:))
+
+        return try record.indexPage(named: head.recordID)
     }
 
     private func groups(in weeks: [Date]) async throws -> [(group: String, week: Date)] {
-        let pages = weeks.map { VectorIndex(entity: entity, aggregate: aggregate.name, week: $0) }
-        let dated = Dictionary(uniqueKeysWithValues: zip(pages.map(\.recordID), weeks))
+        let pages = weeks.map {
+            VectorIndex(
+                entity: entity,
+                aggregate: aggregate.name,
+                week: $0
+            )
+        }
 
-        let ids = pages.map(\.recordID).sorted { $0.recordName < $1.recordName }
+        let dated = Dictionary(
+            uniqueKeysWithValues: zip(pages.map(\.recordID), weeks)
+        )
+
+        let ids = pages.map(\.recordID).sorted {
+            $0.recordName < $1.recordName
+        }
+
         var keys: [(group: String, week: Date)] = []
-
         for record in try await database.fetchRecords(ids: ids, batchSize: maxBatchSize) {
             guard let week = dated[record.recordID] else {
                 continue
@@ -85,11 +110,5 @@ struct VectorReader {
         }
 
         return keys
-    }
-}
-
-extension VectorReader {
-    init(database: any CloudDatabase, definition: EntityDefinition, aggregate: AggregateDefinition) {
-        self.init(database: database, entity: definition.entity, aggregate: aggregate)
     }
 }

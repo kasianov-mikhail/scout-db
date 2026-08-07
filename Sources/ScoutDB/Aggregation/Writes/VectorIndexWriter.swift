@@ -26,9 +26,13 @@ struct VectorIndexWriter {
             groups[week, default: []].insert(slot.group)
         }
 
-        var wanted = weeks.mapValues { VectorIndex.Page(weeks: $0.sorted(), groups: []) }
-        wanted.merge(groups.mapValues { VectorIndex.Page(weeks: [], groups: $0.sorted()) }) { first, _ in first }
+        var wanted = weeks.mapValues { IndexPage(weeks: $0.sorted(), groups: []) }
+        wanted.merge(groups.mapValues { IndexPage(weeks: [], groups: $0.sorted()) }) { first, _ in first }
 
+        try await write(wanted)
+    }
+
+    func write(_ wanted: [VectorIndex: IndexPage]) async throws {
         var pending = wanted
         for _ in 0..<maxRetry {
             pending = try await merge(pending)
@@ -41,7 +45,7 @@ struct VectorIndexWriter {
         throw VectorIndexError.contended
     }
 
-    private func merge(_ wanted: [VectorIndex: VectorIndex.Page]) async throws -> [VectorIndex: VectorIndex.Page] {
+    private func merge(_ wanted: [VectorIndex: IndexPage]) async throws -> [VectorIndex: IndexPage] {
         let ids = wanted.keys.map(\.recordID).sorted { $0.recordName < $1.recordName }
         var stored: [CKRecord.ID: CKRecord] = [:]
 
@@ -49,11 +53,11 @@ struct VectorIndexWriter {
             stored[record.recordID] = record
         }
 
-        var saving: [CKRecord.ID: (index: VectorIndex, page: VectorIndex.Page, record: CKRecord)] = [:]
+        var saving: [CKRecord.ID: (index: VectorIndex, page: IndexPage, record: CKRecord)] = [:]
 
         for (index, additions) in wanted {
             let record: CKRecord
-            let page: VectorIndex.Page
+            let page: IndexPage
 
             if let existing = stored[index.recordID] {
                 record = existing
@@ -62,7 +66,7 @@ struct VectorIndexWriter {
                 record = CKRecord(recordType: SchemaDescriptorEntry.recordType, recordID: index.recordID)
                 record[Envelope.entity] = VectorIndex.namespace
                 record[Envelope.version] = Int64(1)
-                page = VectorIndex.Page(weeks: [], groups: [])
+                page = IndexPage(weeks: [], groups: [])
             }
 
             let merged = page.merging(additions)
@@ -74,11 +78,7 @@ struct VectorIndexWriter {
             saving[index.recordID] = (index, additions, record)
         }
 
-        guard saving.count > 0 else {
-            return [:]
-        }
-
-        var retry: [VectorIndex: VectorIndex.Page] = [:]
+        var retry: [VectorIndex: IndexPage] = [:]
 
         for chunk in Array(saving.values).chunked(into: maxBatchSize) {
             for (id, result) in try await database.saveIfUnchanged(chunk.map(\.record)) {
@@ -96,11 +96,12 @@ struct VectorIndexWriter {
     }
 }
 
-extension VectorIndex.Page {
+extension IndexPage {
     fileprivate func merging(_ other: Self) -> Self {
         Self(
             weeks: Set(weeks).union(other.weeks).sorted(),
-            groups: Set(groups).union(other.groups).sorted()
+            groups: Set(groups).union(other.groups).sorted(),
+            shards: shards.merging(other.shards, uniquingKeysWith: Swift.max)
         )
     }
 }

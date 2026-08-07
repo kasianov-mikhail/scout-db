@@ -54,12 +54,12 @@ struct VectorWritesTests {
         try await aggregator.rebalance(removing: [], adding: payments(["app", "pro", "max"]))
 
         #expect(slots.count == 6)
-        #expect(requests(.fetch) == 2)
+        #expect(requests(.fetch) == 3)
         #expect(requests(.conditionalSave) == 2)
         #expect(requests(.query) == 0)
     }
 
-    @Test("A slot written before stays cached, so the next write only saves")
+    @Test("A slot and a head index read before stay cached, so the next write only saves")
     func warmSlotSkipsTheFetch() async throws {
         let aggregator = VectorAggregator(
             database: database,
@@ -67,13 +67,32 @@ struct VectorWritesTests {
             slots: VectorCache()
         )
         try await aggregator.rebalance(removing: [], adding: payments(["app"]))
+        try await aggregator.rebalance(removing: [], adding: payments(["pro"]))
         database.resetRequests()
 
-        try await aggregator.rebalance(removing: [], adding: payments(["pro"]))
+        try await aggregator.rebalance(removing: [], adding: payments(["max"]))
 
         #expect(requests(.fetch) == 0)
         #expect(requests(.conditionalSave) == 1)
-        #expect(try #require(slots.first)[cell: hour] == 2)
+        #expect(try #require(slots.first)[cell: hour] == 3)
+    }
+
+    @Test("The head index is read once for the shard counts, and served from the cache after")
+    func headIndexIsReadOnce() async throws {
+        let aggregator = VectorAggregator(
+            database: database,
+            aggregates: [AggregateDefinition(metric: .sum, field: "amount", date: "date")],
+            slots: VectorCache()
+        )
+        try await aggregator.rebalance(removing: [], adding: payments(["app"]))
+        try await aggregator.rebalance(removing: [], adding: payments(["pro"]))
+        database.resetRequests()
+
+        for product in ["max", "ultra", "mini"] {
+            try await aggregator.rebalance(removing: [], adding: payments([product]))
+        }
+
+        #expect(requests(.fetch) == 0)
     }
 
     private func payment(amount: Double) -> EntityRecord {
@@ -154,7 +173,57 @@ struct VectorWritesTests {
 
         try await aggregator.rebalance(removing: [], adding: [payment(amount: 3)])
 
-        #expect(requests(.conditionalSave) == 5)
+        #expect(requests(.conditionalSave) == 6)
         #expect(try #require(slots.first)[cell: hour] == 13)
+    }
+
+    private func aggregator(_ aggregate: AggregateDefinition, slots cache: VectorCache) -> VectorAggregator {
+        VectorAggregator(database: database, aggregates: [aggregate], slots: cache)
+    }
+
+    private func headShards(_ aggregate: String) throws -> [String: Int] {
+        let head = VectorIndex(entity: "payment", aggregate: aggregate, week: nil)
+        let record = database.records.first { $0.recordID == head.recordID }
+
+        return try #require(record?.indexPage).shards
+    }
+
+    private func contend(_ aggregator: VectorAggregator, losing races: Int) async throws {
+        let slot = try #require(slots.first)
+
+        database.writeErrors = (0..<races).map { _ in
+            let server = slot.duplicate()
+            server[cell: hour] = 10
+            return RecordConflictError(serverRecord: server)
+        }
+        try await aggregator.rebalance(removing: [], adding: [payment(amount: 3)])
+    }
+
+    @Test("A week whose slot keeps losing races doubles, and the writer spreads over it next time")
+    func contentionDoublesTheWeek() async throws {
+        let cache = VectorCache()
+        let aggregator = aggregator(AggregateDefinition(metric: .sum, field: "amount", date: "date"), slots: cache)
+
+        try await aggregator.rebalance(removing: [], adding: [payment(amount: 1)])
+        try await contend(aggregator, losing: 3)
+
+        #expect(try headShards("sum_amount_at_date") == [String(noon.weekStart.millisecondsSince1970): 2])
+        #expect(slots.count == 1)
+
+        try await aggregator.rebalance(removing: [], adding: [payment(amount: 7)])
+
+        #expect(slots.count == 2)
+    }
+
+    @Test("Losing fewer races than the threshold leaves the week where it was")
+    func briefContentionDoesNotSpread() async throws {
+        let cache = VectorCache()
+        let aggregator = aggregator(AggregateDefinition(metric: .sum, field: "amount", date: "date"), slots: cache)
+
+        try await aggregator.rebalance(removing: [], adding: [payment(amount: 1)])
+        try await contend(aggregator, losing: 2)
+
+        #expect(try headShards("sum_amount_at_date").isEmpty)
+        #expect(slots.count == 1)
     }
 }

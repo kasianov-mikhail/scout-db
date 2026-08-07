@@ -15,15 +15,15 @@ struct VectorLoader {
     struct Pending {
         var record: CKRecord
         let delta: VectorDelta
+        let slot: VectorSlot
     }
 
     struct Opened {
         let pending: [CKRecord.ID: Pending]
-
         let cold: [VectorSlot]
     }
 
-    func open(_ deltas: [VectorSlot: VectorDelta]) async throws -> Opened {
+    func open(_ deltas: Deltas) async throws -> Opened {
         var pending: [CKRecord.ID: Pending] = [:]
         var cold: [(id: CKRecord.ID, slot: VectorSlot, delta: VectorDelta)] = []
 
@@ -31,7 +31,7 @@ struct VectorLoader {
             let id = slot.recordID
 
             if let cached = await slots.record(id) {
-                pending[id] = Pending(record: cached, delta: delta)
+                pending[id] = Pending(record: cached, delta: delta, slot: slot)
             } else {
                 cold.append((id, slot, delta))
             }
@@ -48,9 +48,9 @@ struct VectorLoader {
             served[record.recordID] = record
         }
 
-        for (id, _, delta) in cold {
+        for (id, slot, delta) in cold {
             let record = served[id] ?? CKRecord(recordType: VectorSlot.recordType, recordID: id)
-            pending[id] = Pending(record: record, delta: delta)
+            pending[id] = Pending(record: record, delta: delta, slot: slot)
         }
 
         return Opened(pending: pending, cold: cold.map(\.slot))
