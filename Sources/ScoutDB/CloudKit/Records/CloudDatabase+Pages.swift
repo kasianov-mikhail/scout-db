@@ -10,13 +10,13 @@ import CloudKit
 extension CloudDatabase {
     func allRecords(matching query: CKQuery) async throws -> [CKRecord] {
         var collected: [CKRecord] = []
-        try await forEachPage(matching: query) {
+        try await pages(matching: query) {
             collected += $0
         }
         return collected
     }
 
-    func forEachPage(matching query: CKQuery, _ body: ([CKRecord]) async throws -> Void) async throws {
+    func pages(matching query: CKQuery, _ body: ([CKRecord]) async throws -> Void) async throws {
         var (results, cursor) = try await records(
             matching: query,
             resultsLimit: CKQueryOperation.maximumResults

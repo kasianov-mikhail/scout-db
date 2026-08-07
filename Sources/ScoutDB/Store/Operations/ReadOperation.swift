@@ -75,7 +75,7 @@ struct ReadOperation: Sendable {
         let decoder = EntityDecoder(definition: definition)
         var collected: [EntityRecord] = []
 
-        try await database.forEachPage(matching: plan.query) { page in
+        try await database.pages(matching: plan.query) { page in
             collected += try page.map(decoder.decode).filter(plan.includes)
         }
         return collected
