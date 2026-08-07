@@ -17,7 +17,7 @@ struct VectorIndexTests {
     let database = InMemoryDatabase()
     let noon = Date(timeIntervalSince1970: 36_000)
 
-    private let counting = AggregateDefinition(groupBy: "product", date: "date")
+    private let counting = AggregateDefinition(group: "product", date: "date")
 
     private func payments(_ products: [String], at date: Date? = nil) -> [EntityRecord] {
         products.enumerated().map { index, product in

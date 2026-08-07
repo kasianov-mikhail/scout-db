@@ -163,7 +163,7 @@ struct AggregateDeltasTests {
     @Test("A histogram counts its bucket, and lands among the counters")
     func histogramCountsItsBucket() throws {
         let histogram = AggregateDefinition.Histogram(field: "amount", bounds: [1, 10])
-        let aggregates = [AggregateDefinition(measure: .histogram(histogram))]
+        let aggregates = [AggregateDefinition(histogram: histogram.field, bounds: histogram.bounds)]
 
         let deltas = aggregates.deltas(removing: [], adding: [payment("p-0", amount: 5)], at: noon)
 
