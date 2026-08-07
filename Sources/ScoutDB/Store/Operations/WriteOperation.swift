@@ -30,6 +30,7 @@ struct WriteOperation: Sendable {
                 values: resolved
             )
         }
+        .upserted()
 
         let (removedFromViews, addedToViews) = try await rebalance(records, stored: stored)
 
@@ -52,12 +53,7 @@ struct WriteOperation: Sendable {
             return ([], [])
         }
 
-        var latest: [String: EntityRecord] = [:]
-        for record in records {
-            latest[record.uuid] = record
-        }
-
-        let ids = latest.keys.filter(stored.contains).map {
+        let ids = records.map(\.uuid).filter(stored.contains).map {
             CKRecord.ID(recordName: $0)
         }
 
@@ -71,7 +67,25 @@ struct WriteOperation: Sendable {
             uniquingKeysWith: { first, _ in first }
         )
 
-        return (Array(liveByUUID.values), Array(latest.values))
+        return (Array(liveByUUID.values), records)
+    }
+}
+
+extension [EntityRecord] {
+    fileprivate func upserted() -> [EntityRecord] {
+        var position: [String: Int] = [:]
+        var records: [EntityRecord] = []
+
+        for record in self {
+            if let index = position[record.uuid] {
+                records[index] = record
+            } else {
+                position[record.uuid] = records.count
+                records.append(record)
+            }
+        }
+
+        return records
     }
 }
 
