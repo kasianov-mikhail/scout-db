@@ -28,7 +28,7 @@ struct MatchingTests {
                     FieldDefinition(name: "title", type: .string, storage: .slot(.string, "s_01")),
                     FieldDefinition(name: "body", type: .text, storage: .slot(.text, "x_00")),
                     FieldDefinition(name: "summary", type: .text, storage: .slot(.text, "x_01")),
-                    FieldDefinition(name: "memo", type: .string, storage: .payload),
+                    FieldDefinition(name: "memo", type: .string, storage: .payload("p_00")),
                 ]
             )
         )

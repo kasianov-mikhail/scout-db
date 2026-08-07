@@ -33,8 +33,8 @@ public struct EntitySchema: Sendable, Equatable {
         /// Whether a write that leaves the field empty is rejected.
         public let required: Bool
 
-        /// Whether the value lives outside the server-side slots, so filters
-        /// over it run on the client.
+        /// Whether the value lives in a payload slot rather than a typed one,
+        /// so filters over it run on the client.
         public let payload: Bool
 
         /// The closed set of strings every value must come from.

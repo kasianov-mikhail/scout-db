@@ -24,8 +24,9 @@ extension SchemaBuilder {
         /// default has been applied.
         case required
 
-        /// Keeps the field out of the pools, in the record's payload blob:
-        /// unlimited in number, but beyond the server's filters and sorts.
+        /// Keeps the field out of the typed pools, in a payload slot of its
+        /// own: sixteen of those exist per entity, and a value in one lies
+        /// beyond the server's filters and sorts.
         case payload
 
         /// The closed set of strings every value of the field must come from.

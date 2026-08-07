@@ -65,17 +65,33 @@ enum Storage: Equatable, Sendable {
     /// and limited to the pool's capacity.
     case slot(FieldType, String)
 
-    /// The record's payload blob: outside the pools, and outside the server's
-    /// reach — every filter over it runs client-side.
-    case payload
+    /// A named slot of the payload pool, holding the value as a blob: outside
+    /// the typed pools, and outside the server's reach — every filter over it
+    /// runs client-side.
+    case payload(String)
+}
+
+extension Storage {
+    /// The record field the value lives in, whichever pool named it.
+    var slot: String {
+        switch self {
+        case .slot(_, let slot), .payload(let slot):
+            slot
+        }
+    }
+
+    /// Whether the field draws from the payload pool rather than a typed one.
+    var isPayload: Bool {
+        if case .payload = self { true } else { false }
+    }
 }
 
 extension Storage: Codable {
     init(from decoder: any Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
 
-        if raw == "payload" {
-            self = .payload
+        if PayloadPool.slotIndex(raw) != nil {
+            self = .payload(raw)
             return
         }
 
@@ -91,11 +107,6 @@ extension Storage: Codable {
 
     func encode(to encoder: any Encoder) throws {
         var container = encoder.singleValueContainer()
-        switch self {
-        case .payload:
-            try container.encode("payload")
-        case .slot(_, let slot):
-            try container.encode(slot)
-        }
+        try container.encode(slot)
     }
 }

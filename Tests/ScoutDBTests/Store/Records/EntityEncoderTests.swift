@@ -27,7 +27,7 @@ struct EntityEncoderTests {
         #expect(record["i_02"] == Int64(3))
         #expect(record["d_00"] == 29.97)
         #expect(record["t_00"] == Date(timeIntervalSince1970: 1_000_000))
-        #expect(record["payload"] != nil)
+        #expect(record["p_00"] != nil)
     }
 }
 

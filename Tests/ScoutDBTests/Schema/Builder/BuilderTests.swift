@@ -49,8 +49,41 @@ struct BuilderTests {
         #expect(definition.fields.first { $0.name == "product_id" }?.storage == .slot(.string, "s_01"))
         #expect(definition.fields.first { $0.name == "quantity" }?.storage == .slot(.int, "i_01"))
         #expect(definition.fields.first { $0.name == "amount" }?.storage == .slot(.double, "d_00"))
-        #expect(definition.fields.first { $0.name == "comment" }?.storage == .payload)
+        #expect(definition.fields.first { $0.name == "comment" }?.storage == .payload("p_00"))
         #expect(definition.fields.first { $0.name == "quantity" }?.min == 0)
+    }
+
+    @Test("Payload fields draw slots of their own, and keep them across a version")
+    func payloadAllocation() async throws {
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .field("notes", .string, .payload)
+            .field("trace", .string, .payload)
+            .create()
+
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .field("notes", .string, .payload)
+            .field("trace", .string, .payload)
+            .field("dump", .bytes, .payload)
+            .update()
+
+        let fields = try await registry.definition(for: "ticket").fields
+        #expect(fields.first { $0.name == "notes" }?.storage == .payload("p_00"))
+        #expect(fields.first { $0.name == "trace" }?.storage == .payload("p_01"))
+        #expect(fields.first { $0.name == "dump" }?.storage == .payload("p_02"))
+    }
+
+    @Test("The payload pool runs out like any other")
+    func payloadExhaustion() async throws {
+        var builder = store.schema("blob")
+        for index in 0...PayloadPool.capacity {
+            builder = builder.field("field_\(index)", .string, .payload)
+        }
+
+        await #expect(throws: SchemaError.invalidDefinition(.exhaustedPayload)) {
+            try await builder.create()
+        }
     }
 
     @Test("Creation vectors every groupable field")

@@ -18,6 +18,10 @@ public enum DefinitionFault: Equatable, Sendable {
     case sharedSlot(String, String, slot: String)
     case exhaustedPool(FieldType)
 
+    case slotOutsidePayload(String)
+    case slotBeyondPayload(String)
+    case exhaustedPayload
+
     case unsupportedPattern(field: String, type: FieldType)
     case malformedPattern(field: String)
     case unsupportedAllowed(field: String, type: FieldType)
@@ -50,6 +54,13 @@ extension DefinitionFault: CustomStringConvertible {
             "Fields '\(lhs)' and '\(rhs)' share slot '\(slot)'"
         case .exhaustedPool(let pool):
             "The '\(pool.rawValue)' pool is exhausted"
+
+        case .slotOutsidePayload(let slot):
+            "Slot '\(slot)' does not belong to the payload pool"
+        case .slotBeyondPayload(let slot):
+            "Slot '\(slot)' is beyond the payload pool capacity of \(PayloadPool.capacity)"
+        case .exhaustedPayload:
+            "The payload pool is exhausted"
 
         case .unsupportedPattern(let field, let type):
             "Field '\(field)' of type '\(type.rawValue)' cannot constrain 'pattern'"

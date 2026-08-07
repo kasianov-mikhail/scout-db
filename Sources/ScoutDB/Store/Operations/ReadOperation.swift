@@ -83,10 +83,7 @@ struct ReadOperation: Sendable {
 
     private func clientRanked(_ sort: [EntityStore.Sort]) throws -> Bool {
         try sort.contains { clause in
-            guard case .payload = try definition.field(clause.field, at: definition.version).storage else {
-                return false
-            }
-            return true
+            try definition.field(clause.field, at: definition.version).storage.isPayload
         }
     }
 

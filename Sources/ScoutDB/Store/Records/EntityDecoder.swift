@@ -21,11 +21,6 @@ struct EntityDecoder {
             throw SchemaError.staleSchema(entity: definition.entity, version: Int(version))
         }
 
-        var payload: [String: RecordValue] = [:]
-        if let data = record["payload"] as? Data {
-            payload = try jsonDecoder.decode([String: RecordValue].self, from: data)
-        }
-
         var values: [String: RecordValue] = [:]
         for field in definition.fields(at: Int(version)) {
             switch field.storage {
@@ -36,8 +31,10 @@ struct EntityDecoder {
                 }
                 values[field.name] = value
 
-            case .payload:
-                values[field.name] = payload[field.name]
+            case .payload(let slot):
+                values[field.name] = try (record[slot] as? Data).map {
+                    try jsonDecoder.decode(RecordValue.self, from: $0)
+                }
             }
         }
 

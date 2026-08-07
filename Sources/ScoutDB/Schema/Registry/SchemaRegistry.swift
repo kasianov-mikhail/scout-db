@@ -57,7 +57,7 @@ public actor SchemaRegistry {
                     name: $0.name,
                     type: $0.type,
                     required: $0.required == true,
-                    payload: $0.storage == .payload,
+                    payload: $0.storage.isPayload,
                     allowed: $0.allowed,
                     defaultValue: $0.defaultValue,
                     min: $0.min,
