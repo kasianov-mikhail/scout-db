@@ -25,8 +25,8 @@ extension SchemaBuilder {
     /// the record's envelope keeps — one string and one integer — so fifteen of
     /// each are yours. A `.payload` field spends none of them, at the cost of
     /// every filter over it running on the client after decoding. Declaration
-    /// order fixes the slots, so keeping it stable across versions keeps
-    /// records readable without a rewrite.
+    /// order fixes the slots, so keeping it stable across versions is what
+    /// keeps older records readable.
     ///
     /// ```swift
     /// try await store.schema("purchase")
