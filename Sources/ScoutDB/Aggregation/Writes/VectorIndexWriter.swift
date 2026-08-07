@@ -13,10 +13,6 @@ struct VectorIndexWriter {
     let maxRetry = 3
 
     func note(_ slots: some Collection<VectorSlot>) async throws {
-        guard slots.count > 0 else {
-            return
-        }
-
         var weeks: [VectorIndex: Set<Int64>] = [:]
         var groups: [VectorIndex: Set<String>] = [:]
 

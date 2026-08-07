@@ -32,10 +32,6 @@ struct VectorAggregator {
 
         let deltas = aggregates.deltas(removing: old, adding: new, at: Date(), spread: plans)
 
-        guard deltas.count > 0 else {
-            return
-        }
-
         let opened = try await VectorLoader(
             database: database,
             slots: slots

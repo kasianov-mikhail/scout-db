@@ -19,10 +19,6 @@ struct VectorReader {
         let head = try await head()
         let weeks = head.weeks.map(Date.init(millisecondsSince1970:))
 
-        guard weeks.count > 0 else {
-            return []
-        }
-
         let plan = ShardPlan(floor: aggregate.shards, grown: head.shards)
 
         let keys: [(group: String, week: Date)] =
