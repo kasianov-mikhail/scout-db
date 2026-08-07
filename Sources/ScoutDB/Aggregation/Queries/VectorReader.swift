@@ -50,18 +50,6 @@ struct VectorReader<Holder: Vector> {
             }
     }
 
-    func recordIDs() async throws -> [CKRecord.ID] {
-        try await rows(groups: nil).map(\.record.recordID) + indexIDs()
-    }
-
-    func indexIDs() async throws -> [CKRecord.ID] {
-        let head = VectorIndex(slug: Holder.slug, entity: entity, aggregate: aggregate.name, week: nil)
-        let weeks = try await weeks().map {
-            VectorIndex(slug: Holder.slug, entity: entity, aggregate: aggregate.name, week: $0)
-        }
-        return ([head] + weeks).map(\.recordID)
-    }
-
     private var shards: [Int?] {
         guard let count = aggregate.shards else {
             return [nil]

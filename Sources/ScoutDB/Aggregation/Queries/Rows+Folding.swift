@@ -24,14 +24,6 @@ extension AggregateDefinition {
                 .vectorRows(of: DoubleVector.self, folding: kind, where: include)
         }
     }
-
-    func recordIDs(from database: any CloudDatabase, of entity: String) async throws -> [CKRecord.ID] {
-        if counts {
-            try await VectorReader<IntVector>(database: database, entity: entity, aggregate: self).recordIDs()
-        } else {
-            try await VectorReader<DoubleVector>(database: database, entity: entity, aggregate: self).recordIDs()
-        }
-    }
 }
 
 extension [VectorRow] {
