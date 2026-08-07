@@ -10,30 +10,30 @@ import Testing
 
 @testable import ScoutDB
 
-@Suite("Integer vector deltas")
+@Suite("Vector deltas")
 struct VectorDeltaTests {
     private func record() -> CKRecord {
-        CKRecord(recordType: IntVector.recordType, recordID: CKRecord.ID(recordName: "int-vector-test"))
+        CKRecord(recordType: VectorSlot.recordType, recordID: CKRecord.ID(recordName: "vector-test"))
     }
 
-    private func cell(_ record: CKRecord, at hour: Int) -> Int64? {
-        record[IntVector.cellKeys[hour]] as? Int64
+    private func cell(_ record: CKRecord, at hour: Int) -> Double? {
+        record[VectorSlot.cellKeys[hour]] as? Double
     }
 
     @Test("A cell opens at the delta and folds into what is already stored")
     func cellsFold() {
         let record = record()
 
-        VectorDelta<IntVector>(kind: .sum, cells: [3: 2]).apply(to: record)
+        VectorDelta(kind: .sum, cells: [3: 2]).apply(to: record)
         #expect(cell(record, at: 3) == 2)
 
-        VectorDelta<IntVector>(kind: .sum, cells: [3: 5]).apply(to: record)
+        VectorDelta(kind: .sum, cells: [3: 5]).apply(to: record)
         #expect(cell(record, at: 3) == 7)
 
-        VectorDelta<IntVector>(kind: .max, cells: [3: 4]).apply(to: record)
+        VectorDelta(kind: .max, cells: [3: 4]).apply(to: record)
         #expect(cell(record, at: 3) == 7)
 
-        VectorDelta<IntVector>(kind: .min, cells: [3: 4]).apply(to: record)
+        VectorDelta(kind: .min, cells: [3: 4]).apply(to: record)
         #expect(cell(record, at: 3) == 4)
     }
 
@@ -41,18 +41,18 @@ struct VectorDeltaTests {
     func reversal() {
         let record = record()
 
-        VectorDelta<IntVector>(kind: .sum, cells: [0: 9]).apply(to: record)
-        VectorDelta<IntVector>(kind: .sum, cells: [0: 9]).reversed().apply(to: record)
+        VectorDelta(kind: .sum, cells: [0: 9]).apply(to: record)
+        VectorDelta(kind: .sum, cells: [0: 9]).reversed().apply(to: record)
         #expect(cell(record, at: 0) == 0)
 
-        #expect(VectorDelta<IntVector>(kind: .max, cells: [0: 9]).reversed().cells.isEmpty)
+        #expect(VectorDelta(kind: .max, cells: [0: 9]).reversed().cells.isEmpty)
     }
 
     @Test("A delta that moves nothing is a noop")
     func noop() {
-        #expect(VectorDelta<IntVector>(kind: .sum, cells: [0: 0]).isNoop)
-        #expect(!VectorDelta<IntVector>(kind: .sum, cells: [0: 1]).isNoop)
-        #expect(VectorDelta<IntVector>(kind: .min).isNoop)
-        #expect(!VectorDelta<IntVector>(kind: .min, cells: [0: 0]).isNoop)
+        #expect(VectorDelta(kind: .sum, cells: [0: 0]).isNoop)
+        #expect(!VectorDelta(kind: .sum, cells: [0: 1]).isNoop)
+        #expect(VectorDelta(kind: .min).isNoop)
+        #expect(!VectorDelta(kind: .min, cells: [0: 0]).isNoop)
     }
 }

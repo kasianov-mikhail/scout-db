@@ -8,12 +8,14 @@
 import CloudKit
 import Foundation
 
-struct VectorReader<Holder: Vector> {
+struct VectorReader {
     let database: any CloudDatabase
     let entity: String
     let aggregate: AggregateDefinition
 
-    func rows(groups: [String]?) async throws -> [VectorRow] {
+    typealias Row = (group: String, record: CKRecord)
+
+    func rows(groups: [String]?) async throws -> [Row] {
         let weeks = try await weeks()
 
         guard weeks.count > 0 else {
@@ -31,7 +33,7 @@ struct VectorReader<Holder: Vector> {
 
         for (group, week) in keys {
             for shard in shards {
-                let slot = VectorSlot<Holder>(
+                let slot = VectorSlot(
                     entity: entity,
                     aggregate: aggregate.name,
                     group: group,
@@ -58,7 +60,7 @@ struct VectorReader<Holder: Vector> {
     }
 
     private func weeks() async throws -> [Date] {
-        let head = VectorIndex(slug: Holder.slug, entity: entity, aggregate: aggregate.name, week: nil)
+        let head = VectorIndex(entity: entity, aggregate: aggregate.name, week: nil)
 
         guard let record = try await database.fetchRecord(id: head.recordID) else {
             return []
@@ -67,7 +69,7 @@ struct VectorReader<Holder: Vector> {
     }
 
     private func groups(in weeks: [Date]) async throws -> [(group: String, week: Date)] {
-        let pages = weeks.map { VectorIndex(slug: Holder.slug, entity: entity, aggregate: aggregate.name, week: $0) }
+        let pages = weeks.map { VectorIndex(entity: entity, aggregate: aggregate.name, week: $0) }
         let dated = Dictionary(uniqueKeysWithValues: zip(pages.map(\.recordID), weeks))
 
         let ids = pages.map(\.recordID).sorted { $0.recordName < $1.recordName }

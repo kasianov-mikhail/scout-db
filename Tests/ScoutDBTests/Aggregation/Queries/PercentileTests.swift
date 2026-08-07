@@ -53,7 +53,7 @@ struct PercentileTests {
     }
 
     private var buckets: [CKRecord] {
-        database.records.filter { $0.recordType == IntVector.recordType }
+        database.records.filter { $0.recordType == "Vector" }
     }
 
     @Test("A percentile lands inside its bucket and reads only the buckets")
@@ -113,8 +113,7 @@ struct PercentileTests {
         var counts: [String: Double] = [:]
         for bin in 0...PercentileTests.bounds.count {
             let group = RecordValue.int(Int64(bin)).canonical
-            let vector = database.vector(
-                of: IntVector.self, "request", "histogram_latency", group: group, week: Date().weekStart)
+            let vector = database.vector("request", "histogram_latency", group: group, week: Date().weekStart)
             counts[group] = vector?.cells() ?? 0
         }
 

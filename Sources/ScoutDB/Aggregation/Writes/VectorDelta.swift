@@ -8,29 +8,29 @@
 import CloudKit
 import Foundation
 
-struct VectorDelta<Holder: Vector> {
+struct VectorDelta {
     let kind: Metric
-    var cells: [Int: Holder.Cell] = [:]
+    var cells: [Int: Double] = [:]
 
     var isNoop: Bool {
-        kind.isReversible ? cells.values.allSatisfy { $0 == .zero } : cells.isEmpty
+        kind.isReversible ? cells.values.allSatisfy { $0 == 0 } : cells.isEmpty
     }
 
-    func reversed() -> Self {
+    func reversed() -> VectorDelta {
         guard kind.isReversible else {
-            return Self(kind: kind)
+            return VectorDelta(kind: kind)
         }
-        return Self(kind: kind, cells: cells.mapValues(-))
+        return VectorDelta(kind: kind, cells: cells.mapValues(-))
     }
 
     func apply(to record: CKRecord) {
         for (hour, value) in cells {
-            let key = Holder.cellKeys[hour]
+            let key = VectorSlot.cellKeys[hour]
 
-            if let stored = Holder.Cell.cell(of: record, at: key) {
-                kind.combine(stored, value).store(in: record, at: key)
+            if let stored = record[key] as? Double {
+                record[key] = kind.combine(stored, value)
             } else {
-                value.store(in: record, at: key)
+                record[key] = value
             }
         }
     }

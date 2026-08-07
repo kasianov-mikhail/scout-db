@@ -12,7 +12,7 @@ struct VectorIndexWriter {
     let database: any CloudDatabase
     let maxRetry = 3
 
-    func note<Holder: Vector>(_ slots: some Collection<VectorSlot<Holder>>) async throws {
+    func note(_ slots: some Collection<VectorSlot>) async throws {
         guard slots.count > 0 else {
             return
         }
