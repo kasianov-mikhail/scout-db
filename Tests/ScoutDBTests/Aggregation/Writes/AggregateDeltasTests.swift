@@ -31,9 +31,7 @@ struct AggregateDeltasTests {
         return EntityRecord(entity: "payment", uuid: uuid, schemaVersion: 2, values: values)
     }
 
-    private func slot<Holder: Vector>(
-        _ holder: Holder.Type, _ aggregate: String, group: String = "", shard: Int? = nil, week: Date? = nil
-    ) -> VectorSlot<Holder> {
+    private func slot(_ aggregate: String, group: String = "", shard: Int? = nil, week: Date? = nil) -> VectorSlot {
         VectorSlot(
             entity: "payment",
             aggregate: aggregate,
@@ -56,13 +54,12 @@ struct AggregateDeltasTests {
             at: noon
         )
 
-        #expect(deltas.counts.count == 2)
-        #expect(deltas.measures.count == 2)
+        #expect(deltas.count == 4)
 
-        let counted = try #require(deltas.counts[slot(IntVector.self, "by_product", group: "app")])
+        let counted = try #require(deltas[slot("by_product", group: "app")])
         #expect(counted.cells == [noon.hourOfWeek: 2])
 
-        let summed = try #require(deltas.measures[slot(DoubleVector.self, "sum_amount_by_product", group: "app")])
+        let summed = try #require(deltas[slot("sum_amount_by_product", group: "app")])
         #expect(summed.kind == .sum)
         #expect(summed.cells == [noon.hourOfWeek: 5])
     }
@@ -74,7 +71,7 @@ struct AggregateDeltasTests {
 
         let deltas = aggregates.deltas(removing: [], adding: [payment("p-0", date: stamped)], at: noon)
 
-        let delta = try #require(deltas.counts[slot(IntVector.self, "at_date", week: stamped)])
+        let delta = try #require(deltas[slot("at_date", week: stamped)])
         #expect(delta.cells == [stamped.hourOfWeek: 1])
     }
 
@@ -84,7 +81,7 @@ struct AggregateDeltasTests {
 
         let deltas = aggregates.deltas(removing: [], adding: [payment("p-0")], at: noon)
 
-        let delta = try #require(deltas.counts[slot(IntVector.self, "at_date")])
+        let delta = try #require(deltas[slot("at_date")])
         #expect(delta.cells == [noon.hourOfWeek: 1])
     }
 
@@ -98,9 +95,9 @@ struct AggregateDeltasTests {
             at: noon
         )
 
-        #expect(deltas.counts.count == 2)
-        #expect(deltas.counts[slot(IntVector.self, "at_date")]?.cells == [noon.hourOfWeek: 1])
-        #expect(deltas.counts[slot(IntVector.self, "at_date", week: nextWeek)]?.cells == [nextWeek.hourOfWeek: 1])
+        #expect(deltas.count == 2)
+        #expect(deltas[slot("at_date")]?.cells == [noon.hourOfWeek: 1])
+        #expect(deltas[slot("at_date", week: nextWeek)]?.cells == [nextWeek.hourOfWeek: 1])
     }
 
     @Test("A removal reverses a sum aggregate")
@@ -109,7 +106,7 @@ struct AggregateDeltasTests {
 
         let deltas = aggregates.deltas(removing: [payment("p-0", amount: 5)], adding: [], at: noon)
 
-        let delta = try #require(deltas.measures[slot(DoubleVector.self, "sum_amount")])
+        let delta = try #require(deltas[slot("sum_amount")])
         #expect(delta.cells == [noon.hourOfWeek: -5])
     }
 
@@ -135,7 +132,7 @@ struct AggregateDeltasTests {
 
         let deltas = aggregates.deltas(removing: [stored], adding: [stored], at: noon)
 
-        let delta = try #require(deltas.measures[slot(DoubleVector.self, "min_amount")])
+        let delta = try #require(deltas[slot("min_amount")])
         #expect(delta.cells == [noon.hourOfWeek: 5])
     }
 
@@ -153,25 +150,9 @@ struct AggregateDeltasTests {
 
         let deltas = aggregates.deltas(removing: [], adding: batch, at: noon)
 
-        #expect(deltas.counts.count > 1)
-        #expect(deltas.counts.keys.allSatisfy { ($0.shard ?? 0) < 4 })
-
-        let folded = deltas.counts.values.reduce(Int64(0)) { $0 + $1.cells.values.reduce(0, +) }
-        #expect(folded == 20)
-    }
-
-    @Test("A histogram counts its bucket, and lands among the counters")
-    func histogramCountsItsBucket() throws {
-        let histogram = AggregateDefinition.Histogram(field: "amount", bounds: [1, 10])
-        let aggregates = [AggregateDefinition(measure: .histogram(histogram))]
-
-        let deltas = aggregates.deltas(removing: [], adding: [payment("p-0", amount: 5)], at: noon)
-
-        #expect(deltas.measures.isEmpty)
-
-        let bucket = histogram.groupKey(of: 5)
-        let delta = try #require(deltas.counts[slot(IntVector.self, "histogram_amount", group: bucket)])
-        #expect(delta.cells == [noon.hourOfWeek: 1])
+        #expect(deltas.count > 1)
+        #expect(deltas.keys.allSatisfy { ($0.shard ?? 0) < 4 })
+        #expect(deltas.values.reduce(0) { $0 + $1.cells.values.reduce(0, +) } == 20)
     }
 
     @Test("A shard follows the record's uuid, so a rewrite lands on the slot it left")

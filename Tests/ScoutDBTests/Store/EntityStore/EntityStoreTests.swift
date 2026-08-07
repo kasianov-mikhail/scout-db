@@ -348,8 +348,7 @@ struct EntityStoreTests {
         let vectors = database.vectors
         #expect(vectors.count == 1)
         #expect(vectors.first?.cells() == 2)
-        #expect(
-            database.vector(of: IntVector.self, "tap", "by_name", group: "open", week: Date().weekStart)?.cells() == 2)
+        #expect(database.vector("tap", "by_name", group: "open", week: Date().weekStart)?.cells() == 2)
     }
 
     @Test("Sum aggregates accumulate values into double cells")
@@ -371,7 +370,7 @@ struct EntityStoreTests {
         try await store.write(
             [EntityWrite(values: ["amount": .double(1.5), "date": .date(date)], uuid: nil)], entity: "payment")
 
-        let vectors = database.records.filter { $0.recordType == DoubleVector.recordType }
+        let vectors = database.records.filter { $0.recordType == "Vector" }
         #expect(vectors.count == 1)
         #expect(vectors.first?.cells() == 4.0)
     }

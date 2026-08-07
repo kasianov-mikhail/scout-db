@@ -14,7 +14,7 @@ import Testing
 @Suite("Vector cache")
 struct VectorCacheTests {
     private func slot(_ name: String) -> CKRecord {
-        CKRecord(recordType: DoubleVector.recordType, recordID: CKRecord.ID(recordName: name))
+        CKRecord(recordType: VectorSlot.recordType, recordID: CKRecord.ID(recordName: name))
     }
 
     @Test("Eviction sheds the whole overflow at once, least recently used first")

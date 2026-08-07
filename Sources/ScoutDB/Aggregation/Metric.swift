@@ -28,7 +28,7 @@ extension Metric {
         storage == .sum
     }
 
-    func combine<Cell: VectorCell>(_ lhs: Cell, _ rhs: Cell) -> Cell {
+    func combine(_ lhs: Double, _ rhs: Double) -> Double {
         switch self {
         case .sum, .average:
             lhs + rhs
@@ -39,7 +39,7 @@ extension Metric {
         }
     }
 
-    func fold<Cell: VectorCell>(_ values: some Collection<Cell>) -> Cell? {
+    func fold(_ values: some Collection<Double>) -> Double? {
         values.first.map { values.dropFirst().reduce($0, combine) }
     }
 }
