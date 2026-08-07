@@ -52,11 +52,19 @@ struct VectorIndexWriter {
         var saving: [CKRecord.ID: (index: VectorIndex, page: VectorIndex.Page, record: CKRecord)] = [:]
 
         for (index, additions) in wanted {
-            let record = stored[index.recordID] ?? index.blank()
-            let page =
-                stored[index.recordID] == nil
-                ? VectorIndex.Page(weeks: [], groups: [])
-                : try record.indexPage(named: index.recordID)
+            let record: CKRecord
+            let page: VectorIndex.Page
+
+            if let existing = stored[index.recordID] {
+                record = existing
+                page = try existing.indexPage(named: index.recordID)
+            } else {
+                record = CKRecord(recordType: SchemaDescriptorEntry.recordType, recordID: index.recordID)
+                record[Envelope.entity] = VectorIndex.namespace
+                record[Envelope.version] = Int64(1)
+                page = VectorIndex.Page(weeks: [], groups: [])
+            }
+
             let merged = page.merging(additions)
 
             guard merged != page else {

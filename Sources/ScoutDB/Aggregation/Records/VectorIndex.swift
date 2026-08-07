@@ -22,13 +22,6 @@ struct VectorIndex: Hashable {
         }
         return CKRecord.ID(recordName: "index-" + contentDigest(of: components))
     }
-
-    func blank() -> CKRecord {
-        let record = CKRecord(recordType: SchemaDescriptorEntry.recordType, recordID: recordID)
-        record[Envelope.entity] = Self.namespace
-        record[Envelope.version] = Int64(1)
-        return record
-    }
 }
 
 extension VectorIndex {

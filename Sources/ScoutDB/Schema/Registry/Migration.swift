@@ -21,8 +21,7 @@ import Foundation
 /// ```
 ///
 /// Migrations touch no records: publishing a version is an upsert over the
-/// record the registry keeps it under, so running the same list twice leaves
-/// the data exactly where it was.
+/// record the registry keeps it under, so the data stays exactly where it was.
 ///
 public protocol Migration: Sendable {
     /// Applies the change: publishes a definition.
@@ -68,11 +67,11 @@ extension EntityStore {
     ///
     /// Nothing wraps the run in a transaction. A migration that throws stops
     /// the walk and leaves the ones ahead of it applied, so the fix is to
-    /// correct the failing migration and run the same list again. No record is
-    /// touched either way, and `create()` republishes version 1 over itself. An
-    /// `update()`, though, always publishes the next version, so a second run
-    /// of the same list adds a version of the same shape: harmless to how
-    /// records read, but not a no-op.
+    /// correct the failing migration and run the same list again. `create()`
+    /// republishes version 1 over itself; an `update()`, though, always
+    /// publishes the next version, so a second run of the same list adds a
+    /// version of the same shape: harmless to how records read, but not a
+    /// no-op.
     ///
     /// ```swift
     /// try await store.migrate([CreatePurchase(), AddPurchaseStatus()])

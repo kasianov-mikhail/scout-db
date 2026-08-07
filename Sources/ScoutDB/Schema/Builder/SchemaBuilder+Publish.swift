@@ -102,10 +102,7 @@ extension SchemaBuilder {
         var carried: Set<String> = []
 
         for declaration in declarations {
-            let active =
-                previous
-                .fields(at: previous.version)
-                .first { $0.name == declaration.name }
+            let active = previous.activeFields.first { $0.name == declaration.name }
 
             if let active, active.type == declaration.type, isSlot(active.storage) == declaration.wantsSlot {
                 var kept = try allocator.resolve(

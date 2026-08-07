@@ -197,11 +197,11 @@ struct PercentileTests {
     func bucketing() {
         let histogram = AggregateDefinition.Histogram(field: "latency", bounds: Self.bounds)
 
-        #expect(histogram.bins.count == 5)
-        #expect(histogram.bin(of: 5) == 0)
-        #expect(histogram.bin(of: 10) == 1)
-        #expect(histogram.bin(of: 39.9) == 3)
-        #expect(histogram.bin(of: 40) == 4)
-        #expect(histogram.bin(of: 4_000) == 4)
+        #expect(histogram.groupKeys == ["i0", "i1", "i2", "i3", "i4"])
+        #expect(histogram.groupKey(of: 5) == "i0")
+        #expect(histogram.groupKey(of: 10) == "i1")
+        #expect(histogram.groupKey(of: 39.9) == "i3")
+        #expect(histogram.groupKey(of: 40) == "i4")
+        #expect(histogram.groupKey(of: 4_000) == "i4")
     }
 }
