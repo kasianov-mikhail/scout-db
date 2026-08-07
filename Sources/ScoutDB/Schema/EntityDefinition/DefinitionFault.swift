@@ -26,6 +26,7 @@ enum DefinitionFault: Equatable, Sendable {
     case malformedPattern(field: String)
     case unsupportedAllowed(field: String, type: FieldType)
     case unsupportedBounds(field: String, type: FieldType)
+    case narrowedBounds(field: String)
 
     case duplicateAggregate(String)
     case unknownGrouping(aggregate: String, field: String)
@@ -71,6 +72,8 @@ extension DefinitionFault: CustomStringConvertible {
             "Field '\(field)' of type '\(type.rawValue)' cannot constrain 'allowed'"
         case .unsupportedBounds(let field, let type):
             "Field '\(field)' of type '\(type.rawValue)' cannot constrain 'minimum'/'maximum'"
+        case .narrowedBounds(let field):
+            "Field '\(field)' narrows the 'minimum'/'maximum' its records were written under, which a count reads as their whole domain"
 
         case .duplicateAggregate(let aggregate):
             "Aggregate '\(aggregate)' is declared twice, and every write would fold into its cells twice over"

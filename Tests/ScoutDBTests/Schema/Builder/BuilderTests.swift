@@ -532,6 +532,20 @@ struct BuilderTests {
         #expect(try await store.query("visit").filter("page", .equals, .string("home")).count() == 1)
     }
 
+    @Test("An update may widen a bound but not narrow it under the records already written")
+    func narrowedBounds() async throws {
+        try await store.schema("cart").field("qty", .int, .required, .min(1), .max(20)).create()
+        try await store.write([EntityWrite(values: ["qty": .int(15)], uuid: "c-1")], entity: "cart")
+        #expect(try await store.query("cart").filter("qty" >= 1).count() == 1)
+
+        await #expect(throws: SchemaError.invalidDefinition(.narrowedBounds(field: "qty"))) {
+            try await store.schema("cart").field("qty", .int, .required, .min(1), .max(10)).update()
+        }
+
+        try await store.schema("cart").field("qty", .int, .required, .min(1), .max(50)).update()
+        #expect(try await store.query("cart").filter("qty" >= 1).count() == 1)
+    }
+
     @Test("Migrations run in order and are repeatable")
     func migrations() async throws {
         struct CreateNote: Migration {
