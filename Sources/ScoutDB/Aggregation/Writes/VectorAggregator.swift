@@ -8,11 +8,19 @@
 import CloudKit
 import Foundation
 
+private let baseBackoff = 0.1
+private let maxBackoff = 2.0
+
+func conflictBackoff(attempt: Int) -> Duration {
+    let window = min(maxBackoff, baseBackoff * pow(2, Double(attempt - 1)))
+    return .seconds(Double.random(in: 0..<window))
+}
+
 struct VectorAggregator {
     let database: any CloudDatabase
     let aggregates: [AggregateDefinition]
     let slots: VectorCache
-    let maxRetry = 3
+    let maxRetry = 6
 
     func rebalance(removing old: [EntityRecord], adding new: [EntityRecord]) async throws {
         let deltas = aggregates.deltas(
@@ -35,7 +43,11 @@ struct VectorAggregator {
 
         var pending = opened.pending
 
-        for _ in 0..<maxRetry {
+        for attempt in 0..<maxRetry {
+            if attempt > 0 {
+                try await Task.sleep(for: conflictBackoff(attempt: attempt))
+            }
+
             for entry in pending.values {
                 entry.delta.apply(to: entry.record)
             }
