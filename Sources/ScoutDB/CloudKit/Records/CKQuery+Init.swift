@@ -26,7 +26,7 @@ extension CKQuery {
         let order: SortOrder
     }
 
-    convenience init(recordType: String, filters: [Filter], sort: [Sort] = []) {
+    convenience init(recordType: String, filters: [Filter], sort: [Sort]) {
         self.init(
             recordType: recordType,
             predicate: filters.isEmpty

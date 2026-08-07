@@ -16,7 +16,7 @@ struct RateLimitRetryTests {
     @Test("Retries after the server-suggested delay and returns the success")
     func retries() async throws {
         var calls = 0
-        let result = try await withRateLimitRetry {
+        let result = try await withRateLimitRetry(maxRetry: 3) {
             calls += 1
             guard calls == 3 else {
                 throw CKError(.requestRateLimited, userInfo: [CKErrorRetryAfterKey: 0.01])
@@ -43,7 +43,7 @@ struct RateLimitRetryTests {
     func exhausted() async {
         var calls = 0
         await #expect(throws: CKError.self) {
-            try await withRateLimitRetry {
+            try await withRateLimitRetry(maxRetry: 3) {
                 calls += 1
                 throw CKError(.zoneBusy, userInfo: [CKErrorRetryAfterKey: 0.001])
             }
@@ -55,7 +55,7 @@ struct RateLimitRetryTests {
     func passthrough() async {
         var calls = 0
         await #expect(throws: CKError.self) {
-            try await withRateLimitRetry {
+            try await withRateLimitRetry(maxRetry: 3) {
                 calls += 1
                 throw CKError(.notAuthenticated)
             }

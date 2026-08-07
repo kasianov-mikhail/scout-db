@@ -8,7 +8,7 @@
 import Foundation
 
 extension SlotAllocator {
-    mutating func resolve(_ declaration: SchemaBuilder.Declaration, since: Int?, storage: Storage? = nil)
+    mutating func resolve(_ declaration: SchemaBuilder.Declaration, since: Int?, storage: Storage?)
         throws -> FieldDefinition
     {
         let resolved: Storage

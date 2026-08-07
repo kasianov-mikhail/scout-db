@@ -33,7 +33,8 @@ struct VectorIndexTests {
     private func page(week: Date?) -> VectorIndex.Page {
         let index = VectorIndex(entity: "payment", aggregate: counting.name, week: week)
 
-        return database.records.first { $0.recordID == index.recordID }?.indexPage ?? VectorIndex.Page()
+        let stored = database.records.first { $0.recordID == index.recordID }
+        return stored?.indexPage ?? VectorIndex.Page(weeks: [], groups: [])
     }
 
     private func aggregator(_ slots: VectorCache = VectorCache()) -> VectorAggregator {

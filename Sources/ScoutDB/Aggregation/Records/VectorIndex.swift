@@ -28,11 +28,6 @@ extension VectorIndex {
     struct Page: Codable, Equatable {
         let weeks: [Int64]
         let groups: [String]
-
-        init(weeks: [Int64] = [], groups: [String] = []) {
-            self.weeks = weeks
-            self.groups = groups
-        }
     }
 
     static let pageKey = "b_00"

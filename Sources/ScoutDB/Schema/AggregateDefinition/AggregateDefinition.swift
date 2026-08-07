@@ -68,7 +68,7 @@ extension AggregateDefinition {
         self.init(groupBy: group, measure: measure, shards: shards, date: date)
     }
 
-    init(histogram field: String, bounds: [Double], group: String? = nil, date: String? = nil) {
+    init(histogram field: String, bounds: [Double], group: String?, date: String?) {
         self.init(
             groupBy: group,
             measure: .histogram(.init(field: field, bounds: bounds)),

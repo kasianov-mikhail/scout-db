@@ -129,7 +129,7 @@ extension SchemaBuilder {
     ///
     public func histogram(of field: String, bounds: [Double], at date: String? = nil) -> Self {
         var builder = self
-        builder.aggregates.append(AggregateDefinition(histogram: field, bounds: bounds, date: date))
+        builder.aggregates.append(AggregateDefinition(histogram: field, bounds: bounds, group: nil, date: date))
         return builder
     }
 }

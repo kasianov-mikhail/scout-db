@@ -39,10 +39,10 @@ extension SchemaBuilder {
     /// ```
     ///
     public func create() async throws {
-        var allocator = SlotAllocator()
+        var allocator = SlotAllocator(reserving: [])
 
         let fields = try declarations.map {
-            try allocator.resolve($0, since: nil)
+            try allocator.resolve($0, since: nil, storage: nil)
         }
 
         var taken = Set(aggregates.map(\.name))
@@ -118,7 +118,8 @@ extension SchemaBuilder {
                 fields.append(
                     try allocator.resolve(
                         declaration,
-                        since: version
+                        since: version,
+                        storage: nil
                     )
                 )
             }

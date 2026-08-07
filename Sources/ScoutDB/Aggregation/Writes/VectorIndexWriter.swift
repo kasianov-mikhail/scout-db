@@ -26,8 +26,8 @@ struct VectorIndexWriter {
             groups[week, default: []].insert(slot.group)
         }
 
-        var wanted = weeks.mapValues { VectorIndex.Page(weeks: $0.sorted()) }
-        wanted.merge(groups.mapValues { VectorIndex.Page(groups: $0.sorted()) }) { first, _ in first }
+        var wanted = weeks.mapValues { VectorIndex.Page(weeks: $0.sorted(), groups: []) }
+        wanted.merge(groups.mapValues { VectorIndex.Page(weeks: [], groups: $0.sorted()) }) { first, _ in first }
 
         var pending = wanted
         for _ in 0..<maxRetry {
@@ -62,7 +62,7 @@ struct VectorIndexWriter {
                 record = CKRecord(recordType: SchemaDescriptorEntry.recordType, recordID: index.recordID)
                 record[Envelope.entity] = VectorIndex.namespace
                 record[Envelope.version] = Int64(1)
-                page = VectorIndex.Page()
+                page = VectorIndex.Page(weeks: [], groups: [])
             }
 
             let merged = page.merging(additions)

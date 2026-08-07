@@ -47,7 +47,8 @@ extension SchemaDescriptorEntry {
                 CKQuery.Filter(field: Envelope.entity, op: .equals, value: .string(namespace)),
                 CKQuery.Filter(field: Slot.entity, op: .equals, value: .string(entity)),
                 CKQuery.Filter(field: Slot.status, op: .equals, value: .string("active")),
-            ]
+            ],
+            sort: []
         )
     }
 
