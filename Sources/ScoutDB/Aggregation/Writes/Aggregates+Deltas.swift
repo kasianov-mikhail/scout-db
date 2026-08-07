@@ -7,40 +7,71 @@
 
 import Foundation
 
+struct AggregateDeltas {
+    var counts: [VectorSlot<IntVector>: VectorDelta<IntVector>] = [:]
+    var measures: [VectorSlot<DoubleVector>: VectorDelta<DoubleVector>] = [:]
+
+    var isEmpty: Bool {
+        counts.isEmpty && measures.isEmpty
+    }
+}
+
 extension [AggregateDefinition] {
-    func deltas(removing old: [EntityRecord], adding new: [EntityRecord], at now: Date) -> [VectorSlot<DoubleVector>:
-        VectorDelta<DoubleVector>]
-    {
-        var merged: [VectorSlot<DoubleVector>: VectorDelta<DoubleVector>] = [:]
+    func deltas(removing old: [EntityRecord], adding new: [EntityRecord], at now: Date) -> AggregateDeltas {
+        var deltas = AggregateDeltas()
 
         for (batch, adding) in [(old, false), (new, true)] {
             for entityRecord in batch {
                 for aggregate in self {
                     let stamp = aggregate.stamp(of: entityRecord, at: now)
+                    let week = stamp.weekStart
+                    let hour = stamp.hourOfWeek
 
-                    guard
-                        let slot = VectorSlot<DoubleVector>(
-                            for: entityRecord, aggregate: aggregate, week: stamp.weekStart)
-                    else {
-                        continue
+                    if aggregate.counts {
+                        guard let slot = VectorSlot<IntVector>(for: entityRecord, aggregate: aggregate, week: week)
+                        else {
+                            continue
+                        }
+                        deltas.counts.fold(
+                            VectorDelta(kind: aggregate.fold, cells: [hour: 1]), into: slot, adding: adding)
+                    } else {
+                        guard
+                            let slot = VectorSlot<DoubleVector>(for: entityRecord, aggregate: aggregate, week: week),
+                            let value = aggregate.value(of: entityRecord)
+                        else {
+                            continue
+                        }
+                        deltas.measures.fold(
+                            VectorDelta(kind: aggregate.fold, cells: [hour: value]), into: slot, adding: adding)
                     }
-                    guard let one = aggregate.delta(for: entityRecord, at: stamp.hourOfWeek) else {
-                        continue
-                    }
-
-                    let folded = adding ? one : one.reversed()
-                    merged[slot, default: VectorDelta(kind: folded.kind)]
-                        .cells
-                        .merge(folded.cells, uniquingKeysWith: folded.kind.combine)
                 }
             }
         }
 
-        return merged.filter { !$0.value.isNoop }
+        deltas.counts = deltas.counts.filter { !$0.value.isNoop }
+        deltas.measures = deltas.measures.filter { !$0.value.isNoop }
+
+        return deltas
+    }
+}
+
+extension Dictionary {
+    fileprivate mutating func fold<Holder: Vector>(
+        _ delta: VectorDelta<Holder>, into slot: VectorSlot<Holder>, adding: Bool
+    ) where Key == VectorSlot<Holder>, Value == VectorDelta<Holder> {
+        let folded = adding ? delta : delta.reversed()
+
+        self[slot, default: VectorDelta(kind: folded.kind)]
+            .cells
+            .merge(folded.cells, uniquingKeysWith: folded.kind.combine)
     }
 }
 
 extension AggregateDefinition {
+    var counts: Bool {
+        measure?.field == nil
+    }
+
     fileprivate func stamp(of entityRecord: EntityRecord, at now: Date) -> Date {
         guard let date, case .date(let value)? = entityRecord.values[date] else {
             return now
@@ -48,13 +79,7 @@ extension AggregateDefinition {
         return value
     }
 
-    fileprivate func delta(for entityRecord: EntityRecord, at hour: Int) -> VectorDelta<DoubleVector>? {
-        guard let field = measure?.field else {
-            return VectorDelta(kind: fold, cells: [hour: 1])
-        }
-        guard let value = entityRecord.values[field]?.scalar else {
-            return nil
-        }
-        return VectorDelta(kind: fold, cells: [hour: value])
+    fileprivate func value(of entityRecord: EntityRecord) -> Double? {
+        measure?.field.flatMap { entityRecord.values[$0]?.scalar }
     }
 }

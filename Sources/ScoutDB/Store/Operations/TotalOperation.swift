@@ -41,13 +41,12 @@ struct TotalOperation: Sendable {
     private func folds(of aggregate: AggregateDefinition, group: String?) async throws -> [String: Double] {
         let narrowed = try narrowing(to: group)
 
-        let rows = try await VectorReader<DoubleVector>(
-            database: database,
-            definition: definition,
-            aggregate: aggregate
+        let rows = try await aggregate.rows(
+            from: database,
+            of: definition.entity,
+            groups: narrowed.map { [$0] },
+            folding: aggregate.fold
         )
-        .rows(groups: narrowed.map { [$0] })
-        .vectorRows(folding: aggregate.fold, where: nil)
 
         return aggregate.measure?.metric == nil ? rows.filter { $0.value != 0 } : rows
     }

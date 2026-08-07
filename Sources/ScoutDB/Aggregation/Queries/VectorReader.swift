@@ -13,9 +13,7 @@ struct VectorReader<Holder: Vector> {
     let entity: String
     let aggregate: AggregateDefinition
 
-    typealias Row = (group: String, record: CKRecord)
-
-    func rows(groups: [String]?) async throws -> [Row] {
+    func rows(groups: [String]?) async throws -> [VectorRow] {
         let weeks = try await weeks()
 
         guard weeks.count > 0 else {
@@ -50,6 +48,10 @@ struct VectorReader<Holder: Vector> {
             .compactMap { record in
                 named[record.recordID].map { (group: $0, record: record) }
             }
+    }
+
+    func recordIDs() async throws -> [CKRecord.ID] {
+        try await rows(groups: nil).map(\.record.recordID) + indexIDs()
     }
 
     func indexIDs() async throws -> [CKRecord.ID] {

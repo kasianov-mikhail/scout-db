@@ -119,7 +119,7 @@ struct AggregatesTests {
                         uuid: "p-\(index)")
                 ], entity: "payment")
         }
-        let cells = database.shards("payment", "sum_amount", week: Date().weekStart, over: 3)
+        let cells = database.shards(of: DoubleVector.self, "payment", "sum_amount", week: Date().weekStart, over: 3)
         #expect(cells.count > 1)
         #expect(cells.count <= 3)
 
@@ -230,8 +230,10 @@ struct AggregatesTests {
         try await writePayment(3, at: noon.addingTimeInterval(3_600))
         try await writePayment(10, at: noon.addingTimeInterval(7 * 86_400))
 
-        #expect(database.vector("payment", "at_date", week: noon.weekStart) != nil)
-        #expect(database.vector("payment", "at_date", week: noon.addingTimeInterval(7 * 86_400).weekStart) != nil)
+        #expect(database.vector(of: IntVector.self, "payment", "at_date", week: noon.weekStart) != nil)
+        #expect(
+            database.vector(
+                of: IntVector.self, "payment", "at_date", week: noon.addingTimeInterval(7 * 86_400).weekStart) != nil)
         #expect(database.vectors.filter { $0.cells() != nil }.count == 4)
         #expect(try await store.query("payment").count() == 3)
         #expect(try await store.query("payment").sum("amount") == 15)
@@ -250,8 +252,10 @@ struct AggregatesTests {
         try await writePayment(10, at: noon, uuid: "p-1")
         try await writePayment(10, at: moved, uuid: "p-1")
 
-        #expect(database.vector("payment", "at_date", week: noon.weekStart)?.cells() == 0)
-        #expect(database.vector("payment", "at_date", week: moved.weekStart)?[cell: moved.hourOfWeek] == 1)
+        #expect(database.vector(of: IntVector.self, "payment", "at_date", week: noon.weekStart)?.cells() == 0)
+        #expect(
+            database.vector(of: IntVector.self, "payment", "at_date", week: moved.weekStart)?[cell: moved.hourOfWeek]
+                == 1)
 
         #expect(try await store.query("payment").count() == 1)
         #expect(try await store.query("payment").sum("amount") == 10)
@@ -407,7 +411,7 @@ struct AggregatesTests {
         #expect(try await store.query("sale").limit(1).count() == 1)
 
         let vector = try #require(
-            database.vector("sale", "by_product", group: "book", week: Date().weekStart)
+            database.vector(of: IntVector.self, "sale", "by_product", group: "book", week: Date().weekStart)
         )
         vector.reset(cellsTo: 41)
         #expect(try await store.query("sale").count() == 43)
@@ -447,12 +451,12 @@ struct AggregatesTests {
             [EntityWrite(values: ["kind": .string("c"), "price": .double(4)], uuid: nil)], entity: "ticket")
 
         let counted = try #require(
-            database.vector("ticket", "by_kind", group: "b", week: Date().weekStart)
+            database.vector(of: IntVector.self, "ticket", "by_kind", group: "b", week: Date().weekStart)
         )
         counted.reset(cellsTo: 41)
 
         let summed = try #require(
-            database.vector("ticket", "sum_price_by_kind", group: "b", week: Date().weekStart)
+            database.vector(of: DoubleVector.self, "ticket", "sum_price_by_kind", group: "b", week: Date().weekStart)
         )
         summed.reset(cellsTo: 100)
 
@@ -497,7 +501,7 @@ struct AggregatesTests {
         }
 
         let vector = try #require(
-            database.vector("crate", "by_units", group: "i16", week: Date().weekStart)
+            database.vector(of: IntVector.self, "crate", "by_units", group: "i16", week: Date().weekStart)
         )
         vector.reset(cellsTo: 41)
 
@@ -526,7 +530,7 @@ struct AggregatesTests {
                 )
             ], entity: "payment")
 
-        let vector = try #require(database.records.first { $0.recordType == DoubleVector.recordType })
+        let vector = try #require(database.records.first { $0.recordType == IntVector.recordType })
         vector.reset(cellsTo: 41)
 
         #expect(try await store.query("payment").count() == 41)
@@ -568,12 +572,13 @@ struct AggregatesTests {
 
     private func tamperBookSlots() throws {
         let counted = try #require(
-            database.vector("ledger", "by_product", group: "book", week: Date().weekStart)
+            database.vector(of: IntVector.self, "ledger", "by_product", group: "book", week: Date().weekStart)
         )
         counted.reset(cellsTo: 3)
 
         let summed = try #require(
-            database.vector("ledger", "sum_amount_by_product", group: "book", week: Date().weekStart)
+            database.vector(
+                of: DoubleVector.self, "ledger", "sum_amount_by_product", group: "book", week: Date().weekStart)
         )
         summed.reset(cellsTo: 40)
     }
@@ -621,7 +626,7 @@ struct AggregatesTests {
 
         for aggregate in ["max_amount_by_product", "min_amount_by_product"] {
             let vector = try #require(
-                database.vector("reading", aggregate, group: "book", week: Date().weekStart)
+                database.vector(of: DoubleVector.self, "reading", aggregate, group: "book", week: Date().weekStart)
             )
             vector.reset(cellsTo: aggregate == "max_amount_by_product" ? 41 : 1)
         }

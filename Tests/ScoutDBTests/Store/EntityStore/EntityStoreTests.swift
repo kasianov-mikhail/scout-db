@@ -348,7 +348,8 @@ struct EntityStoreTests {
         let vectors = database.vectors
         #expect(vectors.count == 1)
         #expect(vectors.first?.cells() == 2)
-        #expect(database.vector("tap", "by_name", group: "open", week: Date().weekStart)?.cells() == 2)
+        #expect(
+            database.vector(of: IntVector.self, "tap", "by_name", group: "open", week: Date().weekStart)?.cells() == 2)
     }
 
     @Test("Sum aggregates accumulate values into double cells")
