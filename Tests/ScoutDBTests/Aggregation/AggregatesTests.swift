@@ -167,6 +167,20 @@ struct AggregatesTests {
         #expect(totals.first?.value == 2)
     }
 
+    @Test("Two equalities on the grouping field narrow to nothing, as the records do")
+    func contradictoryGroupFilters() async throws {
+        try await publishPayment(aggregates: [AggregateDefinition(metric: .sum, field: "amount", group: "product")])
+        try await writePayments([10], product: "app")
+        try await writePayments([99], product: "web")
+
+        let narrowed = store.query("payment").filter("product", .equals, .string("app"))
+        #expect(try await narrowed.totals("amount", metric: .sum, group: "product").map(\.value) == [10])
+
+        let contradicted = narrowed.filter("product", .equals, .string("web"))
+        #expect(try await contradicted.totals("amount", metric: .sum, group: "product").isEmpty)
+        #expect(try await contradicted.take(10).isEmpty)
+    }
+
     @Test("MIN aggregate keeps the smallest value")
     func minView() async throws {
         try await publishPayment(aggregates: [AggregateDefinition(metric: .min, field: "amount")])
