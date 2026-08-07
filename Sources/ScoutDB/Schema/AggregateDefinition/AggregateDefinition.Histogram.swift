@@ -15,19 +15,12 @@ extension AggregateDefinition {
 }
 
 extension AggregateDefinition.Histogram {
-    var bins: Range<Int> {
-        0..<(bounds.count + 1)
-    }
-
-    func bin(of value: Double) -> Int {
-        bounds.firstIndex { value < $0 } ?? bounds.count
-    }
-
     func groupKey(of value: Double) -> String {
-        RecordValue.int(Int64(bin(of: value))).canonical
+        let bin = bounds.firstIndex { value < $0 } ?? bounds.count
+        return RecordValue.int(Int64(bin)).canonical
     }
 
     var groupKeys: [String] {
-        bins.map { RecordValue.int(Int64($0)).canonical }
+        (0...bounds.count).map { RecordValue.int(Int64($0)).canonical }
     }
 }
