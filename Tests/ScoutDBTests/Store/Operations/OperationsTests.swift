@@ -144,6 +144,25 @@ struct OperationsTests {
         #expect(try await uuids([.init(field: "score", op: .notIn, value: .ints([10]))]) == ["u-2"])
     }
 
+    @Test("A batch naming one uuid twice writes one record and answers one uuid")
+    func duplicateUUIDInBatch() async throws {
+        var first = makePurchase().values
+        first["product_id"] = .string("sku-first")
+        var second = makePurchase().values
+        second["product_id"] = .string("sku-second")
+
+        database.resetRequests()
+        let uuids = try await store.write(
+            [EntityWrite(values: first, uuid: "p-1"), EntityWrite(values: second, uuid: "p-1")],
+            entity: "purchase"
+        )
+
+        #expect(uuids == ["p-1"])
+        #expect(database.requests[.modify] == 1)
+        #expect(try await store.fetch(uuid: "p-1")?.values["product_id"] == .string("sku-second"))
+        #expect(try await ReadOperation(store: store, entity: "purchase").records().count == 1)
+    }
+
     @Test("A batch write surfaces the error the database raised")
     func batchWriteError() async throws {
         database.writeErrors = [CKError(.partialFailure)]
