@@ -44,10 +44,20 @@ struct SchemaConsistencyTests {
         #expect(slots.allSatisfy { $0.spec == expected })
     }
 
+    @Test("The payload pool declares exactly its capacity, contiguously")
+    func payloadCapacity() {
+        let slots = Self.fields(of: "Entity").filter { $0.name.hasPrefix("\(PayloadPool.slotPrefix)_") }
+        #expect(slots.count == PayloadPool.capacity)
+
+        let indices = slots.compactMap { PayloadPool.slotIndex($0.name) }.sorted()
+        #expect(indices == Array(0..<PayloadPool.capacity))
+        #expect(slots.allSatisfy { $0.spec == "BYTES" }, "Nothing filters a payload slot server-side")
+    }
+
     @Test("Entity carries the envelope the coder stamps")
     func itemEnvelope() {
         let names = Set(Self.fields(of: "Entity").map(\.name))
-        for field in [Envelope.entity, Envelope.version, "payload"] {
+        for field in [Envelope.entity, Envelope.version] {
             #expect(names.contains(field), "Entity is missing '\(field)'")
         }
 

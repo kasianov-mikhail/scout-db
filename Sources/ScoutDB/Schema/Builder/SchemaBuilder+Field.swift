@@ -23,8 +23,9 @@ extension SchemaBuilder {
     /// The field takes the next free slot for its type, which is what lets the
     /// server filter and sort on it. Sixteen slots exist per type, less the two
     /// the record's envelope keeps — one string and one integer — so fifteen of
-    /// each are yours. A `.payload` field spends none of them, at the cost of
-    /// every filter over it running on the client after decoding. Declaration
+    /// each are yours. A `.payload` field spends none of them, taking one of
+    /// the sixteen payload slots instead, at the cost of every filter over it
+    /// running on the client after decoding. Declaration
     /// order fixes the slots, so keeping it stable across versions is what
     /// keeps older records readable.
     ///

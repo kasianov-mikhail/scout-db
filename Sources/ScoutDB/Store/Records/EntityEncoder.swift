@@ -22,24 +22,19 @@ struct EntityEncoder {
         record[Envelope.entity] = entityRecord.entity
         record[Envelope.version] = Int64(entityRecord.schemaVersion)
 
-        var payload: [String: RecordValue] = [:]
         for field in fields {
             guard let value = values[field.name] else {
-                if case .slot(_, let slot) = field.storage {
-                    record[slot] = nil
-                }
+                record[field.storage.slot] = nil
                 continue
             }
 
             switch field.storage {
             case .slot(_, let slot):
                 record[slot] = value.nativeValue
-            case .payload:
-                payload[field.name] = value
+            case .payload(let slot):
+                record[slot] = try jsonEncoder.encode(value)
             }
         }
-
-        record["payload"] = payload.count > 0 ? try jsonEncoder.encode(payload) : nil
 
         return record
     }

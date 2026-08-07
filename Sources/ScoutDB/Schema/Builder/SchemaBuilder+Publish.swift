@@ -49,7 +49,7 @@ extension SchemaBuilder {
         var vectors = aggregates
 
         for field in fields {
-            guard isSlot(field.storage), field.isGroupable else {
+            guard !field.storage.isPayload, field.isGroupable else {
                 continue
             }
             guard taken.insert("by_\(field.name)").inserted else {
@@ -104,7 +104,7 @@ extension SchemaBuilder {
         for declaration in declarations {
             let active = previous.activeFields.first { $0.name == declaration.name }
 
-            if let active, active.type == declaration.type, isSlot(active.storage) == declaration.wantsSlot {
+            if let active, active.type == declaration.type, active.storage.isPayload != declaration.wantsSlot {
                 var kept = try allocator.resolve(
                     declaration,
                     since: active.since,
@@ -166,15 +166,11 @@ extension SchemaBuilder {
         let counted = Set(carriedViews.compactMap(\.groupBy))
 
         return fields.filter { field in
-            guard field.since == version, isSlot(field.storage) else {
+            guard field.since == version, !field.storage.isPayload else {
                 return false
             }
             return field.isGroupable && !counted.contains(field.name)
         }
         .map(\.name)
     }
-}
-
-private func isSlot(_ storage: Storage) -> Bool {
-    if case .slot = storage { true } else { false }
 }

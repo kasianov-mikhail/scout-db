@@ -19,7 +19,7 @@ extension SlotAllocator {
             let pool = declaration.type
             resolved = .slot(pool, try next(in: pool))
         } else {
-            resolved = .payload
+            resolved = .payload(try nextPayload())
         }
 
         var field = FieldDefinition(
@@ -45,5 +45,17 @@ extension SlotAllocator {
             return slot
         }
         throw SchemaError.invalidDefinition(.exhaustedPool(pool))
+    }
+
+    private mutating func nextPayload() throws -> String {
+        for index in 0..<PayloadPool.capacity {
+            let slot = PayloadPool.slot(index)
+            if usedPayload.contains(slot) {
+                continue
+            }
+            usedPayload.insert(slot)
+            return slot
+        }
+        throw SchemaError.invalidDefinition(.exhaustedPayload)
     }
 }

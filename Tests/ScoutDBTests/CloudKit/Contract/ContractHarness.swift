@@ -84,7 +84,7 @@ final class ContractFixture {
                 FieldDefinition(name: "quantity", type: .int, storage: .slot(.int, "i_01")),
                 FieldDefinition(name: "total", type: .double, storage: .slot(.double, "d_00")),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
-                FieldDefinition(name: "note", type: .string, storage: .payload),
+                FieldDefinition(name: "note", type: .string, storage: .payload("p_00")),
             ],
             aggregates: aggregates
         )

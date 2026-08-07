@@ -197,7 +197,7 @@ func makePurchaseDefinition() -> EntityDefinition {
             FieldDefinition(name: "amount", type: .int, storage: .slot(.int, "i_01"), until: 2),
             FieldDefinition(name: "quantity", type: .int, storage: .slot(.int, "i_02"), since: 2),
             FieldDefinition(name: "total", type: .double, storage: .slot(.double, "d_00"), since: 2),
-            FieldDefinition(name: "comment", type: .string, storage: .payload),
+            FieldDefinition(name: "comment", type: .string, storage: .payload("p_00")),
         ]
     )
 }

@@ -84,7 +84,7 @@ struct OperationsTests {
                 entity: "player",
                 fields: [
                     FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_01")),
-                    FieldDefinition(name: "score", type: .int, storage: .payload),
+                    FieldDefinition(name: "score", type: .int, storage: .payload("p_00")),
                 ]
             )
         )
@@ -116,8 +116,8 @@ struct OperationsTests {
                 entity: "profile",
                 fields: [
                     FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_01")),
-                    FieldDefinition(name: "score", type: .int, storage: .payload),
-                    FieldDefinition(name: "tags", type: .stringList, storage: .payload),
+                    FieldDefinition(name: "score", type: .int, storage: .payload("p_00")),
+                    FieldDefinition(name: "tags", type: .stringList, storage: .payload("p_01")),
                 ]
             )
         )

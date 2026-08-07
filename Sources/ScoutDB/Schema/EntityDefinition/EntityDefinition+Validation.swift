@@ -31,6 +31,14 @@ extension EntityDefinition {
                     throw SchemaError.invalidDefinition(.slotBeyondCapacity(slot, pool: pool))
                 }
             }
+            if case .payload(let slot) = field.storage {
+                guard let index = PayloadPool.slotIndex(slot) else {
+                    throw SchemaError.invalidDefinition(.slotOutsidePayload(slot))
+                }
+                guard index < PayloadPool.capacity else {
+                    throw SchemaError.invalidDefinition(.slotBeyondPayload(slot))
+                }
+            }
             if let pattern = field.pattern {
                 guard [.string, .text, .stringList].contains(field.type) else {
                     throw SchemaError.invalidDefinition(
@@ -54,14 +62,12 @@ extension EntityDefinition {
         }
         for lhs in fields {
             for rhs in fields where lhs.name != rhs.name || lhs.since != rhs.since {
-                guard case .slot(_, let lhsSlot) = lhs.storage else {
+                let slot = lhs.storage.slot
+                guard slot == rhs.storage.slot else {
                     continue
                 }
-                guard case .slot(_, let rhsSlot) = rhs.storage else {
-                    continue
-                }
-                if lhsSlot == rhsSlot, (lhs.since ?? 1) < (rhs.until ?? .max), (rhs.since ?? 1) < (lhs.until ?? .max) {
-                    throw SchemaError.invalidDefinition(.sharedSlot(lhs.name, rhs.name, slot: lhsSlot))
+                if (lhs.since ?? 1) < (rhs.until ?? .max), (rhs.since ?? 1) < (lhs.until ?? .max) {
+                    throw SchemaError.invalidDefinition(.sharedSlot(lhs.name, rhs.name, slot: slot))
                 }
             }
         }
