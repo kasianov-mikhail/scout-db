@@ -89,15 +89,20 @@ extension Storage {
 extension Storage: Codable {
     init(from decoder: any Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
+
         if PayloadPool.slotIndex(raw) != nil {
             self = .payload(raw)
-        } else if let pool = FieldType.type(forSlot: raw) {
-            self = .slot(pool, raw)
-        } else {
+            return
+        }
+
+        let prefix = raw.firstIndex(of: "_").map { String(raw[..<$0]) }
+
+        guard let pool = FieldType.allCases.first(where: { $0.slotPrefix == prefix }) else {
             throw DecodingError.dataCorrupted(
                 DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Unknown storage '\(raw)'")
             )
         }
+        self = .slot(pool, raw)
     }
 
     func encode(to encoder: any Encoder) throws {
