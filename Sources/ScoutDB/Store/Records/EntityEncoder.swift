@@ -13,12 +13,11 @@ struct EntityEncoder {
 
     private let jsonEncoder = JSONEncoder()
 
-    func encode(_ entityRecord: EntityRecord, into base: CKRecord? = nil) throws -> CKRecord {
+    func encode(_ entityRecord: EntityRecord) throws -> CKRecord {
         let fields = definition.fields(at: entityRecord.schemaVersion)
         let values = entityRecord.values
 
-        let record =
-            base ?? CKRecord(recordType: "Entity", recordID: CKRecord.ID(recordName: entityRecord.uuid))
+        let record = CKRecord(recordType: "Entity", recordID: CKRecord.ID(recordName: entityRecord.uuid))
 
         record[Envelope.entity] = entityRecord.entity
         record[Envelope.version] = Int64(entityRecord.schemaVersion)
