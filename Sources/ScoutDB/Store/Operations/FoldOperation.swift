@@ -23,9 +23,9 @@ struct FoldOperation: Sendable {
             )
         }
 
-        let rows = try await aggregate.rows(
+        let rows = try await definition.rows(
+            of: aggregate,
             from: database,
-            of: definition.entity,
             groups: query.serverGroups,
             folding: kind.storage
         ) { group in

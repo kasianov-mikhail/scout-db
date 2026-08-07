@@ -17,7 +17,7 @@ struct VectorIndexTests {
     let database = InMemoryDatabase()
     let noon = Date(timeIntervalSince1970: 36_000)
 
-    private let counting = AggregateDefinition(groupBy: "product", date: "date")
+    private let counting = AggregateDefinition(group: "product", date: "date")
 
     private func payments(_ products: [String], at date: Date? = nil) -> [EntityRecord] {
         products.enumerated().map { index, product in
@@ -37,7 +37,19 @@ struct VectorIndexTests {
     }
 
     private func aggregator(_ slots: VectorCache = VectorCache()) -> VectorAggregator {
-        VectorAggregator(database: database, aggregates: [counting], slots: slots)
+        VectorAggregator(
+            database: database,
+            definition: makeDefinition(
+                entity: "payment",
+                fields: [
+                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_01")),
+                    FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
+                    FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
+                ],
+                aggregates: [counting]
+            ),
+            slots: slots
+        )
     }
 
     @Test("A write names the week it lands in and the group it counts")

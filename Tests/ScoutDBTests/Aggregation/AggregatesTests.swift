@@ -516,6 +516,30 @@ struct AggregatesTests {
         }
     }
 
+    @Test("A sum over an integer field is kept whole, in the integer vector")
+    func integerSumThroughVector() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "crate",
+                fields: [
+                    FieldDefinition(name: "units", type: .int, storage: .slot(.int, "i_01"), required: true)
+                ],
+                aggregates: [AggregateDefinition(metric: .sum, field: "units"), AggregateDefinition()]
+            )
+        )
+        for units: Int64 in [2, 3, 4] {
+            try await store.write([EntityWrite(values: ["units": .int(units)], uuid: nil)], entity: "crate")
+        }
+
+        #expect(database.doubles.isEmpty)
+        #expect(database.integers.count == 2)
+        #expect(try await store.query("crate").sum("units") == 9)
+        #expect(try await store.query("crate").average("units") == 3)
+
+        let summed = try #require(database.vector(of: IntVector.self, "crate", "sum_units", week: Date().weekStart))
+        #expect(summed[cell: Date().hourOfWeek] == 9)
+    }
+
     @Test("A date range falls outside what a vector answers, and is refused rather than scanned")
     func countThroughDateRangeScans() async throws {
         try await publishPayment(aggregates: [AggregateDefinition(group: "product")])

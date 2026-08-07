@@ -10,25 +10,33 @@ import Foundation
 
 struct VectorAggregator {
     let database: any CloudDatabase
+    let definition: EntityDefinition
     let aggregates: [AggregateDefinition]
     let slots: VectorCache
     let maxRetry = 3
 
-    init(database: any CloudDatabase, aggregates: [AggregateDefinition], slots: VectorCache = VectorCache()) {
+    init(
+        database: any CloudDatabase,
+        definition: EntityDefinition,
+        aggregates: [AggregateDefinition]? = nil,
+        slots: VectorCache = VectorCache()
+    ) {
         self.database = database
-        self.aggregates = aggregates
+        self.definition = definition
+        self.aggregates = aggregates ?? definition.aggregates
         self.slots = slots
     }
 
     func rebalance(removing old: [EntityRecord], adding new: [EntityRecord]) async throws {
-        let deltas = aggregates.deltas(
+        let deltas = definition.deltas(
+            aggregates,
             removing: old,
             adding: new,
             at: Date()
         )
 
-        async let counted: Void = fold(deltas.counts)
-        async let measured: Void = fold(deltas.measures)
+        async let counted: Void = fold(deltas.integers)
+        async let measured: Void = fold(deltas.doubles)
 
         _ = try await (counted, measured)
     }

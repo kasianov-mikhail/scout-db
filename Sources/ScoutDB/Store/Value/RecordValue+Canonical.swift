@@ -33,6 +33,13 @@ extension RecordValue {
         }
     }
 
+    var integer: Int64? {
+        guard case .int(let value) = self else {
+            return nil
+        }
+        return value
+    }
+
     var scalar: Double? {
         switch self {
         case .int(let value):

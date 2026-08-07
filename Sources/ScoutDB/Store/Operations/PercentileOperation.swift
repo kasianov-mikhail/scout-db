@@ -24,9 +24,9 @@ struct PercentileOperation {
             )
         }
 
-        let rows = try await aggregate.rows(
+        let rows = try await definition.rows(
+            of: aggregate,
             from: database,
-            of: definition.entity,
             groups: histogram.groupKeys,
             folding: aggregate.fold
         )

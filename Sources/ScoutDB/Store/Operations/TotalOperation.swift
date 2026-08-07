@@ -41,9 +41,9 @@ struct TotalOperation: Sendable {
     private func folds(of aggregate: AggregateDefinition, group: String?) async throws -> [String: Double] {
         let narrowed = try narrowing(to: group)
 
-        let rows = try await aggregate.rows(
+        let rows = try await definition.rows(
+            of: aggregate,
             from: database,
-            of: definition.entity,
             groups: narrowed.map { [$0] },
             folding: aggregate.fold
         )

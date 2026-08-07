@@ -9,28 +9,34 @@ import CloudKit
 
 typealias VectorRow = (group: String, record: CKRecord)
 
-extension AggregateDefinition {
+extension EntityDefinition {
     func rows(
-        from database: any CloudDatabase, of entity: String, groups: [String]?, folding kind: Metric,
+        of aggregate: AggregateDefinition, from database: any CloudDatabase, groups: [String]?, folding kind: Metric,
         where include: ((String) -> Bool)? = nil
     ) async throws -> [String: Double] {
-        if counts {
-            try await VectorReader<IntVector>(database: database, entity: entity, aggregate: self)
+        if isInteger(aggregate) {
+            try await reader(of: aggregate, from: database, holding: IntVector.self)
                 .rows(groups: groups)
                 .vectorRows(of: IntVector.self, folding: kind, where: include)
         } else {
-            try await VectorReader<DoubleVector>(database: database, entity: entity, aggregate: self)
+            try await reader(of: aggregate, from: database, holding: DoubleVector.self)
                 .rows(groups: groups)
                 .vectorRows(of: DoubleVector.self, folding: kind, where: include)
         }
     }
 
-    func recordIDs(from database: any CloudDatabase, of entity: String) async throws -> [CKRecord.ID] {
-        if counts {
-            try await VectorReader<IntVector>(database: database, entity: entity, aggregate: self).recordIDs()
+    func recordIDs(of aggregate: AggregateDefinition, from database: any CloudDatabase) async throws -> [CKRecord.ID] {
+        if isInteger(aggregate) {
+            try await reader(of: aggregate, from: database, holding: IntVector.self).recordIDs()
         } else {
-            try await VectorReader<DoubleVector>(database: database, entity: entity, aggregate: self).recordIDs()
+            try await reader(of: aggregate, from: database, holding: DoubleVector.self).recordIDs()
         }
+    }
+
+    private func reader<Holder: Vector>(
+        of aggregate: AggregateDefinition, from database: any CloudDatabase, holding holder: Holder.Type
+    ) -> VectorReader<Holder> {
+        VectorReader(database: database, entity: entity, aggregate: aggregate)
     }
 }
 

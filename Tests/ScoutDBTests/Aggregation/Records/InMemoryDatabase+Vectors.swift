@@ -36,11 +36,11 @@ extension InMemoryDatabase {
         records.filter { [IntVector.recordType, DoubleVector.recordType].contains($0.recordType) }
     }
 
-    var counters: [CKRecord] {
+    var integers: [CKRecord] {
         records.filter { $0.recordType == IntVector.recordType }
     }
 
-    var measures: [CKRecord] {
+    var doubles: [CKRecord] {
         records.filter { $0.recordType == DoubleVector.recordType }
     }
 }

@@ -32,6 +32,21 @@ struct VectorWritesTests {
         noon.hourOfWeek
     }
 
+    private func writes(_ aggregates: [AggregateDefinition]) -> VectorAggregator {
+        VectorAggregator(
+            database: database,
+            definition: makeDefinition(
+                entity: "payment",
+                fields: [
+                    FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_01")),
+                    FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
+                    FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
+                ],
+                aggregates: aggregates
+            )
+        )
+    }
+
     private func requests(_ kind: RequestTally.Kind) -> Int {
         database.requests[kind]
     }
@@ -42,19 +57,16 @@ struct VectorWritesTests {
 
     @Test("Every slot a batch touches is read and written in one request per holder, and the index in one more")
     func batchedSlots() async throws {
-        let aggregator = VectorAggregator(
-            database: database,
-            aggregates: [
-                AggregateDefinition(group: "product", date: "date"),
-                AggregateDefinition(metric: .sum, field: "amount", group: "product", date: "date"),
-            ]
-        )
+        let aggregator = writes([
+            AggregateDefinition(group: "product", date: "date"),
+            AggregateDefinition(metric: .sum, field: "amount", group: "product", date: "date"),
+        ])
 
         try await aggregator.rebalance(removing: [], adding: payments(["app", "pro", "max"]))
 
         #expect(database.vectors.count == 6)
-        #expect(database.counters.count == 3)
-        #expect(database.measures.count == 3)
+        #expect(database.integers.count == 3)
+        #expect(database.doubles.count == 3)
         #expect(requests(.fetch) == 4)
         #expect(requests(.conditionalSave) == 4)
         #expect(requests(.query) == 0)
@@ -62,10 +74,7 @@ struct VectorWritesTests {
 
     @Test("A slot written before stays cached, so the next write only saves")
     func warmSlotSkipsTheFetch() async throws {
-        let aggregator = VectorAggregator(
-            database: database,
-            aggregates: [AggregateDefinition(metric: .sum, field: "amount", date: "date")]
-        )
+        let aggregator = writes([AggregateDefinition(metric: .sum, field: "amount", date: "date")])
         try await aggregator.rebalance(removing: [], adding: payments(["app"]))
         database.resetRequests()
 
@@ -89,11 +98,11 @@ struct VectorWritesTests {
     func raisedMinLeavesTheValue() async throws {
         let aggregates = [AggregateDefinition(metric: .min, field: "amount", date: "date")]
         let stored = payment(amount: 5)
-        try await VectorAggregator(database: database, aggregates: aggregates)
+        try await writes(aggregates)
             .rebalance(removing: [], adding: [stored])
         database.resetRequests()
 
-        try await VectorAggregator(database: database, aggregates: aggregates)
+        try await writes(aggregates)
             .rebalance(removing: [stored], adding: [payment(amount: 9)])
 
         #expect(requests(.conditionalSave) == 1)
@@ -104,11 +113,11 @@ struct VectorWritesTests {
     func loweredMinWritesTheSlot() async throws {
         let aggregates = [AggregateDefinition(metric: .min, field: "amount", date: "date")]
         let stored = payment(amount: 5)
-        try await VectorAggregator(database: database, aggregates: aggregates)
+        try await writes(aggregates)
             .rebalance(removing: [], adding: [stored])
         database.resetRequests()
 
-        try await VectorAggregator(database: database, aggregates: aggregates)
+        try await writes(aggregates)
             .rebalance(removing: [stored], adding: [payment(amount: 2)])
 
         #expect(requests(.conditionalSave) == 1)
@@ -117,10 +126,7 @@ struct VectorWritesTests {
 
     @Test("A slot another writer moved on is folded again over the server copy")
     func staleSlotRetriesOverTheServerCopy() async throws {
-        let aggregator = VectorAggregator(
-            database: database,
-            aggregates: [AggregateDefinition(metric: .sum, field: "amount", date: "date")]
-        )
+        let aggregator = writes([AggregateDefinition(metric: .sum, field: "amount", date: "date")])
         try await aggregator.rebalance(removing: [], adding: payments(["app"]))
 
         let server = try #require(slots.first).copy() as! CKRecord

@@ -82,7 +82,7 @@ extension EntityStore {
         return WriteOperation(
             database: database,
             definition: definition,
-            aggregator: VectorAggregator(database: database, aggregates: definition.aggregates, slots: slots)
+            aggregator: VectorAggregator(database: database, definition: definition, slots: slots)
         )
     }
 }

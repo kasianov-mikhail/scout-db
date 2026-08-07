@@ -87,14 +87,14 @@ public struct Migrator: Sendable {
             throw SchemaError.unknownField(name)
         }
 
-        let stale = try await aggregate.recordIDs(from: database, of: entity)
+        let stale = try await definition.recordIDs(of: aggregate, from: database)
 
         for chunk in stale.chunked(into: batchSize) {
             try await database.modifyRecords(saving: [], deleting: chunk)
         }
 
         let decoder = EntityDecoder(definition: definition)
-        let aggregator = VectorAggregator(database: database, aggregates: [aggregate])
+        let aggregator = VectorAggregator(database: database, definition: definition, aggregates: [aggregate])
 
         var counted = 0
         try await database.forEachPage(

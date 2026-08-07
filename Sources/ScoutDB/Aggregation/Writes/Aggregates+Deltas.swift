@@ -8,48 +8,52 @@
 import Foundation
 
 struct AggregateDeltas {
-    var counts: [VectorSlot<IntVector>: VectorDelta<IntVector>] = [:]
-    var measures: [VectorSlot<DoubleVector>: VectorDelta<DoubleVector>] = [:]
+    var integers: [VectorSlot<IntVector>: VectorDelta<IntVector>] = [:]
+    var doubles: [VectorSlot<DoubleVector>: VectorDelta<DoubleVector>] = [:]
 
     var isEmpty: Bool {
-        counts.isEmpty && measures.isEmpty
+        integers.isEmpty && doubles.isEmpty
     }
 }
 
-extension [AggregateDefinition] {
-    func deltas(removing old: [EntityRecord], adding new: [EntityRecord], at now: Date) -> AggregateDeltas {
+extension EntityDefinition {
+    func deltas(
+        _ aggregates: [AggregateDefinition], removing old: [EntityRecord], adding new: [EntityRecord], at now: Date
+    ) -> AggregateDeltas {
         var deltas = AggregateDeltas()
 
         for (batch, adding) in [(old, false), (new, true)] {
             for entityRecord in batch {
-                for aggregate in self {
+                for aggregate in aggregates {
                     let stamp = aggregate.stamp(of: entityRecord, at: now)
                     let week = stamp.weekStart
                     let hour = stamp.hourOfWeek
 
-                    if aggregate.counts {
-                        guard let slot = VectorSlot<IntVector>(for: entityRecord, aggregate: aggregate, week: week)
+                    if isInteger(aggregate) {
+                        guard
+                            let slot = VectorSlot<IntVector>(for: entityRecord, aggregate: aggregate, week: week),
+                            let value = aggregate.integer(of: entityRecord)
                         else {
                             continue
                         }
-                        deltas.counts.fold(
-                            VectorDelta(kind: aggregate.fold, cells: [hour: 1]), into: slot, adding: adding)
+                        deltas.integers.fold(
+                            VectorDelta(kind: aggregate.fold, cells: [hour: value]), into: slot, adding: adding)
                     } else {
                         guard
                             let slot = VectorSlot<DoubleVector>(for: entityRecord, aggregate: aggregate, week: week),
-                            let value = aggregate.value(of: entityRecord)
+                            let value = aggregate.scalar(of: entityRecord)
                         else {
                             continue
                         }
-                        deltas.measures.fold(
+                        deltas.doubles.fold(
                             VectorDelta(kind: aggregate.fold, cells: [hour: value]), into: slot, adding: adding)
                     }
                 }
             }
         }
 
-        deltas.counts = deltas.counts.filter { !$0.value.isNoop }
-        deltas.measures = deltas.measures.filter { !$0.value.isNoop }
+        deltas.integers = deltas.integers.filter { !$0.value.isNoop }
+        deltas.doubles = deltas.doubles.filter { !$0.value.isNoop }
 
         return deltas
     }
@@ -68,10 +72,6 @@ extension Dictionary {
 }
 
 extension AggregateDefinition {
-    var counts: Bool {
-        measure?.field == nil
-    }
-
     fileprivate func stamp(of entityRecord: EntityRecord, at now: Date) -> Date {
         guard let date, case .date(let value)? = entityRecord.values[date] else {
             return now
@@ -79,7 +79,14 @@ extension AggregateDefinition {
         return value
     }
 
-    fileprivate func value(of entityRecord: EntityRecord) -> Double? {
+    fileprivate func integer(of entityRecord: EntityRecord) -> Int64? {
+        guard let field = measure?.field else {
+            return 1
+        }
+        return entityRecord.values[field]?.integer
+    }
+
+    fileprivate func scalar(of entityRecord: EntityRecord) -> Double? {
         measure?.field.flatMap { entityRecord.values[$0]?.scalar }
     }
 }
