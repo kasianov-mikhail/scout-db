@@ -28,6 +28,47 @@ extension VectorIndex {
     struct Page: Codable, Equatable {
         let weeks: [Int64]
         let groups: [String]
+
+        /// How many shards each week of this aggregate has grown to, keyed by
+        /// the week's milliseconds, and kept on the head page alone.
+        ///
+        /// A count only ever rises, because a reader covers `0..<count` and a
+        /// shard dropped out of that range takes the writes filed under it out
+        /// of every later read. A week absent here has never been contended
+        /// and is read at whatever the schema declares.
+        ///
+        let shards: [String: Int]
+
+        enum CodingKeys: String, CodingKey {
+            case weeks
+            case groups
+            case shards
+        }
+
+        init(weeks: [Int64], groups: [String], shards: [String: Int] = [:]) {
+            self.weeks = weeks
+            self.groups = groups
+            self.shards = shards
+        }
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+
+            weeks = try container.decode([Int64].self, forKey: .weeks)
+            groups = try container.decode([String].self, forKey: .groups)
+            shards = try container.decodeIfPresent([String: Int].self, forKey: .shards) ?? [:]
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+
+            try container.encode(weeks, forKey: .weeks)
+            try container.encode(groups, forKey: .groups)
+
+            if !shards.isEmpty {
+                try container.encode(shards, forKey: .shards)
+            }
+        }
     }
 
     static let pageKey = "b_00"

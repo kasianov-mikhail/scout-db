@@ -25,6 +25,10 @@ actor VectorCache {
         return entry.record.duplicate()
     }
 
+    func forget(_ id: CKRecord.ID) {
+        entries[id] = nil
+    }
+
     func keep(_ record: CKRecord) {
         entries[record.recordID] = Entry(record: record.duplicate(), usage: tick())
         evict()

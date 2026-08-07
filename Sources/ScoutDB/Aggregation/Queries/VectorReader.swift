@@ -16,11 +16,14 @@ struct VectorReader {
     typealias Row = (group: String, record: CKRecord)
 
     func rows(groups: [String]?) async throws -> [Row] {
-        let weeks = try await weeks()
+        let head = try await head()
+        let weeks = head.weeks.map(Date.init(millisecondsSince1970:))
 
         guard weeks.count > 0 else {
             return []
         }
+
+        let plan = ShardPlan(floor: aggregate.shards, page: head)
 
         let keys: [(group: String, week: Date)] =
             if let groups {
@@ -32,7 +35,7 @@ struct VectorReader {
         var named: [CKRecord.ID: String] = [:]
 
         for (group, week) in keys {
-            for shard in shards {
+            for shard in plan.shards(for: week) {
                 let slot = VectorSlot(
                     entity: entity,
                     aggregate: aggregate.name,
@@ -52,20 +55,13 @@ struct VectorReader {
             }
     }
 
-    private var shards: [Int?] {
-        guard let count = aggregate.shards else {
-            return [nil]
-        }
-        return (0..<count).map(Optional.init)
-    }
-
-    private func weeks() async throws -> [Date] {
+    private func head() async throws -> VectorIndex.Page {
         let head = VectorIndex(entity: entity, aggregate: aggregate.name, week: nil)
 
         guard let record = try await database.fetchRecord(id: head.recordID) else {
-            return []
+            return VectorIndex.Page(weeks: [], groups: [])
         }
-        return try record.indexPage(named: head.recordID).weeks.map(Date.init(millisecondsSince1970:))
+        return try record.indexPage(named: head.recordID)
     }
 
     private func groups(in weeks: [Date]) async throws -> [(group: String, week: Date)] {

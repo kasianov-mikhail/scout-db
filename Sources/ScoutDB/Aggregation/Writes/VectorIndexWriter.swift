@@ -29,6 +29,12 @@ struct VectorIndexWriter {
         var wanted = weeks.mapValues { VectorIndex.Page(weeks: $0.sorted(), groups: []) }
         wanted.merge(groups.mapValues { VectorIndex.Page(weeks: [], groups: $0.sorted()) }) { first, _ in first }
 
+        try await write(wanted)
+    }
+
+    /// Folds the pages into whatever the index already holds, retrying each
+    /// one that loses its conditional save.
+    func write(_ wanted: [VectorIndex: VectorIndex.Page]) async throws {
         var pending = wanted
         for _ in 0..<maxRetry {
             pending = try await merge(pending)
@@ -100,7 +106,8 @@ extension VectorIndex.Page {
     fileprivate func merging(_ other: Self) -> Self {
         Self(
             weeks: Set(weeks).union(other.weeks).sorted(),
-            groups: Set(groups).union(other.groups).sorted()
+            groups: Set(groups).union(other.groups).sorted(),
+            shards: shards.merging(other.shards, uniquingKeysWith: Swift.max)
         )
     }
 }
