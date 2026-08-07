@@ -69,10 +69,8 @@ struct EvaluatorFidelityTests {
         record["s_01"] = "a"
 
         let filter = CKQuery.Filter(field: "s_01", op: op, value: value)
-        #expect(
-            PredicateEvaluator.evaluate(CKQuery(recordType: "Entity", filters: [filter]).predicate, record: record)
-                != nil
-        )
+        let query = CKQuery(recordType: "Entity", filters: [filter], sort: [])
+        #expect(PredicateEvaluator.evaluate(query.predicate, record: record) != nil)
     }
 
     @Test("An inexpressible predicate is unknown, not false")

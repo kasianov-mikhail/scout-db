@@ -26,8 +26,8 @@ struct VectorIndexWriter {
             groups[week, default: []].insert(slot.group)
         }
 
-        var wanted = weeks.mapValues { VectorIndex.Page(weeks: $0.sorted()) }
-        wanted.merge(groups.mapValues { VectorIndex.Page(groups: $0.sorted()) }) { first, _ in first }
+        var wanted = weeks.mapValues { VectorIndex.Page(weeks: $0.sorted(), groups: []) }
+        wanted.merge(groups.mapValues { VectorIndex.Page(weeks: [], groups: $0.sorted()) }) { first, _ in first }
 
         var pending = wanted
         for _ in 0..<maxRetry {
@@ -53,7 +53,10 @@ struct VectorIndexWriter {
 
         for (index, additions) in wanted {
             let record = stored[index.recordID] ?? index.blank()
-            let page = stored[index.recordID] == nil ? VectorIndex.Page() : try record.indexPage(named: index.recordID)
+            let page =
+                stored[index.recordID] == nil
+                ? VectorIndex.Page(weeks: [], groups: [])
+                : try record.indexPage(named: index.recordID)
             let merged = page.merging(additions)
 
             guard merged != page else {

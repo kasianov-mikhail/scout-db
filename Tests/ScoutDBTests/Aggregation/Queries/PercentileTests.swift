@@ -27,7 +27,7 @@ struct PercentileTests {
 
     private func publishRequest(
         aggregates: [AggregateDefinition] = [
-            AggregateDefinition(histogram: "latency", bounds: PercentileTests.bounds)
+            AggregateDefinition(histogram: "latency", bounds: PercentileTests.bounds, group: nil, date: nil)
         ]
     ) async throws {
         try await registry.publish(
@@ -125,7 +125,7 @@ struct PercentileTests {
     func histogramDoesNotServeCount() async throws {
         try await publishRequest(
             aggregates: [
-                AggregateDefinition(histogram: "latency", bounds: PercentileTests.bounds),
+                AggregateDefinition(histogram: "latency", bounds: PercentileTests.bounds, group: nil, date: nil),
                 AggregateDefinition(group: "route"),
             ]
         )
@@ -171,25 +171,25 @@ struct PercentileTests {
             makeDefinition(entity: "request", fields: [field], aggregates: [aggregate])
         }
 
-        let grouped = AggregateDefinition(histogram: "latency", bounds: [10], group: "latency")
+        let grouped = AggregateDefinition(histogram: "latency", bounds: [10], group: "latency", date: nil)
 
         #expect(throws: SchemaError.invalidDefinition(.groupedHistogram(aggregate: "histogram_latency"))) {
             try definition(grouped).validate()
         }
         #expect(throws: SchemaError.invalidDefinition(.invalidBounds(aggregate: "histogram_latency"))) {
-            try definition(AggregateDefinition(histogram: "latency", bounds: [])).validate()
+            try definition(AggregateDefinition(histogram: "latency", bounds: [], group: nil, date: nil)).validate()
         }
         #expect(throws: SchemaError.invalidDefinition(.invalidBounds(aggregate: "histogram_latency"))) {
-            try definition(AggregateDefinition(histogram: "latency", bounds: [20, 10]))
+            try definition(AggregateDefinition(histogram: "latency", bounds: [20, 10], group: nil, date: nil))
                 .validate()
         }
         #expect(throws: SchemaError.invalidDefinition(.invalidBounds(aggregate: "histogram_latency"))) {
-            try definition(AggregateDefinition(histogram: "latency", bounds: [10, 10]))
+            try definition(AggregateDefinition(histogram: "latency", bounds: [10, 10], group: nil, date: nil))
                 .validate()
         }
         #expect(throws: SchemaError.invalidDefinition(.nonNumericMetric(aggregate: "histogram_route", field: "route")))
         {
-            try definition(AggregateDefinition(histogram: "route", bounds: [10])).validate()
+            try definition(AggregateDefinition(histogram: "route", bounds: [10], group: nil, date: nil)).validate()
         }
     }
 

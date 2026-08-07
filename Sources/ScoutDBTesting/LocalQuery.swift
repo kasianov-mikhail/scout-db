@@ -18,7 +18,7 @@ enum LocalQuery {
     }
 
     static func page(
-        _ records: [CKRecord], matching query: CKQuery, resultsLimit: Int, pageLimit: Int? = nil
+        _ records: [CKRecord], matching query: CKQuery, resultsLimit: Int, pageLimit: Int?
     ) -> QueryPage {
         let matched =
             records
@@ -44,7 +44,7 @@ enum LocalQuery {
     }
 
     static func resume(
-        _ records: [CKRecord], from cursor: QueryCursor, resultsLimit: Int, pageLimit: Int? = nil
+        _ records: [CKRecord], from cursor: QueryCursor, resultsLimit: Int, pageLimit: Int?
     ) -> QueryPage? {
         guard case .local(let token) = cursor, let scan = token as? Scan else {
             return nil

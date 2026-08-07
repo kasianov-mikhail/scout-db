@@ -8,10 +8,11 @@
 import CloudKit
 
 private let requestTimeout: Duration = .seconds(30)
+private let maxRetry = 3
 
 extension CKDatabase {
     @discardableResult func throttled<R>(body: @Sendable @escaping (CKDatabase) async throws -> R) async throws -> R {
-        try await withRateLimitRetry {
+        try await withRateLimitRetry(maxRetry: maxRetry) {
             await RequestGate.shared.enter()
             do {
                 let value = try await withRequestTimeout(requestTimeout) {

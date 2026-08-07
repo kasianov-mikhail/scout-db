@@ -9,7 +9,7 @@ import CloudKit
 import Foundation
 
 func withRateLimitRetry<R>(
-    maxRetry: Int = 3,
+    maxRetry: Int,
     operation: () async throws -> R
 ) async throws -> R {
     var attempt = 0

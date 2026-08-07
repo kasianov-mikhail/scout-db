@@ -14,12 +14,6 @@ struct VectorAggregator {
     let slots: VectorCache
     let maxRetry = 3
 
-    init(database: any CloudDatabase, aggregates: [AggregateDefinition], slots: VectorCache = VectorCache()) {
-        self.database = database
-        self.aggregates = aggregates
-        self.slots = slots
-    }
-
     func rebalance(removing old: [EntityRecord], adding new: [EntityRecord]) async throws {
         let deltas = aggregates.deltas(
             removing: old,

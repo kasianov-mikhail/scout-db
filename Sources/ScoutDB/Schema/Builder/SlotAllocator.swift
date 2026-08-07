@@ -10,7 +10,7 @@ import Foundation
 struct SlotAllocator {
     var used: [FieldType: Set<String>] = [:]
 
-    init(reserving fields: [FieldDefinition] = []) {
+    init(reserving fields: [FieldDefinition]) {
         for field in fields {
             if case .slot(let pool, let slot) = field.storage {
                 used[pool, default: []].insert(slot)

@@ -18,7 +18,7 @@ struct ScanPlan {
 }
 
 extension EntityDefinition {
-    func plan(matching filters: [ClientFilter], sort: [CKQuery.Sort] = []) throws -> ScanPlan {
+    func plan(matching filters: [ClientFilter], sort: [CKQuery.Sort]) throws -> ScanPlan {
         ScanPlan(
             query: CKQuery(
                 recordType: "Entity",

@@ -11,7 +11,7 @@ extension [EntityRecord] {
         return filter { seen.insert($0.uuid).inserted }
     }
 
-    func ranked(using order: [FieldOrder], limit: Int? = nil) -> [EntityRecord] {
+    func ranked(using order: [FieldOrder], limit: Int?) -> [EntityRecord] {
         let ranked = order.isEmpty ? self : sorted(using: order)
         guard let limit else {
             return ranked
