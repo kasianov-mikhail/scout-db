@@ -24,12 +24,13 @@ struct PercentileOperation {
             )
         }
 
-        let rows = try await aggregate.rows(
-            from: database,
-            of: definition.entity,
-            groups: histogram.groupKeys,
-            folding: aggregate.fold
+        let rows = try await VectorReader(
+            database: database,
+            definition: definition,
+            aggregate: aggregate
         )
+        .rows(groups: histogram.groupKeys)
+        .vectorRows(folding: aggregate.fold, where: nil)
 
         let counts = histogram.groupKeys.map { rows[$0] ?? 0 }
 

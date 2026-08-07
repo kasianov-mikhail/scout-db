@@ -12,11 +12,10 @@ import ScoutDBTesting
 @testable import ScoutDB
 
 extension InMemoryDatabase {
-    func vector<Holder: Vector>(
-        of holder: Holder.Type, _ entity: String, _ aggregate: String, group: String = "", week: Date,
-        shard: Int? = nil
+    func vector(
+        _ entity: String, _ aggregate: String, group: String = "", week: Date, shard: Int? = nil
     ) -> CKRecord? {
-        let slot = VectorSlot<Holder>(
+        let slot = VectorSlot(
             entity: entity,
             aggregate: aggregate,
             group: group,
@@ -26,21 +25,13 @@ extension InMemoryDatabase {
         return records.first { $0.recordID == slot.recordID }
     }
 
-    func shards<Holder: Vector>(
-        of holder: Holder.Type, _ entity: String, _ aggregate: String, group: String = "", week: Date, over count: Int
+    func shards(
+        _ entity: String, _ aggregate: String, group: String = "", week: Date, over count: Int
     ) -> [CKRecord] {
-        (0..<count).compactMap { vector(of: holder, entity, aggregate, group: group, week: week, shard: $0) }
+        (0..<count).compactMap { vector(entity, aggregate, group: group, week: week, shard: $0) }
     }
 
     var vectors: [CKRecord] {
-        records.filter { [IntVector.recordType, DoubleVector.recordType].contains($0.recordType) }
-    }
-
-    var counters: [CKRecord] {
-        records.filter { $0.recordType == IntVector.recordType }
-    }
-
-    var measures: [CKRecord] {
-        records.filter { $0.recordType == DoubleVector.recordType }
+        records.filter { $0.recordType == VectorSlot.recordType }
     }
 }

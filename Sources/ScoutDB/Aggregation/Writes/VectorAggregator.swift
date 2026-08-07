@@ -27,18 +27,11 @@ struct VectorAggregator {
             at: Date()
         )
 
-        async let counted: Void = fold(deltas.counts)
-        async let measured: Void = fold(deltas.measures)
-
-        _ = try await (counted, measured)
-    }
-
-    private func fold<Holder: Vector>(_ deltas: [VectorSlot<Holder>: VectorDelta<Holder>]) async throws {
         guard deltas.count > 0 else {
             return
         }
 
-        let opened = try await VectorLoader<Holder>(
+        let opened = try await VectorLoader(
             database: database,
             slots: slots
         )
@@ -53,7 +46,7 @@ struct VectorAggregator {
                 entry.delta.apply(to: entry.record)
             }
 
-            var retry: [CKRecord.ID: VectorLoader<Holder>.Pending] = [:]
+            var retry: [CKRecord.ID: VectorLoader.Pending] = [:]
 
             for chunk in Array(pending.values).chunked(into: maxBatchSize) {
                 for (id, result) in try await database.saveIfUnchanged(chunk.map(\.record)) {
@@ -67,7 +60,7 @@ struct VectorAggregator {
                         await slots.keep(conflict.serverRecord)
 
                         if let delta = pending[id]?.delta {
-                            retry[id] = VectorLoader<Holder>.Pending(
+                            retry[id] = VectorLoader.Pending(
                                 record: conflict.serverRecord,
                                 delta: delta
                             )

@@ -17,7 +17,7 @@ struct VectorIndexTests {
     let database = InMemoryDatabase()
     let noon = Date(timeIntervalSince1970: 36_000)
 
-    private let counting = AggregateDefinition(groupBy: "product", date: "date")
+    private let counting = AggregateDefinition(group: "product", date: "date")
 
     private func payments(_ products: [String], at date: Date? = nil) -> [EntityRecord] {
         products.enumerated().map { index, product in
@@ -31,7 +31,7 @@ struct VectorIndexTests {
     }
 
     private func page(week: Date?) -> VectorIndex.Page {
-        let index = VectorIndex(slug: IntVector.slug, entity: "payment", aggregate: counting.name, week: week)
+        let index = VectorIndex(entity: "payment", aggregate: counting.name, week: week)
 
         return database.records.first { $0.recordID == index.recordID }?.indexPage ?? VectorIndex.Page()
     }
@@ -78,7 +78,7 @@ struct VectorIndexTests {
     func coldSlotIsNamedAgain() async throws {
         try await aggregator().rebalance(removing: [], adding: payments(["app"]))
 
-        for record in database.records where record.recordID.recordName.hasPrefix("\(IntVector.slug)-index-") {
+        for record in database.records where record.recordID.recordName.hasPrefix("index-") {
             try await database.modifyRecords(saving: [], deleting: [record.recordID])
         }
 
@@ -96,24 +96,24 @@ struct VectorIndexTests {
             try await aggregator().rebalance(removing: [], adding: payments(["app"]))
         }
 
-        #expect(database.records.filter { $0.recordType == IntVector.recordType }.isEmpty)
+        #expect(database.records.filter { $0.recordType == VectorSlot.recordType }.isEmpty)
     }
 
     @Test("A page that does not decode is refused rather than read as empty")
     func malformedPageIsRefused() async throws {
         try await aggregator().rebalance(removing: [], adding: payments(["app"]))
 
-        let head = VectorIndex(slug: IntVector.slug, entity: "payment", aggregate: counting.name, week: nil)
+        let head = VectorIndex(entity: "payment", aggregate: counting.name, week: nil)
         let record = try #require(database.records.first { $0.recordID == head.recordID })
         record[VectorIndex.pageKey] = Data([0x7b, 0x00])
 
         await #expect(throws: SchemaError.malformedRecord(head.recordID.recordName)) {
-            try await VectorReader<IntVector>(database: database, entity: "payment", aggregate: counting)
+            try await VectorReader(database: database, entity: "payment", aggregate: counting)
                 .rows(groups: nil)
         }
         await #expect(throws: SchemaError.malformedRecord(head.recordID.recordName)) {
             try await VectorIndexWriter(database: database).note([
-                VectorSlot<IntVector>(
+                VectorSlot(
                     entity: "payment",
                     aggregate: counting.name,
                     group: "book",
@@ -128,9 +128,9 @@ struct VectorIndexTests {
     func foldSeesEveryGroup() async throws {
         try await aggregator().rebalance(removing: [], adding: payments(["app", "book", "toy"]))
 
-        let rows = try await VectorReader<IntVector>(database: database, entity: "payment", aggregate: counting)
+        let rows = try await VectorReader(database: database, entity: "payment", aggregate: counting)
             .rows(groups: nil)
-            .vectorRows(of: IntVector.self, folding: .sum, where: nil)
+            .vectorRows(folding: .sum, where: nil)
 
         #expect(rows.keys.sorted() == ["app", "book", "toy"])
         #expect(rows.values.reduce(0, +) == 3)

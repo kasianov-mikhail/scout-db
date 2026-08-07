@@ -55,17 +55,14 @@ struct SchemaConsistencyTests {
         #expect(recordID?.spec == "REFERENCE QUERYABLE SORTABLE", "A page breaks its ties on the record name")
     }
 
-    @Test(
-        "Vector cells match the aggregator addressing",
-        arguments: [(DoubleVector.recordType, "DOUBLE"), (IntVector.recordType, "INT64")]
-    )
-    func vectorCells(type: String, cell: String) {
-        let cells = Self.fields(of: type).filter { $0.name.hasPrefix("c_") }
+    @Test("Vector cells match the aggregator addressing")
+    func vectorCells() {
+        let cells = Self.fields(of: "Vector").filter { $0.name.hasPrefix("c_") }
         #expect(cells.map(\.name) == (0..<256).map { String(format: "c_%03d", $0) })
-        #expect(cells.map(\.name).starts(with: DoubleVector.cellKeys))
-        #expect(cells.allSatisfy { $0.spec == "\(cell) QUERYABLE SORTABLE" })
+        #expect(cells.map(\.name).starts(with: VectorSlot.cellKeys))
+        #expect(cells.allSatisfy { $0.spec == "DOUBLE QUERYABLE SORTABLE" })
 
-        let named = Self.fields(of: type).filter { !$0.name.hasPrefix("c_") && !$0.name.hasPrefix("\"___") }
+        let named = Self.fields(of: "Vector").filter { !$0.name.hasPrefix("c_") && !$0.name.hasPrefix("\"___") }
         #expect(named.isEmpty, "A vector is addressed by name and carries nothing but cells")
     }
 
@@ -83,7 +80,7 @@ struct SchemaConsistencyTests {
         #expect(fields[Envelope.version] == "INT64 QUERYABLE SORTABLE")
     }
 
-    @Test("The change feed cursor is queryable", arguments: ["Entity", DoubleVector.recordType, IntVector.recordType])
+    @Test("The change feed cursor is queryable", arguments: ["Entity", "Vector"])
     func modTimeIndexed(type: String) {
         let modTime = Self.fields(of: type).first { $0.name == "\"___modTime\"" }
         #expect(modTime?.spec == "TIMESTAMP QUERYABLE SORTABLE")
