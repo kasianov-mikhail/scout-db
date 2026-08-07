@@ -8,7 +8,7 @@
 import Foundation
 
 /// The constraint a written value broke.
-public enum ValueFault: Equatable, Sendable {
+enum ValueFault: Equatable, Sendable {
     case outsideDomain(field: String)
     case patternMismatch(field: String)
     case belowMinimum(field: String, minimum: Double)
@@ -16,7 +16,7 @@ public enum ValueFault: Equatable, Sendable {
 }
 
 extension ValueFault: CustomStringConvertible {
-    public var description: String {
+    var description: String {
         switch self {
         case .outsideDomain(let field):
             "Field '\(field)' takes a value outside its allowed domain"

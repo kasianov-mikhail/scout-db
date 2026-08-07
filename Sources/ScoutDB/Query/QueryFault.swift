@@ -8,7 +8,7 @@
 import Foundation
 
 /// The reason a query's shape cannot be served.
-public enum QueryFault: Equatable, Sendable {
+enum QueryFault: Equatable, Sendable {
     case singleSortRequired
     case unsortableField(String)
     case unsearchableField(String)
@@ -24,7 +24,7 @@ public enum QueryFault: Equatable, Sendable {
 }
 
 extension QueryFault: CustomStringConvertible {
-    public var description: String {
+    var description: String {
         switch self {
         case .singleSortRequired:
             "A field-ordered page requires exactly one sort clause"
