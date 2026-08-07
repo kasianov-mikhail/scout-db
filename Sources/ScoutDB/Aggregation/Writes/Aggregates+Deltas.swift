@@ -8,15 +8,23 @@
 import Foundation
 
 extension [AggregateDefinition] {
-    func deltas(removing old: [EntityRecord], adding new: [EntityRecord], at now: Date) -> [VectorSlot: VectorDelta] {
-        var merged: [VectorSlot: VectorDelta] = [:]
+    func deltas(removing old: [EntityRecord], adding new: [EntityRecord], at now: Date, spread: ShardPlans) -> Deltas {
+        var merged: Deltas = [:]
 
         for (batch, adding) in [(old, false), (new, true)] {
             for entityRecord in batch {
                 for aggregate in self {
                     let stamp = aggregate.stamp(of: entityRecord, at: now)
+                    let week = stamp.weekStart
 
-                    guard let slot = VectorSlot(for: entityRecord, aggregate: aggregate, week: stamp.weekStart) else {
+                    let slot = VectorSlot(
+                        for: entityRecord,
+                        aggregate: aggregate,
+                        week: week,
+                        shards: spread[aggregate.name]?.count(for: week) ?? aggregate.shards
+                    )
+
+                    guard let slot else {
                         continue
                     }
                     guard let one = aggregate.delta(for: entityRecord, at: stamp.hourOfWeek) else {

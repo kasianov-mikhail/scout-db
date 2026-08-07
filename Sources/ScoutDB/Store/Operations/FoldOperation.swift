@@ -25,7 +25,7 @@ struct FoldOperation: Sendable {
 
         let rows = try await VectorReader(
             database: database,
-            definition: definition,
+            entity: definition.entity,
             aggregate: aggregate
         )
         .rows(groups: query.serverGroups)

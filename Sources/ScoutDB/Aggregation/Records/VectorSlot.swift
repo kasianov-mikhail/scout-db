@@ -30,10 +30,17 @@ struct VectorSlot: Hashable {
     var recordID: CKRecord.ID {
         CKRecord.ID(recordName: "vector-" + contentDigest(of: components))
     }
+
+    var index: (head: VectorIndex, week: VectorIndex) {
+        (
+            VectorIndex(entity: entity, aggregate: aggregate, week: nil),
+            VectorIndex(entity: entity, aggregate: aggregate, week: week)
+        )
+    }
 }
 
 extension VectorSlot {
-    init?(for entityRecord: EntityRecord, aggregate: AggregateDefinition, week: Date) {
+    init?(for entityRecord: EntityRecord, aggregate: AggregateDefinition, week: Date, shards: Int?) {
         let group: String
 
         if let histogram = aggregate.measure?.histogram {
@@ -49,7 +56,7 @@ extension VectorSlot {
             entity: entityRecord.entity,
             aggregate: aggregate.name,
             group: group,
-            shard: aggregate.shards.map { count in
+            shard: shards.map { count in
                 Int(entityRecord.uuid.utf8.reduce(UInt64(0)) { $0 &* 31 &+ UInt64($1) } % UInt64(count))
             },
             week: week
