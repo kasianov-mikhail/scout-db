@@ -52,14 +52,6 @@ struct VectorReader {
             }
     }
 
-    func indexIDs() async throws -> [CKRecord.ID] {
-        let head = VectorIndex(entity: entity, aggregate: aggregate.name, week: nil)
-        let weeks = try await weeks().map {
-            VectorIndex(entity: entity, aggregate: aggregate.name, week: $0)
-        }
-        return ([head] + weeks).map(\.recordID)
-    }
-
     private var shards: [Int?] {
         guard let count = aggregate.shards else {
             return [nil]

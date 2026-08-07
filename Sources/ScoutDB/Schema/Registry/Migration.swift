@@ -20,20 +20,24 @@ import Foundation
 /// }
 /// ```
 ///
-/// Migrations are idempotent by construction — republishing a version is an
-/// upsert, and backfills skip records already at the latest version — so
-/// running the same list twice is safe.
+/// Migrations touch no records: publishing a version is an upsert over the
+/// record the registry keeps it under, so running the same list twice leaves
+/// the data exactly where it was.
 ///
 public protocol Migration: Sendable {
-    /// Applies the change: publish a definition, backfill records.
+    /// Applies the change: publishes a definition.
     ///
     /// Publish through `SchemaBuilder` — `create()` for the first version of an
-    /// entity, `update()` for every one after. Publishing alone rewrites
-    /// nothing: records keep the version they were written under and stay
-    /// readable through it, so a change that has to reach existing records
-    /// needs `Migrator.backfill(entity:)` after the publish, and a fresh
-    /// `count(by:)` needs `Migrator.backfill(aggregate:entity:)` to cover the
-    /// records that landed before the cell existed.
+    /// entity, `update()` for every one after. Publishing rewrites nothing:
+    /// records keep the version they were written under and stay readable
+    /// through it, so a field a later version renamed or retyped still decodes
+    /// out of the older records under the name it carried there.
+    ///
+    /// What a version does not reach is the server's view of those records. A
+    /// filter or a sort names the slot the current version holds a field in, so
+    /// records left behind an earlier one answer only through the fields whose
+    /// slot never moved. An aggregate is bounded the same way: a cell counts
+    /// what lands after it, never what came before.
     ///
     /// ``EntityStore/migrate(_:)`` awaits each call before it starts the next,
     /// so a migration sees everything the ones ahead of it published.
@@ -64,12 +68,11 @@ extension EntityStore {
     ///
     /// Nothing wraps the run in a transaction. A migration that throws stops
     /// the walk and leaves the ones ahead of it applied, so the fix is to
-    /// correct the failing migration and run the same list again. That re-run
-    /// costs little and changes nothing already in place — `create()`
-    /// republishes version 1 over itself, and a backfill only visits records
-    /// left behind an earlier version. An `update()`, though, always publishes
-    /// the next version, so a second run of the same list adds a version of the
-    /// same shape: harmless to how records read, but not a no-op.
+    /// correct the failing migration and run the same list again. No record is
+    /// touched either way, and `create()` republishes version 1 over itself. An
+    /// `update()`, though, always publishes the next version, so a second run
+    /// of the same list adds a version of the same shape: harmless to how
+    /// records read, but not a no-op.
     ///
     /// ```swift
     /// try await store.migrate([CreatePurchase(), AddPurchaseStatus()])

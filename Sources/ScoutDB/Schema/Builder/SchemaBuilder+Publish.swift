@@ -80,9 +80,9 @@ extension SchemaBuilder {
     /// A version builds no vector of its own: the entity already holds records,
     /// and a fresh cell counts only what lands after it. The returned names are
     /// that missing coverage — declare `count(by:)` for them on a further
-    /// version and backfill with `Migrator.backfill(aggregate:entity:)`, mark them
-    /// `.ungrouped` to say they are meant to go uncounted, or leave them to be
-    /// answered by reading records.
+    /// version to have it kept from there on, mark them `.ungrouped` to say they
+    /// are meant to go uncounted, or leave them to be answered by reading
+    /// records.
     ///
     /// ```swift
     /// let uncounted = try await store.schema("purchase")
