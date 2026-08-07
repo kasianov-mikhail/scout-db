@@ -134,4 +134,27 @@ struct VectorWritesTests {
         #expect(requests(.conditionalSave) == 2)
         #expect(try #require(slots.first)[cell: hour] == 7)
     }
+
+    @Test("A slot that loses four races in a row still lands, folded once over the copy it last lost to")
+    func repeatedConflictsStillLand() async throws {
+        let aggregator = VectorAggregator(
+            database: database,
+            aggregates: [AggregateDefinition(metric: .sum, field: "amount", date: "date")],
+            slots: VectorCache()
+        )
+        try await aggregator.rebalance(removing: [], adding: [payment(amount: 1)])
+
+        let slot = try #require(slots.first)
+        database.writeErrors = (0..<4).map { _ in
+            let server = slot.duplicate()
+            server[cell: hour] = 10
+            return RecordConflictError(serverRecord: server)
+        }
+        database.resetRequests()
+
+        try await aggregator.rebalance(removing: [], adding: [payment(amount: 3)])
+
+        #expect(requests(.conditionalSave) == 5)
+        #expect(try #require(slots.first)[cell: hour] == 13)
+    }
 }
