@@ -31,12 +31,11 @@ struct ReadOperation: Sendable {
             return Array(union.prefix(limit))
         }
 
-        let bounded = rankable
         let results = try await branches.orderedBatches { branch in
             try await self.records(
                 matching: branch,
-                sort: bounded ? self.sort : [],
-                limit: bounded ? limit : nil
+                sort: self.sort,
+                limit: limit
             )
         }
 
@@ -85,16 +84,6 @@ struct ReadOperation: Sendable {
         try sort.contains { clause in
             try definition.field(clause.field, at: definition.version).storage.isPayload
         }
-    }
-
-    private var rankable: Bool {
-        guard sort.count > 0 else {
-            return true
-        }
-        if (try? clientRanked(sort)) == true {
-            return true
-        }
-        return (try? definition.serverSort(sort)) != nil
     }
 }
 
