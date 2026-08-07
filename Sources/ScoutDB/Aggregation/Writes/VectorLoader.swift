@@ -37,10 +37,6 @@ struct VectorLoader {
             }
         }
 
-        guard cold.count > 0 else {
-            return Opened(pending: pending, cold: [])
-        }
-
         var served: [CKRecord.ID: CKRecord] = [:]
         let ids = cold.map(\.id).sorted { $0.recordName < $1.recordName }
 
