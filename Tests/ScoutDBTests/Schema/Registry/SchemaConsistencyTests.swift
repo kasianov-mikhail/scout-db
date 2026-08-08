@@ -72,14 +72,11 @@ struct SchemaConsistencyTests {
         #expect(allocatable + held.count == columns.count, "Every column is either allocatable or held for later")
     }
 
-    @Test("The location and asset pools stay declared, at the size the others took")
+    @Test("The location and asset pools stay declared, at a token of their old size")
     func heldPools() {
         for (prefix, spec) in Self.heldPools {
             let slots = Self.fields(of: "Entity").filter { $0.name.hasPrefix("\(prefix)_") }
-            #expect(
-                slots.count == FieldType.bytes.capacity,
-                "The '\(prefix)' pool holds its share of the budget for a type to claim"
-            )
+            #expect(slots.count == 4, "The '\(prefix)' pool holds a token of the budget for a type to claim")
             #expect(slots.allSatisfy { $0.spec == spec })
         }
     }

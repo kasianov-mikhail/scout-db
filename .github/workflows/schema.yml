@@ -36,10 +36,11 @@ jobs:
             # TEMPORARY: the grid cell column is renamed from `view` to
             # `aggregate`, the vector record type is folded back from
             # `DoubleVector` and `IntVector` into `Vector`, the vector cells
-            # drop the indexes no query reads, and the entity pools shrink to
-            # make room for the reference and bytes lists. The container takes
-            # all four by being recreated rather than migrated. Restore the
-            # `exit 1` below once they have landed.
+            # drop the indexes no query reads, and the entity pools give up
+            # their flat sixteen for tiers, making room for the reference and
+            # bytes lists on the way. The container takes all four by being
+            # recreated rather than migrated. Restore the `exit 1` below once
+            # they have landed.
             echo "Enforcement is temporarily off for the aggregate column rename,"
             echo "the vector record type fold, the vector cell index drop,"
             echo "and the entity pool resize."

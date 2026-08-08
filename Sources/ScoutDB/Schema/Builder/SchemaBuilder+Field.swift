@@ -21,13 +21,15 @@ extension SchemaBuilder {
     /// Declares a field of the entity.
     ///
     /// The field takes the next free slot for its type, which is what lets the
-    /// server filter and sort on it. Fourteen slots exist per type — fifteen
-    /// for `.string`, `.int`, `.double` and `.timestamp` — less the two the
-    /// record's envelope keeps, one string and one integer. A `.payload` field
-    /// spends none of them, taking one of the fourteen payload slots instead,
-    /// at the cost of every filter over it running on the client after
-    /// decoding. Declaration order fixes the slots, so keeping it stable across
-    /// versions is what keeps older records readable.
+    /// server filter and sort on it. How many slots a type has depends on how
+    /// hard schemas lean on it: thirty-two for `.string`, `.int`, `.double`
+    /// and `.timestamp`, sixteen for `.text`, `.bytes` and `.reference`, eight
+    /// for the list types — less the two the record's envelope keeps, one
+    /// string and one integer. A `.payload` field spends none of them, taking
+    /// one of the sixteen payload slots instead, at the cost of every filter
+    /// over it running on the client after decoding. Declaration order fixes
+    /// the slots, so keeping it stable across versions is what keeps older
+    /// records readable.
     ///
     /// ```swift
     /// try await store.schema("purchase")
