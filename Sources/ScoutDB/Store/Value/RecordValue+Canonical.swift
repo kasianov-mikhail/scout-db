@@ -30,6 +30,10 @@ extension RecordValue {
             "t[\(value.map { String($0.millisecondsSince1970) }.joined(separator: ","))]"
         case .reference(let value):
             "r\(value)"
+        case .references(let value):
+            "r[\(value.joined(separator: ","))]"
+        case .blobs(let value):
+            "b[\(value.map { $0.base64EncodedString() }.joined(separator: ","))]"
         }
     }
 
@@ -54,6 +58,10 @@ extension RecordValue {
             values.map(RecordValue.double)
         case .dates(let values):
             values.map(RecordValue.date)
+        case .references(let values):
+            values.map(RecordValue.reference)
+        case .blobs(let values):
+            values.map(RecordValue.bytes)
         default:
             nil
         }
@@ -68,6 +76,10 @@ extension RecordValue {
         case .doubles(let value):
             value.isEmpty
         case .dates(let value):
+            value.isEmpty
+        case .references(let value):
+            value.isEmpty
+        case .blobs(let value):
             value.isEmpty
         default:
             false

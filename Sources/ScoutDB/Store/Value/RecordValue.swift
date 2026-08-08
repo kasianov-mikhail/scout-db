@@ -43,12 +43,18 @@ public enum RecordValue: Hashable, Sendable {
 
     /// A list of points in time.
     case dates([Date])
+
+    /// A list of uuids, stored as CloudKit references.
+    case references([String])
+
+    /// A list of opaque blobs.
+    case blobs([Data])
 }
 
 extension RecordValue: Codable {
     private enum CodingKeys: String, CodingKey {
         case string, int, double, date, bytes, reference
-        case strings, ints, doubles, dates
+        case strings, ints, doubles, dates, references, blobs
     }
 
     public init(from decoder: any Decoder) throws {
@@ -72,6 +78,10 @@ extension RecordValue: Codable {
             self = .doubles(value)
         } else if let value = try container.decodeIfPresent([Int64].self, forKey: .dates) {
             self = .dates(value.map(Date.init(millisecondsSince1970:)))
+        } else if let value = try container.decodeIfPresent([String].self, forKey: .references) {
+            self = .references(value)
+        } else if let value = try container.decodeIfPresent([Data].self, forKey: .blobs) {
+            self = .blobs(value)
         } else if let value = try container.decodeIfPresent(String.self, forKey: .reference) {
             self = .reference(value)
         } else {
@@ -103,6 +113,10 @@ extension RecordValue: Codable {
             try container.encode(value, forKey: .doubles)
         case .dates(let value):
             try container.encode(value.map(\.millisecondsSince1970), forKey: .dates)
+        case .references(let value):
+            try container.encode(value, forKey: .references)
+        case .blobs(let value):
+            try container.encode(value, forKey: .blobs)
         case .reference(let value):
             try container.encode(value, forKey: .reference)
         }

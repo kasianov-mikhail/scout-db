@@ -62,13 +62,22 @@ struct EntityDecoderTests {
                 FieldDefinition(name: "counts", type: .intList, storage: .slot(.intList, "li_00")),
                 FieldDefinition(name: "ratios", type: .doubleList, storage: .slot(.doubleList, "ld_00")),
                 FieldDefinition(name: "times", type: .timestampList, storage: .slot(.timestampList, "lt_00")),
+                FieldDefinition(name: "related", type: .referenceList, storage: .slot(.referenceList, "lr_00")),
+                FieldDefinition(name: "blobs", type: .bytesList, storage: .slot(.bytesList, "lb_00")),
             ]
         )
         let record = EntityRecord(
             entity: "lists",
             uuid: "l-1",
             schemaVersion: 2,
-            values: ["tags": .strings([]), "counts": .ints([]), "ratios": .doubles([]), "times": .dates([])]
+            values: [
+                "tags": .strings([]),
+                "counts": .ints([]),
+                "ratios": .doubles([]),
+                "times": .dates([]),
+                "related": .references([]),
+                "blobs": .blobs([]),
+            ]
         )
         let encoded = try EntityEncoder(definition: definition).encode(record)
         let decoded = try EntityDecoder(definition: definition).decode(encoded)
@@ -76,5 +85,39 @@ struct EntityDecoderTests {
         #expect(decoded.values["counts"] == .ints([]))
         #expect(decoded.values["ratios"] == .doubles([]))
         #expect(decoded.values["times"] == .dates([]))
+        #expect(decoded.values["related"] == .references([]))
+        #expect(decoded.values["blobs"] == .blobs([]))
+    }
+
+    @Test("Reference and blob lists survive both a slot and the payload")
+    func referenceAndBlobLists() throws {
+        let definition = makeDefinition(
+            entity: "lists",
+            fields: [
+                FieldDefinition(name: "related", type: .referenceList, storage: .slot(.referenceList, "lr_00")),
+                FieldDefinition(name: "thumbnails", type: .bytesList, storage: .slot(.bytesList, "lb_00")),
+                FieldDefinition(name: "archived", type: .referenceList, storage: .payload("p_00")),
+                FieldDefinition(name: "originals", type: .bytesList, storage: .payload("p_01")),
+            ]
+        )
+        let blobs = RecordValue.blobs([Data([0x01, 0x02]), Data()])
+        let references = RecordValue.references(["p-1", "p-2"])
+        let record = EntityRecord(
+            entity: "lists",
+            uuid: "l-2",
+            schemaVersion: 2,
+            values: [
+                "related": references,
+                "thumbnails": blobs,
+                "archived": references,
+                "originals": blobs,
+            ]
+        )
+        let encoded = try EntityEncoder(definition: definition).encode(record)
+        #expect((encoded["lr_00"] as? [CKRecord.Reference])?.map(\.recordID.recordName) == ["p-1", "p-2"])
+        #expect(encoded["lb_00"] as? [Data] == [Data([0x01, 0x02]), Data()])
+
+        let decoded = try EntityDecoder(definition: definition).decode(encoded)
+        #expect(decoded == record)
     }
 }

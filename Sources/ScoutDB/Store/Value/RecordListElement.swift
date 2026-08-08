@@ -32,6 +32,10 @@ extension Date: RecordListElement {
     public static func list(_ elements: [Date]) -> RecordValue { .dates(elements) }
 }
 
+extension Data: RecordListElement {
+    public static func list(_ elements: [Data]) -> RecordValue { .blobs(elements) }
+}
+
 extension Array: RecordValue.Convertible where Element: RecordListElement {
     public init?(recordValue: RecordValue) {
         guard let members = recordValue.members else {

@@ -30,6 +30,10 @@ extension RecordValue {
             value as NSArray
         case .reference(let value):
             CKRecord.Reference(recordID: CKRecord.ID(recordName: value), action: .none)
+        case .references(let value):
+            value.map { CKRecord.Reference(recordID: CKRecord.ID(recordName: $0), action: .none) } as NSArray
+        case .blobs(let value):
+            value as NSArray
         }
     }
 }
