@@ -13,11 +13,13 @@ struct VectorReader {
     let entity: String
     let aggregate: AggregateDefinition
 
-    typealias Row = (group: String, record: CKRecord)
+    typealias Row = (group: String, week: Date, record: CKRecord)
 
-    func rows(groups: [String]?) async throws -> [Row] {
+    func rows(groups: [String]?, in range: Range<Date>? = nil) async throws -> [Row] {
         let head = try await head()
-        let weeks = head.weeks.map(Date.init(millisecondsSince1970:))
+        let weeks = head.weeks.map(Date.init(millisecondsSince1970:)).filter { week in
+            range.map { week.covers($0) } ?? true
+        }
 
         let plan = ShardPlan(floor: aggregate.shards, grown: head.shards)
 
@@ -28,7 +30,7 @@ struct VectorReader {
                 try await self.groups(in: weeks)
             }
 
-        var named: [CKRecord.ID: String] = [:]
+        var named: [CKRecord.ID: (group: String, week: Date)] = [:]
 
         for (group, week) in keys {
             let shards =
@@ -44,7 +46,7 @@ struct VectorReader {
                     shard: shard,
                     week: week
                 )
-                named[slot.recordID] = group
+                named[slot.recordID] = (group: group, week: week)
             }
         }
 
@@ -57,7 +59,7 @@ struct VectorReader {
             batchSize: maxBatchSize
         )
         .compactMap { record in
-            named[record.recordID].map { (group: $0, record: record) }
+            named[record.recordID].map { (group: $0.group, week: $0.week, record: record) }
         }
     }
 

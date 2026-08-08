@@ -111,6 +111,18 @@ let recent = try await store.query("purchase")
     .take(20)
 ```
 
+Aggregates are folded on write, so a total or a series over them costs a handful of records
+rather than a scan. A cell is an hour, and `series` hands those hours back for the range asked
+for — roll them up into days or weeks on the client.
+
+```swift
+let revenue = try await store.query("purchase")
+    .totals("amount", metric: .sum, group: "product_id")
+
+let hourly = try await store.query("purchase")
+    .series("amount", metric: .sum, group: "product_id", in: lastWeek)
+```
+
 ## Testing without a container
 
 The package ships a second library, `ScoutDBTesting`, whose `InMemoryDatabase` implements the
