@@ -70,7 +70,10 @@ struct SchemaConsistencyTests {
         let cells = Self.fields(of: "Vector").filter { $0.name.hasPrefix("c_") }
         #expect(cells.map(\.name) == (0..<256).map { String(format: "c_%03d", $0) })
         #expect(cells.map(\.name).starts(with: VectorSlot.cellKeys))
-        #expect(cells.allSatisfy { $0.spec == "DOUBLE QUERYABLE SORTABLE" })
+        #expect(
+            cells.allSatisfy { $0.spec == "DOUBLE" },
+            "A cell is reached through the record name, so no query ever filters or sorts one"
+        )
 
         let named = Self.fields(of: "Vector").filter { !$0.name.hasPrefix("c_") && !$0.name.hasPrefix("\"___") }
         #expect(named.isEmpty, "A vector is addressed by name and carries nothing but cells")

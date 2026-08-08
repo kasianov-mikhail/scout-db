@@ -34,10 +34,11 @@ jobs:
             cat /tmp/removed-lines
             echo
             # TEMPORARY: the grid cell column is renamed from `view` to
-            # `aggregate`, and the vector record type is folded back from
-            # `DoubleVector` and `IntVector` into `Vector`. The container takes
-            # both by being recreated rather than migrated. Restore the
+            # `aggregate`, the vector record type is folded back from
+            # `DoubleVector` and `IntVector` into `Vector`, and the vector
+            # cells drop the indexes no query reads. The container takes all
+            # three by being recreated rather than migrated. Restore the
             # `exit 1` below once they have landed.
-            echo "Enforcement is temporarily off for the aggregate column rename"
-            echo "and the vector record type fold."
+            echo "Enforcement is temporarily off for the aggregate column rename,"
+            echo "the vector record type fold, and the vector cell index drop."
           fi
