@@ -13,7 +13,7 @@ struct TotalOperation: Sendable {
     let branches: [[ClientFilter]]
 
     func rows(field: String?, metric: Metric, group: String?) async throws -> [AggregateTotal] {
-        let aggregate = try covering(field: field, metric: metric, group: group)
+        let aggregate = try match.aggregate(field: field, metric: metric, group: group)
 
         return try await folds(of: aggregate, group: group)
             .map(AggregateTotal.init)
@@ -23,8 +23,8 @@ struct TotalOperation: Sendable {
     func averages(field: String, group: String?) async throws -> [AggregateTotal] {
         try definition.requireAverageable(field)
 
-        let totaling = try covering(field: field, metric: .sum, group: group)
-        let counting = try covering(field: nil, metric: .sum, group: group)
+        let totaling = try match.aggregate(field: field, metric: .sum, group: group)
+        let counting = try match.aggregate(field: nil, metric: .sum, group: group)
 
         async let totaled = folds(of: totaling, group: group)
         async let counted = folds(of: counting, group: group)
@@ -41,7 +41,7 @@ struct TotalOperation: Sendable {
     }
 
     private func folds(of aggregate: AggregateDefinition, group: String?) async throws -> [String: Double] {
-        let narrowed = try narrowing(to: group)
+        let narrowed = try match.groups(narrowedTo: group)
 
         let rows = try await VectorReader(
             database: database,
@@ -54,37 +54,8 @@ struct TotalOperation: Sendable {
         return aggregate.measure?.metric == nil ? rows.filter { $0.value != 0 } : rows
     }
 
-    private func covering(field: String?, metric: Metric, group: String?) throws -> AggregateDefinition {
-        let grouping = definition.aggregates.filter { $0.groupBy == group }
-
-        guard let aggregate = grouping.covering(field, folding: metric) else {
-            throw SchemaError.unsupportedQuery(
-                .noAggregate(
-                    entity: definition.entity,
-                    grouping: group,
-                    folding: field
-                )
-            )
-        }
-        return aggregate
-    }
-
-    private func narrowing(to group: String?) throws -> [String]? {
-        guard branches.count == 1 else {
-            throw SchemaError.unsupportedQuery(.disjunctionUnsupported)
-        }
-
-        var narrowed: [String]?
-        for filter in branches[0] {
-            guard let group, filter.field == group, filter.op == .equals else {
-                throw SchemaError.unsupportedQuery(
-                    .equalityOnly(group: group)
-                )
-            }
-            let key = filter.value.canonical
-            narrowed = narrowed.map { $0.contains(key) ? [key] : [] } ?? [key]
-        }
-        return narrowed
+    private var match: AggregateMatch {
+        AggregateMatch(definition: definition, branches: branches)
     }
 }
 

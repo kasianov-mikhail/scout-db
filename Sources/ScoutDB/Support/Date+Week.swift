@@ -21,4 +21,12 @@ extension Date {
     var hourOfWeek: Int {
         Int((timeIntervalSince(weekStart) / Self.secondsPerHour).rounded(.down))
     }
+
+    func hour(_ index: Int) -> Date {
+        addingTimeInterval(Double(index) * Self.secondsPerHour)
+    }
+
+    func covers(_ range: Range<Date>) -> Bool {
+        self < range.upperBound && hour(Self.hoursPerWeek) > range.lowerBound
+    }
 }
