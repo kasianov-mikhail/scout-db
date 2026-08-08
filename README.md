@@ -24,7 +24,6 @@ schema freely — the CloudKit [schema](Schema) is uploaded once and never touch
 - [Installation](#installation)
 - [Usage](#usage)
 - [Testing without a container](#testing-without-a-container)
-- [Documentation](#documentation)
 - [License](#license)
 
 ## Features
