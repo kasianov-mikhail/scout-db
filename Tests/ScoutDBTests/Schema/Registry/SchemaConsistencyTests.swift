@@ -15,6 +15,10 @@ import Testing
 struct SchemaConsistencyTests {
     static let schema = try! String(contentsOf: schemaURL(), encoding: .utf8)
 
+    static let heldPools = [
+        "g": "LOCATION QUERYABLE", "a": "ASSET", "lg": "LIST<LOCATION> QUERYABLE", "la": "LIST<ASSET>",
+    ]
+
     @Test("Every pool declares exactly its capacity, contiguously", arguments: FieldType.allCases)
     func poolCapacity(pool: FieldType) throws {
         let slots = Self.fields(of: "Entity").filter { $0.name.hasPrefix("\(pool.slotPrefix)_") }
@@ -39,6 +43,8 @@ struct SchemaConsistencyTests {
             case .intList: "LIST<INT64> QUERYABLE"
             case .doubleList: "LIST<DOUBLE> QUERYABLE"
             case .timestampList: "LIST<TIMESTAMP> QUERYABLE"
+            case .referenceList: "LIST<REFERENCE> QUERYABLE"
+            case .bytesList: "LIST<BYTES> QUERYABLE"
             }
         let slots = Self.fields(of: "Entity").filter { $0.name.hasPrefix("\(pool.slotPrefix)_") }
         #expect(slots.allSatisfy { $0.spec == expected })
@@ -52,6 +58,30 @@ struct SchemaConsistencyTests {
         let indices = slots.compactMap { PayloadPool.slotIndex($0.name) }.sorted()
         #expect(indices == Array(0..<PayloadPool.capacity))
         #expect(slots.allSatisfy { $0.spec == "BYTES" }, "Nothing filters a payload slot server-side")
+    }
+
+    @Test("The pools spend the field budget whole and no further")
+    func fieldBudget() {
+        let columns = Self.fields(of: "Entity").filter { !$0.name.hasPrefix("\"___") }
+        #expect(columns.count == 256, "CloudKit caps a record type at 256 fields")
+
+        let allocatable = FieldType.allCases.map(\.capacity).reduce(PayloadPool.capacity, +)
+        let held = columns.filter { column in
+            Self.heldPools.keys.contains { column.name.hasPrefix("\($0)_") }
+        }
+        #expect(allocatable + held.count == columns.count, "Every column is either allocatable or held for later")
+    }
+
+    @Test("The location and asset pools stay declared, at the size the others took")
+    func heldPools() {
+        for (prefix, spec) in Self.heldPools {
+            let slots = Self.fields(of: "Entity").filter { $0.name.hasPrefix("\(prefix)_") }
+            #expect(
+                slots.count == FieldType.bytes.capacity,
+                "The '\(prefix)' pool holds its share of the budget for a type to claim"
+            )
+            #expect(slots.allSatisfy { $0.spec == spec })
+        }
     }
 
     @Test("Entity carries the envelope the coder stamps")

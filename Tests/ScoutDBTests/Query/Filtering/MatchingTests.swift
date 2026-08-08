@@ -104,6 +104,42 @@ struct MatchingTests {
         #expect(try await read("body", .search, "quick sighting") == [])
     }
 
+    @Test("CONTAINS finds a member of a reference list, slotted or in the payload")
+    func referenceListMembership() async throws {
+        try await registry.publish(
+            makeDefinition(
+                entity: "album",
+                fields: [
+                    FieldDefinition(name: "shots", type: .referenceList, storage: .slot(.referenceList, "lr_00")),
+                    FieldDefinition(name: "archived", type: .referenceList, storage: .payload("p_00")),
+                ]
+            )
+        )
+        try await store.write(
+            [
+                EntityWrite(
+                    values: ["shots": .references(["p-1", "p-2"]), "archived": .references(["p-9"])],
+                    uuid: "a-1"
+                ),
+                EntityWrite(
+                    values: ["shots": .references(["p-3"]), "archived": .references(["p-1"])],
+                    uuid: "a-2"
+                ),
+            ],
+            entity: "album"
+        )
+
+        func read(_ field: String, _ uuid: String) async throws -> [String] {
+            let filter = ClientFilter(field: field, op: .contains, value: .reference(uuid))
+            return try await ReadOperation(store: store, entity: "album", branches: [[filter]]).records().map(\.uuid)
+        }
+
+        #expect(try await read("shots", "p-2") == ["a-1"])
+        #expect(try await read("shots", "p-3") == ["a-2"])
+        #expect(try await read("shots", "p-9") == [])
+        #expect(try await read("archived", "p-1") == ["a-2"])
+    }
+
     @Test("Search is rejected on non-searchable fields")
     func searchRequiresText() async throws {
         await #expect(throws: SchemaError.unsupportedQuery(.unsearchableField("title"))) {

@@ -20,6 +20,8 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
     case intList
     case doubleList
     case timestampList
+    case referenceList
+    case bytesList
 
     var slotPrefix: String {
         switch self {
@@ -45,11 +47,28 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
             "ld"
         case .timestampList:
             "lt"
+        case .referenceList:
+            "lr"
+        case .bytesList:
+            "lb"
         }
     }
 
+    /// The slots this pool declares in the record type.
+    ///
+    /// CloudKit caps a record type at 256 fields, and every pool splits that
+    /// ceiling evenly — the typed ones, the payload, and the location and
+    /// asset slots the schema holds for a type the store does not read yet.
+    /// The four types a schema reaches for most take the remainder, one slot
+    /// each.
+    ///
     var capacity: Int {
-        16
+        switch self {
+        case .string, .int, .double, .timestamp:
+            15
+        default:
+            14
+        }
     }
 
     var isSortable: Bool {
@@ -70,7 +89,7 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
 
     var isList: Bool {
         switch self {
-        case .stringList, .intList, .doubleList, .timestampList:
+        case .stringList, .intList, .doubleList, .timestampList, .referenceList, .bytesList:
             true
         default:
             false
@@ -87,6 +106,10 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
             .doubles([])
         case .timestampList:
             .dates([])
+        case .referenceList:
+            .references([])
+        case .bytesList:
+            .blobs([])
         default:
             nil
         }
@@ -96,7 +119,8 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
         switch (self, value) {
         case (.string, .string), (.text, .string), (.int, .int), (.double, .double),
             (.timestamp, .date), (.bytes, .bytes), (.reference, .reference),
-            (.stringList, .strings), (.intList, .ints), (.doubleList, .doubles), (.timestampList, .dates):
+            (.stringList, .strings), (.intList, .ints), (.doubleList, .doubles), (.timestampList, .dates),
+            (.referenceList, .references), (.bytesList, .blobs):
             true
         default:
             false

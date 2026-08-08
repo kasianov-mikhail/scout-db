@@ -88,8 +88,8 @@ try await store.schema("purchase")
     .create()
 ```
 
-Fields marked `.payload` take a slot of the payload pool, sixteen deep, and skip server-side
-filtering — use it for everything you never filter on.
+Fields marked `.payload` skip server-side filtering — use it for everything you never
+filter on.
 
 ### Write and query
 

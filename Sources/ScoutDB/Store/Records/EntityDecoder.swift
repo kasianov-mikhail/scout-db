@@ -62,6 +62,10 @@ extension RecordValue {
             self = .strings(value)
         case let value as [Date]:
             self = .dates(value)
+        case let value as [CKRecord.Reference]:
+            self = .references(value.map(\.recordID.recordName))
+        case let value as [Data]:
+            self = .blobs(value)
         case let value as [NSNumber]:
             if value.contains(where: { CFNumberIsFloatType($0) }) {
                 self = .doubles(value.map(\.doubleValue))

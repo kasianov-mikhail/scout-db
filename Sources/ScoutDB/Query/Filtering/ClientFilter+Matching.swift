@@ -35,17 +35,13 @@ extension ClientFilter {
             return text.hasPrefix(prefix)
 
         case .contains:
-            guard case .string(let needle) = value else {
+            if let members = stored?.members {
+                return members.contains(value)
+            }
+            guard case .string(let needle) = value, case .string(let text)? = stored else {
                 return nil
             }
-            return switch stored {
-            case .string(let text)?:
-                text.contains(needle)
-            case .strings(let members)?:
-                members.contains(needle)
-            default:
-                nil
-            }
+            return text.contains(needle)
 
         case .search:
             guard case .string(let needle) = value, case .string(let text)? = stored else {
