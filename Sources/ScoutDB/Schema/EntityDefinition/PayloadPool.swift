@@ -7,7 +7,7 @@
 
 import Foundation
 
-/// The pool the payload fields draw from: fourteen blob slots, one value each,
+/// The pool the payload fields draw from: sixteen blob slots, one value each,
 /// and none of them within the server's reach.
 ///
 /// A typed pool holds one Swift type and lends the server its filters and
@@ -17,7 +17,7 @@ import Foundation
 enum PayloadPool {
     static let slotPrefix = "p"
 
-    static let capacity = 14
+    static let capacity = 16
 
     static func slot(_ index: Int) -> String {
         "\(slotPrefix)_\(String(format: "%02d", index))"

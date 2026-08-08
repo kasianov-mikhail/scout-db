@@ -25,7 +25,7 @@ extension SchemaBuilder {
         case required
 
         /// Keeps the field out of the typed pools, in a payload slot of its
-        /// own: fourteen of those exist per entity, and a value in one lies
+        /// own: sixteen of those exist per entity, and a value in one lies
         /// beyond the server's filters and sorts.
         case payload
 
