@@ -2,7 +2,7 @@ DEFINE SCHEMA
 
     RECORD TYPE Entity (
         "___createTime" TIMESTAMP,
-        "___createdBy"  REFERENCE,
+        "___createdBy"  REFERENCE QUERYABLE,
         "___etag"       STRING,
         "___modTime"    TIMESTAMP QUERYABLE SORTABLE,
         "___modifiedBy" REFERENCE,

@@ -65,6 +65,12 @@ struct SchemaConsistencyTests {
         #expect(recordID?.spec == "REFERENCE QUERYABLE SORTABLE", "A page breaks its ties on the record name")
     }
 
+    @Test("The record's creator is queryable")
+    func creatorIndexed() {
+        let creator = Self.fields(of: "Entity").first { $0.name == "\"___createdBy\"" }
+        #expect(creator?.spec == "REFERENCE QUERYABLE", "A scan narrows to the caller's own records server-side")
+    }
+
     @Test("Vector cells match the aggregator addressing")
     func vectorCells() {
         let cells = Self.fields(of: "Vector").filter { $0.name.hasPrefix("c_") }
