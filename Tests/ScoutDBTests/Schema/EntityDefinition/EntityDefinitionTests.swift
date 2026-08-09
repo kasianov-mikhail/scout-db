@@ -49,7 +49,7 @@ struct EntityDefinitionTests {
     @Test("Validation rejects a slot in the wrong pool")
     func wrongPool() {
         let definition = makeDefinition(fields: [
-            FieldDefinition(name: "count", type: .int, storage: .slot(.string, "s_01"))
+            FieldDefinition(name: "count", type: .int, storage: .slot(.string, "s_02"))
         ]
         )
         #expect(throws: SchemaError.invalidDefinition(.slotTypeMismatch(field: "count", type: .int, pool: .string))) {
@@ -102,7 +102,7 @@ struct EntityDefinitionTests {
     @Test("Validation rejects a text field in the plain string pool")
     func textInPlainPool() {
         let definition = makeDefinition(fields: [
-            FieldDefinition(name: "title", type: .text, storage: .slot(.string, "s_01"))
+            FieldDefinition(name: "title", type: .text, storage: .slot(.string, "s_02"))
         ]
         )
         #expect(throws: SchemaError.invalidDefinition(.slotTypeMismatch(field: "title", type: .text, pool: .string))) {
@@ -125,7 +125,7 @@ struct EntityDefinitionTests {
     func sumType() {
         let definition = makeDefinition(
             fields: [
-                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_01")),
+                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_02")),
                 FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
             ],
             aggregates: [AggregateDefinition(metric: .sum, field: "name")]
@@ -138,7 +138,7 @@ struct EntityDefinitionTests {
     @Test("Validation rejects two aggregates of the same shape")
     func duplicateAggregate() {
         let definition = makeDefinition(
-            fields: [FieldDefinition(name: "page", type: .string, storage: .slot(.string, "s_01"))],
+            fields: [FieldDefinition(name: "page", type: .string, storage: .slot(.string, "s_02"))],
             aggregates: [AggregateDefinition(group: "page"), AggregateDefinition(group: "page")]
         )
         #expect(throws: SchemaError.invalidDefinition(.duplicateAggregate("by_page"))) {
@@ -149,7 +149,7 @@ struct EntityDefinitionTests {
     @Test("Validation rejects an aggregate dating its cells by an unknown field")
     func unknownDate() {
         let definition = makeDefinition(
-            fields: [FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_01"))],
+            fields: [FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_02"))],
             aggregates: [AggregateDefinition(date: "seen")]
         )
         #expect(throws: SchemaError.invalidDefinition(.unknownDate(aggregate: "at_seen", field: "seen"))) {
@@ -160,7 +160,7 @@ struct EntityDefinitionTests {
     @Test("Validation rejects an aggregate dating its cells by a field that holds no date")
     func nonTemporalDate() {
         let definition = makeDefinition(
-            fields: [FieldDefinition(name: "seen", type: .string, storage: .slot(.string, "s_01"))],
+            fields: [FieldDefinition(name: "seen", type: .string, storage: .slot(.string, "s_02"))],
             aggregates: [AggregateDefinition(date: "seen")]
         )
         #expect(throws: SchemaError.invalidDefinition(.nonTemporalDate(aggregate: "at_seen", field: "seen"))) {
@@ -184,7 +184,7 @@ struct EntityDefinitionTests {
     func boundWrongType() {
         let definition = makeDefinition(
             fields: [
-                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_01"), min: 0)
+                FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_02"), min: 0)
             ]
         )
         #expect(throws: SchemaError.invalidDefinition(.unsupportedBounds(field: "name", type: .string))) {
@@ -203,7 +203,7 @@ func makeDefinition(
 func makePurchaseDefinition() -> EntityDefinition {
     makeDefinition(
         fields: [
-            FieldDefinition(name: "product_id", type: .string, storage: .slot(.string, "s_01")),
+            FieldDefinition(name: "product_id", type: .string, storage: .slot(.string, "s_02")),
             FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
             FieldDefinition(name: "amount", type: .int, storage: .slot(.int, "i_01"), until: 2),
             FieldDefinition(name: "quantity", type: .int, storage: .slot(.int, "i_02"), since: 2),

@@ -18,9 +18,13 @@ enum Envelope {
     static let entity = "s_00"
     static let version = "i_00"
 
-    /// The record's own name, which is the uuid the store writes it under, so
-    /// no slot holds a second copy of it.
-    static let uuid = "___recordID"
+    /// The uuid the record is written under, held a second time in a slot.
+    ///
+    /// CloudKit owns the indexes on a record name and refuses one of ours, so
+    /// nothing sorts by it server-side and a page has no way to break its ties
+    /// on it. The slot carries the same string the record name does.
+    ///
+    static let uuid = "s_01"
 }
 
 extension FieldType {
@@ -29,7 +33,7 @@ extension FieldType {
     var reserved: Int {
         switch self {
         case .string:
-            1
+            2
         case .int:
             1
         default:
