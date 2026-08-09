@@ -89,10 +89,10 @@ struct SchemaConsistencyTests {
         }
     }
 
-    @Test("The record name carries none of our flags", arguments: ["Entity", "Vector"])
-    func recordNameUnflagged(type: String) {
+    @Test("The record name is queryable and nothing more", arguments: ["Entity", "Vector"])
+    func recordNameQueryable(type: String) {
         let recordID = Self.fields(of: type).first { $0.name == "\"___recordID\"" }
-        #expect(recordID?.spec == "REFERENCE", "CloudKit owns the indexes on a record name and refuses ours")
+        #expect(recordID?.spec == "REFERENCE QUERYABLE", "CloudKit refuses to sort a record name, so a page cannot")
     }
 
     @Test("The envelope holds back the slots it stamps")
