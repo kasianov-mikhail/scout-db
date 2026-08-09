@@ -29,13 +29,26 @@ struct SchemaRegistryTests {
 
     @Test("A descriptor is an Entity record under the reserved namespace")
     func descriptorShape() async throws {
-        let record = try #require(await database.records.first { $0.recordID.recordName == "__schema@purchase" })
+        let name = SchemaDescriptorEntry.recordID(for: "purchase").recordName
+        let record = try #require(await database.records.first { $0.recordID.recordName == name })
 
         #expect(record.recordType == "Entity")
         #expect(record[Envelope.entity] as? String == SchemaDescriptorEntry.namespace)
-        #expect(record[Envelope.uuid] as? String == "__schema@purchase")
+        #expect(record[Envelope.uuid] as? String == name)
         #expect(record[Envelope.version] as? Int64 == 1)
         #expect(record["b_00"] is Data)
+    }
+
+    @Test("A descriptor is named what CloudKit takes, whatever the entity is called")
+    func descriptorNameIsLegal() {
+        let entities = ["purchase", "__schema", "order line", "Ünïcøde", String(repeating: "e", count: 400)]
+
+        for entity in entities {
+            let id = SchemaDescriptorEntry.recordID(for: entity)
+            #expect(id.isLegalRecordName, "\(entity) is filed under \(id.recordName)")
+        }
+
+        #expect(Set(entities.map { SchemaDescriptorEntry.recordID(for: $0) }).count == entities.count)
     }
 
     @Test("A published version overwrites the one before it")
@@ -49,7 +62,7 @@ struct SchemaRegistryTests {
         let descriptors = await database.records.filter {
             $0[Envelope.entity] as? String == SchemaDescriptorEntry.namespace
         }
-        #expect(descriptors.map(\.recordID.recordName) == ["__schema@purchase"])
+        #expect(descriptors.map(\.recordID) == [SchemaDescriptorEntry.recordID(for: "purchase")])
         #expect(descriptors.first?[Envelope.version] as? Int64 == 2)
 
         let definition = try await SchemaRegistry(database: database).definition(for: "purchase")

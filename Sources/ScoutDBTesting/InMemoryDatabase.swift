@@ -215,6 +215,9 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     public func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {
         try counting(.modify, carrying: { _ in records.count + recordIDs.count }) {
             try popErrorLocked(writing: true)
+            guard records.allSatisfy(\.recordID.isLegalRecordName) else {
+                throw CKError(.invalidArguments)
+            }
             records.forEach(upsertLocked)
             state.table.remove(recordIDs)
         }
@@ -244,6 +247,9 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
             return records.map { record in
                 if let failure = queued[record.recordID] {
                     return (record.recordID, .failure(failure))
+                }
+                if !record.recordID.isLegalRecordName {
+                    return (record.recordID, .failure(CKError(.invalidArguments)))
                 }
                 if let server = conflictingServerLocked(for: record) {
                     return (record.recordID, .failure(RecordConflictError(serverRecord: server)))
