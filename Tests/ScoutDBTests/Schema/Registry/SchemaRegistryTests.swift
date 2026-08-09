@@ -29,15 +29,31 @@ struct SchemaRegistryTests {
 
     @Test("A descriptor is an Entity record under the reserved namespace")
     func descriptorShape() async throws {
-        let record = try #require(await database.records.first { $0.recordID.recordName == "purchase@1" })
+        let record = try #require(await database.records.first { $0.recordID.recordName == "__schema@purchase" })
 
         #expect(record.recordType == "Entity")
         #expect(record[Envelope.entity] as? String == SchemaDescriptorEntry.namespace)
-        #expect(record[Envelope.uuid] as? String == "purchase@1")
-        #expect(record["s_02"] as? String == "purchase")
-        #expect(record["s_03"] as? String == "active")
+        #expect(record[Envelope.uuid] as? String == "__schema@purchase")
         #expect(record[Envelope.version] as? Int64 == 1)
         #expect(record["b_00"] is Data)
+    }
+
+    @Test("A published version overwrites the one before it")
+    func onePerEntity() async throws {
+        _ = try await store.schema("purchase")
+            .field("product_id", .string, .required)
+            .field("amount", .double)
+            .field("status", .string)
+            .update()
+
+        let descriptors = await database.records.filter {
+            $0[Envelope.entity] as? String == SchemaDescriptorEntry.namespace
+        }
+        #expect(descriptors.map(\.recordID.recordName) == ["__schema@purchase"])
+        #expect(descriptors.first?[Envelope.version] as? Int64 == 2)
+
+        let definition = try await SchemaRegistry(database: database).definition(for: "purchase")
+        #expect(definition.version == 2, "A registry with no cache reads the descriptor by name")
     }
 
     @Test("A published schema reads back through the registry")

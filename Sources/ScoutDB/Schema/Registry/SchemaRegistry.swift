@@ -27,12 +27,11 @@ public actor SchemaRegistry {
         }
 
         let task = Task { () throws -> EntityDefinition in
-            let query = SchemaDescriptorEntry.query(for: entity)
-            let entries = try await database.allRecords(matching: query).map(SchemaDescriptorEntry.init)
-            guard let definition = try entries.latest else {
+            let id = SchemaDescriptorEntry.recordID(for: entity)
+            guard let record = try await database.fetchRecord(id: id) else {
                 throw SchemaError.unknownEntity(entity)
             }
-            return definition
+            return try SchemaDescriptorEntry(record: record).definition
         }
 
         loading[entity] = task

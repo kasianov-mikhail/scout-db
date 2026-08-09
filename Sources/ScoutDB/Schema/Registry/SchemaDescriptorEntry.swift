@@ -16,73 +16,54 @@ struct SchemaDescriptorEntry {
     /// records can reach them.
     static let namespace = "__schema"
 
-    let entity: String
-    let version: Int
-    let definition: Data
+    let definition: EntityDefinition
 
     init(record: CKRecord) throws {
-        guard let entity = record[Slot.entity] as? String, let version = record[Envelope.version] as? Int64 else {
+        guard record[Envelope.entity] as? String == Self.namespace else {
             throw SchemaError.malformedRecord(record.recordID.recordName)
         }
-        guard let definition = record[Slot.definition] as? Data else {
+        guard let blob = record[Slot.definition] as? Data else {
             throw SchemaError.malformedRecord(record.recordID.recordName)
         }
-        self.entity = entity
-        self.version = Int(version)
-        self.definition = definition
+
+        definition = try JSONDecoder().decode(EntityDefinition.self, from: blob)
+        try definition.validate()
     }
 
     fileprivate enum Slot {
-        static let entity = "s_02"
-        static let status = "s_03"
         static let definition = "b_00"
     }
 }
 
 extension SchemaDescriptorEntry {
-    static func query(for entity: String) -> CKQuery {
-        CKQuery(
-            recordType: recordType,
-            filters: [
-                CKQuery.Filter(field: Envelope.entity, op: .equals, value: .string(namespace)),
-                CKQuery.Filter(field: Slot.entity, op: .equals, value: .string(entity)),
-                CKQuery.Filter(field: Slot.status, op: .equals, value: .string("active")),
-            ],
-            sort: []
-        )
+    /// The one record an entity's definition is kept under.
+    ///
+    /// The name is the entity's, under the registry's namespace, so a
+    /// definition is reached by identifier rather than through a query. A
+    /// query goes through the index, which lags a write, and the first read
+    /// after a `create()` is exactly the one that would race it.
+    ///
+    static func recordID(for entity: String) -> CKRecord.ID {
+        CKRecord.ID(recordName: "\(namespace)@\(entity)")
     }
 
+    /// The record a publish saves, which overwrites the version before it.
+    ///
+    /// A version is what the record carries, not part of what it is called, so
+    /// publishing upserts one record per entity rather than adding one per
+    /// version. Records written under an earlier version stay readable all the
+    /// same: the definition carries the version each of its fields opened and
+    /// closed at, and a record decodes through the version it names.
+    ///
     static func record(for definition: EntityDefinition) throws -> CKRecord {
-        let record = CKRecord(
-            recordType: recordType,
-            recordID: CKRecord.ID(recordName: "\(definition.entity)@\(definition.version)")
-        )
+        let id = recordID(for: definition.entity)
+        let record = CKRecord(recordType: recordType, recordID: id)
+
         record[Envelope.entity] = namespace
-        record[Envelope.uuid] = record.recordID.recordName
+        record[Envelope.uuid] = id.recordName
         record[Envelope.version] = Int64(definition.version)
-        record[Slot.entity] = definition.entity
-        record[Slot.status] = "active"
         record[Slot.definition] = try JSONEncoder().encode(definition)
 
         return record
-    }
-}
-
-extension SchemaDescriptorEntry: Comparable {
-    static func < (lhs: Self, rhs: Self) -> Bool {
-        lhs.version < rhs.version
-    }
-}
-
-extension [SchemaDescriptorEntry] {
-    var latest: EntityDefinition? {
-        get throws {
-            guard let entry = self.max() else {
-                return nil
-            }
-            let definition = try JSONDecoder().decode(EntityDefinition.self, from: entry.definition)
-            try definition.validate()
-            return definition
-        }
     }
 }
