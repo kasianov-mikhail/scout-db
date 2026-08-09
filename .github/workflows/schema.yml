@@ -3,8 +3,13 @@ name: Schema
 # No paths filter: this is a required status check, and a required check that
 # never runs blocks the merge. With no Schema changes the diff is empty and the
 # job passes in seconds.
+#
+# `labeled` and `unlabeled` join the default trigger types so that adding or
+# removing the bypass label re-runs the job rather than leaving the verdict it
+# reached before the label was there.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -20,6 +25,12 @@ jobs:
           fetch-depth: 0
 
       - name: Check that no schema lines were removed
+        env:
+          # A removal is legitimate when the container takes the change by
+          # being recreated rather than migrated. The label says so on the pull
+          # request itself, where the reviewer can see it, instead of the job
+          # being edited to look the other way for one branch.
+          BYPASSED: ${{ contains(github.event.pull_request.labels.*.name, 'schema-break') }}
         run: |
           git show "origin/${{ github.base_ref }}:Schema" > /tmp/base-schema
           awk '
@@ -33,11 +44,11 @@ jobs:
             echo
             cat /tmp/removed-lines
             echo
-            # TEMPORARY: the record name gives up the sortable index #469 gave
-            # it, which CloudKit refuses outright — `cktool import-schema` and
-            # the Console both reject the whole file over it. A page breaks its
-            # ties on a string slot instead. The container takes the change by
-            # being recreated rather than migrated. Restore the `exit 1` below
-            # once it has landed.
-            echo "Enforcement is temporarily off for the record name index drop."
+            if [ "$BYPASSED" = true ]; then
+              echo "The schema-break label is on this pull request, so the removal stands."
+              echo "The container it lands in has to be recreated, not migrated."
+            else
+              echo "Label the pull request schema-break to let the removal through."
+              exit 1
+            fi
           fi
