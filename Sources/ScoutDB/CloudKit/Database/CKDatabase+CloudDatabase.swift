@@ -44,12 +44,23 @@ extension CKDatabase: CloudDatabase {
 
     public func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {
         try await throttled { database in
-            _ = try await database.modifyRecords(
+            let results = try await database.modifyRecords(
                 saving: records,
                 deleting: recordIDs,
                 savePolicy: .allKeys,
                 atomically: true
             )
+
+            // Atomicity is a custom-zone guarantee, so a batch in the default
+            // zone of the public database reports what it refused per record
+            // and returns without an error of its own. Left unread, a rejected
+            // save is a write the caller is told went through.
+            for result in results.saveResults.values {
+                _ = try result.get()
+            }
+            for result in results.deleteResults.values {
+                _ = try result.get()
+            }
         }
     }
 

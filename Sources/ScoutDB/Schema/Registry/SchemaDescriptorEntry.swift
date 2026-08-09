@@ -38,13 +38,19 @@ struct SchemaDescriptorEntry {
 extension SchemaDescriptorEntry {
     /// The one record an entity's definition is kept under.
     ///
-    /// The name is the entity's, under the registry's namespace, so a
-    /// definition is reached by identifier rather than through a query. A
-    /// query goes through the index, which lags a write, and the first read
-    /// after a `create()` is exactly the one that would race it.
+    /// The name is a digest of the entity's, so a definition is reached by
+    /// identifier rather than through a query. A query goes through the index,
+    /// which lags a write, and the first read after a `create()` is exactly the
+    /// one that would race it.
+    ///
+    /// A digest rather than the entity spelled out because CloudKit names a
+    /// record from a narrow alphabet and keeps the leading underscore for
+    /// itself, while an entity is any string a caller picks. The entity stays
+    /// legible in the definition the record carries, and the namespace stamp is
+    /// what a read checks.
     ///
     static func recordID(for entity: String) -> CKRecord.ID {
-        CKRecord.ID(recordName: "\(namespace)@\(entity)")
+        CKRecord.ID(recordName: "schema-" + contentDigest(of: [entity]))
     }
 
     /// The record a publish saves, which overwrites the version before it.
