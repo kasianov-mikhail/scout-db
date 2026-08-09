@@ -61,6 +61,7 @@ struct VectorIndexWriter {
             } else {
                 record = CKRecord(recordType: SchemaDescriptorEntry.recordType, recordID: index.recordID)
                 record[Envelope.entity] = VectorIndex.namespace
+                record[Envelope.uuid] = index.recordID.recordName
                 record[Envelope.version] = Int64(1)
                 page = IndexPage(weeks: [], groups: [])
             }

@@ -96,13 +96,9 @@ private struct ColumnOrder: SortComparator {
     func compare(_ lhs: CKRecord, _ rhs: CKRecord) -> ComparisonResult {
         switch order {
         case .forward:
-            PredicateEvaluator.compare(value(of: lhs), value(of: rhs))
+            PredicateEvaluator.compare(lhs[key], rhs[key])
         case .reverse:
-            PredicateEvaluator.compare(value(of: rhs), value(of: lhs))
+            PredicateEvaluator.compare(rhs[key], lhs[key])
         }
-    }
-
-    private func value(of record: CKRecord) -> Any? {
-        key == "___recordID" ? record.recordID.recordName : record[key]
     }
 }

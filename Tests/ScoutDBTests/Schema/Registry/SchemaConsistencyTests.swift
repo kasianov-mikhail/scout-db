@@ -84,12 +84,23 @@ struct SchemaConsistencyTests {
     @Test("Entity carries the envelope the coder stamps")
     func itemEnvelope() {
         let names = Set(Self.fields(of: "Entity").map(\.name))
-        for field in [Envelope.entity, Envelope.version] {
+        for field in [Envelope.entity, Envelope.uuid, Envelope.version] {
             #expect(names.contains(field), "Entity is missing '\(field)'")
         }
+    }
 
-        let recordID = Self.fields(of: "Entity").first { $0.name == "\"\(Envelope.uuid)\"" }
-        #expect(recordID?.spec == "REFERENCE QUERYABLE SORTABLE", "A page breaks its ties on the record name")
+    @Test("The record name is queryable and nothing more", arguments: ["Entity", "Vector"])
+    func recordNameQueryable(type: String) {
+        let recordID = Self.fields(of: type).first { $0.name == "\"___recordID\"" }
+        #expect(recordID?.spec == "REFERENCE QUERYABLE", "CloudKit refuses to sort a record name, so a page cannot")
+    }
+
+    @Test("The envelope holds back the slots it stamps")
+    func envelopeSlots() {
+        for slot in [Envelope.entity, Envelope.uuid] {
+            #expect(FieldType.string.slotIndex(slot).map { $0 < FieldType.string.reserved } == true)
+        }
+        #expect(FieldType.int.slotIndex(Envelope.version).map { $0 < FieldType.int.reserved } == true)
     }
 
     @Test("The record's creator is queryable")
@@ -120,8 +131,8 @@ struct SchemaConsistencyTests {
             Self.fields(of: "Entity").map { ($0.name, $0.spec) },
             uniquingKeysWith: { first, _ in first }
         )
-        #expect(fields["s_01"] == "STRING QUERYABLE SORTABLE")
         #expect(fields["s_02"] == "STRING QUERYABLE SORTABLE")
+        #expect(fields["s_03"] == "STRING QUERYABLE SORTABLE")
         #expect(fields["b_00"] == "BYTES QUERYABLE")
         #expect(fields[Envelope.version] == "INT64 QUERYABLE SORTABLE")
     }

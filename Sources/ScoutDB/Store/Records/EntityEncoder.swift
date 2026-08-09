@@ -20,6 +20,7 @@ struct EntityEncoder {
         let record = CKRecord(recordType: "Entity", recordID: CKRecord.ID(recordName: entityRecord.uuid))
 
         record[Envelope.entity] = entityRecord.entity
+        record[Envelope.uuid] = entityRecord.uuid
         record[Envelope.version] = Int64(entityRecord.schemaVersion)
 
         for field in fields {
