@@ -28,6 +28,10 @@ struct VectorIndexWriter {
         try await write(wanted)
     }
 
+    func seed(_ index: VectorIndex) async throws {
+        try await write([index: IndexPage(weeks: [], groups: [])])
+    }
+
     func write(_ wanted: [VectorIndex: IndexPage]) async throws {
         var pending = wanted
         for _ in 0..<maxRetry {
@@ -52,10 +56,11 @@ struct VectorIndexWriter {
         var saving: [CKRecord.ID: (index: VectorIndex, page: IndexPage, record: CKRecord)] = [:]
 
         for (index, additions) in wanted {
+            let existing = stored[index.recordID]
             let record: CKRecord
             let page: IndexPage
 
-            if let existing = stored[index.recordID] {
+            if let existing {
                 record = existing
                 page = try existing.indexPage(named: index.recordID)
             } else {
@@ -68,7 +73,10 @@ struct VectorIndexWriter {
 
             let merged = page.merging(additions)
 
-            guard merged != page else {
+            // A page a record already carries is saved only when it grows; a
+            // page no record carries is saved even when empty, so a reader
+            // finds a record where the aggregate is still untouched.
+            guard existing == nil || merged != page else {
                 continue
             }
             record.indexPage = merged
