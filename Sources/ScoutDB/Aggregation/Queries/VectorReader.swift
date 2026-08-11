@@ -71,6 +71,12 @@ struct VectorReader {
         )
 
         guard let record = try await database.fetchRecord(id: head.recordID) else {
+            // A head no record answers is fetched again on every read of the
+            // aggregate, and CloudKit counts each miss against the container
+            // until it slows the whole client down. Writing the empty page
+            // costs one miss instead; a reader that may not write reads on.
+            try? await VectorIndexWriter(database: database).seed(head)
+
             return IndexPage(
                 weeks: [],
                 groups: []

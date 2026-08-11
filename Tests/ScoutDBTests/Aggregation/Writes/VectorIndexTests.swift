@@ -125,6 +125,34 @@ struct VectorIndexTests {
         }
     }
 
+    @Test("A read of an aggregate nothing has written leaves the head behind for the next one")
+    func readSeedsTheMissingHead() async throws {
+        let head = VectorIndex(entity: "payment", aggregate: counting.name, week: nil)
+
+        let rows = try await VectorReader(database: database, entity: "payment", aggregate: counting)
+            .rows(groups: nil)
+
+        #expect(rows.isEmpty)
+
+        let record = try #require(database.records.first { $0.recordID == head.recordID })
+        #expect(record.indexPage == IndexPage(weeks: [], groups: []))
+
+        database.resetRequests()
+        _ = try await VectorReader(database: database, entity: "payment", aggregate: counting).rows(groups: nil)
+
+        #expect(database.requests[.conditionalSave] == 0, "A head that stands is read, not written again")
+    }
+
+    @Test("A read leaves the head a write already named as it is")
+    func readKeepsTheStandingHead() async throws {
+        try await aggregator().rebalance(removing: [], adding: payments(["app"]))
+
+        _ = try await VectorReader(database: database, entity: "payment", aggregate: counting).rows(groups: nil)
+
+        #expect(page(week: nil).weeks == [noon.weekStart.millisecondsSince1970])
+        #expect(page(week: noon.weekStart).groups == ["app"])
+    }
+
     @Test("A fold reads every group the index names")
     func foldSeesEveryGroup() async throws {
         try await aggregator().rebalance(removing: [], adding: payments(["app", "book", "toy"]))
