@@ -67,6 +67,21 @@ public actor SchemaRegistry {
         )
     }
 
+    /// The entity's schema, or `nil` when nothing is published under the name.
+    ///
+    /// Only a genuinely missing descriptor maps to `nil`; a fetch that fails
+    /// for any other reason — a network drop, a throttle — rethrows, so a
+    /// caller deciding between creating and updating never mistakes a
+    /// transient failure for a blank slate.
+    ///
+    public func publishedSchema(for entity: String) async throws -> EntitySchema? {
+        do {
+            return try await schema(for: entity)
+        } catch SchemaError.unknownEntity {
+            return nil
+        }
+    }
+
     func publish(_ definition: EntityDefinition) async throws {
         try definition.validate()
         let record = try SchemaDescriptorEntry.record(for: definition)

@@ -89,6 +89,26 @@ struct SchemaRegistryTests {
         #expect(try await store.query("purchase").count() == 1)
     }
 
+    @Test("A published entity reads back through publishedSchema")
+    func publishedSchemaPresent() async throws {
+        let schema = try #require(await registry.publishedSchema(for: "purchase"))
+        #expect(schema.fields.map(\.name) == ["product_id", "amount"])
+    }
+
+    @Test("An unpublished entity reads back as nil, not an error")
+    func publishedSchemaAbsent() async throws {
+        #expect(try await registry.publishedSchema(for: "unheard-of") == nil)
+    }
+
+    @Test("A fetch that fails does not read as an absent schema")
+    func publishedSchemaRethrows() async throws {
+        let registry = SchemaRegistry(database: Outage())
+
+        await #expect(throws: CKError.self) {
+            try await registry.publishedSchema(for: "purchase")
+        }
+    }
+
     @Test("The reserved namespace is not a name a caller may declare")
     func reservedNamespace() async throws {
         await #expect(throws: SchemaError.invalidDefinition(.reservedEntity(SchemaDescriptorEntry.namespace))) {
@@ -96,5 +116,31 @@ struct SchemaRegistryTests {
                 .field("product_id", .string)
                 .create()
         }
+    }
+}
+
+private struct Outage: CloudDatabase {
+    func records(matching query: CKQuery, resultsLimit: Int) async throws -> QueryPage {
+        throw CKError(.networkUnavailable)
+    }
+
+    func records(continuingMatchFrom cursor: QueryCursor, resultsLimit: Int) async throws -> QueryPage {
+        throw CKError(.networkUnavailable)
+    }
+
+    func modifyRecords(saving: [CKRecord], deleting: [CKRecord.ID]) async throws {
+        throw CKError(.networkUnavailable)
+    }
+
+    func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
+        throw CKError(.networkUnavailable)
+    }
+
+    func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
+        throw CKError(.networkUnavailable)
+    }
+
+    func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
+        throw CKError(.networkUnavailable)
     }
 }
