@@ -1,3 +1,3 @@
-# Copyright headers
+# Maintaining these instructions
 
-Every source file opens with the MIT license header carrying a year (`// Copyright <year> Mikhail Kasianov`). When your edits make git treat a file as new — a file you just created, or a move/rewrite git records as an add rather than a rename — set that header's year to the current year. Leave the year untouched on files git still sees as edits to an existing file.
+- When you notice recurring feedback or a new convention that isn't captured yet, proactively propose adding it as a rule — surface it as a suggested edit for the user to approve rather than editing on your own initiative. General Swift style, code organization and structure rules go to the shared user-level rule `~/.claude/rules/swift-style.md` (loaded automatically for Swift files in scout, scout-db, scout-server and scout-ip); only scout-db-specific conventions go here.
