@@ -30,7 +30,7 @@ struct SchemaRegistryTests {
     @Test("A descriptor is an Entity record under the reserved namespace")
     func descriptorShape() async throws {
         let name = SchemaDescriptorEntry.recordID(for: "purchase").recordName
-        let record = try #require(await database.records.first { $0.recordID.recordName == name })
+        let record = try #require(database.records.first { $0.recordID.recordName == name })
 
         #expect(record.recordType == "Entity")
         #expect(record[Envelope.entity] as? String == SchemaDescriptorEntry.namespace)
@@ -59,7 +59,7 @@ struct SchemaRegistryTests {
             .field("status", .string)
             .update()
 
-        let descriptors = await database.records.filter {
+        let descriptors = database.records.filter {
             $0[Envelope.entity] as? String == SchemaDescriptorEntry.namespace
         }
         #expect(descriptors.map(\.recordID) == [SchemaDescriptorEntry.recordID(for: "purchase")])
