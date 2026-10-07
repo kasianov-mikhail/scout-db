@@ -33,7 +33,7 @@ extension CKQuery {
                 ? NSPredicate(value: true)
                 : NSCompoundPredicate(type: .and, subpredicates: filters.map(\.predicate))
         )
-        if sort.count > 0 {
+        if !sort.isEmpty {
             sortDescriptors = sort.map { NSSortDescriptor(key: $0.field, ascending: $0.order == .forward) }
         }
     }

@@ -27,7 +27,7 @@ actor RequestGate {
     }
 
     func leave() {
-        guard waiting.count > 0 else {
+        guard !waiting.isEmpty else {
             inFlight = Swift.max(0, inFlight - 1)
             return
         }

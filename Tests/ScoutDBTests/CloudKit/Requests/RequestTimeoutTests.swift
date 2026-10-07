@@ -72,7 +72,7 @@ private actor Gate {
 
     func open() {
         isOpen = true
-        while waiters.count > 0 {
+        while !waiters.isEmpty {
             waiters.removeFirst().resume()
         }
     }

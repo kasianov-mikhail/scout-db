@@ -112,7 +112,7 @@ struct SeriesQueryTests {
         let next = week.upperBound..<week.upperBound.hour(Date.hoursPerWeek)
         let points = try await store.query("payment").series("amount", metric: .sum, group: "product", in: next)
 
-        #expect(points.count == 0)
+        #expect(points.isEmpty)
     }
 
     @Test("An equality filter on the grouping field narrows to that group")

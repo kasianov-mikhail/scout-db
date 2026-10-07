@@ -74,9 +74,7 @@ enum LocalQuery {
 
 extension [CKRecord] {
     func sorted(by descriptors: [NSSortDescriptor]) -> [CKRecord] {
-        guard descriptors.count > 0 else {
-            return self
-        }
+        guard !descriptors.isEmpty else { return self }
         return sorted(using: descriptors.compactMap(ColumnOrder.init))
     }
 }

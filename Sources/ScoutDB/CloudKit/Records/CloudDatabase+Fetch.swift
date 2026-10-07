@@ -65,9 +65,7 @@ extension CloudDatabase {
     /// ```
     ///
     func fetchRecords(ids: [CKRecord.ID], batchSize: Int) async throws -> [CKRecord] {
-        guard ids.count > 0 else {
-            return []
-        }
+        guard !ids.isEmpty else { return [] }
         guard ids.count > batchSize else {
             return try await fetchRecords(ids: ids)
         }
