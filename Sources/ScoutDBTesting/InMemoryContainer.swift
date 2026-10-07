@@ -17,7 +17,7 @@ public final class InMemoryContainer: CloudContainer, @unchecked Sendable {
 
     public init(status: CKAccountStatus = .available) {
         self.status = status
-        publicDatabase = InMemoryDatabase()
+        self.publicDatabase = InMemoryDatabase()
     }
 
     public func accountStatus() async throws -> CKAccountStatus {
