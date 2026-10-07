@@ -56,8 +56,12 @@ extension CKRecord {
             return try? JSONDecoder().decode(IndexPage.self, from: data)
         }
         set {
-            let encoded: Data? = newValue.flatMap { try? JSONEncoder().encode($0) }
-            self[IndexPage.key] = encoded
+            do {
+                self[IndexPage.key] = try newValue.map { try JSONEncoder().encode($0) }
+            } catch {
+                print("Failed to encode the index page: \(error)")
+                self[IndexPage.key] = nil
+            }
         }
     }
 
