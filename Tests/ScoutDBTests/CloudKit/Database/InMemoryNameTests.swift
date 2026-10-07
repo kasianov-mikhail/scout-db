@@ -28,7 +28,7 @@ struct InMemoryNameTests {
         await #expect(throws: CKError.self) {
             try await database.modifyRecords(saving: [makeRecord(named: name)], deleting: [])
         }
-        #expect(database.records.count == 0)
+        #expect(database.records.isEmpty)
     }
 
     @Test("A conditional save reports the refusal per record")

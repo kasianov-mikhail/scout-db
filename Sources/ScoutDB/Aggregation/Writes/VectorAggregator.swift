@@ -77,7 +77,7 @@ struct VectorAggregator {
                 }
             }
 
-            guard retry.count > 0 else {
+            guard !retry.isEmpty else {
                 pending = [:]
                 break
             }
@@ -110,7 +110,7 @@ struct VectorAggregator {
             }
         }
 
-        if cold.count > 0 {
+        if !cold.isEmpty {
             let ids = cold.sorted { $0.recordName < $1.recordName }
 
             for record in try await database.fetchRecords(ids: ids, batchSize: maxBatchSize) {
@@ -137,9 +137,7 @@ struct VectorAggregator {
             raised[index, default: [:]][key] = standing * 2
         }
 
-        guard raised.count > 0 else {
-            return
-        }
+        guard !raised.isEmpty else { return }
 
         try await VectorIndexWriter(database: database)
             .write(raised.mapValues { IndexPage(weeks: [], groups: [], shards: $0) })

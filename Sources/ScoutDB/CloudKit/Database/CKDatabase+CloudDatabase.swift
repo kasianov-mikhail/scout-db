@@ -96,9 +96,7 @@ extension CKDatabase: CloudDatabase {
     }
 
     public func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
-        guard ids.count > 0 else {
-            return []
-        }
+        guard !ids.isEmpty else { return [] }
 
         return try await throttled { database in
             let results = try await database.records(for: ids)

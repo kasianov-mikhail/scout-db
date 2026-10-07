@@ -48,8 +48,8 @@ struct EntityStoreTests {
     @Test("An empty batch writes nothing")
     func emptyBatch() async throws {
         let uuids = try await store.write([], entity: "purchase")
-        #expect(uuids.count == 0)
-        #expect(database.entityRecords.count == 0)
+        #expect(uuids.isEmpty)
+        #expect(database.entityRecords.isEmpty)
     }
 
     @Test("Read restores entity records")

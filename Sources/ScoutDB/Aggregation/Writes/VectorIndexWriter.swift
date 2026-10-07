@@ -37,9 +37,7 @@ struct VectorIndexWriter {
         for _ in 0..<maxRetry {
             pending = try await merge(pending)
 
-            guard pending.count > 0 else {
-                return
-            }
+            guard !pending.isEmpty else { return }
         }
 
         throw VectorIndexError.contended
