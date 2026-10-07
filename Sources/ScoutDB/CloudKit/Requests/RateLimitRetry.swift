@@ -23,7 +23,7 @@ func withRateLimitRetry<R>(
             }
             let window = 0.5 * pow(2, Double(attempt - 1))
             let delay = error.retryAfterSeconds ?? window * (0.5 + 0.5 * Double.random(in: 0..<1))
-            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            try await Task.sleep(for: .seconds(delay))
         }
     }
 }
