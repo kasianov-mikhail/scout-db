@@ -73,8 +73,11 @@ extension SchemaBuilder {
     ///
     /// A field keeps its slot while its name and type hold; retyping moves it
     /// to a fresh slot and closes the old one at this version; omitting it
-    /// closes it outright. Records written under earlier versions stay readable
-    /// through their own, so nothing is rewritten here. Aggregates join rather
+    /// closes it outright. A closed field declared again under its name and
+    /// type reopens its last slot instead of drawing a fresh one, so versions
+    /// that drop and restore a field in turn don't drain the pool. Records
+    /// written under earlier versions stay readable through their own, so
+    /// nothing is rewritten here. Aggregates join rather
     /// than replace — one lapses only with the field it is kept over.
     ///
     /// A kept field may widen its `min` and `max` or drop them, never narrow
@@ -123,6 +126,18 @@ extension SchemaBuilder {
                 kept.until = active.until
                 fields.append(kept)
                 carried.insert(declaration.name)
+            } else if let closed = previous.lastClosed(matching: declaration) {
+                let reopened = try allocator.resolve(
+                    declaration,
+                    since: version,
+                    storage: closed.storage
+                )
+
+                guard reopened.coversBounds(of: closed) else {
+                    throw SchemaError.invalidDefinition(.narrowedBounds(field: declaration.name))
+                }
+
+                fields.append(reopened)
             } else {
                 fields.append(
                     try allocator.resolve(
@@ -181,6 +196,25 @@ extension SchemaBuilder {
             return field.isGroupable && !counted.contains(field.name)
         }
         .map(\.name)
+    }
+}
+
+extension EntityDefinition {
+    /// The most recently closed field a declaration can reopen: same name,
+    /// same type, same pool.
+    ///
+    /// Its slot was reserved since it closed, so no other field holds it, and
+    /// the records under its earlier versions already mean this field.
+    ///
+    fileprivate func lastClosed(matching declaration: SchemaBuilder.Declaration) -> FieldDefinition? {
+        fields
+            .filter {
+                $0.name == declaration.name
+                    && $0.type == declaration.type
+                    && $0.storage.isPayload != declaration.wantsSlot
+                    && !$0.isActive(at: version)
+            }
+            .max { ($0.until ?? 0) < ($1.until ?? 0) }
     }
 }
 
