@@ -513,6 +513,133 @@ struct BuilderTests {
         #expect(total.storage == .slot(.double, "d_02"))
     }
 
+    @Test("A field declared again after it closed reopens its last slot")
+    func closedFieldReopensItsSlot() async throws {
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .field("note", .string)
+            .create()
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .update()
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .field("note", .string)
+            .update()
+
+        let definition = try await registry.definition(for: "ticket")
+        let notes = definition.fields.filter { $0.name == "note" }
+        #expect(notes.count == 2)
+        #expect(Set(notes.map(\.storage.slot)).count == 1)
+        #expect(notes.contains { $0.until == 2 })
+        #expect(notes.contains { $0.since == 3 && $0.until == nil })
+        #expect(try definition.field("note", at: 3).storage == notes[0].storage)
+    }
+
+    @Test("A record written before its field closed reads the field back once it reopens")
+    func reopenedFieldReadsEarlierRecords() async throws {
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .field("note", .string)
+            .create()
+        try await store.write(
+            [EntityWrite(values: ["queue": .string("support"), "note": .string("hello")], uuid: "t-1")],
+            entity: "ticket"
+        )
+
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .update()
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .field("note", .string)
+            .update()
+        try await store.write(
+            [EntityWrite(values: ["queue": .string("support"), "note": .string("again")], uuid: "t-2")],
+            entity: "ticket"
+        )
+
+        let records = try await store.query("ticket").take(10)
+        let notes: [String?] = records.sorted { $0.uuid < $1.uuid }.map { $0["note"] }
+        #expect(notes == ["hello", "again"])
+    }
+
+    @Test("Dropping and restoring a field in turn doesn't drain its pool")
+    func alternatingVersionsKeepThePool() async throws {
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .field("note", .string)
+            .create()
+
+        for _ in 0..<FieldType.string.capacity + 8 {
+            try await store.schema("ticket")
+                .field("queue", .string, .required)
+                .update()
+            try await store.schema("ticket")
+                .field("queue", .string, .required)
+                .field("note", .string)
+                .update()
+        }
+
+        let definition = try await registry.definition(for: "ticket")
+        #expect(Set(definition.fields.filter { $0.name == "note" }.map(\.storage.slot)).count == 1)
+    }
+
+    @Test("A field declared again under another type draws a fresh slot")
+    func retypedFieldDrawsAFreshSlot() async throws {
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .field("note", .string)
+            .create()
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .update()
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .field("note", .int)
+            .update()
+
+        let note = try await registry.definition(for: "ticket").field("note", at: 3)
+        #expect(note.type == .int)
+        #expect(note.storage == .slot(.int, "i_01"))
+    }
+
+    @Test("A payload field declared again after it closed reopens its payload slot")
+    func closedPayloadFieldReopensItsSlot() async throws {
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .field("dump", .bytes, .payload)
+            .create()
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .update()
+        try await store.schema("ticket")
+            .field("queue", .string, .required)
+            .field("dump", .bytes, .payload)
+            .update()
+
+        let dumps = try await registry.definition(for: "ticket").fields.filter { $0.name == "dump" }
+        #expect(dumps.map(\.storage) == [.payload("p_00"), .payload("p_00")])
+    }
+
+    @Test("A reopened field may not narrow the bounds it closed with")
+    func reopenedFieldKeepsItsBounds() async throws {
+        try await store.schema("cart")
+            .field("item", .string, .required)
+            .field("qty", .int, .min(1), .max(20))
+            .create()
+        try await store.schema("cart")
+            .field("item", .string, .required)
+            .update()
+
+        await #expect(throws: SchemaError.invalidDefinition(.narrowedBounds(field: "qty"))) {
+            try await store.schema("cart")
+                .field("item", .string, .required)
+                .field("qty", .int, .min(1), .max(10))
+                .update()
+        }
+    }
+
     @Test("A count declared twice is refused rather than folded twice into a cell")
     func duplicateCount() async throws {
         await #expect(throws: SchemaError.invalidDefinition(.duplicateAggregate("by_page"))) {
