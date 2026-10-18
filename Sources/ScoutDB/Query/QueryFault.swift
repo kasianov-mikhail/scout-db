@@ -12,6 +12,7 @@ enum QueryFault: Equatable, Sendable {
     case singleSortRequired
     case unsortableField(String)
     case unsearchableField(String)
+    case unfilterableField(String)
     case unpageableField(String)
     case nonNumericField(String)
     case disjunctionUnsupported
@@ -32,6 +33,8 @@ extension QueryFault: CustomStringConvertible {
             "Field '\(field)' lives in a pool the server cannot sort by"
         case .unsearchableField(let field):
             "Field '\(field)' is not a searchable text field"
+        case .unfilterableField(let field):
+            "Field '\(field)' holds a file, which no query can filter by"
         case .unpageableField(let field):
             "Field '\(field)' cannot carry a page cursor"
         case .nonNumericField(let field):

@@ -6,6 +6,7 @@
 // https://opensource.org/licenses/MIT.
 
 import CloudKit
+import CryptoKit
 import Foundation
 
 struct EntityEncoder {
@@ -31,7 +32,7 @@ struct EntityEncoder {
 
             switch field.storage {
             case .slot(_, let slot):
-                record[slot] = value.nativeValue
+                record[slot] = try value.nativeValue
             case .payload(let slot):
                 record[slot] = try jsonEncoder.encode(value)
             }
@@ -43,31 +44,52 @@ struct EntityEncoder {
 
 extension RecordValue {
     fileprivate var nativeValue: any CKRecordValueProtocol {
-        switch self {
-        case .string(let value):
-            value
-        case .int(let value):
-            value
-        case .double(let value):
-            value
-        case .date(let value):
-            value
-        case .bytes(let value):
-            value
-        case .strings(let value):
-            value
-        case .ints(let value):
-            value
-        case .doubles(let value):
-            value
-        case .dates(let value):
-            value
-        case .reference(let value):
-            CKRecord.Reference(recordID: CKRecord.ID(recordName: value), action: .none)
-        case .references(let value):
-            value.map { CKRecord.Reference(recordID: CKRecord.ID(recordName: $0), action: .none) }
-        case .blobs(let value):
-            value
+        get throws {
+            switch self {
+            case .string(let value):
+                value
+            case .int(let value):
+                value
+            case .double(let value):
+                value
+            case .date(let value):
+                value
+            case .bytes(let value):
+                value
+            case .strings(let value):
+                value
+            case .ints(let value):
+                value
+            case .doubles(let value):
+                value
+            case .dates(let value):
+                value
+            case .reference(let value):
+                CKRecord.Reference(recordID: CKRecord.ID(recordName: value), action: .none)
+            case .references(let value):
+                value.map { CKRecord.Reference(recordID: CKRecord.ID(recordName: $0), action: .none) }
+            case .blobs(let value):
+                value
+            case .asset(let value):
+                CKAsset(fileURL: try AssetFile(data: value).url)
+            }
         }
+    }
+}
+
+private struct AssetFile {
+    let url: URL
+
+    init(data: Data) throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ScoutDBAssets", isDirectory: true)
+        let name = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        url = directory.appendingPathComponent(name)
+
+        guard !FileManager.default.fileExists(atPath: url.path) else {
+            return
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try data.write(to: url, options: .atomic)
     }
 }

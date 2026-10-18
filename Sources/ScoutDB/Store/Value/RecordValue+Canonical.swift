@@ -30,6 +30,8 @@ extension RecordValue {
             "t[\(value.map { String($0.millisecondsSince1970) }.joined(separator: ","))]"
         case .reference(let value):
             "r\(value)"
+        case .asset(let value):
+            "a\(value.base64EncodedString())"
         case .references(let value):
             "r[\(value.joined(separator: ","))]"
         case .blobs(let value):

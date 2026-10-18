@@ -58,6 +58,11 @@ extension RecordValue {
             self = .bytes(value)
         case let value as CKRecord.Reference:
             self = .reference(value.recordID.recordName)
+        case let value as CKAsset:
+            guard let url = value.fileURL, let data = FileManager.default.contents(atPath: url.path) else {
+                return nil
+            }
+            self = .asset(data)
         case let value as [String]:
             self = .strings(value)
         case let value as [Date]:

@@ -89,6 +89,52 @@ struct EntityDecoderTests {
         #expect(decoded.values["blobs"] == .blobs([]))
     }
 
+    @Test("An asset survives both a slot and the payload")
+    func assets() throws {
+        let definition = makeDefinition(
+            entity: "files",
+            fields: [
+                FieldDefinition(name: "table", type: .asset, storage: .slot(.asset, "a_00")),
+                FieldDefinition(name: "copy", type: .asset, storage: .payload("p_00")),
+            ]
+        )
+        let contents = Data("symbols".utf8)
+        let record = EntityRecord(
+            entity: "files",
+            uuid: "f-1",
+            schemaVersion: 2,
+            values: ["table": .asset(contents), "copy": .asset(contents)]
+        )
+
+        let encoded = try EntityEncoder(definition: definition).encode(record)
+        let asset = try #require(encoded["a_00"] as? CKAsset)
+        let url = try #require(asset.fileURL)
+        #expect(try Data(contentsOf: url) == contents)
+
+        let decoded = try EntityDecoder(definition: definition).decode(encoded)
+        #expect(decoded == record)
+    }
+
+    @Test("The same contents reuse one asset file")
+    func assetFileReuse() throws {
+        let definition = makeDefinition(
+            entity: "files",
+            fields: [FieldDefinition(name: "table", type: .asset, storage: .slot(.asset, "a_00"))]
+        )
+        let encoder = EntityEncoder(definition: definition)
+        let record = EntityRecord(
+            entity: "files",
+            uuid: "f-1",
+            schemaVersion: 2,
+            values: ["table": .asset(Data([7, 7]))]
+        )
+
+        let first = try #require(try encoder.encode(record)["a_00"] as? CKAsset)
+        let second = try #require(try encoder.encode(record)["a_00"] as? CKAsset)
+
+        #expect(first.fileURL == second.fileURL)
+    }
+
     @Test("Reference and blob lists survive both a slot and the payload")
     func referenceAndBlobLists() throws {
         let definition = makeDefinition(
