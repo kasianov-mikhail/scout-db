@@ -18,7 +18,7 @@ extension RecordValue {
             NSNumber(value: value)
         case .date(let value):
             value as NSDate
-        case .bytes(let value):
+        case .bytes(let value), .asset(let value):
             value as NSData
         case .strings(let value):
             value as NSArray

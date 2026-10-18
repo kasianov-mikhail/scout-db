@@ -15,6 +15,7 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
     case timestamp
     case bytes
     case reference
+    case asset
 
     case stringList
     case intList
@@ -39,6 +40,8 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
             "b"
         case .reference:
             "r"
+        case .asset:
+            "a"
         case .stringList:
             "ls"
         case .intList:
@@ -59,8 +62,8 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
     /// CloudKit caps a record type at 256 fields, and the pools split that
     /// ceiling in tiers: thirty-two apiece for the four types a schema leans
     /// on, sixteen for the remaining scalars and the payload, eight for the
-    /// lists, and four for each of the location and asset pools no field type
-    /// claims yet.
+    /// lists, and four apiece for assets and for the location pool no field
+    /// type claims yet.
     ///
     var capacity: Int {
         switch self {
@@ -68,6 +71,8 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
             32
         case .text, .bytes, .reference:
             16
+        case .asset:
+            4
         default:
             8
         }
@@ -120,7 +125,7 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
     func matches(_ value: RecordValue) -> Bool {
         switch (self, value) {
         case (.string, .string), (.text, .string), (.int, .int), (.double, .double),
-            (.timestamp, .date), (.bytes, .bytes), (.reference, .reference),
+            (.timestamp, .date), (.bytes, .bytes), (.reference, .reference), (.asset, .asset),
             (.stringList, .strings), (.intList, .ints), (.doubleList, .doubles), (.timestampList, .dates),
             (.referenceList, .references), (.bytesList, .blobs):
             true

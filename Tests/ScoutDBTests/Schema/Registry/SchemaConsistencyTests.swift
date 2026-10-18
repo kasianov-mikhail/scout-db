@@ -16,7 +16,7 @@ struct SchemaConsistencyTests {
     static let schema = try! String(contentsOf: schemaURL(), encoding: .utf8)
 
     static let heldPools = [
-        "g": "LOCATION QUERYABLE", "a": "ASSET", "lg": "LIST<LOCATION> QUERYABLE", "la": "LIST<ASSET>",
+        "g": "LOCATION QUERYABLE", "lg": "LIST<LOCATION> QUERYABLE", "la": "LIST<ASSET>",
     ]
 
     @Test("Every pool declares exactly its capacity, contiguously", arguments: FieldType.allCases)
@@ -39,6 +39,7 @@ struct SchemaConsistencyTests {
             case .timestamp: "TIMESTAMP QUERYABLE SORTABLE"
             case .bytes: "BYTES QUERYABLE"
             case .reference: "REFERENCE QUERYABLE"
+            case .asset: "ASSET"
             case .stringList: "LIST<STRING> QUERYABLE"
             case .intList: "LIST<INT64> QUERYABLE"
             case .doubleList: "LIST<DOUBLE> QUERYABLE"
@@ -72,7 +73,7 @@ struct SchemaConsistencyTests {
         #expect(allocatable + held.count == columns.count, "Every column is either allocatable or held for later")
     }
 
-    @Test("The location and asset pools stay declared, at a token of their old size")
+    @Test("The pools no field type claims stay declared, at a token of their old size")
     func heldPools() {
         for (prefix, spec) in Self.heldPools {
             let slots = Self.fields(of: "Entity").filter { $0.name.hasPrefix("\(prefix)_") }

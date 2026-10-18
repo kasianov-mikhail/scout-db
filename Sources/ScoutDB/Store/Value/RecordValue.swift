@@ -32,6 +32,9 @@ public enum RecordValue: Hashable, Sendable {
     /// The uuid of another record, stored as a CloudKit reference.
     case reference(String)
 
+    /// A file, uploaded as a CloudKit asset rather than inline with the record.
+    case asset(Data)
+
     /// A list of strings.
     case strings([String])
 
@@ -53,7 +56,7 @@ public enum RecordValue: Hashable, Sendable {
 
 extension RecordValue: Codable {
     private enum CodingKeys: String, CodingKey {
-        case string, int, double, date, bytes, reference
+        case string, int, double, date, bytes, reference, asset
         case strings, ints, doubles, dates, references, blobs
     }
 
@@ -84,6 +87,8 @@ extension RecordValue: Codable {
             self = .blobs(value)
         } else if let value = try container.decodeIfPresent(String.self, forKey: .reference) {
             self = .reference(value)
+        } else if let value = try container.decodeIfPresent(Data.self, forKey: .asset) {
+            self = .asset(value)
         } else {
             throw DecodingError.dataCorrupted(
                 DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Unknown field value type")
@@ -119,6 +124,8 @@ extension RecordValue: Codable {
             try container.encode(value, forKey: .blobs)
         case .reference(let value):
             try container.encode(value, forKey: .reference)
+        case .asset(let value):
+            try container.encode(value, forKey: .asset)
         }
     }
 }

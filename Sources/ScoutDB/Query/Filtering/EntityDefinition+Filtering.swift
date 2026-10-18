@@ -13,7 +13,7 @@ extension EntityDefinition {
         var server = [CKQuery.Filter(field: Envelope.entity, op: .equals, value: .string(entity))]
 
         for filter in filters {
-            let field = try field(filter.field, at: version)
+            let field = try filterableField(name: filter.field)
 
             switch filter.op {
             case .contains where !field.type.isList:
@@ -38,7 +38,7 @@ extension EntityDefinition {
 
     func clientFilters(_ filters: [ClientFilter]) throws -> [ClientFilter] {
         try filters.filter { filter in
-            let field = try field(filter.field, at: version)
+            let field = try filterableField(name: filter.field)
 
             switch filter.op {
             case .contains where !field.type.isList:
@@ -57,6 +57,14 @@ extension EntityDefinition {
                 return false
             }
         }
+    }
+
+    private func filterableField(name: String) throws -> FieldDefinition {
+        let field = try field(name, at: version)
+        guard field.type != .asset else {
+            throw SchemaError.unsupportedQuery(.unfilterableField(name))
+        }
+        return field
     }
 
     func serverSort(_ sort: [EntityStore.Sort]) throws -> [CKQuery.Sort] {
