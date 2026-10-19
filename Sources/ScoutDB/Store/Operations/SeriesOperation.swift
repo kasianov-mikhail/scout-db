@@ -13,21 +13,21 @@ struct SeriesOperation: Sendable {
     let definition: EntityDefinition
     let branches: [[ClientFilter]]
 
-    func points(field: String?, metric: Metric, group: String?, in range: Range<Date>) async throws -> [SeriesPoint] {
+    func points(field: String?, metric: Metric, group: String?, range: Range<Date>) async throws -> [SeriesPoint] {
         let vectors = try reader(field: field, metric: metric, group: group)
-        let groups = try match.groups(narrowedTo: group)
+        let groups = try match.groups(group: group)
 
         return try await vectors.cells(groups: groups, range: range)
             .map { key, value in SeriesPoint(group: key.group, date: key.date, value: value) }
             .sorted()
     }
 
-    func averages(field: String, group: String?, in range: Range<Date>) async throws -> [SeriesPoint] {
-        try definition.requireAverageable(field)
+    func averages(field: String, group: String?, range: Range<Date>) async throws -> [SeriesPoint] {
+        try definition.requireAverageable(name: field)
 
         let totaling = try reader(field: field, metric: .sum, group: group)
         let counting = try reader(field: nil, metric: .sum, group: group)
-        let groups = try match.groups(narrowedTo: group)
+        let groups = try match.groups(group: group)
 
         async let totaled = totaling.cells(groups: groups, range: range)
         async let counted = counting.cells(groups: groups, range: range)

@@ -104,7 +104,7 @@ extension SchemaBuilder {
         return builder
     }
 
-    /// Counts the field's values into the buckets ``QueryBuilder/percentile(_:of:)``
+    /// Counts the field's values into the buckets ``QueryBuilder/percentile(rank: of:)``
     /// reads off; the bounds are exclusive upper ones, ascending.
     ///
     /// A value lands in the first bucket it falls under, and whatever reaches

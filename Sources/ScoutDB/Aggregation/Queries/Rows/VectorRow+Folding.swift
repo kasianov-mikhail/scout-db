@@ -9,14 +9,14 @@ import CloudKit
 import Foundation
 
 extension [VectorRow] {
-    func vectorRows(folding kind: Metric) -> [String: Double] {
+    func vectorRows(kind: Metric) -> [String: Double] {
         Dictionary(grouping: self, by: \.group).compactMapValues {
-            kind.fold($0.flatMap(\.record.cells))
+            kind.fold(values: $0.flatMap(\.record.cells))
         }
     }
 
-    func vectorCells(folding kind: Metric, in range: Range<Date>) -> [SeriesPoint.Key: Double] {
-        Dictionary(flatMap { $0.cells(in: range) }, uniquingKeysWith: kind.combine)
+    func vectorCells(kind: Metric, range: Range<Date>) -> [SeriesPoint.Key: Double] {
+        Dictionary(flatMap { $0.cells(range: range) }, uniquingKeysWith: kind.combine)
     }
 }
 
@@ -36,9 +36,9 @@ extension CKRecord {
 }
 
 extension VectorRow {
-    fileprivate func cells(in range: Range<Date>) -> [SeriesPoint.Key: Double] {
+    fileprivate func cells(range: Range<Date>) -> [SeriesPoint.Key: Double] {
         (0..<Date.hoursPerWeek).reduce(into: [:]) { cells, hour in
-            let date = week.hour(hour)
+            let date = week.hour(index: hour)
 
             guard range.contains(date), let value = record[VectorSlot.cellKeys[hour]] as? Double else {
                 return

@@ -19,7 +19,7 @@ struct ResolveTests {
         var purchase = makePurchase()
         purchase.values["quantity"] = .string("three")
         #expect(throws: SchemaError.typeMismatch("quantity")) {
-            try definition.resolve(purchase.values, at: purchase.schemaVersion)
+            try definition.resolve(values: purchase.values, version: purchase.schemaVersion)
         }
     }
 
@@ -28,7 +28,7 @@ struct ResolveTests {
         var purchase = makePurchase()
         purchase.values["color"] = .string("red")
         #expect(throws: SchemaError.unknownField("color")) {
-            try definition.resolve(purchase.values, at: purchase.schemaVersion)
+            try definition.resolve(values: purchase.values, version: purchase.schemaVersion)
         }
     }
 
@@ -45,7 +45,7 @@ struct ResolveTests {
                 )
             ]
         )
-        let resolved = try definition.resolve([:], at: 2)
+        let resolved = try definition.resolve(values: [:], version: 2)
         #expect(resolved["level"] == .string("info"))
     }
 
@@ -58,7 +58,7 @@ struct ResolveTests {
             ]
         )
         #expect(throws: SchemaError.missingField("name")) {
-            try definition.resolve([:], at: 2)
+            try definition.resolve(values: [:], version: 2)
         }
     }
 
@@ -76,7 +76,7 @@ struct ResolveTests {
             ]
         )
         #expect(throws: SchemaError.invalidValue(.outsideDomain(field: "level"))) {
-            try definition.resolve(["level": .string("debug")], at: 2)
+            try definition.resolve(values: ["level": .string("debug")], version: 2)
         }
     }
 
@@ -89,7 +89,7 @@ struct ResolveTests {
             ]
         )
         #expect(throws: SchemaError.invalidValue(.belowMinimum(field: "count", minimum: 0))) {
-            try definition.resolve(["count": .int(-1)], at: 2)
+            try definition.resolve(values: ["count": .int(-1)], version: 2)
         }
     }
 
@@ -107,9 +107,9 @@ struct ResolveTests {
             ]
         )
         #expect(throws: SchemaError.invalidValue(.outsideDomain(field: "tags"))) {
-            try definition.resolve(["tags": .strings(["red", "blue"])], at: 2)
+            try definition.resolve(values: ["tags": .strings(["red", "blue"])], version: 2)
         }
-        let ok = try definition.resolve(["tags": .strings(["red", "green"])], at: 2)
+        let ok = try definition.resolve(values: ["tags": .strings(["red", "green"])], version: 2)
         #expect(ok["tags"] == .strings(["red", "green"]))
     }
 
@@ -122,7 +122,7 @@ struct ResolveTests {
             ]
         )
         #expect(throws: SchemaError.invalidValue(.belowMinimum(field: "counts", minimum: 0))) {
-            try definition.resolve(["counts": .ints([1, -1, 2])], at: 2)
+            try definition.resolve(values: ["counts": .ints([1, -1, 2])], version: 2)
         }
     }
 }

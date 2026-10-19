@@ -59,7 +59,7 @@ extension SchemaBuilder {
 }
 
 extension SchemaBuilder.FieldConstraint {
-    func apply(to field: inout FieldDefinition) {
+    func apply(field: inout FieldDefinition) {
         switch self {
         case .required:
             field.required = true

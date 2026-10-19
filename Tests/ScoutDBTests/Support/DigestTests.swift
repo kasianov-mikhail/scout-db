@@ -15,8 +15,8 @@ import Testing
 struct DigestTests {
     @Test("Components containing the separator do not collide")
     func separatorDoesNotCollide() {
-        #expect(contentDigest(of: ["a|b", "c"]) != contentDigest(of: ["a", "b|c"]))
-        #expect(contentDigest(of: ["a", "b", "c"]) != contentDigest(of: ["a|b|c"]))
+        #expect(contentDigest(components: ["a|b", "c"]) != contentDigest(components: ["a", "b|c"]))
+        #expect(contentDigest(components: ["a", "b", "c"]) != contentDigest(components: ["a|b|c"]))
     }
 
     @Test("Components free of the separator keep their pre-escaping id")
@@ -24,6 +24,6 @@ struct DigestTests {
         let clean = ["order", "42", "sku-7"]
         let unescaped = SHA256.hash(data: Data(clean.joined(separator: "|").utf8)).map { String(format: "%02x", $0) }
             .joined()
-        #expect(contentDigest(of: clean) == unescaped)
+        #expect(contentDigest(components: clean) == unescaped)
     }
 }

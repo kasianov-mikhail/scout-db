@@ -49,9 +49,9 @@ struct AggregateDeltasTests {
         ]
 
         let deltas = aggregates.deltas(
-            removing: [],
-            adding: [payment("p-0", amount: 2), payment("p-1", amount: 3), payment("p-2", product: "pro")],
-            at: noon,
+            old: [],
+            new: [payment("p-0", amount: 2), payment("p-1", amount: 3), payment("p-2", product: "pro")],
+            now: noon,
             spread: [:]
         )
 
@@ -70,7 +70,7 @@ struct AggregateDeltasTests {
         let aggregates = [AggregateDefinition(date: "date")]
         let stamped = Date(timeIntervalSince1970: 1_785_937_500)
 
-        let deltas = aggregates.deltas(removing: [], adding: [payment("p-0", date: stamped)], at: noon, spread: [:])
+        let deltas = aggregates.deltas(old: [], new: [payment("p-0", date: stamped)], now: noon, spread: [:])
 
         let delta = try #require(deltas[slot("at_date", week: stamped)])
         #expect(delta.cells == [stamped.hourOfWeek: 1])
@@ -80,7 +80,7 @@ struct AggregateDeltasTests {
     func missingDateFallsBackToTheWrite() throws {
         let aggregates = [AggregateDefinition(date: "date")]
 
-        let deltas = aggregates.deltas(removing: [], adding: [payment("p-0")], at: noon, spread: [:])
+        let deltas = aggregates.deltas(old: [], new: [payment("p-0")], now: noon, spread: [:])
 
         let delta = try #require(deltas[slot("at_date")])
         #expect(delta.cells == [noon.hourOfWeek: 1])
@@ -91,9 +91,9 @@ struct AggregateDeltasTests {
         let aggregates = [AggregateDefinition(date: "date")]
 
         let deltas = aggregates.deltas(
-            removing: [],
-            adding: [payment("p-0", date: noon), payment("p-1", date: nextWeek)],
-            at: noon,
+            old: [],
+            new: [payment("p-0", date: noon), payment("p-1", date: nextWeek)],
+            now: noon,
             spread: [:]
         )
 
@@ -106,7 +106,7 @@ struct AggregateDeltasTests {
     func removalReversesASum() throws {
         let aggregates = [AggregateDefinition(metric: .sum, field: "amount")]
 
-        let deltas = aggregates.deltas(removing: [payment("p-0", amount: 5)], adding: [], at: noon, spread: [:])
+        let deltas = aggregates.deltas(old: [payment("p-0", amount: 5)], new: [], now: noon, spread: [:])
 
         let delta = try #require(deltas[slot("sum_amount")])
         #expect(delta.cells == [noon.hourOfWeek: -5])
@@ -116,7 +116,7 @@ struct AggregateDeltasTests {
     func removalHoldsAMinValue() {
         let aggregates = [AggregateDefinition(metric: .min, field: "amount")]
 
-        #expect(aggregates.deltas(removing: [payment("p-0", amount: 5)], adding: [], at: noon, spread: [:]).isEmpty)
+        #expect(aggregates.deltas(old: [payment("p-0", amount: 5)], new: [], now: noon, spread: [:]).isEmpty)
     }
 
     @Test("A record rewritten unchanged plans nothing for a sum aggregate")
@@ -124,7 +124,7 @@ struct AggregateDeltasTests {
         let aggregates = [AggregateDefinition(metric: .sum, field: "amount")]
         let stored = payment("p-0", amount: 5)
 
-        #expect(aggregates.deltas(removing: [stored], adding: [stored], at: noon, spread: [:]).isEmpty)
+        #expect(aggregates.deltas(old: [stored], new: [stored], now: noon, spread: [:]).isEmpty)
     }
 
     @Test("A record rewritten unchanged still plans a write for a min aggregate")
@@ -132,7 +132,7 @@ struct AggregateDeltasTests {
         let aggregates = [AggregateDefinition(metric: .min, field: "amount")]
         let stored = payment("p-0", amount: 5)
 
-        let deltas = aggregates.deltas(removing: [stored], adding: [stored], at: noon, spread: [:])
+        let deltas = aggregates.deltas(old: [stored], new: [stored], now: noon, spread: [:])
 
         let delta = try #require(deltas[slot("min_amount")])
         #expect(delta.cells == [noon.hourOfWeek: 5])
@@ -142,7 +142,7 @@ struct AggregateDeltasTests {
     func missingMetricFieldFoldsNowhere() {
         let aggregates = [AggregateDefinition(metric: .sum, field: "amount")]
 
-        #expect(aggregates.deltas(removing: [], adding: [payment("p-0", amount: nil)], at: noon, spread: [:]).isEmpty)
+        #expect(aggregates.deltas(old: [], new: [payment("p-0", amount: nil)], now: noon, spread: [:]).isEmpty)
     }
 
     @Test("Shards spread one group over slots without losing a record")
@@ -150,7 +150,7 @@ struct AggregateDeltasTests {
         let aggregates = [AggregateDefinition(shards: 4)]
         let batch = (0..<20).map { payment("p-\($0)") }
 
-        let deltas = aggregates.deltas(removing: [], adding: batch, at: noon, spread: [:])
+        let deltas = aggregates.deltas(old: [], new: batch, now: noon, spread: [:])
 
         #expect(deltas.count > 1)
         #expect(deltas.keys.allSatisfy { ($0.shard ?? 0) < 4 })
@@ -162,9 +162,9 @@ struct AggregateDeltasTests {
         let aggregates = [AggregateDefinition(shards: 4)]
 
         let deltas = aggregates.deltas(
-            removing: [payment("p-7", amount: 2)],
-            adding: [payment("p-7", amount: 9)],
-            at: noon,
+            old: [payment("p-7", amount: 2)],
+            new: [payment("p-7", amount: 9)],
+            now: noon,
             spread: [:]
         )
 

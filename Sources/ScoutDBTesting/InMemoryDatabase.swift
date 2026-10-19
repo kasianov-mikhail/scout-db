@@ -42,7 +42,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
             ids.compactMap { record(id: $0)?.duplicate() }
         }
 
-        mutating func replaceAll(with records: [CKRecord]) {
+        mutating func replaceAll(records: [CKRecord]) {
             slots = records
             positions = [:]
             positions.reserveCapacity(records.count)
@@ -53,7 +53,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
             dense = records
         }
 
-        mutating func put(_ record: CKRecord) {
+        mutating func put(record: CKRecord) {
             if let position = positions[record.recordID] {
                 slots[position] = nil
                 emptied += 1
@@ -64,7 +64,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
             compact()
         }
 
-        mutating func remove(_ ids: some Sequence<CKRecord.ID>) {
+        mutating func remove(ids: some Sequence<CKRecord.ID>) {
             var removed = false
             for id in ids {
                 guard let position = positions.removeValue(forKey: id) else {
@@ -123,17 +123,17 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         defer { lock.unlock() }
         do {
             let result = try body()
-            state.tally.add(kind, carrying: size(result))
+            state.tally.add(kind: kind, carried: size(result))
             return result
         } catch {
-            state.tally.fail(kind)
+            state.tally.fail(kind: kind)
             throw error
         }
     }
 
     public var records: [CKRecord] {
         get { lock.withLock { state.table.all() } }
-        set { lock.withLock { state.table.replaceAll(with: newValue) } }
+        set { lock.withLock { state.table.replaceAll(records: newValue) } }
     }
 
     public var errors: [any Error] {
@@ -221,7 +221,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
                 throw CKError(.invalidArguments)
             }
             records.forEach(upsertLocked)
-            state.table.remove(recordIDs)
+            state.table.remove(ids: recordIDs)
         }
     }
 
@@ -245,7 +245,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         if queued.isEmpty, let error = state.writeErrors.popLast() ?? state.errors.popLast() {
             if let conflict = error as? RecordConflictError {
                 queued[conflict.serverRecord.recordID] = conflict
-            } else if Self.isTransport(error) {
+            } else if Self.isTransport(error: error) {
                 throw error
             } else {
                 queued[records[0].recordID] = error
@@ -258,15 +258,15 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
             if !record.recordID.isLegalRecordName {
                 return (record.recordID, .failure(CKError(.invalidArguments)))
             }
-            if let server = conflictingServerLocked(for: record) {
+            if let server = conflictingServerLocked(record: record) {
                 return (record.recordID, .failure(RecordConflictError(serverRecord: server)))
             }
-            upsertLocked(record)
+            upsertLocked(record: record)
             return (record.recordID, .success(record))
         }
     }
 
-    private static func isTransport(_ error: any Error) -> Bool {
+    private static func isTransport(error: any Error) -> Bool {
         if error is URLError {
             return true
         }
@@ -286,7 +286,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         return next
     }
 
-    private func conflictingServerLocked(for record: CKRecord) -> CKRecord? {
+    private func conflictingServerLocked(record: CKRecord) -> CKRecord? {
         guard let stored = state.table.record(id: record.recordID) else {
             return nil
         }
@@ -313,8 +313,8 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         }
     }
 
-    private func upsertLocked(_ record: CKRecord) {
-        state.table.put(record)
+    private func upsertLocked(record: CKRecord) {
+        state.table.put(record: record)
         record.overrideModificationDate(Date())
         record.overrideChangeTag(UUID().uuidString)
     }

@@ -50,13 +50,13 @@ struct RecordFold {
         )
         .records()
 
-        return [aggregate].deltas(removing: [], adding: records, at: since, spread: [:])
+        return [aggregate].deltas(old: [], new: records, now: since, spread: [:])
             .filter {
                 slot, _ in groups?.contains(slot.group) ?? true
             }
             .map { slot, delta in
                 let record = CKRecord(recordType: VectorSlot.recordType, recordID: slot.recordID)
-                delta.apply(to: record)
+                delta.apply(record: record)
                 return VectorRow(group: slot.group, week: slot.week, record: record)
             }
     }

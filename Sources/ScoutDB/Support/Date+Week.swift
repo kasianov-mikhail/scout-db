@@ -26,11 +26,11 @@ extension Date {
         Date(timeIntervalSince1970: (timeIntervalSince1970 / Self.secondsPerHour).rounded(.up) * Self.secondsPerHour)
     }
 
-    func hour(_ index: Int) -> Date {
+    func hour(index: Int) -> Date {
         addingTimeInterval(Double(index) * Self.secondsPerHour)
     }
 
-    func covers(_ range: Range<Date>) -> Bool {
-        self < range.upperBound && hour(Self.hoursPerWeek) > range.lowerBound
+    func covers(range: Range<Date>) -> Bool {
+        self < range.upperBound && hour(index: Self.hoursPerWeek) > range.lowerBound
     }
 }

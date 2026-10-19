@@ -8,26 +8,26 @@
 import Foundation
 
 extension [AggregateDefinition] {
-    func deltas(removing old: [EntityRecord], adding new: [EntityRecord], at now: Date, spread: ShardPlans) -> Deltas {
+    func deltas(old: [EntityRecord], new: [EntityRecord], now: Date, spread: ShardPlans) -> Deltas {
         var merged: Deltas = [:]
 
         for (batch, adding) in [(old, false), (new, true)] {
             for entityRecord in batch {
                 for aggregate in self {
-                    let stamp = aggregate.stamp(of: entityRecord, at: now)
+                    let stamp = aggregate.stamp(entityRecord: entityRecord, now: now)
                     let week = stamp.weekStart
 
                     let slot = VectorSlot(
-                        for: entityRecord,
+                        entityRecord: entityRecord,
                         aggregate: aggregate,
                         week: week,
-                        shards: spread[aggregate.name]?.count(for: week) ?? aggregate.shards
+                        shards: spread[aggregate.name]?.count(week: week) ?? aggregate.shards
                     )
 
                     guard let slot else {
                         continue
                     }
-                    guard let one = aggregate.delta(for: entityRecord, at: stamp.hourOfWeek) else {
+                    guard let one = aggregate.delta(entityRecord: entityRecord, hour: stamp.hourOfWeek) else {
                         continue
                     }
 
@@ -44,14 +44,14 @@ extension [AggregateDefinition] {
 }
 
 extension AggregateDefinition {
-    fileprivate func stamp(of entityRecord: EntityRecord, at now: Date) -> Date {
+    fileprivate func stamp(entityRecord: EntityRecord, now: Date) -> Date {
         guard let date, case .date(let value)? = entityRecord.values[date] else {
             return now
         }
         return value
     }
 
-    fileprivate func delta(for entityRecord: EntityRecord, at hour: Int) -> VectorDelta? {
+    fileprivate func delta(entityRecord: EntityRecord, hour: Int) -> VectorDelta? {
         guard let field = measure?.field else {
             return VectorDelta(kind: fold, cells: [hour: 1])
         }

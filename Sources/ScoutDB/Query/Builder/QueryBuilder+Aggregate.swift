@@ -34,9 +34,9 @@ extension QueryBuilder {
     ///
     public func count() async throws -> Int {
         guard let fold = try await fold else {
-            throw uncovered(nil)
+            throw uncovered(field: nil)
         }
-        let folded = try await fold.cell(of: nil, folding: .sum) ?? 0
+        let folded = try await fold.cell(field: nil, kind: .sum) ?? 0
         let counted = Int(exactly: folded.rounded()) ?? Int.max
 
         return Swift.min(counted, ceiling ?? Int.max)
@@ -56,7 +56,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func sum(_ field: String) async throws -> Double {
-        try await value(of: field, metric: .sum) ?? 0
+        try await value(field: field, metric: .sum) ?? 0
     }
 
     /// The smallest value of a numeric field across the matching records.
@@ -73,7 +73,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func min(_ field: String) async throws -> Double? {
-        try await value(of: field, metric: .min)
+        try await value(field: field, metric: .min)
     }
 
     /// The largest value of a numeric field across the matching records.
@@ -89,7 +89,7 @@ extension QueryBuilder {
     /// ```
     ///
     public func max(_ field: String) async throws -> Double? {
-        try await value(of: field, metric: .max)
+        try await value(field: field, metric: .max)
     }
 
     /// The mean of a numeric field across the matching records.
@@ -108,30 +108,30 @@ extension QueryBuilder {
     /// ```
     ///
     public func average(_ field: String) async throws -> Double? {
-        try await value(of: field, metric: .average)
+        try await value(field: field, metric: .average)
     }
 }
 
 extension QueryBuilder {
-    private func value(of field: String, metric: Metric) async throws -> Double? {
+    private func value(field: String, metric: Metric) async throws -> Double? {
         let definition = try await self.definition
-        let target = try definition.field(field, at: definition.version)
+        let target = try definition.field(name: field, version: definition.version)
 
         guard [.int, .double].contains(target.type) else {
             throw SchemaError.unsupportedQuery(.nonNumericField(field))
         }
         if metric == .average {
-            try definition.requireAverageable(field)
+            try definition.requireAverageable(name: field)
         }
         guard let fold = try await fold else {
-            throw uncovered(field)
+            throw uncovered(field: field)
         }
         guard metric == .average else {
-            return try await fold.cell(of: field, folding: metric)
+            return try await fold.cell(field: field, kind: metric)
         }
 
-        async let summed = fold.cell(of: field, folding: .sum)
-        async let counted = fold.cell(of: nil, folding: .sum)
+        async let summed = fold.cell(field: field, kind: .sum)
+        async let counted = fold.cell(field: nil, kind: .sum)
 
         guard let total = try await summed else {
             return nil
@@ -143,7 +143,7 @@ extension QueryBuilder {
         return total / count
     }
 
-    private func uncovered(_ field: String?) -> SchemaError {
+    private func uncovered(field: String?) -> SchemaError {
         SchemaError.unsupportedQuery(
             .noAggregate(
                 entity: entity,

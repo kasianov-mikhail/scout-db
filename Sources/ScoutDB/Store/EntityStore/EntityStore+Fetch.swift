@@ -9,7 +9,7 @@ import CloudKit
 
 extension EntityStore {
     public func fetch(entity: String, uuids: [String]) async throws -> [EntityRecord] {
-        let definition = try await registry.definition(for: entity)
+        let definition = try await registry.definition(entity: entity)
         let decoder = EntityDecoder(definition: definition)
         let ids = uuids.map(CKRecord.ID.init(recordName:))
         let records = try await database.fetchRecords(ids: ids, batchSize: 100)
@@ -31,7 +31,7 @@ extension EntityStore {
         guard let entity = record[Envelope.entity] as? String else {
             return nil
         }
-        let definition = try await registry.definition(for: entity)
-        return try EntityDecoder(definition: definition).decode(record)
+        let definition = try await registry.definition(entity: entity)
+        return try EntityDecoder(definition: definition).decode(record: record)
     }
 }

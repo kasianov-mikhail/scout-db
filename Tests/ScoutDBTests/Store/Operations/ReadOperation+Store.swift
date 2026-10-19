@@ -15,7 +15,7 @@ extension ReadOperation {
     {
         self.init(
             database: store.database,
-            definition: try await store.registry.definition(for: entity),
+            definition: try await store.registry.definition(entity: entity),
             branches: branches,
             sort: sort,
             fields: nil

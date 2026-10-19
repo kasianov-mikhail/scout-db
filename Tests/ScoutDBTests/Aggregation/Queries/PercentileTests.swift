@@ -31,7 +31,7 @@ struct PercentileTests {
         ]
     ) async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "request",
                 fields: [
                     FieldDefinition(name: "route", type: .string, storage: .slot(.string, "s_02")),
@@ -198,10 +198,10 @@ struct PercentileTests {
         let histogram = AggregateDefinition.Histogram(field: "latency", bounds: Self.bounds)
 
         #expect(histogram.groupKeys == ["i0", "i1", "i2", "i3", "i4"])
-        #expect(histogram.groupKey(of: 5) == "i0")
-        #expect(histogram.groupKey(of: 10) == "i1")
-        #expect(histogram.groupKey(of: 39.9) == "i3")
-        #expect(histogram.groupKey(of: 40) == "i4")
-        #expect(histogram.groupKey(of: 4_000) == "i4")
+        #expect(histogram.groupKey(value: 5) == "i0")
+        #expect(histogram.groupKey(value: 10) == "i1")
+        #expect(histogram.groupKey(value: 39.9) == "i3")
+        #expect(histogram.groupKey(value: 40) == "i4")
+        #expect(histogram.groupKey(value: 4_000) == "i4")
     }
 }

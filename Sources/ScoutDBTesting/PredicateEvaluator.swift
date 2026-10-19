@@ -9,7 +9,7 @@ import CloudKit
 import Foundation
 
 package enum PredicateEvaluator {
-    package static func evaluate(_ predicate: NSPredicate, record: CKRecord) -> Bool? {
+    package static func evaluate(predicate: NSPredicate, record: CKRecord) -> Bool? {
         if let compound = predicate as? NSCompoundPredicate {
             let subpredicates = compound.subpredicates as? [NSPredicate] ?? []
 
@@ -21,7 +21,9 @@ package enum PredicateEvaluator {
                 return combine(subpredicates: subpredicates, record: record, decisive: true)
 
             case .not:
-                guard let subpredicate = subpredicates.first, let result = evaluate(subpredicate, record: record) else {
+                guard let subpredicate = subpredicates.first,
+                    let result = evaluate(predicate: subpredicate, record: record)
+                else {
                     return nil
                 }
                 return !result
@@ -32,7 +34,7 @@ package enum PredicateEvaluator {
         }
 
         if let comparison = predicate as? NSComparisonPredicate {
-            return evaluate(comparison, record: record)
+            return evaluate(comparison: comparison, record: record)
         }
         if predicate == NSPredicate(value: true) {
             return true
@@ -47,7 +49,7 @@ package enum PredicateEvaluator {
     private static func combine(subpredicates: [NSPredicate], record: CKRecord, decisive: Bool) -> Bool? {
         var sawUnknown = false
         for subpredicate in subpredicates {
-            guard let result = evaluate(subpredicate, record: record) else {
+            guard let result = evaluate(predicate: subpredicate, record: record) else {
                 sawUnknown = true
                 continue
             }
@@ -58,9 +60,9 @@ package enum PredicateEvaluator {
         return sawUnknown ? nil : !decisive
     }
 
-    private static func evaluate(_ comparison: NSComparisonPredicate, record: CKRecord) -> Bool? {
+    private static func evaluate(comparison: NSComparisonPredicate, record: CKRecord) -> Bool? {
         if comparison.leftExpression.expressionType == .evaluatedObject {
-            return evaluateSearch(comparison, record: record)
+            return evaluateSearch(comparison: comparison, record: record)
         }
 
         guard comparison.leftExpression.expressionType == .keyPath else {
@@ -85,17 +87,17 @@ package enum PredicateEvaluator {
 
         switch comparison.predicateOperatorType {
         case .equalTo:
-            return compare(value, target) == .orderedSame
+            return compare(lhs: value, rhs: target) == .orderedSame
         case .notEqualTo:
-            return compare(value, target) != .orderedSame
+            return compare(lhs: value, rhs: target) != .orderedSame
         case .greaterThan:
-            return compare(value, target) == .orderedDescending
+            return compare(lhs: value, rhs: target) == .orderedDescending
         case .greaterThanOrEqualTo:
-            return compare(value, target) != .orderedAscending
+            return compare(lhs: value, rhs: target) != .orderedAscending
         case .lessThan:
-            return compare(value, target) == .orderedAscending
+            return compare(lhs: value, rhs: target) == .orderedAscending
         case .lessThanOrEqualTo:
-            return compare(value, target) != .orderedDescending
+            return compare(lhs: value, rhs: target) != .orderedDescending
 
         case .beginsWith:
             guard let text = value as? String, let prefix = target as? String else {
@@ -107,11 +109,11 @@ package enum PredicateEvaluator {
             guard let options = target as? [Any] else {
                 return nil
             }
-            return options.contains { compare(value, $0) == .orderedSame }
+            return options.contains { compare(lhs: value, rhs: $0) == .orderedSame }
 
         case .contains:
             if let list = value as? [Any] {
-                return list.contains { compare($0, target) == .orderedSame }
+                return list.contains { compare(lhs: $0, rhs: target) == .orderedSame }
             }
             guard let text = value as? String, let needle = target as? String else {
                 return nil
@@ -123,7 +125,7 @@ package enum PredicateEvaluator {
         }
     }
 
-    private static func evaluateSearch(_ comparison: NSComparisonPredicate, record: CKRecord) -> Bool? {
+    private static func evaluateSearch(comparison: NSComparisonPredicate, record: CKRecord) -> Bool? {
         guard comparison.rightExpression.expressionType == .constantValue else {
             return nil
         }
@@ -153,7 +155,7 @@ package enum PredicateEvaluator {
         return false
     }
 
-    package static func compare(_ lhs: Any?, _ rhs: Any?) -> ComparisonResult {
+    package static func compare(lhs: Any?, rhs: Any?) -> ComparisonResult {
         switch (lhs, rhs) {
         case (nil, nil):
             return .orderedSame
@@ -162,25 +164,25 @@ package enum PredicateEvaluator {
         case (_, nil):
             return .orderedDescending
         case (let lhs as String, let rhs as String):
-            return order(lhs, rhs)
+            return order(lhs: lhs, rhs: rhs)
         case (let lhs as NSNumber, let rhs as NSNumber):
             return lhs.compare(rhs)
         case (let lhs as Date, let rhs as Date):
-            return order(lhs, rhs)
+            return order(lhs: lhs, rhs: rhs)
         case (let lhs as Data, let rhs as Data):
-            return order(lhs, rhs)
+            return order(lhs: lhs, rhs: rhs)
         case (let lhs as [Any], let rhs as [Any]):
-            return order(lhs, rhs)
+            return order(lhs: lhs, rhs: rhs)
 
         default:
-            if let lhs = recordName(of: lhs), let rhs = recordName(of: rhs) {
-                return order(lhs, rhs)
+            if let lhs = recordName(value: lhs), let rhs = recordName(value: rhs) {
+                return order(lhs: lhs, rhs: rhs)
             }
-            return order(rank(of: lhs), rank(of: rhs))
+            return order(lhs: rank(value: lhs), rhs: rank(value: rhs))
         }
     }
 
-    private static func recordName(of value: Any?) -> String? {
+    private static func recordName(value: Any?) -> String? {
         switch value {
         case let value as CKRecord.Reference:
             value.recordID.recordName
@@ -191,7 +193,7 @@ package enum PredicateEvaluator {
         }
     }
 
-    private static func rank(of value: Any?) -> Int {
+    private static func rank(value: Any?) -> Int {
         switch value {
         case is NSNumber:
             0
@@ -210,25 +212,25 @@ package enum PredicateEvaluator {
         }
     }
 
-    private static func order(_ lhs: Data, _ rhs: Data) -> ComparisonResult {
+    private static func order(lhs: Data, rhs: Data) -> ComparisonResult {
         guard let mismatch = zip(lhs, rhs).first(where: { $0 != $1 }) else {
-            return order(lhs.count, rhs.count)
+            return order(lhs: lhs.count, rhs: rhs.count)
         }
-        return order(mismatch.0, mismatch.1)
+        return order(lhs: mismatch.0, rhs: mismatch.1)
     }
 
-    private static func order(_ lhs: [Any], _ rhs: [Any]) -> ComparisonResult {
+    private static func order(lhs: [Any], rhs: [Any]) -> ComparisonResult {
         for (lhs, rhs) in zip(lhs, rhs) {
-            let element = compare(lhs, rhs)
+            let element = compare(lhs: lhs, rhs: rhs)
 
             guard element == .orderedSame else {
                 return element
             }
         }
-        return order(lhs.count, rhs.count)
+        return order(lhs: lhs.count, rhs: rhs.count)
     }
 
-    private static func order<T: Comparable>(_ lhs: T, _ rhs: T) -> ComparisonResult {
+    private static func order<T: Comparable>(lhs: T, rhs: T) -> ComparisonResult {
         lhs == rhs ? .orderedSame : (lhs < rhs ? .orderedAscending : .orderedDescending)
     }
 }

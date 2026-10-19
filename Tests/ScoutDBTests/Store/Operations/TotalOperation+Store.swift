@@ -11,7 +11,7 @@ extension TotalOperation {
     init(store: EntityStore, entity: String, branches: [[ClientFilter]] = [[]]) async throws {
         self.init(
             database: store.database,
-            definition: try await store.registry.definition(for: entity),
+            definition: try await store.registry.definition(entity: entity),
             branches: branches
         )
     }

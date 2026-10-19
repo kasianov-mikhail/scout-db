@@ -10,8 +10,8 @@ import Foundation
 extension EntityDefinition {
     private static let patterns = PatternCache()
 
-    func resolve(_ values: [String: RecordValue], at version: Int) throws -> [String: RecordValue] {
-        let active = fields(at: version)
+    func resolve(values: [String: RecordValue], version: Int) throws -> [String: RecordValue] {
+        let active = fields(version: version)
         var resolved = values
 
         for field in active where resolved[field.name] == nil {
@@ -26,14 +26,14 @@ extension EntityDefinition {
                 continue
             }
 
-            guard field.type.matches(value) else {
+            guard field.type.matches(value: value) else {
                 throw SchemaError.typeMismatch(field.name)
             }
 
             if let allowed = field.allowed, !value.strings.allSatisfy(allowed.contains) {
                 throw SchemaError.invalidValue(.outsideDomain(field: field.name))
             }
-            if let pattern = field.pattern, let regex = Self.patterns.regex(for: pattern) {
+            if let pattern = field.pattern, let regex = Self.patterns.regex(pattern: pattern) {
                 if !value.strings.allSatisfy({ $0.wholeMatch(of: regex) != nil }) {
                     throw SchemaError.invalidValue(.patternMismatch(field: field.name))
                 }
@@ -50,7 +50,7 @@ extension EntityDefinition {
         }
 
         for name in resolved.keys {
-            try field(name, at: version)
+            try field(name: name, version: version)
         }
 
         return resolved
@@ -61,7 +61,7 @@ private final class PatternCache: @unchecked Sendable {
     private let lock = NSLock()
     private var compiled: [String: Regex<AnyRegexOutput>?] = [:]
 
-    func regex(for pattern: String) -> Regex<AnyRegexOutput>? {
+    func regex(pattern: String) -> Regex<AnyRegexOutput>? {
         lock.withLock {
             if let known = compiled[pattern] {
                 return known

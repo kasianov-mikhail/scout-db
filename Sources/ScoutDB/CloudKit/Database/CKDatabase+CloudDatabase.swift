@@ -68,7 +68,7 @@ extension CKDatabase: CloudDatabase {
             guard let result = results[record.recordID] else {
                 return (record.recordID, .failure(CKError(.internalError)))
             }
-            guard case .failure(let error) = result, let conflict = RecordConflictError(error) else {
+            guard case .failure(let error) = result, let conflict = RecordConflictError(error: error) else {
                 return (record.recordID, result)
             }
             return (record.recordID, .failure(conflict))

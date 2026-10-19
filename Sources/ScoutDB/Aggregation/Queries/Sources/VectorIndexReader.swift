@@ -19,11 +19,11 @@ struct VectorIndexReader {
 
             guard let record = try await database.fetchRecord(id: index.recordID) else {
                 let empty = IndexPage(weeks: [], groups: [])
-                try? await VectorIndexWriter(database: database).write([index: empty])
+                try? await VectorIndexWriter(database: database).write(wanted: [index: empty])
                 return empty
             }
 
-            return try record.indexPage(named: index.recordID)
+            return try record.indexPage(id: index.recordID)
         }
     }
 
@@ -37,7 +37,7 @@ struct VectorIndexReader {
             guard let week = named[record.recordID] else {
                 return []
             }
-            return try record.indexPage(named: record.recordID).groups.keys(week: week)
+            return try record.indexPage(id: record.recordID).groups.keys(week: week)
         }
     }
 }

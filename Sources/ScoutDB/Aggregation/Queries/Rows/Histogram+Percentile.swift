@@ -8,7 +8,7 @@
 import Foundation
 
 extension AggregateDefinition.Histogram {
-    func percentile(_ rank: Double, over counts: [Double]) -> Double? {
+    func percentile(rank: Double, counts: [Double]) -> Double? {
         let total = counts.reduce(0, +)
 
         guard total > 0 else {

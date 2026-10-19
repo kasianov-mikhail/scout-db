@@ -23,7 +23,7 @@ extension IndexedBatch: Comparable {
 }
 
 extension Sequence {
-    func orderedBatches<Item>(_ body: @escaping @Sendable (Element) async throws -> [Item]) async throws -> [Item]
+    func orderedBatches<Item>(body: @escaping @Sendable (Element) async throws -> [Item]) async throws -> [Item]
     where Element: Sendable {
         try await withThrowingTaskGroup(of: IndexedBatch<Item>.self) { group in
             for (index, element) in enumerated() {

@@ -28,7 +28,7 @@ public struct QueryBuilder: Sendable {
 
     var definition: EntityDefinition {
         get async throws {
-            try await store.registry.definition(for: entity)
+            try await store.registry.definition(entity: entity)
         }
     }
 }

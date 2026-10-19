@@ -9,7 +9,7 @@ import Foundation
 
 struct FieldOrder: SortComparator, Hashable, Sendable {
     enum Key: Hashable, Sendable {
-        case field(String)
+        case field(name: String)
         case uuid
     }
 
@@ -19,18 +19,18 @@ struct FieldOrder: SortComparator, Hashable, Sendable {
     func compare(_ lhs: EntityRecord, _ rhs: EntityRecord) -> ComparisonResult {
         switch order {
         case .forward:
-            rank(lhs, rhs)
+            rank(lhs: lhs, rhs: rhs)
         case .reverse:
-            rank(rhs, lhs)
+            rank(lhs: rhs, rhs: lhs)
         }
     }
 
-    private func rank(_ lhs: EntityRecord, _ rhs: EntityRecord) -> ComparisonResult {
+    private func rank(lhs: EntityRecord, rhs: EntityRecord) -> ComparisonResult {
         switch key {
-        case .field(let name):
-            RecordValue.rank(lhs.values[name], rhs.values[name])
+        case .field(name: let name):
+            RecordValue.rank(lhs: lhs.values[name], rhs: rhs.values[name])
         case .uuid:
-            RecordValue.rank(.string(lhs.uuid), .string(rhs.uuid))
+            RecordValue.rank(lhs: .string(lhs.uuid), rhs: .string(rhs.uuid))
         }
     }
 }

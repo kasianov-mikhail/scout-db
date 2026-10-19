@@ -38,23 +38,23 @@ extension EntityDefinition {
 }
 
 extension EntityDefinition {
-    func fields(at version: Int) -> [FieldDefinition] {
-        index.fields(at: version, of: fields)
+    func fields(version: Int) -> [FieldDefinition] {
+        index.fields(version: version, fields: fields)
     }
 
     var activeFields: [FieldDefinition] {
-        index.fields(at: version, of: fields)
+        index.fields(version: version, fields: fields)
     }
 
-    @discardableResult func field(_ name: String, at version: Int) throws -> FieldDefinition {
-        guard let field = index.fieldsByName(at: version, of: fields)[name] else {
+    @discardableResult func field(name: String, version: Int) throws -> FieldDefinition {
+        guard let field = index.fieldsByName(version: version, fields: fields)[name] else {
             throw SchemaError.unknownField(name)
         }
         return field
     }
 
-    func requireAverageable(_ name: String) throws {
-        guard try field(name, at: version).alwaysPresent else {
+    func requireAverageable(name: String) throws {
+        guard try field(name: name, version: version).alwaysPresent else {
             throw SchemaError.unsupportedQuery(.averageOfOptional(name))
         }
     }

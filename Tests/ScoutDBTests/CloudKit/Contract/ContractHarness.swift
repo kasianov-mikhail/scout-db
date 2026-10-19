@@ -70,7 +70,7 @@ final class ContractFixture {
     ) async throws -> String {
         let entity = entity(name)
         try await registry.publish(
-            EntityDefinition(entity: entity, version: 1, fields: fields, aggregates: aggregates)
+            definition: EntityDefinition(entity: entity, version: 1, fields: fields, aggregates: aggregates)
         )
         published.append(entity)
         return entity

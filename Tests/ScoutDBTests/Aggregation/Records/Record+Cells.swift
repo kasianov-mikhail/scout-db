@@ -11,7 +11,7 @@ import CloudKit
 
 extension CKRecord {
     func cells(folding kind: Metric = .sum) -> Double? {
-        kind.fold(VectorSlot.cellKeys.compactMap { self[$0] as? Double })
+        kind.fold(values: VectorSlot.cellKeys.compactMap { self[$0] as? Double })
     }
 
     subscript(cell hour: Int) -> Double? {

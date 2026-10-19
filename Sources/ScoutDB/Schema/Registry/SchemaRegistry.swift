@@ -18,7 +18,7 @@ public actor SchemaRegistry {
         self.database = database
     }
 
-    func definition(for entity: String) async throws -> EntityDefinition {
+    func definition(entity: String) async throws -> EntityDefinition {
         if let cached = cache[entity] {
             return cached
         }
@@ -27,7 +27,7 @@ public actor SchemaRegistry {
         }
 
         let task = Task { () throws -> EntityDefinition in
-            let id = SchemaDescriptorEntry.recordID(for: entity)
+            let id = SchemaDescriptorEntry.recordID(entity: entity)
             guard let record = try await database.fetchRecord(id: id) else {
                 throw SchemaError.unknownEntity(entity)
             }
@@ -48,7 +48,7 @@ public actor SchemaRegistry {
     /// and the rules over them, without the storage the library keeps to
     /// itself.
     public func schema(for entity: String) async throws -> EntitySchema {
-        EntitySchema(definition: try await definition(for: entity))
+        EntitySchema(definition: try await definition(entity: entity))
     }
 
     /// The entity's schema, or `nil` when nothing is published under the name.
@@ -66,7 +66,7 @@ public actor SchemaRegistry {
         }
     }
 
-    func publish(_ definition: EntityDefinition) async throws {
+    func publish(definition: EntityDefinition) async throws {
         try definition.validate()
         let record = try SchemaDescriptorEntry(definition: definition).record
         try await database.modifyRecords(saving: [record], deleting: [])

@@ -29,11 +29,12 @@ struct LocalQuery {
         let matched =
             records
             .filter {
-                $0.recordType == query.recordType && PredicateEvaluator.evaluate(query.predicate, record: $0) == true
+                $0.recordType == query.recordType
+                    && PredicateEvaluator.evaluate(predicate: query.predicate, record: $0) == true
             }
-            .sorted(by: query.sortDescriptors ?? [])
+            .sorted(descriptors: query.sortDescriptors ?? [])
 
-        let page = matched.prefix(capacity).map { $0.duplicate(keeping: desiredKeys) }
+        let page = matched.prefix(capacity).map { $0.duplicate(keys: desiredKeys) }
         let end = page.count
 
         let cursor: QueryCursor? =
@@ -57,7 +58,7 @@ struct LocalQuery {
 
         while index < remaining.count, served.count < capacity {
             if let record = byID[remaining[index]] {
-                let copy = record.duplicate(keeping: desiredKeys)
+                let copy = record.duplicate(keys: desiredKeys)
                 served.append((copy.recordID, .success(copy)))
             }
             index += 1
@@ -71,7 +72,7 @@ struct LocalQuery {
 }
 
 extension CKRecord {
-    fileprivate func duplicate(keeping keys: [String]?) -> CKRecord {
+    fileprivate func duplicate(keys: [String]?) -> CKRecord {
         let copy = duplicate()
         guard let keys else {
             return copy
@@ -84,7 +85,7 @@ extension CKRecord {
 }
 
 extension [CKRecord] {
-    func sorted(by descriptors: [NSSortDescriptor]) -> [CKRecord] {
+    func sorted(descriptors: [NSSortDescriptor]) -> [CKRecord] {
         guard !descriptors.isEmpty else { return self }
         return sorted(using: descriptors.compactMap(ColumnOrder.init))
     }
@@ -94,7 +95,7 @@ private struct ColumnOrder: SortComparator {
     let key: String
     var order: SortOrder
 
-    init?(_ descriptor: NSSortDescriptor) {
+    init?(descriptor: NSSortDescriptor) {
         guard let key = descriptor.key else {
             return nil
         }
@@ -105,9 +106,9 @@ private struct ColumnOrder: SortComparator {
     func compare(_ lhs: CKRecord, _ rhs: CKRecord) -> ComparisonResult {
         switch order {
         case .forward:
-            PredicateEvaluator.compare(lhs[key], rhs[key])
+            PredicateEvaluator.compare(lhs: lhs[key], rhs: rhs[key])
         case .reverse:
-            PredicateEvaluator.compare(rhs[key], lhs[key])
+            PredicateEvaluator.compare(lhs: rhs[key], rhs: lhs[key])
         }
     }
 }

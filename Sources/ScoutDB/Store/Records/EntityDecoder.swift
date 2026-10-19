@@ -13,7 +13,7 @@ struct EntityDecoder {
 
     private let jsonDecoder = JSONDecoder()
 
-    func decode(_ record: CKRecord) throws -> EntityRecord {
+    func decode(record: CKRecord) throws -> EntityRecord {
         guard let version = record[Envelope.version] as? Int64 else {
             throw SchemaError.staleSchema(entity: definition.entity, version: 0)
         }
@@ -22,7 +22,7 @@ struct EntityDecoder {
         }
 
         var values: [String: RecordValue] = [:]
-        for field in definition.fields(at: Int(version)) {
+        for field in definition.fields(version: Int(version)) {
             switch field.storage {
             case .slot(_, let slot):
                 var value = record[slot].flatMap(RecordValue.init(native:))
@@ -48,8 +48,8 @@ struct EntityDecoder {
 }
 
 extension RecordValue {
-    fileprivate init?(native value: Any) {
-        switch value {
+    fileprivate init?(native: Any) {
+        switch native {
         case let value as String:
             self = .string(value)
         case let value as Date:

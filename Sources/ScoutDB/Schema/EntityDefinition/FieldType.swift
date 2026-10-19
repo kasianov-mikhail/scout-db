@@ -79,11 +79,12 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
         }
     }
 
-    func slotIndex(_ slot: String) -> Int? {
-        guard slot.hasPrefix("\(slotPrefix)_"), let index = Int(slot.dropFirst(slotPrefix.count + 1)), index >= 0 else {
-            return nil
-        }
-        return index
+    func slot(index: Int) -> String {
+        String(slotPrefix: slotPrefix, index: index)
+    }
+
+    func slotIndex(slot: String) -> Int? {
+        slot.slotIndex(prefix: slotPrefix)
     }
 
     var isList: Bool {
@@ -114,7 +115,7 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
         }
     }
 
-    func matches(_ value: RecordValue) -> Bool {
+    func matches(value: RecordValue) -> Bool {
         switch (self, value) {
         case (.string, .string), (.text, .string), (.int, .int), (.double, .double),
             (.timestamp, .date), (.bytes, .bytes), (.reference, .reference), (.asset, .asset),

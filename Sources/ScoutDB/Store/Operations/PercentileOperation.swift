@@ -11,7 +11,7 @@ struct PercentileOperation {
     let database: any CloudDatabase
     let definition: EntityDefinition
 
-    func value(of field: String, at rank: Double) async throws -> Double? {
+    func value(field: String, rank: Double) async throws -> Double? {
         guard (0...1).contains(rank) else {
             throw SchemaError.unsupportedQuery(.rankOutOfRange(rank))
         }
@@ -30,11 +30,11 @@ struct PercentileOperation {
             aggregate: aggregate
         )
         .rows(groups: histogram.groupKeys)
-        .vectorRows(folding: aggregate.fold)
+        .vectorRows(kind: aggregate.fold)
 
         let counts = histogram.groupKeys.map { rows[$0] ?? 0 }
 
-        return histogram.percentile(rank, over: counts)
+        return histogram.percentile(rank: rank, counts: counts)
     }
 }
 

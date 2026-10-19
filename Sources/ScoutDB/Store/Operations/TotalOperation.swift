@@ -15,19 +15,19 @@ struct TotalOperation: Sendable {
     func rows(field: String?, metric: Metric, group: String?) async throws -> [AggregateTotal] {
         let aggregate = try match.aggregate(field: field, metric: metric, group: group)
 
-        return try await folds(of: aggregate, group: group)
+        return try await folds(aggregate: aggregate, group: group)
             .map(AggregateTotal.init)
             .sorted()
     }
 
     func averages(field: String, group: String?) async throws -> [AggregateTotal] {
-        try definition.requireAverageable(field)
+        try definition.requireAverageable(name: field)
 
         let totaling = try match.aggregate(field: field, metric: .sum, group: group)
         let counting = try match.aggregate(field: nil, metric: .sum, group: group)
 
-        async let totaled = folds(of: totaling, group: group)
-        async let counted = folds(of: counting, group: group)
+        async let totaled = folds(aggregate: totaling, group: group)
+        async let counted = folds(aggregate: counting, group: group)
 
         let (totals, counts) = try await (totaled, counted)
 
@@ -40,8 +40,8 @@ struct TotalOperation: Sendable {
         .sorted()
     }
 
-    private func folds(of aggregate: AggregateDefinition, group: String?) async throws -> [String: Double] {
-        let narrowed = try match.groups(narrowedTo: group)
+    private func folds(aggregate: AggregateDefinition, group: String?) async throws -> [String: Double] {
+        let narrowed = try match.groups(group: group)
 
         let rows = try await VectorReader(
             database: database,
@@ -49,7 +49,7 @@ struct TotalOperation: Sendable {
             aggregate: aggregate
         )
         .rows(groups: narrowed)
-        .vectorRows(folding: aggregate.fold)
+        .vectorRows(kind: aggregate.fold)
 
         return aggregate.measure?.metric == nil ? rows.filter { $0.value != 0 } : rows
     }

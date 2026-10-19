@@ -17,12 +17,12 @@ struct VectorRow {
         guard week < since else {
             return self
         }
-        guard week.hour(Date.hoursPerWeek) > since else {
+        guard week.hour(index: Date.hoursPerWeek) > since else {
             return nil
         }
 
         let trimmed = record.duplicate()
-        for hour in 0..<Date.hoursPerWeek where week.hour(hour) < since {
+        for hour in 0..<Date.hoursPerWeek where week.hour(index: hour) < since {
             trimmed[VectorSlot.cellKeys[hour]] = nil
         }
         return VectorRow(group: group, week: week, record: trimmed)

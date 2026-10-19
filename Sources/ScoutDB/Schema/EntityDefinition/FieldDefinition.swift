@@ -39,7 +39,7 @@ struct FieldDefinition: Codable, Equatable, Sendable {
         case defaultValue = "default"
     }
 
-    func isActive(at version: Int) -> Bool {
+    func isActive(version: Int) -> Bool {
         version >= (since ?? 1) && version < (until ?? .max)
     }
 
@@ -82,7 +82,7 @@ extension Storage: Codable {
     init(from decoder: any Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
 
-        if PayloadPool.slotIndex(raw) != nil {
+        if PayloadPool.slotIndex(slot: raw) != nil {
             self = .payload(raw)
             return
         }

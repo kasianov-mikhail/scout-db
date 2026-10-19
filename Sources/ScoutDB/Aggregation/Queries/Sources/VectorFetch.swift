@@ -30,7 +30,7 @@ struct VectorFetch {
         var named: [CKRecord.ID: VectorKey] = [:]
 
         for key in keys {
-            for shard in plan.shards(for: key.week) {
+            for shard in plan.shards(week: key.week) {
                 let slot = VectorSlot(
                     key: key,
                     entity: entity,

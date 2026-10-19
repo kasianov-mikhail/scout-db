@@ -24,7 +24,7 @@ extension QueryBuilder {
     ///
     public func filter(_ expression: FilterExpression) -> Self {
         var builder = self
-        builder.alternatives = (FilterExpression(alternatives) && expression).alternatives
+        builder.alternatives = (FilterExpression(alternatives: alternatives) && expression).alternatives
         return builder
     }
 
@@ -41,6 +41,6 @@ extension QueryBuilder {
     /// ```
     ///
     public func filter(_ field: String, _ method: Operator, _ value: RecordValue) -> Self {
-        filter(FilterExpression(ClientFilter(field: field, op: method, value: value)))
+        filter(FilterExpression(filter: ClientFilter(field: field, op: method, value: value)))
     }
 }

@@ -20,6 +20,6 @@ struct VectorIndex: Hashable {
         if let week {
             components.append(String(week.millisecondsSince1970))
         }
-        return CKRecord.ID(recordName: "index-" + contentDigest(of: components))
+        return CKRecord.ID(recordName: "index-" + contentDigest(components: components))
     }
 }

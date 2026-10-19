@@ -17,7 +17,7 @@ actor VectorCache {
         self.limit = limit
     }
 
-    func record(_ id: CKRecord.ID) -> CKRecord? {
+    func record(id: CKRecord.ID) -> CKRecord? {
         guard let entry = entries[id] else {
             return nil
         }
@@ -25,11 +25,11 @@ actor VectorCache {
         return entry.record.duplicate()
     }
 
-    func forget(_ id: CKRecord.ID) {
+    func forget(id: CKRecord.ID) {
         entries[id] = nil
     }
 
-    func keep(_ record: CKRecord) {
+    func keep(record: CKRecord) {
         entries[record.recordID] = Entry(record: record.duplicate(), usage: tick())
         evict()
     }

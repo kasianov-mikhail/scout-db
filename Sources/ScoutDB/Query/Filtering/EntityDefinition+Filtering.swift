@@ -9,7 +9,7 @@ import CloudKit
 import Foundation
 
 extension EntityDefinition {
-    func serverFilters(_ filters: [ClientFilter]) throws -> [CKQuery.Filter] {
+    func serverFilters(filters: [ClientFilter]) throws -> [CKQuery.Filter] {
         var server = [CKQuery.Filter(field: Envelope.entity, op: .equals, value: .string(entity))]
 
         for filter in filters {
@@ -36,7 +36,7 @@ extension EntityDefinition {
         return server
     }
 
-    func clientFilters(_ filters: [ClientFilter]) throws -> [ClientFilter] {
+    func clientFilters(filters: [ClientFilter]) throws -> [ClientFilter] {
         try filters.filter { filter in
             let field = try filterableField(name: filter.field)
 
@@ -60,16 +60,16 @@ extension EntityDefinition {
     }
 
     private func filterableField(name: String) throws -> FieldDefinition {
-        let field = try field(name, at: version)
+        let field = try field(name: name, version: version)
         guard field.type != .asset else {
             throw SchemaError.unsupportedQuery(.unfilterableField(name))
         }
         return field
     }
 
-    func serverSort(_ sort: [EntityStore.Sort]) throws -> [CKQuery.Sort] {
+    func serverSort(sort: [EntityStore.Sort]) throws -> [CKQuery.Sort] {
         try sort.map { sort in
-            let field = try field(sort.field, at: version)
+            let field = try field(name: sort.field, version: version)
 
             guard case .slot(let pool, let slot) = field.storage else {
                 throw SchemaError.unknownField(sort.field)

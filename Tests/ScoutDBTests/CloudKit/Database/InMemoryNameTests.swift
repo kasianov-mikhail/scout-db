@@ -48,7 +48,7 @@ struct InMemoryNameTests {
         let slot = VectorSlot(entity: entity, aggregate: "by_product_id", group: "sku-1", shard: nil, week: .now)
         let index = VectorIndex(entity: entity, aggregate: "by_product_id", week: nil)
 
-        #expect(SchemaDescriptorEntry.recordID(for: entity).isLegalRecordName)
+        #expect(SchemaDescriptorEntry.recordID(entity: entity).isLegalRecordName)
         #expect(slot.recordID.isLegalRecordName)
         #expect(index.recordID.isLegalRecordName)
     }

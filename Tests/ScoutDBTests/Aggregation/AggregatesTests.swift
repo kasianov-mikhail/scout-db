@@ -26,7 +26,7 @@ struct AggregatesTests {
 
     private func publishPayment(aggregates: [AggregateDefinition], required: Bool = false) async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "payment",
                 fields: [
                     FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_02")),
@@ -53,7 +53,7 @@ struct AggregatesTests {
     @Test("An upsert counts once in aggregates")
     func upsertCountsOnce() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "visit",
                 fields: [
                     FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_02")),
@@ -79,7 +79,7 @@ struct AggregatesTests {
     @Test("An upsert with a changed value rebalances a sum aggregate")
     func upsertRebalancesSumView() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "meter",
                 fields: [
                     FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_02")),
@@ -141,7 +141,7 @@ struct AggregatesTests {
     @Test("A min aggregate keeps the extremum an upsert lifted a record off")
     func upsertKeepsMinExtremum() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "meter",
                 fields: [
                     FieldDefinition(name: "user", type: .string, storage: .slot(.string, "s_02")),
@@ -402,7 +402,7 @@ struct AggregatesTests {
     @Test("A aggregate keeps one running total per category")
     func lifetimeView() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "sale",
                 fields: [
                     FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_02")),
@@ -429,7 +429,7 @@ struct AggregatesTests {
     @Test("count() reads a covering aggregate's vector instead of scanning")
     func countThroughLifetimeView() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "sale",
                 fields: [
                     FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_02")),
@@ -468,7 +468,7 @@ struct AggregatesTests {
     @Test("count() honors IN lists and OR groups through the aggregate's vector")
     func countThroughKeySets() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "ticket",
                 fields: [
                     FieldDefinition(name: "kind", type: .string, storage: .slot(.string, "s_02"), required: true),
@@ -518,7 +518,7 @@ struct AggregatesTests {
     @Test("A threshold on a bounded integer field names the vector keys it covers")
     func countThroughNamedDomain() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "crate",
                 fields: [
                     FieldDefinition(
@@ -585,7 +585,7 @@ struct AggregatesTests {
 
     private func publishLedger(required: Bool = true) async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "ledger",
                 fields: [
                     FieldDefinition(
@@ -644,7 +644,7 @@ struct AggregatesTests {
     @Test("An extremum reads its aggregate's vector instead of scanning")
     func extremumThroughView() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "reading",
                 fields: [
                     FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_02"), required: true),
@@ -724,7 +724,7 @@ struct AggregatesTests {
     @Test("A fold with no covering aggregate names what is missing")
     func foldWithoutCoveringView() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "fee",
                 fields: [
                     FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_02"), required: true),

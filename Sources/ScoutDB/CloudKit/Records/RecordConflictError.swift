@@ -14,7 +14,7 @@ package struct RecordConflictError: LocalizedError {
         self.serverRecord = serverRecord
     }
 
-    package init?(_ error: any Error) {
+    package init?(error: any Error) {
         if let conflict = error as? RecordConflictError {
             self = conflict
             return

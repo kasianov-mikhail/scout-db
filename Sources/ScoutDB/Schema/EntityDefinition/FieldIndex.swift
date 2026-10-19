@@ -12,16 +12,16 @@ final class FieldIndex: @unchecked Sendable {
     private var active: [Int: [FieldDefinition]] = [:]
     private var byName: [Int: [String: FieldDefinition]] = [:]
 
-    func fields(at version: Int, of fields: [FieldDefinition]) -> [FieldDefinition] {
+    func fields(version: Int, fields: [FieldDefinition]) -> [FieldDefinition] {
         lock.lock()
         defer {
             lock.unlock()
         }
 
-        return activeFields(at: version, of: fields)
+        return activeFields(version: version, fields: fields)
     }
 
-    func fieldsByName(at version: Int, of fields: [FieldDefinition]) -> [String: FieldDefinition] {
+    func fieldsByName(version: Int, fields: [FieldDefinition]) -> [String: FieldDefinition] {
         lock.lock()
         defer {
             lock.unlock()
@@ -32,7 +32,7 @@ final class FieldIndex: @unchecked Sendable {
         }
 
         let named = Dictionary(
-            activeFields(at: version, of: fields).map { ($0.name, $0) },
+            activeFields(version: version, fields: fields).map { ($0.name, $0) },
             uniquingKeysWith: { first, _ in first }
         )
         byName[version] = named
@@ -40,13 +40,13 @@ final class FieldIndex: @unchecked Sendable {
         return named
     }
 
-    private func activeFields(at version: Int, of fields: [FieldDefinition]) -> [FieldDefinition] {
+    private func activeFields(version: Int, fields: [FieldDefinition]) -> [FieldDefinition] {
         if let cached = active[version] {
             return cached
         }
 
         let filtered = fields.filter {
-            $0.isActive(at: version)
+            $0.isActive(version: version)
         }
         active[version] = filtered
 

@@ -21,11 +21,11 @@ struct SeriesQueryTests {
     let noon = Date(timeIntervalSince1970: 36_000)
 
     var evening: Date {
-        noon.hour(6)
+        noon.hour(index: 6)
     }
 
     var week: Range<Date> {
-        noon.weekStart..<noon.weekStart.hour(Date.hoursPerWeek)
+        noon.weekStart..<noon.weekStart.hour(index: Date.hoursPerWeek)
     }
 
     init() async throws {
@@ -109,7 +109,7 @@ struct SeriesQueryTests {
 
     @Test("A range the vectors miss entirely comes back empty")
     func rangeOutsideTheWeek() async throws {
-        let next = week.upperBound..<week.upperBound.hour(Date.hoursPerWeek)
+        let next = week.upperBound..<week.upperBound.hour(index: Date.hoursPerWeek)
         let points = try await store.query("payment").series("amount", metric: .sum, group: "product", in: next)
 
         #expect(points.isEmpty)

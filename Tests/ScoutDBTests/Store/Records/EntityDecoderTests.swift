@@ -19,8 +19,8 @@ struct EntityDecoderTests {
     @Test("Decode restores the encoded record")
     func roundTrip() throws {
         let purchase = makePurchase()
-        let record = try encoder.encode(purchase)
-        let decoded = try decoder.decode(record)
+        let record = try encoder.encode(entityRecord: purchase)
+        let decoded = try decoder.decode(record: record)
         #expect(decoded == purchase)
     }
 
@@ -35,8 +35,8 @@ struct EntityDecoderTests {
                 "amount": .int(500),
             ]
         )
-        let record = try encoder.encode(old)
-        let decoded = try decoder.decode(record)
+        let record = try encoder.encode(entityRecord: old)
+        let decoded = try decoder.decode(record: record)
         #expect(decoded.schemaVersion == 1)
         #expect(decoded.values["amount"] == .int(500))
         #expect(decoded.values["quantity"] == nil)
@@ -49,7 +49,7 @@ struct EntityDecoderTests {
         record[Envelope.version] = Int64(3)
         record[Envelope.uuid] = "p-3"
         #expect(throws: SchemaError.staleSchema(entity: "purchase", version: 3)) {
-            try decoder.decode(record)
+            try decoder.decode(record: record)
         }
     }
 
@@ -79,8 +79,8 @@ struct EntityDecoderTests {
                 "blobs": .blobs([]),
             ]
         )
-        let encoded = try EntityEncoder(definition: definition).encode(record)
-        let decoded = try EntityDecoder(definition: definition).decode(encoded)
+        let encoded = try EntityEncoder(definition: definition).encode(entityRecord: record)
+        let decoded = try EntityDecoder(definition: definition).decode(record: encoded)
         #expect(decoded.values["tags"] == .strings([]))
         #expect(decoded.values["counts"] == .ints([]))
         #expect(decoded.values["ratios"] == .doubles([]))
@@ -106,12 +106,12 @@ struct EntityDecoderTests {
             values: ["table": .asset(contents), "copy": .asset(contents)]
         )
 
-        let encoded = try EntityEncoder(definition: definition).encode(record)
+        let encoded = try EntityEncoder(definition: definition).encode(entityRecord: record)
         let asset = try #require(encoded["a_00"] as? CKAsset)
         let url = try #require(asset.fileURL)
         #expect(try Data(contentsOf: url) == contents)
 
-        let decoded = try EntityDecoder(definition: definition).decode(encoded)
+        let decoded = try EntityDecoder(definition: definition).decode(record: encoded)
         #expect(decoded == record)
     }
 
@@ -129,8 +129,8 @@ struct EntityDecoderTests {
             values: ["table": .asset(Data([7, 7]))]
         )
 
-        let first = try #require(try encoder.encode(record)["a_00"] as? CKAsset)
-        let second = try #require(try encoder.encode(record)["a_00"] as? CKAsset)
+        let first = try #require(try encoder.encode(entityRecord: record)["a_00"] as? CKAsset)
+        let second = try #require(try encoder.encode(entityRecord: record)["a_00"] as? CKAsset)
 
         #expect(first.fileURL == second.fileURL)
     }
@@ -159,11 +159,11 @@ struct EntityDecoderTests {
                 "originals": blobs,
             ]
         )
-        let encoded = try EntityEncoder(definition: definition).encode(record)
+        let encoded = try EntityEncoder(definition: definition).encode(entityRecord: record)
         #expect((encoded["lr_00"] as? [CKRecord.Reference])?.map(\.recordID.recordName) == ["p-1", "p-2"])
         #expect(encoded["lb_00"] as? [Data] == [Data([0x01, 0x02]), Data()])
 
-        let decoded = try EntityDecoder(definition: definition).decode(encoded)
+        let decoded = try EntityDecoder(definition: definition).decode(record: encoded)
         #expect(decoded == record)
     }
 }

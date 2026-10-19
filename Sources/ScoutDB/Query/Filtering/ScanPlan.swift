@@ -13,19 +13,19 @@ struct ScanPlan {
     let remaining: [ClientFilter]
     var included: (EntityRecord) -> Bool = { _ in true }
 
-    func includes(_ record: EntityRecord) -> Bool {
-        remaining.allSatisfy { $0.matches(record) ?? false } && included(record)
+    func includes(record: EntityRecord) -> Bool {
+        remaining.allSatisfy { $0.matches(record: record) ?? false } && included(record)
     }
 }
 
 extension EntityDefinition {
-    func plan(matching filters: [ClientFilter], sort: [CKQuery.Sort], fields: [String]?) throws -> ScanPlan {
-        let remaining = try clientFilters(filters)
+    func plan(filters: [ClientFilter], sort: [CKQuery.Sort], fields: [String]?) throws -> ScanPlan {
+        let remaining = try clientFilters(filters: filters)
 
         return ScanPlan(
             query: CKQuery(
                 recordType: "Entity",
-                filters: try serverFilters(filters),
+                filters: try serverFilters(filters: filters),
                 sort: sort
             ),
             desiredKeys: try fields.map { try keys(names: $0 + remaining.map(\.field)) },

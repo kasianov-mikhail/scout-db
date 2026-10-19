@@ -56,7 +56,7 @@ struct SchemaConsistencyTests {
         let slots = Self.fields(of: "Entity").filter { $0.name.hasPrefix("\(PayloadPool.slotPrefix)_") }
         #expect(slots.count == PayloadPool.capacity)
 
-        let indices = slots.compactMap { PayloadPool.slotIndex($0.name) }.sorted()
+        let indices = slots.compactMap { PayloadPool.slotIndex(slot: $0.name) }.sorted()
         #expect(indices == Array(0..<PayloadPool.capacity))
         #expect(slots.allSatisfy { $0.spec == "BYTES" }, "Nothing filters a payload slot server-side")
     }
@@ -99,9 +99,9 @@ struct SchemaConsistencyTests {
     @Test("The envelope holds back the slots it stamps")
     func envelopeSlots() {
         for slot in [Envelope.entity, Envelope.uuid] {
-            #expect(FieldType.string.slotIndex(slot).map { $0 < FieldType.string.reserved } == true)
+            #expect(FieldType.string.slotIndex(slot: slot).map { $0 < FieldType.string.reserved } == true)
         }
-        #expect(FieldType.int.slotIndex(Envelope.version).map { $0 < FieldType.int.reserved } == true)
+        #expect(FieldType.int.slotIndex(slot: Envelope.version).map { $0 < FieldType.int.reserved } == true)
     }
 
     @Test("The record's creator is queryable")

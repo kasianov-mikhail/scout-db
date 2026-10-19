@@ -22,7 +22,7 @@ extension Sequence where Element == UInt8 {
     }
 }
 
-func contentDigest(of components: [String]) -> String {
+func contentDigest(components: [String]) -> String {
     let escaped = components.map { component in
         component.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "|", with: "\\|")
     }

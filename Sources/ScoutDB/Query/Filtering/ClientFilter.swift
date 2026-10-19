@@ -14,7 +14,7 @@ struct ClientFilter: Equatable, Sendable {
 }
 
 extension ClientFilter {
-    init?(folding left: [[Self]], _ right: [[Self]]) {
+    init?(left: [[Self]], right: [[Self]]) {
         guard left.count == 1, right.count == 1 else {
             return nil
         }
@@ -24,7 +24,7 @@ extension ClientFilter {
         guard let members = lhs.membershipValues, let others = rhs.membershipValues else {
             return nil
         }
-        guard let values = RecordValue.membership(of: members + others) else {
+        guard let values = RecordValue.membership(values: members + others) else {
             return nil
         }
         self.init(field: lhs.field, op: .in, value: values)

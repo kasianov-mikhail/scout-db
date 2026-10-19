@@ -51,7 +51,7 @@ struct VectorWritesTests {
             slots: VectorCache()
         )
 
-        try await aggregator.rebalance(removing: [], adding: payments(["app", "pro", "max"]))
+        try await aggregator.rebalance(old: [], new: payments(["app", "pro", "max"]))
 
         #expect(slots.count == 6)
         #expect(requests(.fetch) == 3)
@@ -66,11 +66,11 @@ struct VectorWritesTests {
             aggregates: [AggregateDefinition(metric: .sum, field: "amount", date: "date")],
             slots: VectorCache()
         )
-        try await aggregator.rebalance(removing: [], adding: payments(["app"]))
-        try await aggregator.rebalance(removing: [], adding: payments(["pro"]))
+        try await aggregator.rebalance(old: [], new: payments(["app"]))
+        try await aggregator.rebalance(old: [], new: payments(["pro"]))
         database.resetRequests()
 
-        try await aggregator.rebalance(removing: [], adding: payments(["max"]))
+        try await aggregator.rebalance(old: [], new: payments(["max"]))
 
         #expect(requests(.fetch) == 0)
         #expect(requests(.conditionalSave) == 1)
@@ -84,12 +84,12 @@ struct VectorWritesTests {
             aggregates: [AggregateDefinition(metric: .sum, field: "amount", date: "date")],
             slots: VectorCache()
         )
-        try await aggregator.rebalance(removing: [], adding: payments(["app"]))
-        try await aggregator.rebalance(removing: [], adding: payments(["pro"]))
+        try await aggregator.rebalance(old: [], new: payments(["app"]))
+        try await aggregator.rebalance(old: [], new: payments(["pro"]))
         database.resetRequests()
 
         for product in ["max", "ultra", "mini"] {
-            try await aggregator.rebalance(removing: [], adding: payments([product]))
+            try await aggregator.rebalance(old: [], new: payments([product]))
         }
 
         #expect(requests(.fetch) == 0)
@@ -109,11 +109,11 @@ struct VectorWritesTests {
         let aggregates = [AggregateDefinition(metric: .min, field: "amount", date: "date")]
         let stored = payment(amount: 5)
         try await VectorAggregator(database: database, aggregates: aggregates, slots: VectorCache())
-            .rebalance(removing: [], adding: [stored])
+            .rebalance(old: [], new: [stored])
         database.resetRequests()
 
         try await VectorAggregator(database: database, aggregates: aggregates, slots: VectorCache())
-            .rebalance(removing: [stored], adding: [payment(amount: 9)])
+            .rebalance(old: [stored], new: [payment(amount: 9)])
 
         #expect(requests(.conditionalSave) == 1)
         #expect(try #require(slots.first)[cell: hour] == 5)
@@ -124,11 +124,11 @@ struct VectorWritesTests {
         let aggregates = [AggregateDefinition(metric: .min, field: "amount", date: "date")]
         let stored = payment(amount: 5)
         try await VectorAggregator(database: database, aggregates: aggregates, slots: VectorCache())
-            .rebalance(removing: [], adding: [stored])
+            .rebalance(old: [], new: [stored])
         database.resetRequests()
 
         try await VectorAggregator(database: database, aggregates: aggregates, slots: VectorCache())
-            .rebalance(removing: [stored], adding: [payment(amount: 2)])
+            .rebalance(old: [stored], new: [payment(amount: 2)])
 
         #expect(requests(.conditionalSave) == 1)
         #expect(try #require(slots.first)[cell: hour] == 2)
@@ -141,14 +141,14 @@ struct VectorWritesTests {
             aggregates: [AggregateDefinition(metric: .sum, field: "amount", date: "date")],
             slots: VectorCache()
         )
-        try await aggregator.rebalance(removing: [], adding: payments(["app"]))
+        try await aggregator.rebalance(old: [], new: payments(["app"]))
 
         let server = try #require(slots.first).copy() as! CKRecord
         server[cell: hour] = (server[cell: hour] ?? 0) + 5
         try await database.modifyRecords(saving: [server], deleting: [])
         database.resetRequests()
 
-        try await aggregator.rebalance(removing: [], adding: payments(["pro"]))
+        try await aggregator.rebalance(old: [], new: payments(["pro"]))
 
         #expect(requests(.conditionalSave) == 2)
         #expect(try #require(slots.first)[cell: hour] == 7)
@@ -161,7 +161,7 @@ struct VectorWritesTests {
             aggregates: [AggregateDefinition(metric: .sum, field: "amount", date: "date")],
             slots: VectorCache()
         )
-        try await aggregator.rebalance(removing: [], adding: [payment(amount: 1)])
+        try await aggregator.rebalance(old: [], new: [payment(amount: 1)])
 
         let slot = try #require(slots.first)
         database.writeErrors = (0..<4).map { _ in
@@ -171,7 +171,7 @@ struct VectorWritesTests {
         }
         database.resetRequests()
 
-        try await aggregator.rebalance(removing: [], adding: [payment(amount: 3)])
+        try await aggregator.rebalance(old: [], new: [payment(amount: 3)])
 
         #expect(requests(.conditionalSave) == 6)
         #expect(try #require(slots.first)[cell: hour] == 13)
@@ -196,7 +196,7 @@ struct VectorWritesTests {
             server[cell: hour] = 10
             return RecordConflictError(serverRecord: server)
         }
-        try await aggregator.rebalance(removing: [], adding: [payment(amount: 3)])
+        try await aggregator.rebalance(old: [], new: [payment(amount: 3)])
     }
 
     @Test("A week whose slot keeps losing races doubles, and the writer spreads over it next time")
@@ -204,13 +204,13 @@ struct VectorWritesTests {
         let cache = VectorCache()
         let aggregator = aggregator(AggregateDefinition(metric: .sum, field: "amount", date: "date"), slots: cache)
 
-        try await aggregator.rebalance(removing: [], adding: [payment(amount: 1)])
+        try await aggregator.rebalance(old: [], new: [payment(amount: 1)])
         try await contend(aggregator, losing: 3)
 
         #expect(try headShards("sum_amount_at_date") == [String(noon.weekStart.millisecondsSince1970): 2])
         #expect(slots.count == 1)
 
-        try await aggregator.rebalance(removing: [], adding: [payment(amount: 7)])
+        try await aggregator.rebalance(old: [], new: [payment(amount: 7)])
 
         #expect(slots.count == 2)
     }
@@ -220,7 +220,7 @@ struct VectorWritesTests {
         let cache = VectorCache()
         let aggregator = aggregator(AggregateDefinition(metric: .sum, field: "amount", date: "date"), slots: cache)
 
-        try await aggregator.rebalance(removing: [], adding: [payment(amount: 1)])
+        try await aggregator.rebalance(old: [], new: [payment(amount: 1)])
         try await contend(aggregator, losing: 2)
 
         #expect(try headShards("sum_amount_at_date").isEmpty)

@@ -8,22 +8,22 @@
 import Foundation
 
 extension RecordValue {
-    static func membership(of values: [RecordValue]) -> RecordValue? {
+    static func membership(values: [RecordValue]) -> RecordValue? {
         switch values.first {
         case .string:
-            homogeneous(values, of: String.self)
+            homogeneous(values: values, type: String.self)
         case .int:
-            homogeneous(values, of: Int64.self)
+            homogeneous(values: values, type: Int64.self)
         case .double:
-            homogeneous(values, of: Double.self)
+            homogeneous(values: values, type: Double.self)
         case .date:
-            homogeneous(values, of: Date.self)
+            homogeneous(values: values, type: Date.self)
         default:
             nil
         }
     }
 
-    private static func homogeneous<T: RecordListElement>(_ values: [RecordValue], of _: T.Type) -> RecordValue? {
+    private static func homogeneous<T: RecordListElement>(values: [RecordValue], type: T.Type) -> RecordValue? {
         let members = values.compactMap(T.init(recordValue:))
         return members.count == values.count ? T.list(members) : nil
     }

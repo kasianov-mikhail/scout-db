@@ -44,7 +44,7 @@ struct BuilderTests {
 
     @Test("The schema builder assigns slots in declaration order")
     func slotAllocation() async throws {
-        let definition = try await registry.definition(for: "purchase")
+        let definition = try await registry.definition(entity: "purchase")
         #expect(definition.version == 1)
         #expect(definition.fields.first { $0.name == "product_id" }?.storage == .slot(.string, "s_02"))
         #expect(definition.fields.first { $0.name == "quantity" }?.storage == .slot(.int, "i_01"))
@@ -68,7 +68,7 @@ struct BuilderTests {
             .field("dump", .bytes, .payload)
             .update()
 
-        let fields = try await registry.definition(for: "ticket").fields
+        let fields = try await registry.definition(entity: "ticket").fields
         #expect(fields.first { $0.name == "notes" }?.storage == .payload("p_00"))
         #expect(fields.first { $0.name == "trace" }?.storage == .payload("p_01"))
         #expect(fields.first { $0.name == "dump" }?.storage == .payload("p_02"))
@@ -88,7 +88,7 @@ struct BuilderTests {
 
     @Test("Creation vectors every groupable field")
     func implicitVectors() async throws {
-        let definition = try await registry.definition(for: "purchase")
+        let definition = try await registry.definition(entity: "purchase")
         let aggregates = definition.aggregates
         #expect(Set(aggregates.map(\.name)) == ["by_product_id", "by_quantity", "by_amount"])
         #expect(aggregates.first { $0.name == "by_product_id" }?.groupBy == "product_id")
@@ -107,7 +107,7 @@ struct BuilderTests {
             .field("aliases", .stringList)
             .create()
 
-        let aggregates = try await registry.definition(for: "label").aggregates
+        let aggregates = try await registry.definition(entity: "label").aggregates
         #expect(aggregates.map(\.name) == ["by_slug"])
     }
 
@@ -120,7 +120,7 @@ struct BuilderTests {
             .sum("weight", by: "carrier")
             .create()
 
-        let aggregates = try await registry.definition(for: "shipment").aggregates
+        let aggregates = try await registry.definition(entity: "shipment").aggregates
         #expect(aggregates.filter { $0.groupBy == "carrier" }.count == 2)
         #expect(aggregates.first { $0.groupBy == "carrier" && $0.measure?.field != nil }?.measure == .sum("weight"))
         #expect(aggregates.contains { $0.name == "by_carrier" && $0.measure?.field == nil })
@@ -136,7 +136,7 @@ struct BuilderTests {
             .max("value", by: "sensor")
             .create()
 
-        let aggregates = try await registry.definition(for: "reading").aggregates
+        let aggregates = try await registry.definition(entity: "reading").aggregates
         #expect(aggregates.first { $0.name == "min_value_by_sensor" }?.measure == .min("value"))
         #expect(aggregates.first { $0.name == "max_value_by_sensor" }?.measure == .max("value"))
     }
@@ -148,7 +148,7 @@ struct BuilderTests {
             .field("kind", .string, .required)
             .create()
 
-        #expect(try await registry.definition(for: "event").aggregates.compactMap(\.groupBy) == ["kind"])
+        #expect(try await registry.definition(entity: "event").aggregates.compactMap(\.groupBy) == ["kind"])
     }
 
     @Test("An update inherits the vectors instead of building its own")
@@ -161,7 +161,7 @@ struct BuilderTests {
             .field("assignee", .string)
             .update()
 
-        let updated = try await registry.definition(for: "ticket")
+        let updated = try await registry.definition(entity: "ticket")
         #expect(updated.version == 2)
         #expect(updated.aggregates.map(\.name) == ["by_queue"])
     }
@@ -207,7 +207,7 @@ struct BuilderTests {
             .update()
 
         #expect(missing.isEmpty)
-        let updated = try await registry.definition(for: "ticket")
+        let updated = try await registry.definition(entity: "ticket")
         #expect(updated.aggregates.compactMap(\.groupBy) == ["queue", "assignee"])
     }
 
@@ -224,7 +224,7 @@ struct BuilderTests {
             .sum("weight", by: "queue")
             .update()
 
-        let updated = try await registry.definition(for: "ticket").aggregates
+        let updated = try await registry.definition(entity: "ticket").aggregates
         #expect(Set(updated.compactMap(\.groupBy)) == ["queue", "weight"])
         #expect(updated.contains { $0.groupBy == "queue" && $0.measure == .sum("weight") })
         #expect(updated.contains { $0.name == "by_queue" && $0.measure?.field == nil })
@@ -241,7 +241,7 @@ struct BuilderTests {
             .field("queue", .string, .required)
             .update()
 
-        #expect(try await registry.definition(for: "ticket").aggregates.compactMap(\.groupBy) == ["queue"])
+        #expect(try await registry.definition(entity: "ticket").aggregates.compactMap(\.groupBy) == ["queue"])
     }
 
     @Test("Query builder filters, sorts, and limits")
@@ -273,8 +273,8 @@ struct BuilderTests {
             .filter("product_id" == "sku-0" || "product_id" == "sku-1" || "product_id" == "sku-2")
         #expect(builder.alternatives.count == 1)
 
-        let definition = try await registry.definition(for: "purchase")
-        let server = try definition.serverFilters(builder.alternatives[0])
+        let definition = try await registry.definition(entity: "purchase")
+        let server = try definition.serverFilters(filters: builder.alternatives[0])
         #expect(server.contains { $0.op == .in && $0.value == .strings(["sku-0", "sku-1", "sku-2"]) })
     }
 
@@ -314,9 +314,9 @@ struct BuilderTests {
             .filter("product_id" == "sku-0" || "quantity" == 2)
         #expect(builder.alternatives.count == 2)
 
-        let definition = try await registry.definition(for: "purchase")
+        let definition = try await registry.definition(entity: "purchase")
         let branches = try builder.alternatives.map {
-            try definition.serverFilters($0)
+            try definition.serverFilters(filters: $0)
         }
         #expect(branches[0].contains { branches[1].contains($0) })
         #expect(branches.contains { $0.contains { $0.value == .string("sku-0") } })
@@ -341,13 +341,13 @@ struct BuilderTests {
     @Test("A negative match over a slot-backed field runs on the server")
     func negativePushdown() async throws {
         func server(_ builder: QueryBuilder, using definition: EntityDefinition) throws -> [CKQuery.Filter] {
-            try definition.serverFilters(builder.alternatives[0])
+            try definition.serverFilters(filters: builder.alternatives[0])
         }
         func client(_ builder: QueryBuilder, using definition: EntityDefinition) throws -> [ClientFilter] {
-            try definition.clientFilters(builder.alternatives[0])
+            try definition.clientFilters(filters: builder.alternatives[0])
         }
 
-        let purchase = try await registry.definition(for: "purchase")
+        let purchase = try await registry.definition(entity: "purchase")
 
         let slotted = store.query("purchase").filter("product_id", .notEquals, "sku-1")
         #expect(
@@ -368,7 +368,7 @@ struct BuilderTests {
             .field("carrier", .string, .required)
             .field("weight", .double, .defaultValue(.double(0)))
             .create()
-        let shipment = try await registry.definition(for: "shipment")
+        let shipment = try await registry.definition(entity: "shipment")
 
         let listed = store.query("shipment").filter("carrier", .notIn, .strings(["ups", "dhl"]))
         #expect(
@@ -482,7 +482,8 @@ struct BuilderTests {
             .field("email", .string, .matches("[^@]+@[^@]+"))
             .create()
 
-        #expect(try await registry.definition(for: "account").field("email", at: 1).pattern == "[^@]+@[^@]+")
+        #expect(
+            try await registry.definition(entity: "account").field(name: "email", version: 1).pattern == "[^@]+@[^@]+")
         await #expect(throws: SchemaError.invalidValue(.patternMismatch(field: "email"))) {
             try await store.write([EntityWrite(values: ["email": .string("nope")], uuid: "a-1")], entity: "account")
         }
@@ -497,7 +498,7 @@ struct BuilderTests {
             .field("total", .double)
             .update()
 
-        let definition = try await registry.definition(for: "purchase")
+        let definition = try await registry.definition(entity: "purchase")
         #expect(definition.version == 2)
         #expect(definition.fields.first { $0.name == "product_id" }?.storage == .slot(.string, "s_02"))
 
@@ -527,13 +528,13 @@ struct BuilderTests {
             .field("note", .string)
             .update()
 
-        let definition = try await registry.definition(for: "ticket")
+        let definition = try await registry.definition(entity: "ticket")
         let notes = definition.fields.filter { $0.name == "note" }
         #expect(notes.count == 2)
         #expect(Set(notes.map(\.storage.slot)).count == 1)
         #expect(notes.contains { $0.until == 2 })
         #expect(notes.contains { $0.since == 3 && $0.until == nil })
-        #expect(try definition.field("note", at: 3).storage == notes[0].storage)
+        #expect(try definition.field(name: "note", version: 3).storage == notes[0].storage)
     }
 
     @Test("A record written before its field closed reads the field back once it reopens")
@@ -581,7 +582,7 @@ struct BuilderTests {
                 .update()
         }
 
-        let definition = try await registry.definition(for: "ticket")
+        let definition = try await registry.definition(entity: "ticket")
         #expect(Set(definition.fields.filter { $0.name == "note" }.map(\.storage.slot)).count == 1)
     }
 
@@ -599,7 +600,7 @@ struct BuilderTests {
             .field("note", .int)
             .update()
 
-        let note = try await registry.definition(for: "ticket").field("note", at: 3)
+        let note = try await registry.definition(entity: "ticket").field(name: "note", version: 3)
         #expect(note.type == .int)
         #expect(note.storage == .slot(.int, "i_01"))
     }
@@ -618,7 +619,7 @@ struct BuilderTests {
             .field("dump", .bytes, .payload)
             .update()
 
-        let dumps = try await registry.definition(for: "ticket").fields.filter { $0.name == "dump" }
+        let dumps = try await registry.definition(entity: "ticket").fields.filter { $0.name == "dump" }
         #expect(dumps.map(\.storage) == [.payload("p_00"), .payload("p_00")])
     }
 

@@ -12,12 +12,12 @@ struct FoldOperation: Sendable {
     let definition: EntityDefinition
     let query: FilterPlan
 
-    func cell(of field: String?, folding kind: Metric) async throws -> Double? {
+    func cell(field: String?, kind: Metric) async throws -> Double? {
         let covering = query.groupField.map { group in
             definition.aggregates.filter { $0.groupBy == group }
         }
 
-        guard let aggregate = (covering ?? definition.aggregates).covering(field, folding: kind) else {
+        guard let aggregate = (covering ?? definition.aggregates).covering(field: field, metric: kind) else {
             throw SchemaError.unsupportedQuery(
                 .noAggregate(entity: definition.entity, grouping: query.groupField, folding: field)
             )
@@ -30,9 +30,9 @@ struct FoldOperation: Sendable {
         )
         .rows(groups: query.serverGroups)
         .filter { query.groupField == nil || query.groupKeys.contains($0.group) }
-        .vectorRows(folding: kind.storage)
+        .vectorRows(kind: kind.storage)
 
-        return kind.storage.fold(rows.values)
+        return kind.storage.fold(values: rows.values)
     }
 }
 
@@ -51,7 +51,7 @@ extension QueryBuilder {
                 return nil
             }
 
-            query.expandRange(in: definition)
+            query.expandRange(definition: definition)
 
             guard query.bounds == nil else {
                 return nil

@@ -14,7 +14,7 @@ struct AggregateMatch {
     func aggregate(field: String?, metric: Metric, group: String?) throws -> AggregateDefinition {
         let grouping = definition.aggregates.filter { $0.groupBy == group }
 
-        guard let aggregate = grouping.covering(field, folding: metric) else {
+        guard let aggregate = grouping.covering(field: field, metric: metric) else {
             throw SchemaError.unsupportedQuery(
                 .noAggregate(
                     entity: definition.entity,
@@ -26,7 +26,7 @@ struct AggregateMatch {
         return aggregate
     }
 
-    func groups(narrowedTo group: String?) throws -> [String]? {
+    func groups(group: String?) throws -> [String]? {
         guard branches.count == 1 else {
             throw SchemaError.unsupportedQuery(.disjunctionUnsupported)
         }

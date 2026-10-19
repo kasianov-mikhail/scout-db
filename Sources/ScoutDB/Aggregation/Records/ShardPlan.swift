@@ -25,11 +25,11 @@ struct ShardPlan: Equatable {
         self.grown = weeks
     }
 
-    func count(for week: Date) -> Int? {
+    func count(week: Date) -> Int? {
         [grown[week.millisecondsSince1970], floor].compactMap(\.self).max()
     }
 
-    func shards(for week: Date) -> [Int?] {
-        count(for: week).map { (0..<$0).map(Optional.init) } ?? [nil]
+    func shards(week: Date) -> [Int?] {
+        count(week: week).map { (0..<$0).map(Optional.init) } ?? [nil]
     }
 }

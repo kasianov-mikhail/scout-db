@@ -35,9 +35,9 @@ extension QueryBuilder {
         let cells = try await cells
 
         guard metric == .average, let field else {
-            return try await cells.points(field: field, metric: metric, group: group, in: range)
+            return try await cells.points(field: field, metric: metric, group: group, range: range)
         }
-        return try await cells.averages(field: field, group: group, in: range)
+        return try await cells.averages(field: field, group: group, range: range)
     }
 }
 

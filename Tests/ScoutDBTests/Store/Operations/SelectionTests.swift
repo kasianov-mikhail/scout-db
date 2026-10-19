@@ -20,7 +20,7 @@ struct SelectionTests {
     init() async throws {
         registry = SchemaRegistry(database: database)
         store = EntityStore(database: database, registry: registry)
-        try await registry.publish(makePurchaseDefinition())
+        try await registry.publish(definition: makePurchaseDefinition())
 
         for index in 0..<4 {
             var values = makePurchase().values
@@ -80,7 +80,7 @@ struct SelectionTests {
     @Test("A payload sort ranks a selection on the client")
     func payloadSortSelection() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "player",
                 fields: [
                     FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_02")),

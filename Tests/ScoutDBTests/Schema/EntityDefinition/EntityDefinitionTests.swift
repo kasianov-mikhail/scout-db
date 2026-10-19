@@ -42,8 +42,8 @@ struct EntityDefinitionTests {
     @Test("Fields are filtered by since and until")
     func fieldActivity() {
         let definition = makePurchaseDefinition()
-        #expect(definition.fields(at: 1).map(\.name) == ["product_id", "date", "amount", "comment"])
-        #expect(definition.fields(at: 2).map(\.name) == ["product_id", "date", "quantity", "total", "comment"])
+        #expect(definition.fields(version: 1).map(\.name) == ["product_id", "date", "amount", "comment"])
+        #expect(definition.fields(version: 2).map(\.name) == ["product_id", "date", "quantity", "total", "comment"])
     }
 
     @Test("Validation rejects a slot in the wrong pool")

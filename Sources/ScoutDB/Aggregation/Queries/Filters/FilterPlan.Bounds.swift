@@ -13,7 +13,7 @@ extension FilterPlan {
         var lower: Double?
         var upper: Double?
 
-        func narrowed(by filter: ClientFilter) -> Self? {
+        func narrowed(filter: ClientFilter) -> Self? {
             guard filter.field == field else {
                 return nil
             }
