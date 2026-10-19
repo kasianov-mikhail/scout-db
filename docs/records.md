@@ -27,16 +27,13 @@ let uuids = try await store.write(
   the result has one uuid per record, not one per entry.
 - **Validation.** Types and [constraints](schema.md#constraints) are checked on the device before
   anything is sent. Unknown fields, type mismatches and missing required fields throw.
-- **Aggregates.** If the entity has aggregates, the write also updates their cells. See
+- **Aggregates.** If the entity has aggregates, the write also updates them. See
   [Aggregates](aggregates.md#what-aggregates-cost).
 
-A uuid is the CloudKit record name, and all entities share one record type. Use uuids that are unique
-across the whole database, made of ASCII letters, digits, `-`, `_` and `.`, and not starting with `_`.
+A uuid must be unique across the whole database, not only within its entity. Use ASCII letters,
+digits, `-`, `_` and `.`, and do not start it with `_`.
 
 ## Fetching by uuid
-
-A fetch by uuid reads the record directly instead of going through the query index. It sees a record
-right after it is written, while a query may still miss it.
 
 ```swift
 let one = try await store.fetch(uuid: uuid)
@@ -126,10 +123,7 @@ A `.stringList` field supports server-side membership tests with `~~`; see
 
 ## Bytes and assets
 
-`.bytes` and `.asset` both carry `Data`, but they are stored differently:
-
-- `.bytes` is stored inline in the record. Use it for small blobs.
-- `.asset` is uploaded as a CloudKit asset. Use it for files.
+`.bytes` and `.asset` both carry `Data`. Use `.bytes` for small blobs and `.asset` for files.
 
 The typed subscript keeps them apart. `Data` reads and writes `.bytes`; `Asset` reads and writes
 `.asset`:

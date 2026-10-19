@@ -19,21 +19,19 @@ Add the `ScoutDB` product to the app target. Add `ScoutDBTesting` to the test ta
 
 ## Upload the CloudKit schema
 
-ScoutDB stores every entity in two physical record types, `Entity` and `Vector`. Both are declared
-in the [`Schema`](../Schema) file at the repository root. Upload it once per container:
+ScoutDB needs the record types declared in the [`Schema`](../Schema) file at the repository root.
+Upload it once per container:
 
 1. Open the [CloudKit Console](https://icloud.developer.apple.com/dashboard/) and select the container.
 2. Open **Schema** and choose **Import Schema**.
 3. Upload the file to the Development environment.
 4. Deploy the schema to Production when the app is ready.
 
-After that the physical schema is frozen. New entities, new fields and new versions are data in the
-database, not schema changes, so you never upload the file again.
+New entities, new fields and new versions never need a new upload.
 
 ## Connect a store
 
-ScoutDB works with the **public** database only. The shipped schema, its role grants and the zone
-that every request names all describe that database.
+ScoutDB works with the **public** database only.
 
 ```swift
 import CloudKit

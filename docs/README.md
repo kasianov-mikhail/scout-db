@@ -16,15 +16,15 @@ libraries.
 
 ## The model in one page
 
-- **Entity.** A named record type, such as `purchase`. Every entity shares one physical CloudKit
-  record type, so a new entity or field never needs a schema upload.
+- **Entity.** A named record type, such as `purchase`. A new entity or field never needs a schema
+  upload.
 - **Field.** A name, a [type](schema.md#field-types) and optional
   [constraints](schema.md#constraints). A field lives in a *slot*, a typed column the server can
   filter and sort on, or in a *payload* slot that only the client reads.
 - **Version.** Every `create()` or `update()` publishes a version of the entity. A record keeps the
   version it was written under and decodes through it forever.
-- **Aggregate.** A counter, sum, minimum, maximum or histogram that a write folds into hourly cells.
-  Reads of aggregates cost a few records, however large the entity grows.
+- **Aggregate.** A counter, sum, minimum, maximum or histogram that every write keeps up to date.
+  Reading it does not scan the records.
 
 ```swift
 import CloudKit

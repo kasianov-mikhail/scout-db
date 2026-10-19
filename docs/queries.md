@@ -21,9 +21,6 @@ let recent = try await store.query("purchase")
 | `count()`, `sum(_:)`, `min(_:)`, `max(_:)`, `average(_:)` | A number read from an aggregate. See [Aggregates](aggregates.md). |
 | `totals(_:metric:group:)`, `series(_:metric:group:in:)`, `percentile(_:of:)` | Aggregate reads. See [Aggregates](aggregates.md). |
 
-`take(_:)` stops following the query cursor as soon as it has enough records, so its cost follows
-what it returns, not the size of the entity. To read further, use `page(size:after:)`.
-
 ## Filters
 
 `filter(_:)` takes an expression built with operators. Each call is combined with the previous ones
@@ -81,17 +78,15 @@ try await store.query("post")
 
 ### Server and client
 
-A filter on a field in a slot runs on the CloudKit server. A filter on a
-[payload field](schema.md#slots-and-payload-fields), and a substring `~~` on a `.string` field, run
-on the client after decoding. Client filters are correct but not free: the server still returns every
-record that the other filters match. Keep at least one server filter on large entities.
+A filter on a [payload field](schema.md#slots-and-payload-fields), and a substring `~~` on a
+`.string` field, run on the device. The device still downloads every record that the other filters
+match, so keep at least one other filter on large entities.
 
 A filter on an `.asset` field throws.
 
 ### Disjunctions
 
-CloudKit joins predicates only with `AND`. ScoutDB supports `||` by running one server query per
-alternative and merging the results.
+`filter(_:)` accepts `||`:
 
 ```swift
 try await store.query("log")
@@ -99,12 +94,8 @@ try await store.query("log")
     .take(50)
 ```
 
-The cost is one request per alternative:
-
-- `a || b` is two alternatives.
-- `(a || b) && (c || d)` multiplies out to four alternatives.
-- Equalities over the **same** field fold into one `in` filter, so
-  `"level" == "error" || "level" == "fatal"` costs one request.
+Each alternative costs one request, and `(a || b) && (c || d)` makes four. Equalities over the
+**same** field merge into one, so `"level" == "error" || "level" == "fatal"` costs one request.
 
 ## Sorting
 
@@ -118,8 +109,8 @@ try await store.query("purchase")
     .take(20)
 ```
 
-Sorting runs on the server, so the field must be in a slot and its type must be sortable: `.string`,
-`.text`, `.int`, `.double` or `.timestamp`. Payload fields cannot be sorted.
+The sorted field must be in a slot and have a sortable type: `.string`, `.text`, `.int`, `.double`
+or `.timestamp`. Payload fields cannot be sorted.
 
 ## Limits
 
@@ -155,9 +146,3 @@ Requirements:
 - the sorted field is a scalar in a slot.
 
 Disjunctions are allowed. A `FieldCursor` is `Codable`, so you can store it and continue later.
-
-## Index lag
-
-CloudKit indexes a write asynchronously. A query can miss a record for a short time after it is
-written. When you need a record you just wrote, read it with
-[`fetch(uuid:)`](records.md#fetching-by-uuid).

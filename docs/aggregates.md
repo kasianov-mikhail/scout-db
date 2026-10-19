@@ -1,19 +1,14 @@
 # Aggregates
 
-CloudKit has no server-side `COUNT` or `SUM`. ScoutDB keeps aggregates up to date on every write
-instead, so a read of a count, a total or a series costs a few records however large the entity
-grows.
+ScoutDB keeps aggregates up to date on every write, so reading a count, a total or a series does
+not scan the records.
 
-## How aggregates are stored
+## Groups and hours
 
-- An aggregate keeps one **cell per hour**.
-- A **vector** record holds the 168 cells of one week for one group.
-- A **group** is one value of the grouping field, for example one `product_id`. An aggregate without
-  a grouping field has a single group.
-- An index record per aggregate lists the weeks and groups that exist, so a read knows which vectors
-  to fetch without a scan.
+An aggregate keeps one number per **group** and **hour**. A group is one value of the grouping
+field, for example one `product_id`. An aggregate without a grouping field has a single group.
 
-A cell holds one number. A count and a sum over the same grouping are two aggregates.
+A count and a sum over the same grouping are two aggregates.
 
 ## Automatic counts
 
@@ -33,7 +28,7 @@ try await store.schema("purchase")
 ```
 
 Mark a field `.ungrouped` when it has many distinct values that nobody counts by, such as an id or
-free text. Each groupable field adds cells that every write must update.
+free text. Each groupable field adds work to every write.
 
 `update()` never adds automatic counts. See
 [Schema evolution](schema-evolution.md#what-update-returns).
@@ -57,21 +52,19 @@ try await store.schema("purchase")
 |-|-|
 | `count(by:at:shards:)` | The number of records per group. Use it for `.ungrouped` fields, for sharding, or for a count with no grouping. |
 | `sum(_:by:at:shards:)` | The running total of a numeric field per group. |
-| `min(_:by:at:)` | The smallest value a cell has seen. |
-| `max(_:by:at:)` | The largest value a cell has seen. |
+| `min(_:by:at:)` | The smallest value per group. |
+| `max(_:by:at:)` | The largest value per group. |
 | `histogram(of:bounds:at:)` | Bucket counts of a numeric field, for percentiles. |
 
 Parameters:
 
 - **`by`** — the grouping field. Omit it for one group over all records.
-- **`at`** — a `.timestamp` field that dates the cell. Without it, a record lands in the hour of the
-  write. A later rewrite then reverses the old value out of the hour of the rewrite, not the hour of
-  the first write. Set `at` when you read [series](#series).
-- **`shards`** — `2...64`. Spreads one hot cell over several records when many devices write the same
-  group at once. Reads sum the shards. Use it only where write contention is real.
+- **`at`** — a `.timestamp` field that dates the record. Without it, a record lands in the hour of
+  the write. Set `at` when you read [series](#series).
+- **`shards`** — `2...64`. Use it only when many devices write the same group at the same time.
 
 `min` and `max` are running extremes. Deleting or rewriting the record that set the extreme does not
-lower it: the cell answers with what the group once reached.
+lower it: the aggregate answers with what the group once reached.
 
 ## Reading single values
 
@@ -113,8 +106,7 @@ call throws and the error names the aggregate to declare. The filters an aggrega
 ### Count
 
 `count()` also serves a range filter on an `.int` field that a count aggregate groups by, when the
-field has both `.min` and `.max`. The bounds let the store list every value in the range and add up
-their groups. A strict bound counts as the matching inclusive one, so `> 15` reads as `>= 16`.
+field has both `.min` and `.max`.
 
 ```swift
 try await store.schema("rating")
@@ -163,7 +155,6 @@ let hourly = try await store.query("purchase")
 - The series is sparse. An hour without writes has no point, not a zero point.
 - `SeriesPoint` has `group`, `date` (the start of the hour) and `value`. It is `Comparable` by date,
   then group.
-- The read costs one vector per group and week in the range.
 - `metric`, `group` and the allowed filters work as in `totals`.
 
 ## Percentiles
@@ -189,11 +180,7 @@ let p95 = try await store.query("request").percentile(0.95, of: "latency")
 
 ## What aggregates cost
 
-Aggregates move cost from reads to writes:
-
-- A write to an entity with aggregates reads the records it rewrites, then updates their cells.
-- The first write to a new group or a new week also reads and writes the aggregate index.
-- Cells are updated with compare-and-swap, so concurrent writers from many devices do not lose
-  updates. Use `shards` when one cell is very hot.
+Aggregates move cost from reads to writes. Every write to an entity with aggregates also updates
+them. Concurrent writes from many devices do not lose updates.
 
 Declare the aggregates your screens read, and mark the other fields `.ungrouped`.

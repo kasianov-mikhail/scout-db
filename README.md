@@ -34,7 +34,7 @@ The full guides live in [docs](docs/README.md).
 |:-:|-|-|
 | 🗂 | **Schema** | Declare fields, constraints, and defaults with a chainable schema builder, then rename, retype, add, or remove fields as new schema versions — old records stay readable forever, nothing is ever re-imported. |
 | 🔍 | **Queries** | Filters, sorting, keyset pagination, and full-text search through a query builder, plus counters, sums, and extremes maintained on write so reads never scan raw records. |
-| ⚙️ | **Reliability** | Writes that carry a uuid upsert, and aggregate cells folded under compare-and-swap. |
+| ⚙️ | **Reliability** | Writes that carry a uuid upsert, and concurrent writes never lose aggregate updates. |
 
 ## Requirements
 
@@ -73,9 +73,7 @@ let registry = SchemaRegistry(database: database)
 let store = EntityStore(database: database, registry: registry)
 ```
 
-ScoutDB runs against the public database only — the shipped `Schema`, its role grants, and
-the default zone every request names describe that scope. The private and shared databases
-are out of scope, so `CloudContainer` hands out `publicDatabase` and nothing else.
+ScoutDB works with the public database only.
 
 ### Declare an entity
 
@@ -128,9 +126,8 @@ let products = try await store.query("purchase")
     .take(20)
 ```
 
-Aggregates are folded on write, so a total or a series over them costs a handful of records
-rather than a scan. A cell is an hour, and `series` hands those hours back for the range asked
-for — roll them up into days or weeks on the client.
+Aggregates are kept up to date on write, so a total or a series does not scan the records.
+`series` returns one point per hour; roll them up into days or weeks on the client.
 
 ```swift
 let revenue = try await store.query("purchase")

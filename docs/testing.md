@@ -46,8 +46,7 @@ import Testing
 }
 ```
 
-The double is safe for concurrent use. Every call holds a lock for the whole operation, so parallel
-reads and writes see whole records.
+The double is safe for concurrent use.
 
 It also enforces CloudKit's record name rules. A uuid that the server would refuse is refused here
 too.
@@ -82,7 +81,7 @@ _ = try await store.query("purchase").totals(metric: .sum, group: "status")
 | Property | Effect |
 |-|-|
 | `pageLimit` | Caps every response page, like the CloudKit server does. Set it to force multi-page reads. |
-| `unindexed` | Record IDs that queries do not see yet, while fetches by ID still return them. Simulates index lag. |
+| `unindexed` | Record IDs that queries do not see yet, while fetches by ID still return them. |
 | `errors` | Errors to throw from the next calls of any kind. The last element is thrown first. |
 | `writeErrors` | Errors to throw from the next writes only. They are used before `errors`. |
 | `records` | Every stored `CKRecord`. Read it to inspect raw storage, or set it to seed or replace the data. |
