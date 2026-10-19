@@ -31,7 +31,7 @@ extension [AggregateDefinition] {
                         continue
                     }
 
-                    let folded = adding ? one : one.reversed()
+                    let folded = adding ? one : one.inverse
                     merged[slot, default: VectorDelta(kind: folded.kind)]
                         .cells
                         .merge(folded.cells, uniquingKeysWith: folded.kind.combine)

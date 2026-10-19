@@ -13,6 +13,7 @@ struct AggregateDefinition: Equatable, Sendable {
     let measure: Measure?
     let shards: Int?
     let date: String?
+    var since: Date?
 
     var name: String {
         let parts =

@@ -45,11 +45,11 @@ struct TotalOperation: Sendable {
 
         let rows = try await VectorReader(
             database: database,
-            entity: definition.entity,
+            definition: definition,
             aggregate: aggregate
         )
         .rows(groups: narrowed)
-        .vectorRows(folding: aggregate.fold, where: nil)
+        .vectorRows(folding: aggregate.fold)
 
         return aggregate.measure?.metric == nil ? rows.filter { $0.value != 0 } : rows
     }

@@ -21,6 +21,12 @@ struct IndexPage: Codable, Equatable {
         case shards
     }
 
+    func weeks(range: Range<Date>?) -> [Date] {
+        weeks.map(Date.init(millisecondsSince1970:)).filter { week in
+            range.map(week.covers) ?? true
+        }
+    }
+
     init(weeks: [Int64], groups: [String], shards: [String: Int] = [:]) {
         self.weeks = weeks
         self.groups = groups

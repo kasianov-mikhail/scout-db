@@ -63,3 +63,21 @@ extension VectorSlot {
         )
     }
 }
+
+extension [VectorSlot] {
+    var indexPages: [VectorIndex: IndexPage] {
+        var weeks: [VectorIndex: Set<Int64>] = [:]
+        var groups: [VectorIndex: Set<String>] = [:]
+
+        for slot in self {
+            let (head, week) = slot.index
+            weeks[head, default: []].insert(slot.week.millisecondsSince1970)
+            groups[week, default: []].insert(slot.group)
+        }
+
+        var pages = weeks.mapValues { IndexPage(weeks: $0.sorted(), groups: []) }
+        pages.merge(groups.mapValues { IndexPage(weeks: [], groups: $0.sorted()) }) { first, _ in first }
+
+        return pages
+    }
+}

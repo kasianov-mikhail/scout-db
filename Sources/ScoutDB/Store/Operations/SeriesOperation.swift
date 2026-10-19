@@ -17,7 +17,7 @@ struct SeriesOperation: Sendable {
         let aggregate = try match.aggregate(field: field, metric: metric, group: group)
 
         return try await cells(of: aggregate, group: group, in: range)
-            .map(SeriesPoint.init)
+            .map { key, value in SeriesPoint(group: key.group, date: key.date, value: value) }
             .sorted()
     }
 
@@ -32,23 +32,23 @@ struct SeriesOperation: Sendable {
 
         let (totals, counts) = try await (totaled, counted)
 
-        return totals.compactMap { cell, total in
-            guard let count = counts[cell], count != 0 else {
+        return totals.compactMap { key, total in
+            guard let count = counts[key], count != 0 else {
                 return nil
             }
-            return SeriesPoint(cell, total / count)
+            return SeriesPoint(group: key.group, date: key.date, value: total / count)
         }
         .sorted()
     }
 
     private func cells(of aggregate: AggregateDefinition, group: String?, in range: Range<Date>) async throws
-        -> [SeriesCell: Double]
+        -> [SeriesPoint.Key: Double]
     {
         let narrowed = try match.groups(narrowedTo: group)
 
         let cells = try await VectorReader(
             database: database,
-            entity: definition.entity,
+            definition: definition,
             aggregate: aggregate
         )
         .rows(groups: narrowed, in: range)
@@ -59,12 +59,6 @@ struct SeriesOperation: Sendable {
 
     private var match: AggregateMatch {
         AggregateMatch(definition: definition, branches: branches)
-    }
-}
-
-extension SeriesPoint {
-    fileprivate init(_ cell: SeriesCell, _ value: Double) {
-        self.init(group: cell.group, date: cell.date, value: value)
     }
 }
 

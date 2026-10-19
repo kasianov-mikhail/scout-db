@@ -22,6 +22,10 @@ extension Date {
         Int((timeIntervalSince(weekStart) / Self.secondsPerHour).rounded(.down))
     }
 
+    var nextHourStart: Date {
+        Date(timeIntervalSince1970: (timeIntervalSince1970 / Self.secondsPerHour).rounded(.up) * Self.secondsPerHour)
+    }
+
     func hour(_ index: Int) -> Date {
         addingTimeInterval(Double(index) * Self.secondsPerHour)
     }
