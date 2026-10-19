@@ -23,14 +23,14 @@ struct VectorLoader {
         let cold: [VectorSlot]
     }
 
-    func open(_ deltas: Deltas) async throws -> Opened {
+    func open(deltas: Deltas) async throws -> Opened {
         var pending: [CKRecord.ID: Pending] = [:]
         var cold: [(id: CKRecord.ID, slot: VectorSlot, delta: VectorDelta)] = []
 
         for (slot, delta) in deltas {
             let id = slot.recordID
 
-            if let cached = await slots.record(id) {
+            if let cached = await slots.record(id: id) {
                 pending[id] = Pending(record: cached, delta: delta, slot: slot)
             } else {
                 cold.append((id, slot, delta))

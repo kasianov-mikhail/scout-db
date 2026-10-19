@@ -41,7 +41,7 @@ struct AggregateDefinition: Equatable, Sendable {
 }
 
 extension [AggregateDefinition] {
-    func covering(_ field: String?, folding metric: Metric) -> AggregateDefinition? {
+    func covering(field: String?, metric: Metric) -> AggregateDefinition? {
         first {
             $0.measure?.histogram == nil && $0.measure?.field == field
                 && (field == nil || $0.measure?.metric == metric.storage)
@@ -66,10 +66,10 @@ extension AggregateDefinition {
         self.init(groupBy: group, measure: measure, shards: shards, date: date)
     }
 
-    init(histogram field: String, bounds: [Double], group: String?, date: String?) {
+    init(histogram: String, bounds: [Double], group: String?, date: String?) {
         self.init(
             groupBy: group,
-            measure: .histogram(.init(field: field, bounds: bounds)),
+            measure: .histogram(.init(field: histogram, bounds: bounds)),
             shards: nil,
             date: date
         )

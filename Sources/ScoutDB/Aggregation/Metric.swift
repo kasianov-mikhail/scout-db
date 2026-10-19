@@ -28,7 +28,7 @@ extension Metric {
         storage == .sum
     }
 
-    func combine(_ lhs: Double, _ rhs: Double) -> Double {
+    func combine(lhs: Double, rhs: Double) -> Double {
         switch self {
         case .sum, .average:
             lhs + rhs
@@ -39,11 +39,11 @@ extension Metric {
         }
     }
 
-    func combine(_ stored: Double?, _ value: Double) -> Double {
-        stored.map { combine($0, value) } ?? value
+    func combine(stored: Double?, value: Double) -> Double {
+        stored.map { combine(lhs: $0, rhs: value) } ?? value
     }
 
-    func fold(_ values: some Collection<Double>) -> Double? {
+    func fold(values: some Collection<Double>) -> Double? {
         values.first.map { values.dropFirst().reduce($0, combine) }
     }
 }

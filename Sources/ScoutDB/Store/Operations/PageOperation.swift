@@ -16,7 +16,7 @@ struct PageOperation: Sendable {
     let fields: [String]?
 
     private var ranking: [FieldOrder] {
-        [FieldOrder(key: .field(field), order: order), FieldOrder(key: .uuid)]
+        [FieldOrder(key: .field(name: field), order: order), FieldOrder(key: .uuid)]
     }
 
     func records(branches: [[ClientFilter]], size: Int, cursor: FieldCursor?) async throws -> FieldPage {
@@ -24,7 +24,7 @@ struct PageOperation: Sendable {
             try await self.records(filters: branch, size: size, cursor: cursor)
         }
 
-        let records = pages.distinct.ranked(using: ranking, limit: size)
+        let records = pages.distinct.ranked(order: ranking, limit: size)
 
         guard records.count == size, let last = records.last, let value = last.values[field] else {
             return FieldPage(records: records, cursor: nil)
@@ -47,11 +47,11 @@ struct PageOperation: Sendable {
 
         let sort =
             try definition.serverSort(
-                [EntityStore.Sort(field: field, order: order)]
+                sort: [EntityStore.Sort(field: field, order: order)]
             ) + [CKQuery.Sort(field: Envelope.uuid, order: .forward)]
 
         var plan = try definition.plan(
-            matching: pageFilters,
+            filters: pageFilters,
             sort: sort,
             fields: fields.map { $0 + [field] }
         )
@@ -63,19 +63,19 @@ struct PageOperation: Sendable {
             guard let cursor else {
                 return true
             }
-            return beyond(record, cursor)
+            return beyond(record: record, cursor: cursor)
         }
 
         return try await database.scan(
-            matching: plan,
+            plan: plan,
             limit: size,
-            using: definition
+            definition: definition
         )
-        .ranked(using: ranking, limit: size)
+        .ranked(order: ranking, limit: size)
     }
 
-    private func beyond(_ record: EntityRecord, _ cursor: FieldCursor) -> Bool {
-        switch RecordValue.rank(record.values[field], cursor.value) {
+    private func beyond(record: EntityRecord, cursor: FieldCursor) -> Bool {
+        switch RecordValue.rank(lhs: record.values[field], rhs: cursor.value) {
         case .orderedSame:
             record.uuid > cursor.uuid
         case .orderedAscending:
@@ -94,7 +94,7 @@ extension QueryBuilder {
             }
 
             let definition = try await self.definition
-            let target = try definition.field(sort.field, at: definition.version)
+            let target = try definition.field(name: sort.field, version: definition.version)
 
             guard [.string, .int, .double, .timestamp].contains(target.type) else {
                 throw SchemaError.unsupportedQuery(.unpageableField(sort.field))

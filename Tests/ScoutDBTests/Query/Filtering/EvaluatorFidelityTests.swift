@@ -22,7 +22,7 @@ struct EvaluatorFidelityTests {
         registry = SchemaRegistry(database: database)
         store = EntityStore(database: database, registry: registry)
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "pin",
                 fields: [
                     FieldDefinition(name: "owner", type: .reference, storage: .slot(.reference, "r_00")),
@@ -53,9 +53,9 @@ struct EvaluatorFidelityTests {
     func byteOrdering() {
         let low = Data([0x01]) as NSData
         let high = Data([0x02]) as NSData
-        #expect(PredicateEvaluator.compare(low, high) == .orderedAscending)
-        #expect(PredicateEvaluator.compare(high, low) == .orderedDescending)
-        #expect(PredicateEvaluator.compare(low, low) == .orderedSame)
+        #expect(PredicateEvaluator.compare(lhs: low, rhs: high) == .orderedAscending)
+        #expect(PredicateEvaluator.compare(lhs: high, rhs: low) == .orderedDescending)
+        #expect(PredicateEvaluator.compare(lhs: low, rhs: low) == .orderedSame)
     }
 
     @Test("Every server filter the store can emit is decidable locally", arguments: Operator.allCases)
@@ -70,15 +70,17 @@ struct EvaluatorFidelityTests {
 
         let filter = CKQuery.Filter(field: "s_01", op: op, value: value)
         let query = CKQuery(recordType: "Entity", filters: [filter], sort: [])
-        #expect(PredicateEvaluator.evaluate(query.predicate, record: record) != nil)
+        #expect(PredicateEvaluator.evaluate(predicate: query.predicate, record: record) != nil)
     }
 
     @Test("An inexpressible predicate is unknown, not false")
     func inexpressiblePredicate() {
         let record = CKRecord(recordType: "Entity", recordID: CKRecord.ID(recordName: "r"))
         record["s_01"] = "abc"
-        #expect(PredicateEvaluator.evaluate(NSPredicate(format: "s_01 LIKE %@", "a*"), record: record) == nil)
-        #expect(PredicateEvaluator.evaluate(NSPredicate(format: "s_01 == s_02"), record: record) == nil)
-        #expect(PredicateEvaluator.evaluate(NSPredicate(format: "s_01 == %@", "abc"), record: record) == true)
+        #expect(
+            PredicateEvaluator.evaluate(predicate: NSPredicate(format: "s_01 LIKE %@", "a*"), record: record) == nil)
+        #expect(PredicateEvaluator.evaluate(predicate: NSPredicate(format: "s_01 == s_02"), record: record) == nil)
+        #expect(
+            PredicateEvaluator.evaluate(predicate: NSPredicate(format: "s_01 == %@", "abc"), record: record) == true)
     }
 }

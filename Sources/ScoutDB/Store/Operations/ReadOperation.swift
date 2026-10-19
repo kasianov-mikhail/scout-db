@@ -33,34 +33,34 @@ struct ReadOperation: Sendable {
         }
 
         return results.distinct.ranked(
-            using: sort.map(FieldOrder.init),
+            order: sort.map(FieldOrder.init),
             limit: limit
         )
     }
 
     private func records(branch: [ClientFilter], sort: [EntityStore.Sort], limit: Int?) async throws -> [EntityRecord] {
         let clientRanked = try sort.contains { clause in
-            try definition.field(clause.field, at: definition.version).storage.isPayload
+            try definition.field(name: clause.field, version: definition.version).storage.isPayload
         }
         if clientRanked {
             return try await records(branch: branch, sort: [], limit: nil).ranked(
-                using: sort.map(FieldOrder.init),
+                order: sort.map(FieldOrder.init),
                 limit: limit
             )
         }
 
         let plan = try definition.plan(
-            matching: branch,
-            sort: try definition.serverSort(sort),
+            filters: branch,
+            sort: try definition.serverSort(sort: sort),
             fields: fields.map { $0 + self.sort.map(\.field) }
         )
 
         if let limit {
             return try await Array(
                 database.scan(
-                    matching: plan,
+                    plan: plan,
                     limit: limit,
-                    using: definition
+                    definition: definition
                 )
                 .prefix(limit)
             )
@@ -77,8 +77,8 @@ struct ReadOperation: Sendable {
 }
 
 extension FieldOrder {
-    init(_ sort: EntityStore.Sort) {
-        self.init(key: .field(sort.field), order: sort.order)
+    init(sort: EntityStore.Sort) {
+        self.init(key: .field(name: sort.field), order: sort.order)
     }
 }
 

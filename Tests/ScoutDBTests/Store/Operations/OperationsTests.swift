@@ -21,7 +21,7 @@ struct OperationsTests {
     init() async throws {
         registry = SchemaRegistry(database: database)
         store = EntityStore(database: database, registry: registry)
-        try await registry.publish(makePurchaseDefinition())
+        try await registry.publish(definition: makePurchaseDefinition())
     }
 
     @Test("A fetch by uuid reads a record the query index has not caught up with")
@@ -80,7 +80,7 @@ struct OperationsTests {
     @Test("Sorting by a payload field ranks client-side")
     func payloadSort() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "player",
                 fields: [
                     FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_02")),
@@ -112,7 +112,7 @@ struct OperationsTests {
     @Test("A sort the server cannot serve is refused on one alternative as on many")
     func unsortableAcrossAlternatives() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "doc",
                 fields: [
                     FieldDefinition(name: "kind", type: .string, storage: .slot(.string, "s_02")),
@@ -150,7 +150,7 @@ struct OperationsTests {
     @Test("Filters on payload fields fall back to client-side matching")
     func payloadFilters() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "profile",
                 fields: [
                     FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_02")),
@@ -224,7 +224,7 @@ struct OperationsTests {
     @Test("A pattern constraint gates writes by a whole-string regex")
     func patternValidation() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "account",
                 fields: [
                     FieldDefinition(
@@ -293,7 +293,7 @@ struct OperationsTests {
     @Test("Fetching by uuid stays scoped to the asked-for entity")
     func fetchStaysScopedToEntity() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "ticket",
                 fields: [
                     FieldDefinition(name: "label", type: .string, storage: .slot(.string, "s_02"))
@@ -314,13 +314,13 @@ struct OperationsTests {
             ClientFilter(field: "product_id", op: .equals, value: .string("sku-42")),
             ClientFilter(field: "comment", op: .contains, value: .string("gif")),
         ]
-        let definition = try await registry.definition(for: "purchase")
-        let server = try definition.serverFilters(filters)
-        let client = try definition.clientFilters(filters)
+        let definition = try await registry.definition(entity: "purchase")
+        let server = try definition.serverFilters(filters: filters)
+        let client = try definition.clientFilters(filters: filters)
         #expect(server.contains(CKQuery.Filter(field: "s_02", op: .equals, value: .string("sku-42"))))
         #expect(client == [filters[1]])
         #expect(
-            try definition.serverSort([EntityStore.Sort(field: "date")]) == [
+            try definition.serverSort(sort: [EntityStore.Sort(field: "date")]) == [
                 CKQuery.Sort(field: "t_00", order: .forward)
             ]
         )

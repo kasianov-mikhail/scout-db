@@ -28,7 +28,7 @@ struct VectorSlot: Hashable {
     }
 
     var recordID: CKRecord.ID {
-        CKRecord.ID(recordName: "vector-" + contentDigest(of: components))
+        CKRecord.ID(recordName: "vector-" + contentDigest(components: components))
     }
 
     var index: (head: VectorIndex, week: VectorIndex) {
@@ -40,14 +40,14 @@ struct VectorSlot: Hashable {
 }
 
 extension VectorSlot {
-    init?(for entityRecord: EntityRecord, aggregate: AggregateDefinition, week: Date, shards: Int?) {
+    init?(entityRecord: EntityRecord, aggregate: AggregateDefinition, week: Date, shards: Int?) {
         let group: String
 
         if let histogram = aggregate.measure?.histogram {
             guard let value = entityRecord.values[histogram.field]?.scalar else {
                 return nil
             }
-            group = histogram.groupKey(of: value)
+            group = histogram.groupKey(value: value)
         } else {
             group = aggregate.groupBy.flatMap { entityRecord.values[$0]?.canonical } ?? ""
         }

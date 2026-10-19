@@ -12,12 +12,12 @@ extension SlotAllocator {
         guard declaration.wantsSlot else {
             return .payload(try nextPayload())
         }
-        return .slot(declaration.type, try next(in: declaration.type))
+        return .slot(declaration.type, try next(pool: declaration.type))
     }
 
-    private mutating func next(in pool: FieldType) throws -> String {
+    private mutating func next(pool: FieldType) throws -> String {
         for index in pool.reserved..<pool.capacity {
-            let slot = "\(pool.slotPrefix)_\(String(format: "%02d", index))"
+            let slot = pool.slot(index: index)
             if used[pool, default: []].contains(slot) {
                 continue
             }
@@ -29,7 +29,7 @@ extension SlotAllocator {
 
     private mutating func nextPayload() throws -> String {
         for index in 0..<PayloadPool.capacity {
-            let slot = PayloadPool.slot(index)
+            let slot = PayloadPool.slot(index: index)
             if usedPayload.contains(slot) {
                 continue
             }

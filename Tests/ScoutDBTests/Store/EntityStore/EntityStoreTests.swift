@@ -21,7 +21,7 @@ struct EntityStoreTests {
     init() async throws {
         registry = SchemaRegistry(database: database)
         store = EntityStore(database: database, registry: registry)
-        try await registry.publish(makePurchaseDefinition())
+        try await registry.publish(definition: makePurchaseDefinition())
     }
 
     @Test("Write persists a single Entity record")
@@ -172,7 +172,7 @@ struct EntityStoreTests {
     @Test("Contains over a list field conjoins and disjoins")
     func tagCombinators() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "post",
                 fields: [
                     FieldDefinition(name: "tags", type: .stringList, storage: .slot(.stringList, "ls_00"))
@@ -194,7 +194,7 @@ struct EntityStoreTests {
     @Test("Numeric and date arrays round-trip and filter with contains")
     func numericArrays() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "sample",
                 fields: [
                     FieldDefinition(name: "codes", type: .intList, storage: .slot(.intList, "li_00")),
@@ -233,7 +233,7 @@ struct EntityStoreTests {
     @Test("A reference scalar round-trips")
     func exoticTypes() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "graph",
                 fields: [
                     FieldDefinition(name: "parent", type: .reference, storage: .slot(.reference, "r_00"))
@@ -249,7 +249,7 @@ struct EntityStoreTests {
     @Test("A scalar bytes field lives in its own slot")
     func bytesSlot() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "blob",
                 fields: [
                     FieldDefinition(name: "digest", type: .bytes, storage: .slot(.bytes, "b_00"))
@@ -280,7 +280,7 @@ struct EntityStoreTests {
     @Test("Writing a uuid a second time rewrites the record")
     func uuidUpsert() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "profile",
                 fields: [
                     FieldDefinition(name: "user_id", type: .string, storage: .slot(.string, "s_02")),
@@ -306,7 +306,7 @@ struct EntityStoreTests {
     @Test("List fields support server-side contains filters")
     func tags() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "post",
                 fields: [
                     FieldDefinition(name: "title", type: .string, storage: .slot(.string, "s_02")),
@@ -329,7 +329,7 @@ struct EntityStoreTests {
     @Test("Aggregate aggregates count writes into vector cells")
     func aggregation() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "tap",
                 fields: [
                     FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_02")),
@@ -354,7 +354,7 @@ struct EntityStoreTests {
     @Test("Sum aggregates accumulate values into double cells")
     func sumView() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "payment",
                 fields: [
                     FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),

@@ -71,7 +71,7 @@ extension CKRecord {
         }
     }
 
-    func indexPage(named id: CKRecord.ID) throws -> IndexPage {
+    func indexPage(id: CKRecord.ID) throws -> IndexPage {
         guard let page = indexPage else {
             throw SchemaError.malformedRecord(id.recordName)
         }

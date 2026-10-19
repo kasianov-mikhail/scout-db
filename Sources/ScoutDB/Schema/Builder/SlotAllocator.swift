@@ -12,7 +12,7 @@ struct SlotAllocator {
 
     var usedPayload: Set<String> = []
 
-    init(reserving fields: [FieldDefinition]) {
+    init(fields: [FieldDefinition]) {
         for field in fields {
             switch field.storage {
             case .slot(let pool, let slot):

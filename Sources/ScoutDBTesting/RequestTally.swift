@@ -41,12 +41,12 @@ public struct RequestTally: Sendable {
         counts[kind] ?? 0
     }
 
-    mutating func add(_ kind: Kind, carrying carried: Int) {
+    mutating func add(kind: Kind, carried: Int) {
         counts[kind, default: 0] += 1
         records += carried
     }
 
-    mutating func fail(_ kind: Kind) {
+    mutating func fail(kind: Kind) {
         counts[kind, default: 0] += 1
         failures += 1
     }

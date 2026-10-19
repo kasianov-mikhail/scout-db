@@ -13,7 +13,7 @@ struct VectorReader {
     let definition: EntityDefinition
     let aggregate: AggregateDefinition
 
-    func rows(groups: [String]?, in range: Range<Date>? = nil) async throws -> [VectorRow] {
+    func rows(groups: [String]?, range: Range<Date>? = nil) async throws -> [VectorRow] {
         let fetch = VectorFetch(
             database: database,
             entity: definition.entity,
@@ -43,7 +43,7 @@ struct VectorReader {
     }
 
     func cells(groups: [String]?, range: Range<Date>) async throws -> [SeriesPoint.Key: Double] {
-        let cells = try await rows(groups: groups, in: range).vectorCells(folding: aggregate.fold, in: range)
+        let cells = try await rows(groups: groups, range: range).vectorCells(kind: aggregate.fold, range: range)
         return aggregate.measure?.metric == nil ? cells.filter { $0.value != 0 } : cells
     }
 }

@@ -13,12 +13,12 @@ struct FilterPlan {
     var bounds: Bounds?
 
     init?(branches: [[ClientFilter]]) {
-        guard let first = branches.first, var merged = FilterPlan(first) else {
+        guard let first = branches.first, var merged = FilterPlan(filters: first) else {
             return nil
         }
 
         for branch in branches.dropFirst() {
-            guard let query = FilterPlan(branch) else {
+            guard let query = FilterPlan(filters: branch) else {
                 return nil
             }
             guard query.groupField == merged.groupField, query.bounds == merged.bounds else {
@@ -31,12 +31,12 @@ struct FilterPlan {
         self = merged
     }
 
-    private init?(_ filters: [ClientFilter]) {
+    private init?(filters: [ClientFilter]) {
         for filter in filters {
             if let keys = filter.groupKeys, groupField == nil {
                 groupField = filter.field
                 groupKeys = keys
-            } else if let narrowed = (bounds ?? Bounds(field: filter.field)).narrowed(by: filter) {
+            } else if let narrowed = (bounds ?? Bounds(field: filter.field)).narrowed(filter: filter) {
                 bounds = narrowed
             } else {
                 return nil
@@ -46,11 +46,11 @@ struct FilterPlan {
 }
 
 extension FilterPlan {
-    mutating func expandRange(in definition: EntityDefinition) {
+    mutating func expandRange(definition: EntityDefinition) {
         guard groupField == nil, let bounds else {
             return
         }
-        guard let field = try? definition.field(bounds.field, at: definition.version) else {
+        guard let field = try? definition.field(name: bounds.field, version: definition.version) else {
             return
         }
         guard field.type == .int, field.alwaysPresent else {

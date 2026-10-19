@@ -21,7 +21,7 @@ struct PaginationTests {
     init() async throws {
         registry = SchemaRegistry(database: database)
         store = EntityStore(database: database, registry: registry)
-        try await registry.publish(makePurchaseDefinition())
+        try await registry.publish(definition: makePurchaseDefinition())
     }
 
     @Test("The database serves resultsLimit records per page and a cursor for the rest")

@@ -8,7 +8,7 @@
 import CloudKit
 
 extension CloudDatabase {
-    func scan(matching plan: ScanPlan, limit: Int, using definition: EntityDefinition) async throws -> [EntityRecord] {
+    func scan(plan: ScanPlan, limit: Int, definition: EntityDefinition) async throws -> [EntityRecord] {
         let ceiling = CKQueryOperation.maximumResults > 0 ? CKQueryOperation.maximumResults : Int.max
         let decoder = EntityDecoder(definition: definition)
 
@@ -21,7 +21,7 @@ extension CloudDatabase {
         )
 
         while true {
-            collected += try batch.map { try decoder.decode($0.1.get()) }.filter(plan.includes)
+            collected += try batch.map { try decoder.decode(record: $0.1.get()) }.filter(plan.includes)
 
             guard collected.count < limit, let cursor = token else {
                 break

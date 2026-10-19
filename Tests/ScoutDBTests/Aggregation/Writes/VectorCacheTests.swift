@@ -21,29 +21,29 @@ struct VectorCacheTests {
     func evictionOrder() async {
         let cache = VectorCache(limit: 2)
         for name in ["a", "b", "c"] {
-            await cache.keep(slot(name))
+            await cache.keep(record: slot(name))
         }
-        #expect(await cache.record(CKRecord.ID(recordName: "a")) == nil)
-        #expect(await cache.record(CKRecord.ID(recordName: "b")) != nil)
+        #expect(await cache.record(id: CKRecord.ID(recordName: "a")) == nil)
+        #expect(await cache.record(id: CKRecord.ID(recordName: "b")) != nil)
 
-        await cache.keep(slot("d"))
-        #expect(await cache.record(CKRecord.ID(recordName: "c")) == nil)
-        #expect(await cache.record(CKRecord.ID(recordName: "b")) != nil)
-        #expect(await cache.record(CKRecord.ID(recordName: "d")) != nil)
+        await cache.keep(record: slot("d"))
+        #expect(await cache.record(id: CKRecord.ID(recordName: "c")) == nil)
+        #expect(await cache.record(id: CKRecord.ID(recordName: "b")) != nil)
+        #expect(await cache.record(id: CKRecord.ID(recordName: "d")) != nil)
     }
 
     @Test("Eviction waits for ten percent overflow, then sheds back to the limit")
     func evictionHysteresis() async {
         let cache = VectorCache(limit: 20)
         for index in 0..<22 {
-            await cache.keep(slot("k-\(index)"))
+            await cache.keep(record: slot("k-\(index)"))
         }
-        #expect(await cache.record(CKRecord.ID(recordName: "k-0")) != nil)
+        #expect(await cache.record(id: CKRecord.ID(recordName: "k-0")) != nil)
 
-        await cache.keep(slot("k-22"))
+        await cache.keep(record: slot("k-22"))
         for index in 1..<4 {
-            #expect(await cache.record(CKRecord.ID(recordName: "k-\(index)")) == nil)
+            #expect(await cache.record(id: CKRecord.ID(recordName: "k-\(index)")) == nil)
         }
-        #expect(await cache.record(CKRecord.ID(recordName: "k-4")) != nil)
+        #expect(await cache.record(id: CKRecord.ID(recordName: "k-4")) != nil)
     }
 }

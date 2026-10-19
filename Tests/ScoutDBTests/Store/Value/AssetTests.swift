@@ -31,9 +31,9 @@ struct AssetTests {
 
     @Test("An asset field takes an asset value and nothing else")
     func fieldTypeMatching() {
-        #expect(FieldType.asset.matches(.asset(Data())))
-        #expect(!FieldType.asset.matches(.bytes(Data())))
-        #expect(!FieldType.bytes.matches(.asset(Data())))
+        #expect(FieldType.asset.matches(value: .asset(Data())))
+        #expect(!FieldType.asset.matches(value: .bytes(Data())))
+        #expect(!FieldType.bytes.matches(value: .asset(Data())))
     }
 
     @Test("No filter can reach an asset field")
@@ -45,10 +45,10 @@ struct AssetTests {
         let filter = ClientFilter(field: "table", op: .equals, value: .asset(Data()))
 
         #expect(throws: SchemaError.unsupportedQuery(.unfilterableField("table"))) {
-            try definition.serverFilters([filter])
+            try definition.serverFilters(filters: [filter])
         }
         #expect(throws: SchemaError.unsupportedQuery(.unfilterableField("table"))) {
-            try definition.clientFilters([filter])
+            try definition.clientFilters(filters: [filter])
         }
     }
 }

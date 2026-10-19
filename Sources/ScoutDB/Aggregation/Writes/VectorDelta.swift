@@ -25,10 +25,10 @@ struct VectorDelta {
         return VectorDelta(kind: kind, cells: cells.mapValues(-))
     }
 
-    func apply(to record: CKRecord) {
+    func apply(record: CKRecord) {
         for (hour, value) in cells {
             let key = VectorSlot.cellKeys[hour]
-            record[key] = kind.combine(record[key] as? Double, value)
+            record[key] = kind.combine(stored: record[key] as? Double, value: value)
         }
     }
 }

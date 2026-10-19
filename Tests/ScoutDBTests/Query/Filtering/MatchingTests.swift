@@ -22,7 +22,7 @@ struct MatchingTests {
         registry = SchemaRegistry(database: database)
         store = EntityStore(database: database, registry: registry)
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "note",
                 fields: [
                     FieldDefinition(name: "title", type: .string, storage: .slot(.string, "s_02")),
@@ -60,7 +60,7 @@ struct MatchingTests {
     @Test("A slot the schema cannot sort is refused up front")
     func unsortableSlots() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "shot",
                 fields: [
                     FieldDefinition(name: "blob", type: .bytes, storage: .slot(.bytes, "b_00")),
@@ -68,16 +68,17 @@ struct MatchingTests {
                 ]
             )
         )
-        let definition = try await registry.definition(for: "shot")
+        let definition = try await registry.definition(entity: "shot")
 
         for field in ["blob", "tags"] {
             #expect(throws: SchemaError.unsupportedQuery(.unsortableField(field))) {
-                _ = try definition.serverSort([EntityStore.Sort(field: field)])
+                _ = try definition.serverSort(sort: [EntityStore.Sort(field: field)])
             }
         }
 
         #expect(
-            try definition.clientFilters([ClientFilter(field: "blob", op: .contains, value: .string("a"))]).count
+            try definition.clientFilters(filters: [ClientFilter(field: "blob", op: .contains, value: .string("a"))])
+                .count
                 == 1
         )
     }
@@ -107,7 +108,7 @@ struct MatchingTests {
     @Test("CONTAINS finds a member of a reference list, slotted or in the payload")
     func referenceListMembership() async throws {
         try await registry.publish(
-            makeDefinition(
+            definition: makeDefinition(
                 entity: "album",
                 fields: [
                     FieldDefinition(name: "shots", type: .referenceList, storage: .slot(.referenceList, "lr_00")),

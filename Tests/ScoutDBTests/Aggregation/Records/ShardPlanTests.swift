@@ -21,30 +21,30 @@ struct ShardPlanTests {
 
     @Test("An undeclared, uncontended week is unsharded and reached by the bare name")
     func bareWeek() {
-        #expect(ShardPlan(floor: nil).count(for: week) == nil)
+        #expect(ShardPlan(floor: nil).count(week: week) == nil)
     }
 
     @Test("The schema's count is the floor a week starts from")
     func floorHolds() {
-        #expect(ShardPlan(floor: 4).count(for: week) == 4)
+        #expect(ShardPlan(floor: 4).count(week: week) == 4)
     }
 
     @Test("A week that outgrew the floor keeps the larger of the two")
     func growthOutranksTheFloor() {
-        #expect(ShardPlan(floor: 4, grown: [key: 16]).count(for: week) == 16)
-        #expect(ShardPlan(floor: 16, grown: [key: 4]).count(for: week) == 16)
+        #expect(ShardPlan(floor: 4, grown: [key: 16]).count(week: week) == 16)
+        #expect(ShardPlan(floor: 16, grown: [key: 4]).count(week: week) == 16)
     }
 
     @Test("A week that grew leaves its neighbours where they were")
     func growthIsPerWeek() {
         let plan = ShardPlan(floor: nil, grown: [key: 4])
 
-        #expect(plan.count(for: week) == 4)
-        #expect(plan.count(for: other) == nil)
+        #expect(plan.count(week: week) == 4)
+        #expect(plan.count(week: other) == nil)
     }
 
     @Test("A count that will not parse as a week is dropped rather than mistaken for one")
     func unparsableWeekIsDropped() {
-        #expect(ShardPlan(floor: nil, grown: ["not-a-week": 8]).count(for: week) == nil)
+        #expect(ShardPlan(floor: nil, grown: ["not-a-week": 8]).count(week: week) == nil)
     }
 }

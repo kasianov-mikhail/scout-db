@@ -12,11 +12,11 @@ struct VectorIndexWriter {
     let database: any CloudDatabase
     let maxRetry = 3
 
-    func write(_ wanted: [VectorIndex: IndexPage]) async throws {
+    func write(wanted: [VectorIndex: IndexPage]) async throws {
         var pending = wanted
 
         for _ in 0..<maxRetry where !pending.isEmpty {
-            try await merge(&pending)
+            try await merge(pending: &pending)
         }
 
         guard pending.isEmpty else {
@@ -24,7 +24,7 @@ struct VectorIndexWriter {
         }
     }
 
-    private func merge(_ pending: inout [VectorIndex: IndexPage]) async throws {
+    private func merge(pending: inout [VectorIndex: IndexPage]) async throws {
         let ids = pending.keys.map(\.recordID).sorted { $0.recordName < $1.recordName }
         let fetched = try await database.fetchRecords(ids: ids, batchSize: maxBatchSize)
         let stored = Dictionary(uniqueKeysWithValues: fetched.map { ($0.recordID, $0) })
@@ -38,12 +38,12 @@ struct VectorIndexWriter {
         let byID = Dictionary(uniqueKeysWithValues: changes.map { ($0.record.recordID, $0) })
         pending = [:]
 
-        for chunk in changes.chunked(into: maxBatchSize) {
+        for chunk in changes.chunked(size: maxBatchSize) {
             for (id, result) in try await database.saveIfUnchanged(chunk.map(\.record)) {
                 guard case .failure(let error) = result else {
                     continue
                 }
-                guard RecordConflictError(error) != nil, let change = byID[id] else {
+                guard RecordConflictError(error: error) != nil, let change = byID[id] else {
                     throw error
                 }
                 pending[change.index] = change.additions
@@ -59,8 +59,8 @@ private struct IndexChange {
 
     init?(index: VectorIndex, additions: IndexPage, stored: CKRecord?) throws {
         let record = stored ?? CKRecord(index: index)
-        let page = try stored?.indexPage(named: index.recordID) ?? IndexPage(weeks: [], groups: [])
-        let merged = page.merging(additions)
+        let page = try stored?.indexPage(id: index.recordID) ?? IndexPage(weeks: [], groups: [])
+        let merged = page.merging(other: additions)
 
         guard stored == nil || merged != page else {
             return nil
@@ -83,7 +83,7 @@ extension CKRecord {
 }
 
 extension IndexPage {
-    fileprivate func merging(_ other: Self) -> Self {
+    fileprivate func merging(other: Self) -> Self {
         Self(
             weeks: Set(weeks).union(other.weeks).sorted(),
             groups: Set(groups).union(other.groups).sorted(),

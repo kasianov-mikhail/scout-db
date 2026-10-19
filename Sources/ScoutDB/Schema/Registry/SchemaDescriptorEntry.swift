@@ -32,13 +32,13 @@ extension SchemaDescriptorEntry {
         try definition.validate()
     }
 
-    static func recordID(for entity: String) -> CKRecord.ID {
-        CKRecord.ID(recordName: "schema-" + contentDigest(of: [entity]))
+    static func recordID(entity: String) -> CKRecord.ID {
+        CKRecord.ID(recordName: "schema-" + contentDigest(components: [entity]))
     }
 
     var record: CKRecord {
         get throws {
-            let id = Self.recordID(for: definition.entity)
+            let id = Self.recordID(entity: definition.entity)
             let record = CKRecord(recordType: Self.recordType, recordID: id)
 
             record[Envelope.entity] = Self.namespace

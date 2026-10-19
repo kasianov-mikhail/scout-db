@@ -45,6 +45,6 @@ extension CloudDatabase {
         guard ids.count > batchSize else {
             return try await fetchRecords(ids: ids)
         }
-        return try await ids.chunked(into: batchSize).orderedBatches(fetchRecords(ids:))
+        return try await ids.chunked(size: batchSize).orderedBatches(body: fetchRecords(ids:))
     }
 }

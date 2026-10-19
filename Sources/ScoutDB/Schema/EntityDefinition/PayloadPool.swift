@@ -12,14 +12,11 @@ enum PayloadPool {
 
     static let capacity = 16
 
-    static func slot(_ index: Int) -> String {
-        "\(slotPrefix)_\(String(format: "%02d", index))"
+    static func slot(index: Int) -> String {
+        String(slotPrefix: slotPrefix, index: index)
     }
 
-    static func slotIndex(_ slot: String) -> Int? {
-        guard slot.hasPrefix("\(slotPrefix)_"), let index = Int(slot.dropFirst(slotPrefix.count + 1)) else {
-            return nil
-        }
-        return index >= 0 ? index : nil
+    static func slotIndex(slot: String) -> Int? {
+        slot.slotIndex(prefix: slotPrefix)
     }
 }

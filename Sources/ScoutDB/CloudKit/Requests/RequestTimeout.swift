@@ -20,15 +20,15 @@ func withRequestTimeout<R>(timeout: Duration, operation: @Sendable @escaping () 
 
     let operationTask = Task {
         do {
-            await relay.finish(with: .success(try await operation()))
+            await relay.finish(result: .success(try await operation()))
         } catch {
-            await relay.finish(with: .failure(error))
+            await relay.finish(result: .failure(error))
         }
     }
 
     let timerTask = Task {
         try await Task.sleep(for: timeout)
-        await relay.finish(with: .failure(RequestTimeoutError(seconds: Int(timeout.components.seconds))))
+        await relay.finish(result: .failure(RequestTimeoutError(seconds: Int(timeout.components.seconds))))
     }
 
     defer {
@@ -51,7 +51,7 @@ private actor ResultRelay<T> {
     private var result: Result<Box, any Error>?
     private var continuation: CheckedContinuation<Box, any Error>?
 
-    func finish(with result: Result<T, any Error>) {
+    func finish(result: Result<T, any Error>) {
         guard self.result == nil else {
             return
         }
@@ -62,7 +62,7 @@ private actor ResultRelay<T> {
     }
 
     nonisolated func cancel() {
-        Task { await finish(with: .failure(CancellationError())) }
+        Task { await finish(result: .failure(CancellationError())) }
     }
 
     func value() async throws -> sending T {

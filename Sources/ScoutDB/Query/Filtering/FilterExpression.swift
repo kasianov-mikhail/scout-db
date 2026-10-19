@@ -33,11 +33,11 @@ import Foundation
 public struct FilterExpression: Sendable {
     let alternatives: [[ClientFilter]]
 
-    init(_ alternatives: [[ClientFilter]]) {
+    init(alternatives: [[ClientFilter]]) {
         self.alternatives = alternatives
     }
 
-    init(_ filter: ClientFilter) {
+    init(filter: ClientFilter) {
         alternatives = [[filter]]
     }
 }
@@ -59,7 +59,7 @@ public func && (lhs: FilterExpression, rhs: FilterExpression) -> FilterExpressio
     for branch in lhs.alternatives {
         alternatives += rhs.alternatives.map { branch + $0 }
     }
-    return FilterExpression(alternatives)
+    return FilterExpression(alternatives: alternatives)
 }
 
 /// Admits either side, as alternatives of one another.
@@ -80,8 +80,8 @@ public func || (lhs: FilterExpression, rhs: FilterExpression) -> FilterExpressio
     let left = lhs.alternatives
     let right = rhs.alternatives
 
-    guard let folded = ClientFilter(folding: left, right) else {
-        return FilterExpression(left + right)
+    guard let folded = ClientFilter(left: left, right: right) else {
+        return FilterExpression(alternatives: left + right)
     }
-    return FilterExpression([[folded]])
+    return FilterExpression(alternatives: [[folded]])
 }

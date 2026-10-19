@@ -8,7 +8,7 @@
 import Foundation
 
 extension ClientFilter {
-    func matches(_ record: EntityRecord) -> Bool? {
+    func matches(record: EntityRecord) -> Bool? {
         let stored = record.values[field]
         let options = value.members ?? [value]
 
@@ -20,7 +20,7 @@ extension ClientFilter {
             return stored.map { $0 != value }
 
         case .greaterThan, .greaterThanOrEquals, .lessThan, .lessThanOrEquals:
-            return stored?.satisfies(op, against: value)
+            return stored?.satisfies(op: op, other: value)
 
         case .in:
             return stored.map { options.contains($0) }

@@ -43,7 +43,7 @@ extension FieldDefinition {
             guard type == pool else {
                 throw SchemaError.invalidDefinition(.slotTypeMismatch(field: name, type: type, pool: pool))
             }
-            guard let index = pool.slotIndex(slot) else {
+            guard let index = pool.slotIndex(slot: slot) else {
                 throw SchemaError.invalidDefinition(.slotOutsidePool(slot, pool: pool))
             }
             guard index >= pool.reserved else {
@@ -54,7 +54,7 @@ extension FieldDefinition {
             }
         }
         if case .payload(let slot) = storage {
-            guard let index = PayloadPool.slotIndex(slot) else {
+            guard let index = PayloadPool.slotIndex(slot: slot) else {
                 throw SchemaError.invalidDefinition(.slotOutsidePayload(slot))
             }
             guard index < PayloadPool.capacity else {

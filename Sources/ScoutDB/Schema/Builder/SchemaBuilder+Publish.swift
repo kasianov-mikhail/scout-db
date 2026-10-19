@@ -39,7 +39,7 @@ extension SchemaBuilder {
     /// ```
     ///
     public func create() async throws {
-        var allocator = SlotAllocator(reserving: [])
+        var allocator = SlotAllocator(fields: [])
 
         let fields = try declarations.map {
             FieldDefinition(declaration: $0, storage: try allocator.storage(declaration: $0), since: nil)
@@ -59,7 +59,7 @@ extension SchemaBuilder {
         }
 
         try await registry.publish(
-            EntityDefinition(
+            definition: EntityDefinition(
                 entity: entity,
                 version: 1,
                 fields: fields,
@@ -105,10 +105,10 @@ extension SchemaBuilder {
     /// ```
     ///
     @discardableResult public func update() async throws -> [String] {
-        let previous = try await registry.definition(for: entity)
+        let previous = try await registry.definition(entity: entity)
         let version = previous.version + 1
 
-        var allocator = SlotAllocator(reserving: previous.fields)
+        var allocator = SlotAllocator(fields: previous.fields)
         var fields: [FieldDefinition] = []
         var carried: Set<String> = []
 
@@ -118,17 +118,17 @@ extension SchemaBuilder {
             if let active, active.type == declaration.type, active.storage.isPayload != declaration.wantsSlot {
                 var kept = FieldDefinition(declaration: declaration, storage: active.storage, since: active.since)
 
-                guard kept.coversBounds(of: active) else {
+                guard kept.coversBounds(other: active) else {
                     throw SchemaError.invalidDefinition(.narrowedBounds(field: declaration.name))
                 }
 
                 kept.until = active.until
                 fields.append(kept)
                 carried.insert(declaration.name)
-            } else if let closed = previous.lastClosed(matching: declaration) {
+            } else if let closed = previous.lastClosed(declaration: declaration) {
                 let reopened = FieldDefinition(declaration: declaration, storage: closed.storage, since: version)
 
-                guard reopened.coversBounds(of: closed) else {
+                guard reopened.coversBounds(other: closed) else {
                     throw SchemaError.invalidDefinition(.narrowedBounds(field: declaration.name))
                 }
 
@@ -140,19 +140,19 @@ extension SchemaBuilder {
         }
 
         for field in previous.fields {
-            let redeclared = carried.contains(field.name) && field.isActive(at: previous.version)
+            let redeclared = carried.contains(field.name) && field.isActive(version: previous.version)
             if redeclared {
                 continue
             }
 
             var closed = field
-            if field.isActive(at: previous.version), field.until == nil {
+            if field.isActive(version: previous.version), field.until == nil {
                 closed.until = version
             }
             fields.append(closed)
         }
 
-        let active = Set(fields.filter { $0.isActive(at: version) }.map(\.name))
+        let active = Set(fields.filter { $0.isActive(version: version) }.map(\.name))
 
         let inherited = previous.aggregates
         let byName = Dictionary(aggregates.map { ($0.name, $0) }, uniquingKeysWith: { _, last in last })
@@ -173,7 +173,7 @@ extension SchemaBuilder {
         }
 
         try await registry.publish(
-            EntityDefinition(
+            definition: EntityDefinition(
                 entity: entity,
                 version: version,
                 fields: fields,
@@ -194,13 +194,13 @@ extension SchemaBuilder {
 }
 
 extension EntityDefinition {
-    fileprivate func lastClosed(matching declaration: SchemaBuilder.Declaration) -> FieldDefinition? {
+    fileprivate func lastClosed(declaration: SchemaBuilder.Declaration) -> FieldDefinition? {
         fields
             .filter {
                 $0.name == declaration.name
                     && $0.type == declaration.type
                     && $0.storage.isPayload != declaration.wantsSlot
-                    && !$0.isActive(at: version)
+                    && !$0.isActive(version: version)
             }
             .max { ($0.until ?? 0) < ($1.until ?? 0) }
     }
@@ -218,11 +218,11 @@ extension FieldDefinition {
     fileprivate init(declaration: SchemaBuilder.Declaration, storage: Storage, since: Int?) {
         self.init(name: declaration.name, type: declaration.type, storage: storage, since: since)
         for constraint in declaration.constraints {
-            constraint.apply(to: &self)
+            constraint.apply(field: &self)
         }
     }
 
-    fileprivate func coversBounds(of other: Self) -> Bool {
+    fileprivate func coversBounds(other: Self) -> Bool {
         (min ?? -.infinity) <= (other.min ?? -.infinity) && (max ?? .infinity) >= (other.max ?? .infinity)
     }
 }

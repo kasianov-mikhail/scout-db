@@ -26,7 +26,7 @@ extension EntityStore {
     ///
     @discardableResult public func write(_ batch: [EntityWrite], entity: String) async throws -> [String] {
         guard !batch.isEmpty else { return [] }
-        return try await write(entity: entity).save(batch)
+        return try await write(entity: entity).save(batch: batch)
     }
 }
 

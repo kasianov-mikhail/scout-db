@@ -13,11 +13,11 @@ struct WriteOperation: Sendable {
     let definition: EntityDefinition
     let aggregator: VectorAggregator
 
-    func save(_ batch: [EntityWrite]) async throws -> [String] {
+    func save(batch: [EntityWrite]) async throws -> [String] {
         var stored: Set<String> = []
 
         let records = try batch.map { entry in
-            let resolved = try definition.resolve(entry.values, at: definition.version)
+            let resolved = try definition.resolve(values: entry.values, version: definition.version)
 
             if let assigned = entry.uuid {
                 stored.insert(assigned)
@@ -32,21 +32,21 @@ struct WriteOperation: Sendable {
         }
         .upserts
 
-        let replaced = try await previous(records, stored: stored)
+        let replaced = try await previous(records: records, stored: stored)
 
         let encoder = EntityEncoder(definition: definition)
         let encoded = try records.map(encoder.encode)
 
-        for chunk in encoded.chunked(into: maxBatchSize) {
+        for chunk in encoded.chunked(size: maxBatchSize) {
             try await database.modifyRecords(saving: chunk, deleting: [])
         }
 
-        try await aggregator.rebalance(removing: replaced, adding: records)
+        try await aggregator.rebalance(old: replaced, new: records)
 
         return records.map(\.uuid)
     }
 
-    private func previous(_ records: [EntityRecord], stored: Set<String>) async throws -> [EntityRecord] {
+    private func previous(records: [EntityRecord], stored: Set<String>) async throws -> [EntityRecord] {
         guard !definition.aggregates.isEmpty else {
             return []
         }
@@ -87,7 +87,7 @@ extension [EntityRecord] {
 
 extension EntityStore {
     func write(entity: String) async throws -> WriteOperation {
-        let definition = try await registry.definition(for: entity)
+        let definition = try await registry.definition(entity: entity)
 
         return WriteOperation(
             database: database,

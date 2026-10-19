@@ -17,7 +17,7 @@ struct EntityEncoderTests {
 
     @Test("Encode packs the record into typed slots and the envelope")
     func encode() throws {
-        let record = try encoder.encode(makePurchase())
+        let record = try encoder.encode(entityRecord: makePurchase())
         #expect(record.recordType == "Entity")
         #expect(record.recordID.recordName == "p-1")
         #expect(record[Envelope.entity] == "purchase")

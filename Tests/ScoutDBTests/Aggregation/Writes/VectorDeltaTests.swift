@@ -24,16 +24,16 @@ struct VectorDeltaTests {
     func cellsFold() {
         let record = record()
 
-        VectorDelta(kind: .sum, cells: [3: 2]).apply(to: record)
+        VectorDelta(kind: .sum, cells: [3: 2]).apply(record: record)
         #expect(cell(record, at: 3) == 2)
 
-        VectorDelta(kind: .sum, cells: [3: 5]).apply(to: record)
+        VectorDelta(kind: .sum, cells: [3: 5]).apply(record: record)
         #expect(cell(record, at: 3) == 7)
 
-        VectorDelta(kind: .max, cells: [3: 4]).apply(to: record)
+        VectorDelta(kind: .max, cells: [3: 4]).apply(record: record)
         #expect(cell(record, at: 3) == 7)
 
-        VectorDelta(kind: .min, cells: [3: 4]).apply(to: record)
+        VectorDelta(kind: .min, cells: [3: 4]).apply(record: record)
         #expect(cell(record, at: 3) == 4)
     }
 
@@ -41,8 +41,8 @@ struct VectorDeltaTests {
     func reversal() {
         let record = record()
 
-        VectorDelta(kind: .sum, cells: [0: 9]).apply(to: record)
-        VectorDelta(kind: .sum, cells: [0: 9]).inverse.apply(to: record)
+        VectorDelta(kind: .sum, cells: [0: 9]).apply(record: record)
+        VectorDelta(kind: .sum, cells: [0: 9]).inverse.apply(record: record)
         #expect(cell(record, at: 0) == 0)
 
         #expect(VectorDelta(kind: .max, cells: [0: 9]).inverse.cells.isEmpty)

@@ -31,7 +31,7 @@ struct CloudContainerTests {
     func publicDatabase() async throws {
         let container = InMemoryContainer()
         let registry = SchemaRegistry(database: container.publicDatabase)
-        try await registry.publish(makePurchaseDefinition())
+        try await registry.publish(definition: makePurchaseDefinition())
         let store = EntityStore(database: container.publicDatabase, registry: registry)
         try await store.write([EntityWrite(values: makePurchase().values, uuid: "p-1")], entity: "purchase")
 

@@ -30,6 +30,6 @@ extension QueryBuilder {
     /// ```
     ///
     public func percentile(_ rank: Double, of field: String) async throws -> Double? {
-        try await percentiles.value(of: field, at: rank)
+        try await percentiles.value(field: field, rank: rank)
     }
 }

@@ -8,7 +8,7 @@
 import Foundation
 
 extension RecordValue {
-    static func rank(_ lhs: RecordValue?, _ rhs: RecordValue?) -> ComparisonResult {
+    static func rank(lhs: RecordValue?, rhs: RecordValue?) -> ComparisonResult {
         switch (lhs, rhs) {
         case (nil, nil):
             .orderedSame
@@ -17,25 +17,25 @@ extension RecordValue {
         case (_, nil):
             .orderedDescending
         case (let lhs?, let rhs?):
-            rank(lhs, rhs)
+            rank(lhs: lhs, rhs: rhs)
         }
     }
 
-    private static func rank(_ lhs: RecordValue, _ rhs: RecordValue) -> ComparisonResult {
+    private static func rank(lhs: RecordValue, rhs: RecordValue) -> ComparisonResult {
         switch (lhs, rhs) {
         case (.string(let lhs), .string(let rhs)):
-            return order(lhs, rhs)
+            return order(lhs: lhs, rhs: rhs)
         case (.date(let lhs), .date(let rhs)):
-            return order(lhs, rhs)
+            return order(lhs: lhs, rhs: rhs)
         default:
             guard let lhs = lhs.scalar, let rhs = rhs.scalar else {
                 return .orderedSame
             }
-            return order(lhs, rhs)
+            return order(lhs: lhs, rhs: rhs)
         }
     }
 
-    private static func order<T: Comparable>(_ lhs: T, _ rhs: T) -> ComparisonResult {
+    private static func order<T: Comparable>(lhs: T, rhs: T) -> ComparisonResult {
         lhs == rhs ? .orderedSame : (lhs < rhs ? .orderedAscending : .orderedDescending)
     }
 }

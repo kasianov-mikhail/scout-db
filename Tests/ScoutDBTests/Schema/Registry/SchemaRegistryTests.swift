@@ -29,7 +29,7 @@ struct SchemaRegistryTests {
 
     @Test("A descriptor is an Entity record under the reserved namespace")
     func descriptorShape() async throws {
-        let name = SchemaDescriptorEntry.recordID(for: "purchase").recordName
+        let name = SchemaDescriptorEntry.recordID(entity: "purchase").recordName
         let record = try #require(database.records.first { $0.recordID.recordName == name })
 
         #expect(record.recordType == "Entity")
@@ -44,11 +44,11 @@ struct SchemaRegistryTests {
         let entities = ["purchase", "__schema", "order line", "Ünïcøde", String(repeating: "e", count: 400)]
 
         for entity in entities {
-            let id = SchemaDescriptorEntry.recordID(for: entity)
+            let id = SchemaDescriptorEntry.recordID(entity: entity)
             #expect(id.isLegalRecordName, "\(entity) is filed under \(id.recordName)")
         }
 
-        #expect(Set(entities.map { SchemaDescriptorEntry.recordID(for: $0) }).count == entities.count)
+        #expect(Set(entities.map { SchemaDescriptorEntry.recordID(entity: $0) }).count == entities.count)
     }
 
     @Test("A published version overwrites the one before it")
@@ -62,16 +62,16 @@ struct SchemaRegistryTests {
         let descriptors = database.records.filter {
             $0[Envelope.entity] as? String == SchemaDescriptorEntry.namespace
         }
-        #expect(descriptors.map(\.recordID) == [SchemaDescriptorEntry.recordID(for: "purchase")])
+        #expect(descriptors.map(\.recordID) == [SchemaDescriptorEntry.recordID(entity: "purchase")])
         #expect(descriptors.first?[Envelope.version] as? Int64 == 2)
 
-        let definition = try await SchemaRegistry(database: database).definition(for: "purchase")
+        let definition = try await SchemaRegistry(database: database).definition(entity: "purchase")
         #expect(definition.version == 2, "A registry with no cache reads the descriptor by name")
     }
 
     @Test("A published schema reads back through the registry")
     func roundTrip() async throws {
-        let definition = try await registry.definition(for: "purchase")
+        let definition = try await registry.definition(entity: "purchase")
 
         #expect(definition.version == 1)
         #expect(definition.fields.map(\.name) == ["product_id", "amount"])

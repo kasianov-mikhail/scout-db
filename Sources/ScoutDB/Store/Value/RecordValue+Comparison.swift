@@ -8,7 +8,7 @@
 import Foundation
 
 extension RecordValue {
-    func satisfies(_ op: Operator, against other: RecordValue) -> Bool {
+    func satisfies(op: Operator, other: RecordValue) -> Bool {
         let comparable =
             switch (self, other) {
             case (.string, .string), (.date, .date):
@@ -20,7 +20,7 @@ extension RecordValue {
             return false
         }
 
-        return switch (op, Self.rank(self, other)) {
+        return switch (op, Self.rank(lhs: self, rhs: other)) {
         case (.greaterThan, .orderedDescending), (.lessThan, .orderedAscending):
             true
         case (.greaterThanOrEquals, .orderedDescending), (.greaterThanOrEquals, .orderedSame):

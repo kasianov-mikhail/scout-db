@@ -15,7 +15,7 @@ extension AggregateDefinition {
 }
 
 extension AggregateDefinition.Histogram {
-    func groupKey(of value: Double) -> String {
+    func groupKey(value: Double) -> String {
         let bin = bounds.firstIndex { value < $0 } ?? bounds.count
         return RecordValue.int(Int64(bin)).canonical
     }

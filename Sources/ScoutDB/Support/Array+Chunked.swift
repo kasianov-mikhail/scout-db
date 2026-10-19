@@ -8,7 +8,7 @@
 import Foundation
 
 extension Array {
-    func chunked(into size: Int) -> [[Element]] {
+    func chunked(size: Int) -> [[Element]] {
         guard size > 0 else {
             return isEmpty ? [] : [self]
         }

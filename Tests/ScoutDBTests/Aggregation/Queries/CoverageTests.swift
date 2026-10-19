@@ -20,11 +20,11 @@ struct CoverageTests {
     let morning = Date(timeIntervalSince1970: 36_000)
 
     var noon: Date {
-        morning.hour(2)
+        morning.hour(index: 2)
     }
 
     var later: Date {
-        Date().nextHourStart.hour(1)
+        Date().nextHourStart.hour(index: 1)
     }
 
     init() async throws {
@@ -61,7 +61,7 @@ struct CoverageTests {
         try await write("t-4", queue: "a", weight: 11, date: later)
 
         let points = try await store.query("ticket")
-            .series("weight", metric: .sum, group: "queue", in: morning.weekStart..<later.hour(1))
+            .series("weight", metric: .sum, group: "queue", in: morning.weekStart..<later.hour(index: 1))
 
         #expect(
             points == [
@@ -137,6 +137,6 @@ struct CoverageTests {
     }
 
     private func start() async throws -> Date? {
-        try await registry.definition(for: "ticket").aggregates.first { $0.measure == .sum("weight") }?.since
+        try await registry.definition(entity: "ticket").aggregates.first { $0.measure == .sum("weight") }?.since
     }
 }
