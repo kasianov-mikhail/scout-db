@@ -86,7 +86,10 @@ extension SchemaBuilder {
     /// domain. Narrowing one throws instead of publishing.
     ///
     /// A version builds no vector of its own: the entity already holds records,
-    /// and a fresh cell counts only what lands after it. The returned names are
+    /// and a fresh cell counts only what lands after it. An aggregate that
+    /// joins here records the first whole hour it sees, which
+    /// ``QueryBuilder/coverage(_:metric:group:)`` hands back, so a reader can
+    /// count the hours before it from the records. The returned names are
     /// that missing coverage — declare `count(by:)` for them on a further
     /// version to have it kept from there on, mark them `.ungrouped` to say they
     /// are meant to go uncounted, or leave them to be answered by reading
@@ -168,9 +171,12 @@ extension SchemaBuilder {
         let byName = Dictionary(aggregates.map { ($0.name, $0) }, uniquingKeysWith: { _, last in last })
 
         var merged = inherited.map { aggregate in
-            byName[aggregate.name] ?? aggregate
+            byName[aggregate.name]?.with(since: aggregate.since) ?? aggregate
         }
-        merged += aggregates.filter { aggregate in !inherited.contains { $0.name == aggregate.name } }
+
+        let start = Date().nextHourStart
+        let joined = aggregates.filter { aggregate in !inherited.contains { $0.name == aggregate.name } }
+        merged += joined.map { $0.with(since: start) }
 
         let carriedViews = merged.filter { aggregate in
             [aggregate.groupBy, aggregate.measure?.field, aggregate.measure?.histogram?.field]
@@ -215,6 +221,14 @@ extension EntityDefinition {
                     && !$0.isActive(at: version)
             }
             .max { ($0.until ?? 0) < ($1.until ?? 0) }
+    }
+}
+
+extension AggregateDefinition {
+    fileprivate func with(since: Date?) -> AggregateDefinition {
+        var aggregate = self
+        aggregate.since = since
+        return aggregate
     }
 }
 

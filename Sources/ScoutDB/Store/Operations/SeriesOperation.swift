@@ -41,6 +41,17 @@ struct SeriesOperation: Sendable {
         .sorted()
     }
 
+    func coverage(field: String?, metric: Metric, group: String?) throws -> Date? {
+        guard metric == .average, let field else {
+            return try match.aggregate(field: field, metric: metric, group: group).since
+        }
+
+        let totaling = try match.aggregate(field: field, metric: .sum, group: group)
+        let counting = try match.aggregate(field: nil, metric: .sum, group: group)
+
+        return [totaling.since, counting.since].compactMap(\.self).max()
+    }
+
     private func cells(of aggregate: AggregateDefinition, group: String?, in range: Range<Date>) async throws
         -> [SeriesCell: Double]
     {
