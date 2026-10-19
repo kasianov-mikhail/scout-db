@@ -12,90 +12,73 @@ struct VectorIndexWriter {
     let database: any CloudDatabase
     let maxRetry = 3
 
-    func note(_ slots: some Collection<VectorSlot>) async throws {
-        var weeks: [VectorIndex: Set<Int64>] = [:]
-        var groups: [VectorIndex: Set<String>] = [:]
-
-        for slot in slots {
-            let (head, week) = slot.index
-            weeks[head, default: []].insert(slot.week.millisecondsSince1970)
-            groups[week, default: []].insert(slot.group)
-        }
-
-        var wanted = weeks.mapValues { IndexPage(weeks: $0.sorted(), groups: []) }
-        wanted.merge(groups.mapValues { IndexPage(weeks: [], groups: $0.sorted()) }) { first, _ in first }
-
-        try await write(wanted)
-    }
-
-    func seed(_ index: VectorIndex) async throws {
-        try await write([index: IndexPage(weeks: [], groups: [])])
-    }
-
     func write(_ wanted: [VectorIndex: IndexPage]) async throws {
         var pending = wanted
-        for _ in 0..<maxRetry {
-            pending = try await merge(pending)
 
-            guard !pending.isEmpty else { return }
+        for _ in 0..<maxRetry where !pending.isEmpty {
+            try await merge(&pending)
         }
 
-        throw VectorIndexError.contended
+        guard pending.isEmpty else {
+            throw VectorIndexError.contended
+        }
     }
 
-    private func merge(_ wanted: [VectorIndex: IndexPage]) async throws -> [VectorIndex: IndexPage] {
-        let ids = wanted.keys.map(\.recordID).sorted { $0.recordName < $1.recordName }
-        var stored: [CKRecord.ID: CKRecord] = [:]
+    private func merge(_ pending: inout [VectorIndex: IndexPage]) async throws {
+        let ids = pending.keys.map(\.recordID).sorted { $0.recordName < $1.recordName }
+        let fetched = try await database.fetchRecords(ids: ids, batchSize: maxBatchSize)
+        let stored = Dictionary(uniqueKeysWithValues: fetched.map { ($0.recordID, $0) })
 
-        for record in try await database.fetchRecords(ids: ids, batchSize: maxBatchSize) {
-            stored[record.recordID] = record
+        let changes = try pending.compactMap { index, additions in
+            try IndexChange(
+                index: index,
+                additions: additions, stored: stored[index.recordID])
         }
 
-        var saving: [CKRecord.ID: (index: VectorIndex, page: IndexPage, record: CKRecord)] = [:]
+        let byID = Dictionary(uniqueKeysWithValues: changes.map { ($0.record.recordID, $0) })
+        pending = [:]
 
-        for (index, additions) in wanted {
-            let existing = stored[index.recordID]
-            let record: CKRecord
-            let page: IndexPage
-
-            if let existing {
-                record = existing
-                page = try existing.indexPage(named: index.recordID)
-            } else {
-                record = CKRecord(recordType: SchemaDescriptorEntry.recordType, recordID: index.recordID)
-                record[Envelope.entity] = VectorIndex.namespace
-                record[Envelope.uuid] = index.recordID.recordName
-                record[Envelope.version] = Int64(1)
-                page = IndexPage(weeks: [], groups: [])
-            }
-
-            let merged = page.merging(additions)
-
-            // A page a record already carries is saved only when it grows; a
-            // page no record carries is saved even when empty, so a reader
-            // finds a record where the aggregate is still untouched.
-            guard existing == nil || merged != page else {
-                continue
-            }
-            record.indexPage = merged
-            saving[index.recordID] = (index, additions, record)
-        }
-
-        var retry: [VectorIndex: IndexPage] = [:]
-
-        for chunk in Array(saving.values).chunked(into: maxBatchSize) {
+        for chunk in changes.chunked(into: maxBatchSize) {
             for (id, result) in try await database.saveIfUnchanged(chunk.map(\.record)) {
                 guard case .failure(let error) = result else {
                     continue
                 }
-                guard RecordConflictError(error) != nil, let entry = saving[id] else {
+                guard RecordConflictError(error) != nil, let change = byID[id] else {
                     throw error
                 }
-                retry[entry.index] = entry.page
+                pending[change.index] = change.additions
             }
         }
+    }
+}
 
-        return retry
+private struct IndexChange {
+    let index: VectorIndex
+    let additions: IndexPage
+    let record: CKRecord
+
+    init?(index: VectorIndex, additions: IndexPage, stored: CKRecord?) throws {
+        let record = stored ?? CKRecord(index: index)
+        let page = try stored?.indexPage(named: index.recordID) ?? IndexPage(weeks: [], groups: [])
+        let merged = page.merging(additions)
+
+        guard stored == nil || merged != page else {
+            return nil
+        }
+        record.indexPage = merged
+
+        self.index = index
+        self.additions = additions
+        self.record = record
+    }
+}
+
+extension CKRecord {
+    fileprivate convenience init(index: VectorIndex) {
+        self.init(recordType: SchemaDescriptorEntry.recordType, recordID: index.recordID)
+        self[Envelope.entity] = VectorIndex.namespace
+        self[Envelope.uuid] = index.recordID.recordName
+        self[Envelope.version] = Int64(1)
     }
 }
 

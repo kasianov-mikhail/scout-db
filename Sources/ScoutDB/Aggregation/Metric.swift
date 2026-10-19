@@ -39,6 +39,10 @@ extension Metric {
         }
     }
 
+    func combine(_ stored: Double?, _ value: Double) -> Double {
+        stored.map { combine($0, value) } ?? value
+    }
+
     func fold(_ values: some Collection<Double>) -> Double? {
         values.first.map { values.dropFirst().reduce($0, combine) }
     }

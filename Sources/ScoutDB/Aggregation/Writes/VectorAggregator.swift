@@ -38,7 +38,7 @@ struct VectorAggregator {
         )
         .open(deltas)
 
-        try await VectorIndexWriter(database: database).note(opened.cold)
+        try await VectorIndexWriter(database: database).write(opened.cold.indexPages)
 
         var pending = opened.pending
         var lost: [CKRecord.ID: Int] = [:]

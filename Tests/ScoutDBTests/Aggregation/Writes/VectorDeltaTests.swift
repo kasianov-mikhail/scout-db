@@ -42,10 +42,10 @@ struct VectorDeltaTests {
         let record = record()
 
         VectorDelta(kind: .sum, cells: [0: 9]).apply(to: record)
-        VectorDelta(kind: .sum, cells: [0: 9]).reversed().apply(to: record)
+        VectorDelta(kind: .sum, cells: [0: 9]).inverse.apply(to: record)
         #expect(cell(record, at: 0) == 0)
 
-        #expect(VectorDelta(kind: .max, cells: [0: 9]).reversed().cells.isEmpty)
+        #expect(VectorDelta(kind: .max, cells: [0: 9]).inverse.cells.isEmpty)
     }
 
     @Test("A delta that moves nothing is a noop")

@@ -19,6 +19,16 @@ struct VectorIndexTests {
 
     private let counting = AggregateDefinition(group: "product", date: "date")
 
+    private let payment = makeDefinition(
+        entity: "payment",
+        version: 1,
+        fields: [
+            FieldDefinition(name: "product", type: .string, storage: .slot(.string, "s_02")),
+            FieldDefinition(name: "amount", type: .double, storage: .slot(.double, "d_00")),
+            FieldDefinition(name: "date", type: .timestamp, storage: .slot(.timestamp, "t_00")),
+        ]
+    )
+
     private func payments(_ products: [String], at date: Date? = nil) -> [EntityRecord] {
         products.enumerated().map { index, product in
             EntityRecord(
@@ -109,19 +119,22 @@ struct VectorIndexTests {
         record[IndexPage.key] = Data([0x7b, 0x00])
 
         await #expect(throws: SchemaError.malformedRecord(head.recordID.recordName)) {
-            try await VectorReader(database: database, entity: "payment", aggregate: counting)
+            try await VectorReader(database: database, definition: payment, aggregate: counting)
                 .rows(groups: nil)
         }
         await #expect(throws: SchemaError.malformedRecord(head.recordID.recordName)) {
-            try await VectorIndexWriter(database: database).note([
-                VectorSlot(
-                    entity: "payment",
-                    aggregate: counting.name,
-                    group: "book",
-                    shard: nil,
-                    week: noon.weekStart
-                )
-            ])
+            try await VectorIndexWriter(database: database).write(
+                [
+                    VectorSlot(
+                        entity: "payment",
+                        aggregate: counting.name,
+                        group: "book",
+                        shard: nil,
+                        week: noon.weekStart
+                    )
+                ]
+                .indexPages
+            )
         }
     }
 
@@ -129,7 +142,7 @@ struct VectorIndexTests {
     func readSeedsTheMissingHead() async throws {
         let head = VectorIndex(entity: "payment", aggregate: counting.name, week: nil)
 
-        let rows = try await VectorReader(database: database, entity: "payment", aggregate: counting)
+        let rows = try await VectorReader(database: database, definition: payment, aggregate: counting)
             .rows(groups: nil)
 
         #expect(rows.isEmpty)
@@ -138,7 +151,7 @@ struct VectorIndexTests {
         #expect(record.indexPage == IndexPage(weeks: [], groups: []))
 
         database.resetRequests()
-        _ = try await VectorReader(database: database, entity: "payment", aggregate: counting).rows(groups: nil)
+        _ = try await VectorReader(database: database, definition: payment, aggregate: counting).rows(groups: nil)
 
         #expect(database.requests[.conditionalSave] == 0, "A head that stands is read, not written again")
     }
@@ -147,7 +160,7 @@ struct VectorIndexTests {
     func readKeepsTheStandingHead() async throws {
         try await aggregator().rebalance(removing: [], adding: payments(["app"]))
 
-        _ = try await VectorReader(database: database, entity: "payment", aggregate: counting).rows(groups: nil)
+        _ = try await VectorReader(database: database, definition: payment, aggregate: counting).rows(groups: nil)
 
         #expect(page(week: nil).weeks == [noon.weekStart.millisecondsSince1970])
         #expect(page(week: noon.weekStart).groups == ["app"])
@@ -157,9 +170,9 @@ struct VectorIndexTests {
     func foldSeesEveryGroup() async throws {
         try await aggregator().rebalance(removing: [], adding: payments(["app", "book", "toy"]))
 
-        let rows = try await VectorReader(database: database, entity: "payment", aggregate: counting)
+        let rows = try await VectorReader(database: database, definition: payment, aggregate: counting)
             .rows(groups: nil)
-            .vectorRows(folding: .sum, where: nil)
+            .vectorRows(folding: .sum)
 
         #expect(rows.keys.sorted() == ["app", "book", "toy"])
         #expect(rows.values.reduce(0, +) == 3)

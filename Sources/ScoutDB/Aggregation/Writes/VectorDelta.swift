@@ -18,7 +18,7 @@ struct VectorDelta {
         kind.isReversible ? cells.values.allSatisfy { $0 == 0 } : cells.isEmpty
     }
 
-    func reversed() -> VectorDelta {
+    var inverse: VectorDelta {
         guard kind.isReversible else {
             return VectorDelta(kind: kind)
         }
@@ -28,12 +28,7 @@ struct VectorDelta {
     func apply(to record: CKRecord) {
         for (hour, value) in cells {
             let key = VectorSlot.cellKeys[hour]
-
-            if let stored = record[key] as? Double {
-                record[key] = kind.combine(stored, value)
-            } else {
-                record[key] = value
-            }
+            record[key] = kind.combine(record[key] as? Double, value)
         }
     }
 }

@@ -17,6 +17,7 @@ extension AggregateDefinition: Codable {
         case histogram
         case shards
         case date
+        case since
     }
 
     init(from decoder: Decoder) throws {
@@ -42,7 +43,8 @@ extension AggregateDefinition: Codable {
             groupBy: try container.decodeIfPresent(String.self, forKey: .groupBy),
             measure: measures.first,
             shards: try container.decodeIfPresent(Int.self, forKey: .shards),
-            date: try container.decodeIfPresent(String.self, forKey: .date)
+            date: try container.decodeIfPresent(String.self, forKey: .date),
+            since: try container.decodeIfPresent(Int64.self, forKey: .since).map(Date.init(millisecondsSince1970:))
         )
     }
 
@@ -51,6 +53,7 @@ extension AggregateDefinition: Codable {
         try container.encodeIfPresent(groupBy, forKey: .groupBy)
         try container.encodeIfPresent(shards, forKey: .shards)
         try container.encodeIfPresent(date, forKey: .date)
+        try container.encodeIfPresent(since?.millisecondsSince1970, forKey: .since)
 
         switch measure {
         case .sum(let field):
