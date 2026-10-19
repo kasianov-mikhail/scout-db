@@ -7,9 +7,6 @@
 
 import Foundation
 
-// Which declared aggregate answers a read, and which of its groups the query
-// narrows to. Shared by the reads that fold a vector whole and the ones that
-// unfold it hour by hour, so both refuse the same queries for the same reasons.
 struct AggregateMatch {
     let definition: EntityDefinition
     let branches: [[ClientFilter]]

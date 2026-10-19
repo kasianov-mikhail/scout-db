@@ -23,11 +23,6 @@ extension IndexedBatch: Comparable {
 }
 
 extension Sequence {
-    /// The batches `body` makes of every element, run at once and flattened
-    /// back into the order the elements came in.
-    ///
-    /// Tasks complete in whatever order they finish; each batch carries the
-    /// position it was started from, so the result does not inherit that order.
     func orderedBatches<Item>(_ body: @escaping @Sendable (Element) async throws -> [Item]) async throws -> [Item]
     where Element: Sendable {
         try await withThrowingTaskGroup(of: IndexedBatch<Item>.self) { group in

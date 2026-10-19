@@ -20,27 +20,16 @@ struct PageOperation: Sendable {
     }
 
     func records(branches: [[ClientFilter]], size: Int, cursor: FieldCursor?) async throws -> FieldPage {
-        let pages = try await withThrowingTaskGroup(of: [EntityRecord].self) { group in
-            for branch in branches {
-                group.addTask {
-                    try await self.records(
-                        filters: branch,
-                        size: size,
-                        cursor: cursor
-                    )
-                }
-            }
-            return try await group.reduce(into: [EntityRecord]()) { $0 += $1 }
+        let pages = try await branches.orderedBatches { branch in
+            try await self.records(filters: branch, size: size, cursor: cursor)
         }
 
-        let records = pages.unique().ranked(using: ranking, limit: size)
+        let records = pages.distinct.ranked(using: ranking, limit: size)
 
-        let next: FieldCursor? =
-            records.count == size
-            ? records.last.flatMap { record in record.values[field].map { FieldCursor(value: $0, uuid: record.uuid) } }
-            : nil
-
-        return FieldPage(records: records, cursor: next)
+        guard records.count == size, let last = records.last, let value = last.values[field] else {
+            return FieldPage(records: records, cursor: nil)
+        }
+        return FieldPage(records: records, cursor: FieldCursor(value: value, uuid: last.uuid))
     }
 
     private func records(filters: [ClientFilter], size: Int, cursor: FieldCursor?) async throws -> [EntityRecord] {

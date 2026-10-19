@@ -24,6 +24,10 @@ extension CKQuery {
     struct Sort: Equatable, Sendable {
         let field: String
         let order: SortOrder
+
+        fileprivate var descriptor: NSSortDescriptor {
+            NSSortDescriptor(key: field, ascending: order == .forward)
+        }
     }
 
     convenience init(recordType: String, filters: [Filter], sort: [Sort]) {
@@ -34,7 +38,7 @@ extension CKQuery {
                 : NSCompoundPredicate(type: .and, subpredicates: filters.map(\.predicate))
         )
         if !sort.isEmpty {
-            sortDescriptors = sort.map { NSSortDescriptor(key: $0.field, ascending: $0.order == .forward) }
+            sortDescriptors = sort.map(\.descriptor)
         }
     }
 }

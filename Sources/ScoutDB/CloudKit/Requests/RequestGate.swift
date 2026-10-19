@@ -8,13 +8,13 @@
 import Foundation
 
 actor RequestGate {
-    static let shared = RequestGate()
+    static let shared = RequestGate(limit: 8)
 
     private let limit: Int
     private var inFlight = 0
     private var waiting: [CheckedContinuation<Void, Never>] = []
 
-    init(limit: Int = 8) {
+    init(limit: Int) {
         self.limit = Swift.max(1, limit)
     }
 

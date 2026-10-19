@@ -9,28 +9,29 @@ import CloudKit
 import Foundation
 import ScoutDB
 
-enum LocalQuery {
-    /// What a scan has left to serve: the already-matched, already-ordered ids
-    /// still to come, so a continuation never re-evaluates the query.
+struct LocalQuery {
     private struct Scan: @unchecked Sendable {
         let query: CKQuery
         let remaining: [CKRecord.ID]
     }
 
-    static func page(
-        _ records: [CKRecord], matching query: CKQuery, desiredKeys: [String]?, resultsLimit: Int, pageLimit: Int?
-    ) -> QueryPage {
+    let records: [CKRecord]
+    let desiredKeys: [String]?
+    private let capacity: Int
+
+    init(records: [CKRecord], desiredKeys: [String]?, resultsLimit: Int, pageLimit: Int?) {
+        self.records = records
+        self.desiredKeys = desiredKeys
+        self.capacity = Swift.min(resultsLimit > 0 ? resultsLimit : Int.max, pageLimit ?? Int.max)
+    }
+
+    func page(query: CKQuery) -> QueryPage {
         let matched =
             records
             .filter {
                 $0.recordType == query.recordType && PredicateEvaluator.evaluate(query.predicate, record: $0) == true
             }
             .sorted(by: query.sortDescriptors ?? [])
-
-        let capacity = Swift.min(
-            resultsLimit > 0 ? resultsLimit : Int.max,
-            pageLimit ?? Int.max
-        )
 
         let page = matched.prefix(capacity).map { $0.duplicate(keeping: desiredKeys) }
         let end = page.count
@@ -43,15 +44,12 @@ enum LocalQuery {
         return (page.map { ($0.recordID, .success($0)) }, cursor)
     }
 
-    static func resume(
-        _ records: [CKRecord], from cursor: QueryCursor, desiredKeys: [String]?, resultsLimit: Int, pageLimit: Int?
-    ) -> QueryPage? {
+    func resume(cursor: QueryCursor) -> QueryPage? {
         guard case .local(let token) = cursor, let scan = token as? Scan else {
             return nil
         }
 
         let remaining = scan.remaining
-        let capacity = Swift.min(resultsLimit > 0 ? resultsLimit : Int.max, pageLimit ?? Int.max)
         let byID = Dictionary(records.map { ($0.recordID, $0) }, uniquingKeysWith: { first, _ in first })
 
         var served: [(CKRecord.ID, Result<CKRecord, any Error>)] = []

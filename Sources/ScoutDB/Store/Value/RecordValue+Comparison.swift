@@ -9,7 +9,14 @@ import Foundation
 
 extension RecordValue {
     func satisfies(_ op: Operator, against other: RecordValue) -> Bool {
-        guard comparable(with: other) else {
+        let comparable =
+            switch (self, other) {
+            case (.string, .string), (.date, .date):
+                true
+            default:
+                scalar != nil && other.scalar != nil
+            }
+        guard comparable else {
             return false
         }
 
@@ -22,15 +29,6 @@ extension RecordValue {
             true
         default:
             false
-        }
-    }
-
-    private func comparable(with other: RecordValue) -> Bool {
-        switch (self, other) {
-        case (.string, .string), (.date, .date):
-            true
-        default:
-            scalar != nil && other.scalar != nil
         }
     }
 }

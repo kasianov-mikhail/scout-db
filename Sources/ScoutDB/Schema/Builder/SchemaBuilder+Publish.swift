@@ -42,7 +42,7 @@ extension SchemaBuilder {
         var allocator = SlotAllocator(reserving: [])
 
         let fields = try declarations.map {
-            try allocator.resolve($0, since: nil, storage: nil)
+            FieldDefinition(declaration: $0, storage: try allocator.storage(declaration: $0), since: nil)
         }
 
         var taken = Set(aggregates.map(\.name))
@@ -116,11 +116,7 @@ extension SchemaBuilder {
             let active = previous.activeFields.first { $0.name == declaration.name }
 
             if let active, active.type == declaration.type, active.storage.isPayload != declaration.wantsSlot {
-                var kept = try allocator.resolve(
-                    declaration,
-                    since: active.since,
-                    storage: active.storage
-                )
+                var kept = FieldDefinition(declaration: declaration, storage: active.storage, since: active.since)
 
                 guard kept.coversBounds(of: active) else {
                     throw SchemaError.invalidDefinition(.narrowedBounds(field: declaration.name))
@@ -130,11 +126,7 @@ extension SchemaBuilder {
                 fields.append(kept)
                 carried.insert(declaration.name)
             } else if let closed = previous.lastClosed(matching: declaration) {
-                let reopened = try allocator.resolve(
-                    declaration,
-                    since: version,
-                    storage: closed.storage
-                )
+                let reopened = FieldDefinition(declaration: declaration, storage: closed.storage, since: version)
 
                 guard reopened.coversBounds(of: closed) else {
                     throw SchemaError.invalidDefinition(.narrowedBounds(field: declaration.name))
@@ -142,13 +134,8 @@ extension SchemaBuilder {
 
                 fields.append(reopened)
             } else {
-                fields.append(
-                    try allocator.resolve(
-                        declaration,
-                        since: version,
-                        storage: nil
-                    )
-                )
+                let storage = try allocator.storage(declaration: declaration)
+                fields.append(FieldDefinition(declaration: declaration, storage: storage, since: version))
             }
         }
 
@@ -207,12 +194,6 @@ extension SchemaBuilder {
 }
 
 extension EntityDefinition {
-    /// The most recently closed field a declaration can reopen: same name,
-    /// same type, same pool.
-    ///
-    /// Its slot was reserved since it closed, so no other field holds it, and
-    /// the records under its earlier versions already mean this field.
-    ///
     fileprivate func lastClosed(matching declaration: SchemaBuilder.Declaration) -> FieldDefinition? {
         fields
             .filter {
@@ -234,6 +215,13 @@ extension AggregateDefinition {
 }
 
 extension FieldDefinition {
+    fileprivate init(declaration: SchemaBuilder.Declaration, storage: Storage, since: Int?) {
+        self.init(name: declaration.name, type: declaration.type, storage: storage, since: since)
+        for constraint in declaration.constraints {
+            constraint.apply(to: &self)
+        }
+    }
+
     fileprivate func coversBounds(of other: Self) -> Bool {
         (min ?? -.infinity) <= (other.min ?? -.infinity) && (max ?? .infinity) >= (other.max ?? .infinity)
     }

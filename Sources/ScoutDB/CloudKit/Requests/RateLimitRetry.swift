@@ -8,10 +8,7 @@
 import CloudKit
 import Foundation
 
-func withRateLimitRetry<R>(
-    maxRetry: Int,
-    operation: () async throws -> R
-) async throws -> R {
+func withRateLimitRetry<R>(maxRetry: Int, operation: () async throws -> R) async throws -> R {
     var attempt = 0
     while true {
         do {

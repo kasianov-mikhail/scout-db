@@ -30,32 +30,28 @@ struct WriteOperation: Sendable {
                 values: resolved
             )
         }
-        .upserted()
+        .upserts
 
-        let (removedFromViews, addedToViews) = try await rebalance(records, stored: stored)
+        let replaced = try await previous(records, stored: stored)
 
         let encoder = EntityEncoder(definition: definition)
-        let encoded = try records.map { try encoder.encode($0) }
+        let encoded = try records.map(encoder.encode)
 
         for chunk in encoded.chunked(into: maxBatchSize) {
             try await database.modifyRecords(saving: chunk, deleting: [])
         }
 
-        try await aggregator.rebalance(removing: removedFromViews, adding: addedToViews)
+        try await aggregator.rebalance(removing: replaced, adding: records)
 
         return records.map(\.uuid)
     }
 
-    private func rebalance(_ records: [EntityRecord], stored: Set<String>) async throws -> (
-        removing: [EntityRecord], adding: [EntityRecord]
-    ) {
+    private func previous(_ records: [EntityRecord], stored: Set<String>) async throws -> [EntityRecord] {
         guard !definition.aggregates.isEmpty else {
-            return ([], [])
+            return []
         }
 
-        let ids = records.map(\.uuid).filter(stored.contains).map {
-            CKRecord.ID(recordName: $0)
-        }
+        let ids = records.map(\.uuid).filter(stored.contains).map(CKRecord.ID.init(recordName:))
 
         let decoder = EntityDecoder(definition: definition)
         let live = try await database.fetchRecords(ids: ids, batchSize: 100)
@@ -67,12 +63,12 @@ struct WriteOperation: Sendable {
             uniquingKeysWith: { first, _ in first }
         )
 
-        return (Array(liveByUUID.values), records)
+        return Array(liveByUUID.values)
     }
 }
 
 extension [EntityRecord] {
-    fileprivate func upserted() -> [EntityRecord] {
+    fileprivate var upserts: [EntityRecord] {
         var position: [String: Int] = [:]
         var records: [EntityRecord] = []
 

@@ -14,11 +14,15 @@ struct ShardPlan: Equatable {
     private var grown: [Int64: Int]
 
     init(floor: Int?, grown: [String: Int] = [:]) {
+        var weeks: [Int64: Int] = [:]
+        for (key, value) in grown {
+            guard let week = Int64(key) else {
+                continue
+            }
+            weeks[week] = Swift.max(weeks[week] ?? value, value)
+        }
         self.floor = floor
-        self.grown = Dictionary(
-            grown.compactMap { key, value in Int64(key).map { ($0, value) } },
-            uniquingKeysWith: Swift.max
-        )
+        self.grown = weeks
     }
 
     func count(for week: Date) -> Int? {

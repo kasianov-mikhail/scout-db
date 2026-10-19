@@ -15,35 +15,16 @@ package enum PredicateEvaluator {
 
             switch compound.compoundPredicateType {
             case .and:
-                var sawUnknown = false
-                for subpredicate in subpredicates {
-                    switch evaluate(subpredicate, record: record) {
-                    case .some(false):
-                        return false
-                    case .none:
-                        sawUnknown = true
-                    case .some(true):
-                        break
-                    }
-                }
-                return sawUnknown ? nil : true
+                return combine(subpredicates: subpredicates, record: record, decisive: false)
 
             case .or:
-                var sawUnknown = false
-                for subpredicate in subpredicates {
-                    switch evaluate(subpredicate, record: record) {
-                    case .some(true):
-                        return true
-                    case .none:
-                        sawUnknown = true
-                    case .some(false):
-                        break
-                    }
-                }
-                return sawUnknown ? nil : false
+                return combine(subpredicates: subpredicates, record: record, decisive: true)
 
             case .not:
-                return subpredicates.first.flatMap { evaluate($0, record: record).map { !$0 } }
+                guard let subpredicate = subpredicates.first, let result = evaluate(subpredicate, record: record) else {
+                    return nil
+                }
+                return !result
 
             @unknown default:
                 return nil
@@ -61,6 +42,20 @@ package enum PredicateEvaluator {
         }
 
         return nil
+    }
+
+    private static func combine(subpredicates: [NSPredicate], record: CKRecord, decisive: Bool) -> Bool? {
+        var sawUnknown = false
+        for subpredicate in subpredicates {
+            guard let result = evaluate(subpredicate, record: record) else {
+                sawUnknown = true
+                continue
+            }
+            if result == decisive {
+                return decisive
+            }
+        }
+        return sawUnknown ? nil : !decisive
     }
 
     private static func evaluate(_ comparison: NSComparisonPredicate, record: CKRecord) -> Bool? {

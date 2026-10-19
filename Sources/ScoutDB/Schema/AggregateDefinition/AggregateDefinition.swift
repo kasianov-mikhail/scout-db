@@ -50,10 +50,7 @@ extension [AggregateDefinition] {
 }
 
 extension AggregateDefinition {
-    init(
-        metric: Metric? = nil, field: String? = nil, group: String? = nil, date: String? = nil,
-        shards: Int? = nil
-    ) {
+    init(metric: Metric? = nil, field: String? = nil, group: String? = nil, date: String? = nil, shards: Int? = nil) {
         let measure: Measure? =
             switch (metric?.storage, field) {
             case (.sum, let field?):

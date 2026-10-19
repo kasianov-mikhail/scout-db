@@ -7,7 +7,6 @@
 
 import Foundation
 
-/// The rule an entity definition broke.
 enum DefinitionFault: Equatable, Sendable {
     case reservedEntity(String)
 

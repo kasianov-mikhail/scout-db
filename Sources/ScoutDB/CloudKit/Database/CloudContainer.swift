@@ -83,28 +83,14 @@ extension CloudContainer {
     }
 }
 
-/// The iCloud account cannot back a store right now — signed out, restricted,
-/// or still resolving.
-///
-/// Thrown by ``CloudContainer/requireAccount()``. The carried status says
-/// which case it is, and so what to do about it: `.noAccount` calls for a
-/// sign-in prompt, `.restricted` names a device policy the app cannot lift,
-/// while `.couldNotDetermine` and `.temporarilyUnavailable` are worth
-/// retrying later.
-///
 struct AccountUnavailableError: LocalizedError {
-    /// The status the container reported instead of `.available`.
     let status: CKAccountStatus
 
-    /// A diagnostic string carrying the raw status — not a message to show a
-    /// user, who needs wording chosen per ``status``.
     var errorDescription: String? {
         "iCloud account unavailable (status \(status.rawValue))"
     }
 }
 
-/// `CKContainer` already answers `accountStatus()`; only its public database
-/// needs a name the rest of ScoutDB can see.
 extension CKContainer: CloudContainer {
     public var publicDatabase: any CloudDatabase {
         publicCloudDatabase

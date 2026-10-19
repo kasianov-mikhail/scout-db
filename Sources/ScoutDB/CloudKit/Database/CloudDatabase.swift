@@ -7,7 +7,6 @@
 
 import CloudKit
 
-/// The most records CloudKit accepts in one request.
 let maxBatchSize = 400
 
 /// A seam shaped exactly like the CKDatabase calls the store makes — not a

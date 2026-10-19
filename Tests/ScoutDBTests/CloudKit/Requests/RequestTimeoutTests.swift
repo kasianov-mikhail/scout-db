@@ -13,14 +13,14 @@ import Testing
 struct RequestTimeoutTests {
     @Test("Returns the value when the operation finishes in time")
     func testPassesThroughFastResult() async throws {
-        let value = try await withRequestTimeout(.seconds(10)) { 42 }
+        let value = try await withRequestTimeout(timeout: .seconds(10)) { 42 }
         #expect(value == 42)
     }
 
     @Test("Throws RequestTimeoutError when the operation outlives the limit")
     func testThrowsOnTimeout() async {
         await #expect(throws: RequestTimeoutError.self) {
-            try await withRequestTimeout(.milliseconds(20)) {
+            try await withRequestTimeout(timeout: .milliseconds(20)) {
                 try await Task.sleep(for: .seconds(10))
             }
         }
@@ -33,7 +33,7 @@ struct RequestTimeoutTests {
         let start = clock.now
 
         await #expect(throws: RequestTimeoutError.self) {
-            try await withRequestTimeout(.milliseconds(20)) {
+            try await withRequestTimeout(timeout: .milliseconds(20)) {
                 await gate.wait()
             }
         }
@@ -45,7 +45,7 @@ struct RequestTimeoutTests {
     @Test("Rethrows the caller's cancellation instead of waiting out the timer")
     func testPropagatesCallerCancellation() async {
         let task = Task {
-            try await withRequestTimeout(.seconds(10)) {
+            try await withRequestTimeout(timeout: .seconds(10)) {
                 try await Task.sleep(for: .seconds(10))
             }
         }

@@ -7,7 +7,6 @@
 
 import Foundation
 
-/// The reason a query's shape cannot be served.
 enum QueryFault: Equatable, Sendable {
     case singleSortRequired
     case unsortableField(String)

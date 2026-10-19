@@ -29,9 +29,9 @@ extension RecordValue {
         case .dates(let value):
             value as NSArray
         case .reference(let value):
-            CKRecord.Reference(recordID: CKRecord.ID(recordName: value), action: .none)
+            CKRecord.Reference(uuid: value)
         case .references(let value):
-            value.map { CKRecord.Reference(recordID: CKRecord.ID(recordName: $0), action: .none) } as NSArray
+            value.map(CKRecord.Reference.init(uuid:)) as NSArray
         case .blobs(let value):
             value as NSArray
         }

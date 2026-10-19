@@ -14,17 +14,13 @@ struct ReadOperation: Sendable {
 
     func records(limit: Int? = nil) async throws -> [EntityRecord] {
         if branches.count == 1 {
-            return try await records(
-                matching: branches[0],
-                sort: sort,
-                limit: limit
-            )
+            return try await records(branch: branches[0], sort: sort, limit: limit)
         }
 
         if let limit, sort.isEmpty {
             var union: [EntityRecord] = []
             for branch in branches {
-                union = (union + (try await records(matching: branch, limit: limit))).unique()
+                union = (union + (try await records(branch: branch, sort: [], limit: limit))).distinct
                 if union.count >= limit {
                     break
                 }
@@ -33,31 +29,28 @@ struct ReadOperation: Sendable {
         }
 
         let results = try await branches.orderedBatches { branch in
-            try await self.records(
-                matching: branch,
-                sort: self.sort,
-                limit: limit
-            )
+            try await self.records(branch: branch, sort: self.sort, limit: limit)
         }
 
-        return results.unique().ranked(
+        return results.distinct.ranked(
             using: sort.map(FieldOrder.init),
             limit: limit
         )
     }
 
-    private func records(matching filters: [ClientFilter], sort: [EntityStore.Sort] = [], limit: Int? = nil)
-        async throws -> [EntityRecord]
-    {
-        if try clientRanked(sort) {
-            return try await records(matching: filters).ranked(
+    private func records(branch: [ClientFilter], sort: [EntityStore.Sort], limit: Int?) async throws -> [EntityRecord] {
+        let clientRanked = try sort.contains { clause in
+            try definition.field(clause.field, at: definition.version).storage.isPayload
+        }
+        if clientRanked {
+            return try await records(branch: branch, sort: [], limit: nil).ranked(
                 using: sort.map(FieldOrder.init),
                 limit: limit
             )
         }
 
         let plan = try definition.plan(
-            matching: filters,
+            matching: branch,
             sort: try definition.serverSort(sort),
             fields: fields.map { $0 + self.sort.map(\.field) }
         )
@@ -76,16 +69,10 @@ struct ReadOperation: Sendable {
         let decoder = EntityDecoder(definition: definition)
         var collected: [EntityRecord] = []
 
-        try await database.pages(matching: plan.query, desiredKeys: plan.desiredKeys) { page in
+        try await database.pages(plan: plan) { page in
             collected += try page.map(decoder.decode).filter(plan.includes)
         }
         return collected
-    }
-
-    private func clientRanked(_ sort: [EntityStore.Sort]) throws -> Bool {
-        try sort.contains { clause in
-            try definition.field(clause.field, at: definition.version).storage.isPayload
-        }
     }
 }
 

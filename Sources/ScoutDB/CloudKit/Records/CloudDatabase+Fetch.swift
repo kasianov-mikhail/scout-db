@@ -40,39 +40,11 @@ extension CloudDatabase {
         return records
     }
 
-    /// The same fetch as ``fetchRecords(ids:)``, cut into `batchSize` chunks
-    /// that run at once, still answering in the order asked.
-    ///
-    /// Every chunk is its own task, and tasks complete in whatever order the
-    /// server lets them. The result does not inherit that order: each chunk
-    /// carries the position it was cut from, and the batches are sorted back
-    /// before they are flattened. Order matches `ids` exactly as the serial
-    /// fetch does, with missing records left out the same way.
-    ///
-    /// Short lists skip the machinery — an empty list answers empty, and one
-    /// that fits a single chunk goes straight to ``fetchRecords(ids:)``, which
-    /// a conformance may already serve in one request. So `batchSize` is worth
-    /// setting to what a single request can carry rather than to a slice of the
-    /// expected total.
-    ///
-    /// ```swift
-    /// let ids = slots.map(\.recordID)
-    /// let records = try await database.fetchRecords(ids: ids, batchSize: maxBatch)
-    ///
-    /// for record in records {
-    ///     await cache.keep(record)
-    /// }
-    /// ```
-    ///
     func fetchRecords(ids: [CKRecord.ID], batchSize: Int) async throws -> [CKRecord] {
         guard !ids.isEmpty else { return [] }
         guard ids.count > batchSize else {
             return try await fetchRecords(ids: ids)
         }
-        let database = self
-
-        return try await ids.chunked(into: batchSize).orderedBatches { batch in
-            try await database.fetchRecords(ids: batch)
-        }
+        return try await ids.chunked(into: batchSize).orderedBatches(fetchRecords(ids:))
     }
 }
