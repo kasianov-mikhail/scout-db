@@ -10,12 +10,30 @@ import Foundation
 
 struct VectorReader {
     let database: any CloudDatabase
-    let entity: String
+    let definition: EntityDefinition
     let aggregate: AggregateDefinition
 
     typealias Row = (group: String, week: Date, record: CKRecord)
 
+    private var entity: String {
+        definition.entity
+    }
+
     func rows(groups: [String]?, in range: Range<Date>? = nil) async throws -> [Row] {
+        guard let since = aggregate.since, let date = aggregate.date else {
+            return try await vectorRows(groups: groups, in: range)
+        }
+        guard (range?.lowerBound ?? .distantPast) < since else {
+            return try await vectorRows(groups: groups, in: range)
+        }
+
+        async let counted = vectorRows(groups: groups, in: range)
+        async let missing = recordRows(groups: groups, date: date, since: since, range: range)
+
+        return try await counted.compactMap { Self.row($0, from: since) } + missing
+    }
+
+    private func vectorRows(groups: [String]?, in range: Range<Date>?) async throws -> [Row] {
         let head = try await head()
         let weeks = head.weeks.map(Date.init(millisecondsSince1970:)).filter { week in
             range.map { week.covers($0) } ?? true
@@ -61,6 +79,47 @@ struct VectorReader {
         .compactMap { record in
             named[record.recordID].map { (group: $0.group, week: $0.week, record: record) }
         }
+    }
+
+    private func recordRows(groups: [String]?, date: String, since: Date, range: Range<Date>?) async throws -> [Row] {
+        var filters = [ClientFilter(field: date, op: .lessThan, value: .date(min(range?.upperBound ?? since, since)))]
+        if let lower = range?.lowerBound {
+            filters.append(ClientFilter(field: date, op: .greaterThanOrEquals, value: .date(lower)))
+        }
+
+        let fields = [date, aggregate.groupBy, aggregate.measure?.field, aggregate.measure?.histogram?.field]
+
+        let records = try await ReadOperation(
+            database: database,
+            definition: definition,
+            branches: [filters],
+            sort: [],
+            fields: fields.compactMap(\.self)
+        )
+        .records()
+
+        return [aggregate].deltas(removing: [], adding: records, at: since, spread: [:])
+            .filter { slot, _ in groups?.contains(slot.group) ?? true }
+            .map { slot, delta in
+                let record = CKRecord(recordType: VectorSlot.recordType, recordID: slot.recordID)
+                delta.apply(to: record)
+                return (group: slot.group, week: slot.week, record: record)
+            }
+    }
+
+    private static func row(_ row: Row, from since: Date) -> Row? {
+        guard row.week < since else {
+            return row
+        }
+        guard row.week.hour(Date.hoursPerWeek) > since else {
+            return nil
+        }
+
+        let record = row.record.duplicate()
+        for hour in 0..<Date.hoursPerWeek where row.week.hour(hour) < since {
+            record[VectorSlot.cellKeys[hour]] = nil
+        }
+        return (group: row.group, week: row.week, record: record)
     }
 
     private func head() async throws -> IndexPage {

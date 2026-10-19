@@ -87,9 +87,9 @@ extension SchemaBuilder {
     ///
     /// A version builds no vector of its own: the entity already holds records,
     /// and a fresh cell counts only what lands after it. An aggregate that
-    /// joins here records the first whole hour it sees, which
-    /// ``QueryBuilder/coverage(_:metric:group:)`` hands back, so a reader can
-    /// count the hours before it from the records. The returned names are
+    /// joins here, dated `at` a field, notes the first whole hour it sees, and
+    /// a read over earlier hours counts them from the records instead. The
+    /// returned names are
     /// that missing coverage — declare `count(by:)` for them on a further
     /// version to have it kept from there on, mark them `.ungrouped` to say they
     /// are meant to go uncounted, or leave them to be answered by reading

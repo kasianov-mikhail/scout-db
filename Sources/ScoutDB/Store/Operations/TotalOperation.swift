@@ -45,7 +45,7 @@ struct TotalOperation: Sendable {
 
         let rows = try await VectorReader(
             database: database,
-            entity: definition.entity,
+            definition: definition,
             aggregate: aggregate
         )
         .rows(groups: narrowed)
