@@ -18,6 +18,8 @@
 in code, query them with filters and sorting, aggregate without scanning, and evolve your
 schema freely — the CloudKit [schema](Schema) is uploaded once and never touched again.
 
+The full guides live in [docs](docs/README.md).
+
 ## Table of Contents
 - [Features](#features)
 - [Requirements](#requirements)
@@ -80,27 +82,32 @@ are out of scope, so `CloudContainer` hands out `publicDatabase` and nothing els
 ```swift
 try await store.schema("purchase")
     .field("product_id", .string, .required)
-    .field("quantity", .int, .minimum(0))
+    .field("quantity", .int, .min(0))
     .field("amount", .double)
     .field("date", .timestamp)
     .field("comment", .string, .payload)
+    .sum("amount", by: "product_id", at: "date")
     .create()
 ```
 
 Fields marked `.payload` skip server-side filtering — use it for everything you never
-filter on.
+filter on. `.sum` keeps a running total of `amount` per product, which the aggregate reads
+below are answered from.
 
 ### Write and query
 
 ```swift
 try await store.write(
     [
-        EntityWrite(values: [
-            "product_id": .string("sku-42"),
-            "quantity": .int(3),
-            "amount": .double(29.97),
-            "date": .date(.now),
-        ])
+        EntityWrite(
+            values: [
+                "product_id": .string("sku-42"),
+                "quantity": .int(3),
+                "amount": .double(29.97),
+                "date": .date(.now),
+            ],
+            uuid: nil
+        )
     ],
     entity: "purchase"
 )
@@ -129,6 +136,7 @@ for — roll them up into days or weeks on the client.
 let revenue = try await store.query("purchase")
     .totals("amount", metric: .sum, group: "product_id")
 
+let lastWeek = Date.now.addingTimeInterval(-7 * 24 * 3600)..<Date.now
 let hourly = try await store.query("purchase")
     .series("amount", metric: .sum, group: "product_id", in: lastWeek)
 ```
