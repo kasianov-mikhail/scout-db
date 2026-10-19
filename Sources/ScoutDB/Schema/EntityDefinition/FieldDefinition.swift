@@ -61,18 +61,11 @@ struct FieldDefinition: Codable, Equatable, Sendable {
 }
 
 enum Storage: Equatable, Sendable {
-    /// A named slot of the given pool: filterable and sortable server-side,
-    /// and limited to the pool's capacity.
     case slot(FieldType, String)
-
-    /// A named slot of the payload pool, holding the value as a blob: outside
-    /// the typed pools, and outside the server's reach — every filter over it
-    /// runs client-side.
     case payload(String)
 }
 
 extension Storage {
-    /// The record field the value lives in, whichever pool named it.
     var slot: String {
         switch self {
         case .slot(_, let slot), .payload(let slot):
@@ -80,7 +73,6 @@ extension Storage {
         }
     }
 
-    /// Whether the field draws from the payload pool rather than a typed one.
     var isPayload: Bool {
         if case .payload = self { true } else { false }
     }

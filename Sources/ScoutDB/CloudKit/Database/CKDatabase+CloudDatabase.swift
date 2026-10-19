@@ -31,18 +31,7 @@ extension CKDatabase: CloudDatabase {
             throw CKError(.invalidArguments)
         }
         return try await throttled { database in
-            let (results, next):
-                (matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?) =
-                    try await withCheckedThrowingContinuation { continuation in
-                        database.fetch(
-                            withCursor: cursor,
-                            desiredKeys: desiredKeys,
-                            resultsLimit: resultsLimit
-                        ) { result in
-                            continuation.resume(with: result)
-                        }
-                    }
-            return (results, next.map(QueryCursor.cloudKit))
+            try await database.page(cursor: cursor, keys: desiredKeys, limit: resultsLimit)
         }
     }
 
@@ -55,10 +44,6 @@ extension CKDatabase: CloudDatabase {
                 atomically: true
             )
 
-            // Atomicity is a custom-zone guarantee, so a batch in the default
-            // zone of the public database reports what it refused per record
-            // and returns without an error of its own. Left unread, a rejected
-            // save is a write the caller is told went through.
             for result in results.saveResults.values {
                 _ = try result.get()
             }
@@ -69,23 +54,24 @@ extension CKDatabase: CloudDatabase {
     }
 
     public func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
-        try await throttled { database in
-            let results = try await database.modifyRecords(
+        let results = try await throttled { database in
+            try await database.modifyRecords(
                 saving: records,
                 deleting: [],
                 savePolicy: .ifServerRecordUnchanged,
                 atomically: false
             )
+            .saveResults
+        }
 
-            return records.map { record in
-                guard let result = results.saveResults[record.recordID] else {
-                    return (record.recordID, .failure(CKError(.internalError)))
-                }
-                guard case .failure(let error) = result, let conflict = RecordConflictError(error) else {
-                    return (record.recordID, result)
-                }
-                return (record.recordID, .failure(conflict))
+        return records.map { record in
+            guard let result = results[record.recordID] else {
+                return (record.recordID, .failure(CKError(.internalError)))
             }
+            guard case .failure(let error) = result, let conflict = RecordConflictError(error) else {
+                return (record.recordID, result)
+            }
+            return (record.recordID, .failure(conflict))
         }
     }
 
@@ -103,18 +89,33 @@ extension CKDatabase: CloudDatabase {
         guard !ids.isEmpty else { return [] }
 
         return try await throttled { database in
-            let results = try await database.records(for: ids)
+            try await database.existing(ids: ids)
+        }
+    }
 
-            return try ids.compactMap { id in
-                guard let result = results[id] else {
-                    return nil
-                }
-                do {
-                    return try result.get()
-                } catch let error as CKError where error.code == .unknownItem {
-                    return nil
-                }
+    private func existing(ids: [CKRecord.ID]) async throws -> [CKRecord] {
+        let results = try await records(for: ids)
+
+        return try ids.compactMap { id in
+            guard let result = results[id] else {
+                return nil
+            }
+            do {
+                return try result.get()
+            } catch let error as CKError where error.code == .unknownItem {
+                return nil
             }
         }
+    }
+
+    private func page(cursor: CKQueryOperation.Cursor, keys: [String]?, limit: Int) async throws -> QueryPage {
+        let (results, next):
+            (matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?) =
+                try await withCheckedThrowingContinuation { continuation in
+                    fetch(withCursor: cursor, desiredKeys: keys, resultsLimit: limit) { result in
+                        continuation.resume(with: result)
+                    }
+                }
+        return (results, next.map(QueryCursor.cloudKit))
     }
 }

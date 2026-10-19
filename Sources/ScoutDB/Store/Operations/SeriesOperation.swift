@@ -14,9 +14,10 @@ struct SeriesOperation: Sendable {
     let branches: [[ClientFilter]]
 
     func points(field: String?, metric: Metric, group: String?, in range: Range<Date>) async throws -> [SeriesPoint] {
-        let aggregate = try match.aggregate(field: field, metric: metric, group: group)
+        let vectors = try reader(field: field, metric: metric, group: group)
+        let groups = try match.groups(narrowedTo: group)
 
-        return try await cells(of: aggregate, group: group, in: range)
+        return try await vectors.cells(groups: groups, range: range)
             .map { key, value in SeriesPoint(group: key.group, date: key.date, value: value) }
             .sorted()
     }
@@ -24,11 +25,12 @@ struct SeriesOperation: Sendable {
     func averages(field: String, group: String?, in range: Range<Date>) async throws -> [SeriesPoint] {
         try definition.requireAverageable(field)
 
-        let totaling = try match.aggregate(field: field, metric: .sum, group: group)
-        let counting = try match.aggregate(field: nil, metric: .sum, group: group)
+        let totaling = try reader(field: field, metric: .sum, group: group)
+        let counting = try reader(field: nil, metric: .sum, group: group)
+        let groups = try match.groups(narrowedTo: group)
 
-        async let totaled = cells(of: totaling, group: group, in: range)
-        async let counted = cells(of: counting, group: group, in: range)
+        async let totaled = totaling.cells(groups: groups, range: range)
+        async let counted = counting.cells(groups: groups, range: range)
 
         let (totals, counts) = try await (totaled, counted)
 
@@ -41,20 +43,12 @@ struct SeriesOperation: Sendable {
         .sorted()
     }
 
-    private func cells(of aggregate: AggregateDefinition, group: String?, in range: Range<Date>) async throws
-        -> [SeriesPoint.Key: Double]
-    {
-        let narrowed = try match.groups(narrowedTo: group)
-
-        let cells = try await VectorReader(
+    private func reader(field: String?, metric: Metric, group: String?) throws -> VectorReader {
+        VectorReader(
             database: database,
             definition: definition,
-            aggregate: aggregate
+            aggregate: try match.aggregate(field: field, metric: metric, group: group)
         )
-        .rows(groups: narrowed, in: range)
-        .vectorCells(folding: aggregate.fold, in: range)
-
-        return aggregate.measure?.metric == nil ? cells.filter { $0.value != 0 } : cells
     }
 
     private var match: AggregateMatch {

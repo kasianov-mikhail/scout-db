@@ -41,4 +41,9 @@ struct VectorReader {
 
         return try await counted.compactMap { $0.trimmed(since: since) } + missing
     }
+
+    func cells(groups: [String]?, range: Range<Date>) async throws -> [SeriesPoint.Key: Double] {
+        let cells = try await rows(groups: groups, in: range).vectorCells(folding: aggregate.fold, in: range)
+        return aggregate.measure?.metric == nil ? cells.filter { $0.value != 0 } : cells
+    }
 }

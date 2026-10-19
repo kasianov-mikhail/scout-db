@@ -7,7 +7,6 @@
 
 import Foundation
 
-/// The constraint a written value broke.
 enum ValueFault: Equatable, Sendable {
     case outsideDomain(field: String)
     case patternMismatch(field: String)

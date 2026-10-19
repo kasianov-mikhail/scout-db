@@ -24,7 +24,7 @@ struct VectorAggregator {
     let growthThreshold = 3
 
     func rebalance(removing old: [EntityRecord], adding new: [EntityRecord]) async throws {
-        guard let entity = (new.first ?? old.first)?.entity else {
+        guard !aggregates.isEmpty, let entity = (new.first ?? old.first)?.entity else {
             return
         }
 

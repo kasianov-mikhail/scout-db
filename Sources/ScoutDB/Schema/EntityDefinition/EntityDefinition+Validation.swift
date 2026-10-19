@@ -13,52 +13,8 @@ extension EntityDefinition {
             throw SchemaError.invalidDefinition(.reservedEntity(entity))
         }
 
-        let names = Set(fields.map(\.name))
         for field in fields {
-            if case .slot(let pool, let slot) = field.storage {
-                guard field.type == pool else {
-                    throw SchemaError.invalidDefinition(
-                        .slotTypeMismatch(field: field.name, type: field.type, pool: pool)
-                    )
-                }
-                guard let index = pool.slotIndex(slot) else {
-                    throw SchemaError.invalidDefinition(.slotOutsidePool(slot, pool: pool))
-                }
-                guard index >= pool.reserved else {
-                    throw SchemaError.invalidDefinition(.reservedSlot(slot, pool: pool))
-                }
-                guard index < pool.capacity else {
-                    throw SchemaError.invalidDefinition(.slotBeyondCapacity(slot, pool: pool))
-                }
-            }
-            if case .payload(let slot) = field.storage {
-                guard let index = PayloadPool.slotIndex(slot) else {
-                    throw SchemaError.invalidDefinition(.slotOutsidePayload(slot))
-                }
-                guard index < PayloadPool.capacity else {
-                    throw SchemaError.invalidDefinition(.slotBeyondPayload(slot))
-                }
-            }
-            if let pattern = field.pattern {
-                guard [.string, .text, .stringList].contains(field.type) else {
-                    throw SchemaError.invalidDefinition(
-                        .unsupportedPattern(field: field.name, type: field.type)
-                    )
-                }
-                guard (try? Regex(pattern)) != nil else {
-                    throw SchemaError.invalidDefinition(.malformedPattern(field: field.name))
-                }
-            }
-            if field.allowed != nil, ![.string, .text, .stringList].contains(field.type) {
-                throw SchemaError.invalidDefinition(
-                    .unsupportedAllowed(field: field.name, type: field.type)
-                )
-            }
-            if field.min != nil || field.max != nil, ![.int, .double, .intList, .doubleList].contains(field.type) {
-                throw SchemaError.invalidDefinition(
-                    .unsupportedBounds(field: field.name, type: field.type)
-                )
-            }
+            try field.validate()
         }
         for lhs in fields {
             for rhs in fields where lhs.name != rhs.name || lhs.since != rhs.since {
@@ -76,50 +32,90 @@ extension EntityDefinition {
             throw SchemaError.invalidDefinition(.duplicateAggregate(aggregate.name))
         }
         for aggregate in aggregates {
-            if let groupBy = aggregate.groupBy, !names.contains(groupBy) {
-                throw SchemaError.invalidDefinition(
-                    .unknownGrouping(aggregate: aggregate.name, field: groupBy)
-                )
-            }
+            try aggregate.validate(fields: fields)
+        }
+    }
+}
 
-            if let date = aggregate.date {
-                guard let field = fields.first(where: { $0.name == date }) else {
-                    throw SchemaError.invalidDefinition(
-                        .unknownDate(aggregate: aggregate.name, field: date)
-                    )
-                }
-                guard field.type == .timestamp else {
-                    throw SchemaError.invalidDefinition(
-                        .nonTemporalDate(aggregate: aggregate.name, field: date)
-                    )
-                }
+extension FieldDefinition {
+    fileprivate func validate() throws {
+        if case .slot(let pool, let slot) = storage {
+            guard type == pool else {
+                throw SchemaError.invalidDefinition(.slotTypeMismatch(field: name, type: type, pool: pool))
             }
+            guard let index = pool.slotIndex(slot) else {
+                throw SchemaError.invalidDefinition(.slotOutsidePool(slot, pool: pool))
+            }
+            guard index >= pool.reserved else {
+                throw SchemaError.invalidDefinition(.reservedSlot(slot, pool: pool))
+            }
+            guard index < pool.capacity else {
+                throw SchemaError.invalidDefinition(.slotBeyondCapacity(slot, pool: pool))
+            }
+        }
+        if case .payload(let slot) = storage {
+            guard let index = PayloadPool.slotIndex(slot) else {
+                throw SchemaError.invalidDefinition(.slotOutsidePayload(slot))
+            }
+            guard index < PayloadPool.capacity else {
+                throw SchemaError.invalidDefinition(.slotBeyondPayload(slot))
+            }
+        }
+        if let pattern {
+            guard [.string, .text, .stringList].contains(type) else {
+                throw SchemaError.invalidDefinition(.unsupportedPattern(field: name, type: type))
+            }
+            guard (try? Regex(pattern)) != nil else {
+                throw SchemaError.invalidDefinition(.malformedPattern(field: name))
+            }
+        }
+        if allowed != nil, ![.string, .text, .stringList].contains(type) {
+            throw SchemaError.invalidDefinition(.unsupportedAllowed(field: name, type: type))
+        }
+        if min != nil || max != nil, ![.int, .double, .intList, .doubleList].contains(type) {
+            throw SchemaError.invalidDefinition(.unsupportedBounds(field: name, type: type))
+        }
+    }
+}
 
-            if let histogram = aggregate.measure?.histogram {
-                guard aggregate.groupBy == nil else {
-                    throw SchemaError.invalidDefinition(.groupedHistogram(aggregate: aggregate.name))
-                }
-                guard (1...63).contains(histogram.bounds.count) else {
-                    throw SchemaError.invalidDefinition(.invalidBounds(aggregate: aggregate.name))
-                }
-                guard histogram.bounds == histogram.bounds.sorted(),
-                    Set(histogram.bounds).count == histogram.bounds.count
-                else {
-                    throw SchemaError.invalidDefinition(.invalidBounds(aggregate: aggregate.name))
-                }
-            }
+extension AggregateDefinition {
+    fileprivate func validate(fields: [FieldDefinition]) throws {
+        if let groupBy, !fields.contains(where: { $0.name == groupBy }) {
+            throw SchemaError.invalidDefinition(.unknownGrouping(aggregate: name, field: groupBy))
+        }
 
-            if let field = aggregate.measure?.field ?? aggregate.measure?.histogram?.field {
-                guard let type = fields.first(where: { $0.name == field })?.type, type == .int || type == .double else {
-                    throw SchemaError.invalidDefinition(
-                        .nonNumericMetric(aggregate: aggregate.name, field: field)
-                    )
-                }
+        if let date {
+            guard let field = fields.first(where: { $0.name == date }) else {
+                throw SchemaError.invalidDefinition(.unknownDate(aggregate: name, field: date))
             }
+            guard field.type == .timestamp else {
+                throw SchemaError.invalidDefinition(.nonTemporalDate(aggregate: name, field: date))
+            }
+        }
 
-            if let shards = aggregate.shards, !(2...64).contains(shards) {
-                throw SchemaError.invalidDefinition(.invalidShards(aggregate: aggregate.name))
+        if let histogram = measure?.histogram {
+            guard groupBy == nil else {
+                throw SchemaError.invalidDefinition(.groupedHistogram(aggregate: name))
             }
+            guard (1...63).contains(histogram.bounds.count) else {
+                throw SchemaError.invalidDefinition(.invalidBounds(aggregate: name))
+            }
+            guard histogram.bounds == histogram.bounds.sorted() else {
+                throw SchemaError.invalidDefinition(.invalidBounds(aggregate: name))
+            }
+            guard Set(histogram.bounds).count == histogram.bounds.count else {
+                throw SchemaError.invalidDefinition(.invalidBounds(aggregate: name))
+            }
+        }
+
+        if let field = measure?.field ?? measure?.histogram?.field {
+            guard let type = fields.first(where: { $0.name == field })?.type, type == .int || type == .double else {
+                throw SchemaError.invalidDefinition(.nonNumericMetric(aggregate: name, field: field))
+            }
+        }
+
+        if let shards, !(2...64).contains(shards) {
+            throw SchemaError.invalidDefinition(.invalidShards(aggregate: name))
         }
     }
 }

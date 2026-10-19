@@ -65,9 +65,9 @@ extension RecordValue {
             case .dates(let value):
                 value
             case .reference(let value):
-                CKRecord.Reference(recordID: CKRecord.ID(recordName: value), action: .none)
+                CKRecord.Reference(uuid: value)
             case .references(let value):
-                value.map { CKRecord.Reference(recordID: CKRecord.ID(recordName: $0), action: .none) }
+                value.map(CKRecord.Reference.init(uuid:))
             case .blobs(let value):
                 value
             case .asset(let value):
@@ -83,7 +83,7 @@ private struct AssetFile {
     init(data: Data) throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("ScoutDBAssets", isDirectory: true)
-        let name = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        let name = SHA256.hash(data: data).hexString
         url = directory.appendingPathComponent(name)
 
         guard !FileManager.default.fileExists(atPath: url.path) else {

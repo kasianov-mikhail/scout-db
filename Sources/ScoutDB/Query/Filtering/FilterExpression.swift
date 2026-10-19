@@ -55,14 +55,11 @@ public struct FilterExpression: Sendable {
 /// ```
 ///
 public func && (lhs: FilterExpression, rhs: FilterExpression) -> FilterExpression {
-    let left = lhs.alternatives
-    let right = rhs.alternatives
-
-    return FilterExpression(
-        left.flatMap { branch in
-            right.map { branch + $0 }
-        }
-    )
+    var alternatives: [[ClientFilter]] = []
+    for branch in lhs.alternatives {
+        alternatives += rhs.alternatives.map { branch + $0 }
+    }
+    return FilterExpression(alternatives)
 }
 
 /// Admits either side, as alternatives of one another.

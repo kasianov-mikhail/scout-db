@@ -8,20 +8,10 @@
 import CloudKit
 
 extension CloudDatabase {
-    func allRecords(matching query: CKQuery) async throws -> [CKRecord] {
-        var collected: [CKRecord] = []
-        try await pages(matching: query, desiredKeys: nil) {
-            collected += $0
-        }
-        return collected
-    }
-
-    func pages(matching query: CKQuery, desiredKeys: [String]?, _ body: ([CKRecord]) async throws -> Void)
-        async throws
-    {
+    func pages(plan: ScanPlan, body: ([CKRecord]) async throws -> Void) async throws {
         var (results, cursor) = try await records(
-            matching: query,
-            desiredKeys: desiredKeys,
+            matching: plan.query,
+            desiredKeys: plan.desiredKeys,
             resultsLimit: CKQueryOperation.maximumResults
         )
 
@@ -32,7 +22,7 @@ extension CloudDatabase {
             }
             let page = try await records(
                 continuingMatchFrom: token,
-                desiredKeys: desiredKeys,
+                desiredKeys: plan.desiredKeys,
                 resultsLimit: CKQueryOperation.maximumResults
             )
             results = page.matchResults

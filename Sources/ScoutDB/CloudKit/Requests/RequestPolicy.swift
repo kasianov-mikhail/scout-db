@@ -13,17 +13,21 @@ private let maxRetry = 3
 extension CKDatabase {
     @discardableResult func throttled<R>(body: @Sendable @escaping (CKDatabase) async throws -> R) async throws -> R {
         try await withRateLimitRetry(maxRetry: maxRetry) {
-            await RequestGate.shared.enter()
-            do {
-                let value = try await withRequestTimeout(requestTimeout) {
-                    try await self.configuredWith(configuration: .scoutDB, body: body)
-                }
-                await RequestGate.shared.leave()
-                return value
-            } catch {
-                await RequestGate.shared.leave()
-                throw error
+            try await gated(body: body)
+        }
+    }
+
+    private func gated<R>(body: @Sendable @escaping (CKDatabase) async throws -> R) async throws -> R {
+        await RequestGate.shared.enter()
+        do {
+            let value = try await withRequestTimeout(timeout: requestTimeout) {
+                try await self.configuredWith(configuration: .scoutDB, body: body)
             }
+            await RequestGate.shared.leave()
+            return value
+        } catch {
+            await RequestGate.shared.leave()
+            throw error
         }
     }
 }

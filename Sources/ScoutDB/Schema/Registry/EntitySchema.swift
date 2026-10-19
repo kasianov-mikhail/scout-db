@@ -53,3 +53,25 @@ public struct EntitySchema: Sendable, Equatable {
         public let pattern: String?
     }
 }
+
+extension EntitySchema {
+    init(definition: EntityDefinition) {
+        self.init(entity: definition.entity, fields: definition.activeFields.map(Field.init(field:)))
+    }
+}
+
+extension EntitySchema.Field {
+    fileprivate init(field: FieldDefinition) {
+        self.init(
+            name: field.name,
+            type: field.type,
+            required: field.required == true,
+            payload: field.storage.isPayload,
+            allowed: field.allowed,
+            defaultValue: field.defaultValue,
+            min: field.min,
+            max: field.max,
+            pattern: field.pattern
+        )
+    }
+}

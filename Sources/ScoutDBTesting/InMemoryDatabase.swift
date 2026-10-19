@@ -38,6 +38,10 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
             positions[id].flatMap { slots[$0] }
         }
 
+        func copies(ids: [CKRecord.ID]) -> [CKRecord] {
+            ids.compactMap { record(id: $0)?.duplicate() }
+        }
+
         mutating func replaceAll(with records: [CKRecord]) {
             slots = records
             positions = [:]
@@ -114,14 +118,12 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         lock.withLock { state.tally = RequestTally() }
     }
 
-    private func counting<R>(
-        _ kind: RequestTally.Kind, carrying carried: (R) -> Int, _ body: () throws -> R
-    ) rethrows -> R {
+    private func counting<R>(kind: RequestTally.Kind, size: (R) -> Int, body: () throws -> R) rethrows -> R {
         lock.lock()
         defer { lock.unlock() }
         do {
             let result = try body()
-            state.tally.add(kind, carrying: carried(result))
+            state.tally.add(kind, carrying: size(result))
             return result
         } catch {
             state.tally.fail(kind)
@@ -168,30 +170,30 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     public init() {}
 
     public func records(matching query: CKQuery, desiredKeys: [String]?, resultsLimit: Int) async throws -> QueryPage {
-        try counting(.query, carrying: \.matchResults.count) {
+        try counting(kind: .query, size: \.matchResults.count) {
             try popErrorLocked(writing: false)
-            return LocalQuery.page(
-                indexedLocked(),
-                matching: query,
+            return LocalQuery(
+                records: indexedLocked(),
                 desiredKeys: desiredKeys,
                 resultsLimit: resultsLimit,
                 pageLimit: state.pageLimit
             )
+            .page(query: query)
         }
     }
 
     public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [String]?, resultsLimit: Int)
         async throws -> QueryPage
     {
-        try counting(.continuation, carrying: \.matchResults.count) {
+        try counting(kind: .continuation, size: \.matchResults.count) {
             try popErrorLocked(writing: false)
-            let resumed = LocalQuery.resume(
-                indexedLocked(),
-                from: cursor,
+            let resumed = LocalQuery(
+                records: indexedLocked(),
                 desiredKeys: desiredKeys,
                 resultsLimit: resultsLimit,
                 pageLimit: state.pageLimit
             )
+            .resume(cursor: cursor)
             guard let page = resumed else {
                 throw CKError(.invalidArguments)
             }
@@ -213,7 +215,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     }
 
     public func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {
-        try counting(.modify, carrying: { _ in records.count + recordIDs.count }) {
+        try counting(kind: .modify, size: { _ in records.count + recordIDs.count }) {
             try popErrorLocked(writing: true)
             guard records.allSatisfy(\.recordID.isLegalRecordName) else {
                 throw CKError(.invalidArguments)
@@ -224,39 +226,43 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     }
 
     public func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
-        try counting(.conditionalSave, carrying: \.count) {
-            var queued: [CKRecord.ID: any Error] = [:]
-            let batch = Set(records.map(\.recordID))
-            while let next = pendingConflictLocked(in: batch, queued: queued) {
-                if state.writeErrors.isEmpty {
-                    state.errors.removeLast()
-                } else {
-                    state.writeErrors.removeLast()
-                }
-                queued[next.serverRecord.recordID] = next
+        try counting(kind: .conditionalSave, size: \.count) {
+            try saveLocked(records: records)
+        }
+    }
+
+    private func saveLocked(records: [CKRecord]) throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
+        var queued: [CKRecord.ID: any Error] = [:]
+        let batch = Set(records.map(\.recordID))
+        while let next = nextConflictLocked(batch: batch, queued: queued) {
+            if state.writeErrors.isEmpty {
+                state.errors.removeLast()
+            } else {
+                state.writeErrors.removeLast()
             }
-            if queued.isEmpty, let error = state.writeErrors.popLast() ?? state.errors.popLast() {
-                if let conflict = error as? RecordConflictError {
-                    queued[conflict.serverRecord.recordID] = conflict
-                } else if Self.isTransport(error) {
-                    throw error
-                } else {
-                    queued[records[0].recordID] = error
-                }
+            queued[next.serverRecord.recordID] = next
+        }
+        if queued.isEmpty, let error = state.writeErrors.popLast() ?? state.errors.popLast() {
+            if let conflict = error as? RecordConflictError {
+                queued[conflict.serverRecord.recordID] = conflict
+            } else if Self.isTransport(error) {
+                throw error
+            } else {
+                queued[records[0].recordID] = error
             }
-            return records.map { record in
-                if let failure = queued[record.recordID] {
-                    return (record.recordID, .failure(failure))
-                }
-                if !record.recordID.isLegalRecordName {
-                    return (record.recordID, .failure(CKError(.invalidArguments)))
-                }
-                if let server = conflictingServerLocked(for: record) {
-                    return (record.recordID, .failure(RecordConflictError(serverRecord: server)))
-                }
-                upsertLocked(record)
-                return (record.recordID, .success(record))
+        }
+        return records.map { record in
+            if let failure = queued[record.recordID] {
+                return (record.recordID, .failure(failure))
             }
+            if !record.recordID.isLegalRecordName {
+                return (record.recordID, .failure(CKError(.invalidArguments)))
+            }
+            if let server = conflictingServerLocked(for: record) {
+                return (record.recordID, .failure(RecordConflictError(serverRecord: server)))
+            }
+            upsertLocked(record)
+            return (record.recordID, .success(record))
         }
     }
 
@@ -270,9 +276,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
         return [.networkUnavailable, .networkFailure, .serviceUnavailable].contains(error.code)
     }
 
-    private func pendingConflictLocked(in batch: Set<CKRecord.ID>, queued: [CKRecord.ID: any Error])
-        -> RecordConflictError?
-    {
+    private func nextConflictLocked(batch: Set<CKRecord.ID>, queued: [CKRecord.ID: any Error]) -> RecordConflictError? {
         guard let next = (state.writeErrors.last ?? state.errors.last) as? RecordConflictError else {
             return nil
         }
@@ -296,16 +300,16 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     }
 
     public func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
-        try counting(.fetch, carrying: { $0 == nil ? 0 : 1 }) {
+        try counting(kind: .fetch, size: { $0 == nil ? 0 : 1 }) {
             try popErrorLocked(writing: false)
-            return state.table.record(id: id).map { $0.duplicate() }
+            return state.table.record(id: id)?.duplicate()
         }
     }
 
     public func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
-        try counting(.fetch, carrying: \.count) {
+        try counting(kind: .fetch, size: \.count) {
             try popErrorLocked(writing: false)
-            return ids.compactMap { state.table.record(id: $0)?.duplicate() }
+            return state.table.copies(ids: ids)
         }
     }
 

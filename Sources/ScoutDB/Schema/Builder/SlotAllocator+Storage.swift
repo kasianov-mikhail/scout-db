@@ -8,31 +8,11 @@
 import Foundation
 
 extension SlotAllocator {
-    mutating func resolve(_ declaration: SchemaBuilder.Declaration, since: Int?, storage: Storage?)
-        throws -> FieldDefinition
-    {
-        let resolved: Storage
-
-        if let storage {
-            resolved = storage
-        } else if declaration.wantsSlot {
-            let pool = declaration.type
-            resolved = .slot(pool, try next(in: pool))
-        } else {
-            resolved = .payload(try nextPayload())
+    mutating func storage(declaration: SchemaBuilder.Declaration) throws -> Storage {
+        guard declaration.wantsSlot else {
+            return .payload(try nextPayload())
         }
-
-        var field = FieldDefinition(
-            name: declaration.name,
-            type: declaration.type,
-            storage: resolved,
-            since: since
-        )
-
-        for constraint in declaration.constraints {
-            constraint.apply(to: &field)
-        }
-        return field
+        return .slot(declaration.type, try next(in: declaration.type))
     }
 
     private mutating func next(in pool: FieldType) throws -> String {

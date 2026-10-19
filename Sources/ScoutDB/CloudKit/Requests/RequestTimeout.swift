@@ -7,11 +7,7 @@
 
 import Foundation
 
-/// Thrown when a CloudKit request outlives the scout-db backstop timeout; the
-/// caller is unblocked immediately while the request is cancelled and abandoned
-/// to finish in the background.
 struct RequestTimeoutError: LocalizedError {
-    /// The elapsed limit, in seconds, the request exceeded before cancellation.
     let seconds: Int
 
     var errorDescription: String? {
@@ -19,8 +15,7 @@ struct RequestTimeoutError: LocalizedError {
     }
 }
 
-func withRequestTimeout<R>(_ timeout: Duration, _ operation: @Sendable @escaping () async throws -> R) async throws -> R
-{
+func withRequestTimeout<R>(timeout: Duration, operation: @Sendable @escaping () async throws -> R) async throws -> R {
     let relay = ResultRelay<R>()
 
     let operationTask = Task {
@@ -44,7 +39,7 @@ func withRequestTimeout<R>(_ timeout: Duration, _ operation: @Sendable @escaping
     return try await withTaskCancellationHandler {
         try await relay.value()
     } onCancel: {
-        Task { await relay.finish(with: .failure(CancellationError())) }
+        relay.cancel()
     }
 }
 
@@ -64,6 +59,10 @@ private actor ResultRelay<T> {
         self.result = boxed
         continuation?.resume(with: boxed)
         continuation = nil
+    }
+
+    nonisolated func cancel() {
+        Task { await finish(with: .failure(CancellationError())) }
     }
 
     func value() async throws -> sending T {

@@ -57,14 +57,6 @@ public enum FieldType: String, Codable, Equatable, CaseIterable, Sendable {
         }
     }
 
-    /// The slots this pool declares in the record type.
-    ///
-    /// CloudKit caps a record type at 256 fields, and the pools split that
-    /// ceiling in tiers: thirty-two apiece for the four types a schema leans
-    /// on, sixteen for the remaining scalars and the payload, eight for the
-    /// lists, and four apiece for assets and for the location pool no field
-    /// type claims yet.
-    ///
     var capacity: Int {
         switch self {
         case .string, .int, .double, .timestamp:

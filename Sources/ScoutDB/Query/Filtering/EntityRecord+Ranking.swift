@@ -6,7 +6,7 @@
 // https://opensource.org/licenses/MIT.
 
 extension [EntityRecord] {
-    func unique() -> [EntityRecord] {
+    var distinct: [EntityRecord] {
         var seen: Set<String> = []
         return filter { seen.insert($0.uuid).inserted }
     }

@@ -7,29 +7,13 @@
 
 import Foundation
 
-/// The slots the store keeps for itself, ahead of the ones a field may take.
-///
-/// A record carries no column of its own: what a caller declares and what the
-/// library stamps live in the same pools, so the entity a record belongs to is
-/// a string slot like any other, and the server filters and sorts it the same
-/// way.
-///
 enum Envelope {
     static let entity = "s_00"
     static let version = "i_00"
-
-    /// The uuid the record is written under, held a second time in a slot.
-    ///
-    /// CloudKit owns the indexes on a record name and refuses one of ours, so
-    /// nothing sorts by it server-side and a page has no way to break its ties
-    /// on it. The slot carries the same string the record name does.
-    ///
     static let uuid = "s_01"
 }
 
 extension FieldType {
-    /// The slots of this pool the envelope claims, held back from the fields
-    /// a declaration allocates.
     var reserved: Int {
         switch self {
         case .string:
