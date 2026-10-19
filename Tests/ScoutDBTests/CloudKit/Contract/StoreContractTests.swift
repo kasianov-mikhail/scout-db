@@ -36,6 +36,19 @@ struct StoreContractTests {
         }
     }
 
+    @Test("A selection reads only the named fields")
+    func selection() async throws {
+        try await withContract { f in
+            let entity = try await f.publishOrder()
+            try await f.store.write(
+                [EntityWrite(values: orderValues(product: "sku-9", note: "gift"), uuid: "s-1")], entity: entity)
+
+            try await eventually { try await ReadOperation(store: f.store, entity: entity).records().count == 1 }
+            let record = try #require(try await f.store.query(entity).select(["product", "note"]).first())
+            #expect(record.values == ["product": .string("sku-9"), "note": .string("gift")])
+        }
+    }
+
     @Test("A repeated uuid upserts instead of duplicating")
     func upsertSameUUID() async throws {
         try await withContract { f in

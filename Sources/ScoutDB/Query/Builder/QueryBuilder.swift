@@ -24,6 +24,7 @@ public struct QueryBuilder: Sendable {
     var alternatives: [[ClientFilter]] = [[]]
     var sorts: [EntityStore.Sort] = []
     var ceiling: Int?
+    var selection: [String]?
 
     var definition: EntityDefinition {
         get async throws {

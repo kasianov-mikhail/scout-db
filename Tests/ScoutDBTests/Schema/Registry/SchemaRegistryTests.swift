@@ -120,11 +120,13 @@ struct SchemaRegistryTests {
 }
 
 private struct Outage: CloudDatabase {
-    func records(matching query: CKQuery, resultsLimit: Int) async throws -> QueryPage {
+    func records(matching query: CKQuery, desiredKeys: [String]?, resultsLimit: Int) async throws -> QueryPage {
         throw CKError(.networkUnavailable)
     }
 
-    func records(continuingMatchFrom cursor: QueryCursor, resultsLimit: Int) async throws -> QueryPage {
+    func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [String]?, resultsLimit: Int) async throws
+        -> QueryPage
+    {
         throw CKError(.networkUnavailable)
     }
 

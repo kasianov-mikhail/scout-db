@@ -14,7 +14,11 @@ extension CloudDatabase {
 
         var collected: [EntityRecord] = []
         var page = min(limit == Int.max ? limit : limit + 1, ceiling)
-        var (batch, token) = try await records(matching: plan.query, resultsLimit: page)
+        var (batch, token) = try await records(
+            matching: plan.query,
+            desiredKeys: plan.desiredKeys,
+            resultsLimit: page
+        )
 
         while true {
             collected += try batch.map { try decoder.decode($0.1.get()) }.filter(plan.includes)
@@ -27,6 +31,7 @@ extension CloudDatabase {
 
             (batch, token) = try await records(
                 continuingMatchFrom: cursor,
+                desiredKeys: plan.desiredKeys,
                 resultsLimit: page
             )
         }

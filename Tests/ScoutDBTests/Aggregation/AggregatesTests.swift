@@ -780,12 +780,14 @@ private final class VectorFetches: CloudDatabase, @unchecked Sendable {
         lock.withLock { log.removeAll() }
     }
 
-    func records(matching query: CKQuery, resultsLimit: Int) async throws -> QueryPage {
-        try await backing.records(matching: query, resultsLimit: resultsLimit)
+    func records(matching query: CKQuery, desiredKeys: [String]?, resultsLimit: Int) async throws -> QueryPage {
+        try await backing.records(matching: query, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
     }
 
-    func records(continuingMatchFrom cursor: QueryCursor, resultsLimit: Int) async throws -> QueryPage {
-        try await backing.records(continuingMatchFrom: cursor, resultsLimit: resultsLimit)
+    func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [String]?, resultsLimit: Int) async throws
+        -> QueryPage
+    {
+        try await backing.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
     }
 
     func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {

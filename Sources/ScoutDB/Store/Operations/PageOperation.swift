@@ -13,6 +13,7 @@ struct PageOperation: Sendable {
     let definition: EntityDefinition
     let field: String
     let order: SortOrder
+    let fields: [String]?
 
     private var ranking: [FieldOrder] {
         [FieldOrder(key: .field(field), order: order), FieldOrder(key: .uuid)]
@@ -60,7 +61,11 @@ struct PageOperation: Sendable {
                 [EntityStore.Sort(field: field, order: order)]
             ) + [CKQuery.Sort(field: Envelope.uuid, order: .forward)]
 
-        var plan = try definition.plan(matching: pageFilters, sort: sort)
+        var plan = try definition.plan(
+            matching: pageFilters,
+            sort: sort,
+            fields: fields.map { $0 + [field] }
+        )
 
         plan.included = { record in
             guard record.values[field] != nil else {
@@ -113,7 +118,8 @@ extension QueryBuilder {
                 database: store.database,
                 definition: definition,
                 field: sort.field,
-                order: sort.order
+                order: sort.order,
+                fields: selection
             )
         }
     }
