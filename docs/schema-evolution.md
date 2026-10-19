@@ -40,8 +40,8 @@ older versions decode the field under the name it had in their version.
 ### What `update()` returns
 
 `update()` returns the names of new fields that no aggregate counts. A new version never builds
-aggregates on its own, because a fresh cell would count only the records written after it. For each
-returned name, choose one:
+aggregates on its own, because a new aggregate would count only the records written after it. For
+each returned name, choose one:
 
 - declare `count(by:)` for it in a further version, to count records from then on;
 - mark it `.ungrouped`, to say it should stay uncounted;
@@ -54,19 +54,18 @@ existing one replaces it. An aggregate lapses only when a field it uses is close
 
 Decoding always works: a record reads through its own version, whatever came later.
 
-The server's view is narrower. A filter or a sort names the slot that the **current** version gives
-a field. Records written before a field moved to a new slot do not match filters or sorts on it.
-Fields whose slot never moved keep working across all versions.
+Filters and sorts are narrower. Records written before a field moved to a new slot do not match
+filters or sorts on it. Fields whose slot never moved keep working across all versions.
 
-Aggregates have the same limit. A cell counts what lands after the aggregate is declared, never what
-came before.
+Aggregates have the same limit. An aggregate counts what lands after it is declared, never what came
+before.
 
 ## Slots across versions
 
-A closed slot stays reserved, so no other field can take it and misread older records. Retyping a
-field, or toggling `.payload`, therefore uses a second slot from the pool. An entity that is retyped
-many times can exhaust a pool even though the current version has few fields. Reopening a closed
-field under its old name and type reuses its slot and costs nothing.
+A closed slot stays reserved. Retyping a field, or toggling `.payload`, therefore uses a second slot
+from the pool. An entity that is retyped many times can exhaust a pool even though the current
+version has few fields. Reopening a closed field under its old name and type reuses its slot and
+costs nothing.
 
 ## Migrations
 

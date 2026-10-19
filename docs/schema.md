@@ -19,8 +19,7 @@ try await store.schema("purchase")
 
 ## Entity names
 
-Any string works as an entity name, except names that start with `__`. The library keeps those for
-its own records.
+Any string works as an entity name, except names that start with `__`.
 
 ## Field types
 
@@ -50,25 +49,22 @@ Notes:
 - **Booleans.** There is no boolean type. Store a flag in an `.int` field; the literals `true` and
   `false` become `1` and `0`.
 - **Dates.** A `.timestamp` keeps millisecond precision.
-- **`.asset`.** The value is uploaded as a CloudKit asset instead of being stored inline. No query
-  can filter on an asset field.
-- **`.reference`.** The value is the uuid of another record, stored as a CloudKit reference.
+- **`.asset`.** Use it for files; see [Records](records.md#bytes-and-assets). No query can filter
+  on an asset field.
+- **`.reference`.** The value is the uuid of another record.
 
 ## Slots and payload fields
 
-CloudKit caps a record type at 256 fields. ScoutDB splits them into typed pools of *slots*. The
-"Slots" column above is the number of fields of each type one entity can hold in slots. The
-`.string` and `.int` pools are smaller by the slots the record envelope keeps for itself.
-
-A field in a slot is visible to the server: queries filter and sort on it there. Declaration order
-assigns the slots, and the builder does it for you.
+Each field takes a *slot* from the pool of its type. The "Slots" column above is the size of each
+pool, that is, how many fields of that type one entity can hold. Queries filter and sort on a field
+in a slot.
 
 A field marked `.payload` takes one of **16 payload slots** instead. Use it for values you never
 filter or sort on, such as comments, notes or raw JSON:
 
 - It spends no typed slot.
-- A filter over it runs on the client after the records are decoded, so the server still reads every
-  record the other filters match.
+- A filter over it runs on the device, after the other filters; see
+  [Queries](queries.md#server-and-client).
 - It cannot be sorted on and cannot carry a page cursor.
 
 A slot stays taken after its field is closed or retyped; see
@@ -110,8 +106,7 @@ The builder also declares aggregates: `count(by:at:shards:)`, `sum(_:by:at:shard
 
 ## Reading a schema back
 
-`SchemaRegistry` returns what a caller can act on: the active fields and their rules. Slots and
-versions stay inside the library.
+`SchemaRegistry` returns the active fields of an entity and their rules.
 
 ```swift
 let schema = try await registry.schema(for: "purchase")
@@ -140,7 +135,7 @@ if try await registry.publishedSchema(for: "purchase") == nil {
 - a pool runs out of slots, or the 16 payload slots run out;
 - a constraint does not apply to the field type, or a pattern is not a valid regular expression;
 - an update narrows the `.min` or `.max` of a kept field;
-- an aggregate names an unknown field, dates its cells by a field that is not a `.timestamp`, or
+- an aggregate names an unknown field, dates its records by a field that is not a `.timestamp`, or
   folds a field that is not numeric;
 - two aggregates have the same shape, or the `shards` or histogram bounds are out of range.
 
