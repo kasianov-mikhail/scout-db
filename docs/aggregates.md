@@ -66,6 +66,28 @@ Parameters:
 `min` and `max` are running extremes. Deleting or rewriting the record that set the extreme does not
 lower it: the aggregate answers with what the group once reached.
 
+### Grouping by several fields
+
+`count(by:at:shards:)` and `sum(_:by:at:shards:)` also take a list of fields. One cell then holds
+the records that share every value:
+
+```swift
+try await store.schema("session")
+    .field("channel", .string, .ungrouped)
+    .field("app_version", .string, .ungrouped)
+    .field("start_date", .timestamp)
+    .count(by: ["channel", "app_version"], at: "start_date")
+    .update()
+```
+
+- Read it with `totals(_:metric:groups:)` or `series(_:metric:groups:in:)`, naming the same fields in
+  the same order.
+- `groupValues` on a total or a point splits the group back into the field values.
+- A record missing one of the fields counts under an empty value for it.
+- A read by several fields allows no filter.
+- An older version of the library reads such an aggregate as one without grouping, so clients on
+  that version do not update it.
+
 ## Reading single values
 
 These methods read one number for the records that match the builder's filters.

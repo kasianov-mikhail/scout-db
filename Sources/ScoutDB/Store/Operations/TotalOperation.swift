@@ -12,22 +12,22 @@ struct TotalOperation: Sendable {
     let definition: EntityDefinition
     let branches: [[ClientFilter]]
 
-    func rows(field: String?, metric: Metric, group: String?) async throws -> [AggregateTotal] {
-        let aggregate = try match.aggregate(field: field, metric: metric, group: group)
+    func rows(field: String?, metric: Metric, groups: [String]) async throws -> [AggregateTotal] {
+        let aggregate = try match.aggregate(field: field, metric: metric, groups: groups)
 
-        return try await folds(of: aggregate, group: group)
+        return try await folds(of: aggregate, groups: groups)
             .map(AggregateTotal.init)
             .sorted()
     }
 
-    func averages(field: String, group: String?) async throws -> [AggregateTotal] {
+    func averages(field: String, groups: [String]) async throws -> [AggregateTotal] {
         try definition.requireAverageable(field)
 
-        let totaling = try match.aggregate(field: field, metric: .sum, group: group)
-        let counting = try match.aggregate(field: nil, metric: .sum, group: group)
+        let totaling = try match.aggregate(field: field, metric: .sum, groups: groups)
+        let counting = try match.aggregate(field: nil, metric: .sum, groups: groups)
 
-        async let totaled = folds(of: totaling, group: group)
-        async let counted = folds(of: counting, group: group)
+        async let totaled = folds(of: totaling, groups: groups)
+        async let counted = folds(of: counting, groups: groups)
 
         let (totals, counts) = try await (totaled, counted)
 
@@ -40,8 +40,8 @@ struct TotalOperation: Sendable {
         .sorted()
     }
 
-    private func folds(of aggregate: AggregateDefinition, group: String?) async throws -> [String: Double] {
-        let narrowed = try match.groups(narrowedTo: group)
+    private func folds(of aggregate: AggregateDefinition, groups: [String]) async throws -> [String: Double] {
+        let narrowed = try match.groups(narrowedTo: groups)
 
         let rows = try await VectorReader(
             database: database,

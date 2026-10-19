@@ -37,6 +37,31 @@ extension SchemaBuilder {
         return builder
     }
 
+    /// Counts the records per combination of the grouping fields.
+    ///
+    /// One cell counts the records that share every value, so a count by
+    /// version and channel answers both at once. A record missing a field
+    /// counts under an empty value for it. A schema read by an older version of
+    /// the library sees an aggregate like this as one without grouping, so
+    /// clients on that version do not update it.
+    ///
+    /// ```swift
+    /// try await store.schema("session")
+    ///     .field("channel", .string, .ungrouped)
+    ///     .field("app_version", .string, .ungrouped)
+    ///     .field("start_date", .timestamp)
+    ///     .count(by: ["channel", "app_version"], at: "start_date")
+    ///     .update()
+    /// ```
+    ///
+    public func count(by groups: [String], at date: String? = nil, shards: Int? = nil) -> Self {
+        var builder = self
+        builder.aggregates.append(
+            AggregateDefinition(metric: nil, field: nil, groups: groups, date: date, shards: shards)
+        )
+        return builder
+    }
+
     /// Keeps a running total of the field, which `average` divides.
     ///
     /// The total is folded into the hour's cell on every write, so reading it
@@ -63,6 +88,27 @@ extension SchemaBuilder {
         var builder = self
         builder.aggregates.append(
             AggregateDefinition(metric: .sum, field: field, group: group, date: date, shards: shards)
+        )
+        return builder
+    }
+
+    /// Keeps a running total of the field per combination of the grouping
+    /// fields, as ``count(by:at:shards:)`` with a list of fields counts.
+    ///
+    /// ```swift
+    /// try await store.schema("metric")
+    ///     .field("name", .string, .ungrouped)
+    ///     .field("app_version", .string, .ungrouped)
+    ///     .field("value", .int)
+    ///     .field("date", .timestamp)
+    ///     .sum("value", by: ["name", "app_version"], at: "date")
+    ///     .update()
+    /// ```
+    ///
+    public func sum(_ field: String, by groups: [String], at date: String? = nil, shards: Int? = nil) -> Self {
+        var builder = self
+        builder.aggregates.append(
+            AggregateDefinition(metric: .sum, field: field, groups: groups, date: date, shards: shards)
         )
         return builder
     }

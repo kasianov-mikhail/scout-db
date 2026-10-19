@@ -49,7 +49,7 @@ extension VectorSlot {
             }
             group = histogram.groupKey(of: value)
         } else {
-            group = aggregate.groupBy.flatMap { entityRecord.values[$0]?.canonical } ?? ""
+            group = aggregate.groups.map { entityRecord.values[$0]?.canonical ?? "" }.groupKey
         }
 
         self.init(

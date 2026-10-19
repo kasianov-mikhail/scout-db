@@ -13,22 +13,22 @@ struct SeriesOperation: Sendable {
     let definition: EntityDefinition
     let branches: [[ClientFilter]]
 
-    func points(field: String?, metric: Metric, group: String?, in range: Range<Date>) async throws -> [SeriesPoint] {
-        let aggregate = try match.aggregate(field: field, metric: metric, group: group)
+    func points(field: String?, metric: Metric, groups: [String], in range: Range<Date>) async throws -> [SeriesPoint] {
+        let aggregate = try match.aggregate(field: field, metric: metric, groups: groups)
 
-        return try await cells(of: aggregate, group: group, in: range)
+        return try await cells(of: aggregate, groups: groups, in: range)
             .map { key, value in SeriesPoint(group: key.group, date: key.date, value: value) }
             .sorted()
     }
 
-    func averages(field: String, group: String?, in range: Range<Date>) async throws -> [SeriesPoint] {
+    func averages(field: String, groups: [String], in range: Range<Date>) async throws -> [SeriesPoint] {
         try definition.requireAverageable(field)
 
-        let totaling = try match.aggregate(field: field, metric: .sum, group: group)
-        let counting = try match.aggregate(field: nil, metric: .sum, group: group)
+        let totaling = try match.aggregate(field: field, metric: .sum, groups: groups)
+        let counting = try match.aggregate(field: nil, metric: .sum, groups: groups)
 
-        async let totaled = cells(of: totaling, group: group, in: range)
-        async let counted = cells(of: counting, group: group, in: range)
+        async let totaled = cells(of: totaling, groups: groups, in: range)
+        async let counted = cells(of: counting, groups: groups, in: range)
 
         let (totals, counts) = try await (totaled, counted)
 
@@ -41,10 +41,10 @@ struct SeriesOperation: Sendable {
         .sorted()
     }
 
-    private func cells(of aggregate: AggregateDefinition, group: String?, in range: Range<Date>) async throws
+    private func cells(of aggregate: AggregateDefinition, groups: [String], in range: Range<Date>) async throws
         -> [SeriesPoint.Key: Double]
     {
-        let narrowed = try match.groups(narrowedTo: group)
+        let narrowed = try match.groups(narrowedTo: groups)
 
         let cells = try await VectorReader(
             database: database,

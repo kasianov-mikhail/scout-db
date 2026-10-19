@@ -11,6 +11,7 @@ import Foundation
 extension AggregateDefinition: Codable {
     private enum CodingKeys: String, CodingKey {
         case groupBy
+        case groups
         case sum
         case min
         case max
@@ -40,7 +41,8 @@ extension AggregateDefinition: Codable {
         }
 
         self.init(
-            groupBy: try container.decodeIfPresent(String.self, forKey: .groupBy),
+            groups: try container.decodeIfPresent([String].self, forKey: .groups)
+                ?? container.decodeIfPresent(String.self, forKey: .groupBy).map { [$0] } ?? [],
             measure: measures.first,
             shards: try container.decodeIfPresent(Int.self, forKey: .shards),
             date: try container.decodeIfPresent(String.self, forKey: .date),
@@ -50,7 +52,11 @@ extension AggregateDefinition: Codable {
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encodeIfPresent(groupBy, forKey: .groupBy)
+        if groups.count == 1 {
+            try container.encode(groups[0], forKey: .groupBy)
+        } else if !groups.isEmpty {
+            try container.encode(groups, forKey: .groups)
+        }
         try container.encodeIfPresent(shards, forKey: .shards)
         try container.encodeIfPresent(date, forKey: .date)
         try container.encodeIfPresent(since?.millisecondsSince1970, forKey: .since)

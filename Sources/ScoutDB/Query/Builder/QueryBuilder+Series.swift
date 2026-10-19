@@ -32,12 +32,32 @@ extension QueryBuilder {
     public func series(
         _ field: String? = nil, metric: Metric, group: String? = nil, in range: Range<Date>
     ) async throws -> [SeriesPoint] {
+        try await series(field, metric: metric, groups: group.map { [$0] } ?? [], in: range)
+    }
+
+    /// One point per combination of the grouping fields and hour, read off an
+    /// aggregate declared over the same list of fields, in the same order.
+    ///
+    /// A point's ``SeriesPoint/group`` joins the values of the fields, and
+    /// ``SeriesPoint/groupValues`` splits them back. A record missing one of
+    /// the fields counts under an empty value for it. A vector read over
+    /// several fields honors no filter.
+    ///
+    /// ```swift
+    /// let sessions = try await store.query("session")
+    ///     .series(metric: .sum, groups: ["channel", "app_version"], in: week)
+    /// // sessions[0].groupValues == ["TestFlight", "1.2.0"]
+    /// ```
+    ///
+    public func series(_ field: String? = nil, metric: Metric, groups: [String], in range: Range<Date>) async throws
+        -> [SeriesPoint]
+    {
         let cells = try await cells
 
         guard metric == .average, let field else {
-            return try await cells.points(field: field, metric: metric, group: group, in: range)
+            return try await cells.points(field: field, metric: metric, groups: groups, in: range)
         }
-        return try await cells.averages(field: field, group: group, in: range)
+        return try await cells.averages(field: field, groups: groups, in: range)
     }
 }
 
@@ -56,6 +76,16 @@ public struct SeriesPoint: Hashable, Sendable {
         self.group = group
         self.date = date
         self.value = value
+    }
+
+    /// The values of the grouping fields, in the order a read over several
+    /// fields named them.
+    ///
+    /// Read it only off a series over several fields: a single field's value
+    /// is the whole ``group`` as it is.
+    ///
+    public var groupValues: [String] {
+        group.groupValues
     }
 }
 

@@ -14,7 +14,7 @@ struct FoldOperation: Sendable {
 
     func cell(of field: String?, folding kind: Metric) async throws -> Double? {
         let covering = query.groupField.map { group in
-            definition.aggregates.filter { $0.groupBy == group }
+            definition.aggregates.filter { $0.groups == [group] }
         }
 
         guard let aggregate = (covering ?? definition.aggregates).covering(field, folding: kind) else {

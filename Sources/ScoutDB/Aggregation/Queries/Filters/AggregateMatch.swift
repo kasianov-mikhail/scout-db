@@ -14,14 +14,14 @@ struct AggregateMatch {
     let definition: EntityDefinition
     let branches: [[ClientFilter]]
 
-    func aggregate(field: String?, metric: Metric, group: String?) throws -> AggregateDefinition {
-        let grouping = definition.aggregates.filter { $0.groupBy == group }
+    func aggregate(field: String?, metric: Metric, groups: [String]) throws -> AggregateDefinition {
+        let grouping = definition.aggregates.filter { $0.groups == groups }
 
         guard let aggregate = grouping.covering(field, folding: metric) else {
             throw SchemaError.unsupportedQuery(
                 .noAggregate(
                     entity: definition.entity,
-                    grouping: group,
+                    grouping: groups.isEmpty ? nil : groups.joined(separator: "+"),
                     folding: field
                 )
             )
@@ -29,16 +29,16 @@ struct AggregateMatch {
         return aggregate
     }
 
-    func groups(narrowedTo group: String?) throws -> [String]? {
+    func groups(narrowedTo groups: [String]) throws -> [String]? {
         guard branches.count == 1 else {
             throw SchemaError.unsupportedQuery(.disjunctionUnsupported)
         }
 
         var narrowed: [String]?
         for filter in branches[0] {
-            guard let group, filter.field == group, filter.op == .equals else {
+            guard groups.count == 1, filter.field == groups[0], filter.op == .equals else {
                 throw SchemaError.unsupportedQuery(
-                    .equalityOnly(group: group)
+                    .equalityOnly(group: groups.isEmpty ? nil : groups.joined(separator: "+"))
                 )
             }
             let key = filter.value.canonical

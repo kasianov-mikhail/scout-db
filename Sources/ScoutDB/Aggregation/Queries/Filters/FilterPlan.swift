@@ -59,7 +59,7 @@ extension FilterPlan {
         guard case .slot = field.storage, let lower = field.min, let upper = field.max else {
             return
         }
-        guard definition.aggregates.contains(where: { $0.groupBy == bounds.field }) else {
+        guard definition.aggregates.contains(where: { $0.groups == [bounds.field] }) else {
             return
         }
 

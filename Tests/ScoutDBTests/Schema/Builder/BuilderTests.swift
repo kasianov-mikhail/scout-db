@@ -91,10 +91,10 @@ struct BuilderTests {
         let definition = try await registry.definition(for: "purchase")
         let aggregates = definition.aggregates
         #expect(Set(aggregates.map(\.name)) == ["by_product_id", "by_quantity", "by_amount"])
-        #expect(aggregates.first { $0.name == "by_product_id" }?.groupBy == "product_id")
+        #expect(aggregates.first { $0.name == "by_product_id" }?.groups == ["product_id"])
 
         let counted = try await TotalOperation(store: store, entity: "purchase").rows(
-            field: nil, metric: .sum, group: "product_id")
+            field: nil, metric: .sum, groups: ["product_id"])
         #expect(counted.map(\.value).reduce(0, +) == 3)
         #expect(try await store.query("purchase").filter("product_id", .equals, "sku-1").count() == 1)
     }
@@ -121,10 +121,10 @@ struct BuilderTests {
             .create()
 
         let aggregates = try await registry.definition(for: "shipment").aggregates
-        #expect(aggregates.filter { $0.groupBy == "carrier" }.count == 2)
-        #expect(aggregates.first { $0.groupBy == "carrier" && $0.measure?.field != nil }?.measure == .sum("weight"))
+        #expect(aggregates.filter { $0.groups == ["carrier"] }.count == 2)
+        #expect(aggregates.first { $0.groups == ["carrier"] && $0.measure?.field != nil }?.measure == .sum("weight"))
         #expect(aggregates.contains { $0.name == "by_carrier" && $0.measure?.field == nil })
-        #expect(Set(aggregates.compactMap(\.groupBy)) == ["carrier", "weight"])
+        #expect(Set(aggregates.flatMap(\.groups)) == ["carrier", "weight"])
     }
 
     @Test("A declared extremum reaches the published vectors")
@@ -148,7 +148,7 @@ struct BuilderTests {
             .field("kind", .string, .required)
             .create()
 
-        #expect(try await registry.definition(for: "event").aggregates.compactMap(\.groupBy) == ["kind"])
+        #expect(try await registry.definition(for: "event").aggregates.flatMap(\.groups) == ["kind"])
     }
 
     @Test("An update inherits the vectors instead of building its own")
@@ -208,7 +208,7 @@ struct BuilderTests {
 
         #expect(missing.isEmpty)
         let updated = try await registry.definition(for: "ticket")
-        #expect(updated.aggregates.compactMap(\.groupBy) == ["queue", "assignee"])
+        #expect(updated.aggregates.flatMap(\.groups) == ["queue", "assignee"])
     }
 
     @Test("A metric declared later joins the count the vectors built")
@@ -225,8 +225,8 @@ struct BuilderTests {
             .update()
 
         let updated = try await registry.definition(for: "ticket").aggregates
-        #expect(Set(updated.compactMap(\.groupBy)) == ["queue", "weight"])
-        #expect(updated.contains { $0.groupBy == "queue" && $0.measure == .sum("weight") })
+        #expect(Set(updated.flatMap(\.groups)) == ["queue", "weight"])
+        #expect(updated.contains { $0.groups == ["queue"] && $0.measure == .sum("weight") })
         #expect(updated.contains { $0.name == "by_queue" && $0.measure?.field == nil })
     }
 
@@ -241,7 +241,7 @@ struct BuilderTests {
             .field("queue", .string, .required)
             .update()
 
-        #expect(try await registry.definition(for: "ticket").aggregates.compactMap(\.groupBy) == ["queue"])
+        #expect(try await registry.definition(for: "ticket").aggregates.flatMap(\.groups) == ["queue"])
     }
 
     @Test("Query builder filters, sorts, and limits")

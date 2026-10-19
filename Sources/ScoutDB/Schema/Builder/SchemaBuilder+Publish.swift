@@ -180,9 +180,12 @@ extension SchemaBuilder {
         merged += joined.map { $0.with(since: start) }
 
         let carriedViews = merged.filter { aggregate in
-            [aggregate.groupBy, aggregate.measure?.field, aggregate.measure?.histogram?.field]
-                .compactMap(\.self)
-                .allSatisfy(active.contains)
+            let measured = [aggregate.measure?.field, aggregate.measure?.histogram?.field].compactMap(\.self)
+            return (aggregate.groups + measured).allSatisfy(active.contains)
+        }
+
+        guard fields != previous.fields || carriedViews != previous.aggregates else {
+            return []
         }
 
         try await registry.publish(
@@ -194,7 +197,7 @@ extension SchemaBuilder {
             )
         )
 
-        let counted = Set(carriedViews.compactMap(\.groupBy))
+        let counted = Set(carriedViews.flatMap(\.groups))
 
         return fields.filter { field in
             guard field.since == version, !field.storage.isPayload else {

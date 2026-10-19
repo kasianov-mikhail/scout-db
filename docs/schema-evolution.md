@@ -103,8 +103,8 @@ Rules of `migrate(_:)`:
 - There is no transaction. A migration that throws stops the run, and the migrations before it stay
   applied. Fix the failing migration and run the same list again.
 - `create()` republishes version 1 over itself, so running it again is safe.
-- `update()` always publishes the next version. Running the same list twice adds a version of the
-  same shape. This does not change how records read, but it is not a no-op.
+- `update()` publishes the next version only when the declaration changes a field or an aggregate.
+  Running the same list twice publishes nothing the second time.
 
 ### Reverting
 

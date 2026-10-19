@@ -30,18 +30,42 @@ extension QueryBuilder {
     /// ```
     ///
     public func totals(_ field: String? = nil, metric: Metric, group: String? = nil) async throws -> [AggregateTotal] {
+        try await totals(field, metric: metric, groups: group.map { [$0] } ?? [])
+    }
+
+    /// One total per combination of the grouping fields, read off an aggregate
+    /// declared over the same fields, in the same order.
+    ///
+    /// ``AggregateTotal/groupValues`` splits a total's group back into the
+    /// values of the fields. A vector read over several fields honors no filter.
+    ///
+    /// ```swift
+    /// let sessions = try await store.query("session").totals(metric: .sum, groups: ["channel", "app_version"])
+    /// ```
+    ///
+    public func totals(_ field: String? = nil, metric: Metric, groups: [String]) async throws -> [AggregateTotal] {
         let total = try await total
 
         guard metric == .average, let field else {
-            return try await total.rows(field: field, metric: metric, group: group)
+            return try await total.rows(field: field, metric: metric, groups: groups)
         }
-        return try await total.averages(field: field, group: group)
+        return try await total.averages(field: field, groups: groups)
     }
 }
 
 public struct AggregateTotal: Equatable, Sendable {
     public let group: String
     public let value: Double
+
+    /// The values of the grouping fields, in the order a read over several
+    /// fields named them.
+    ///
+    /// Read it only off totals over several fields: a single field's value is
+    /// the whole ``group`` as it is.
+    ///
+    public var groupValues: [String] {
+        group.groupValues
+    }
 }
 
 extension AggregateTotal: Comparable {

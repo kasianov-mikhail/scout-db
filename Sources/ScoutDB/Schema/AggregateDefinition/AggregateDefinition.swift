@@ -9,7 +9,7 @@
 import Foundation
 
 struct AggregateDefinition: Equatable, Sendable {
-    let groupBy: String?
+    let groups: [String]
     let measure: Measure?
     let shards: Int?
     let date: String?
@@ -25,7 +25,7 @@ struct AggregateDefinition: Equatable, Sendable {
                 [
                     measure?.metric?.label,
                     measure?.field,
-                    groupBy.map { "by_\($0)" },
+                    groups.isEmpty ? nil : "by_" + groups.joined(separator: "+"),
                     date.map { "at_\($0)" },
                 ]
             }
@@ -50,10 +50,11 @@ extension [AggregateDefinition] {
 }
 
 extension AggregateDefinition {
-    init(
-        metric: Metric? = nil, field: String? = nil, group: String? = nil, date: String? = nil,
-        shards: Int? = nil
-    ) {
+    init(metric: Metric? = nil, field: String? = nil, group: String? = nil, date: String? = nil, shards: Int? = nil) {
+        self.init(metric: metric, field: field, groups: group.map { [$0] } ?? [], date: date, shards: shards)
+    }
+
+    init(metric: Metric?, field: String?, groups: [String], date: String?, shards: Int?) {
         let measure: Measure? =
             switch (metric?.storage, field) {
             case (.sum, let field?):
@@ -66,12 +67,12 @@ extension AggregateDefinition {
                 nil
             }
 
-        self.init(groupBy: group, measure: measure, shards: shards, date: date)
+        self.init(groups: groups, measure: measure, shards: shards, date: date)
     }
 
     init(histogram field: String, bounds: [Double], group: String?, date: String?) {
         self.init(
-            groupBy: group,
+            groups: group.map { [$0] } ?? [],
             measure: .histogram(.init(field: field, bounds: bounds)),
             shards: nil,
             date: date

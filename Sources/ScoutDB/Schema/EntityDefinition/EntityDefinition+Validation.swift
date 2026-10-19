@@ -76,9 +76,9 @@ extension EntityDefinition {
             throw SchemaError.invalidDefinition(.duplicateAggregate(aggregate.name))
         }
         for aggregate in aggregates {
-            if let groupBy = aggregate.groupBy, !names.contains(groupBy) {
+            for group in aggregate.groups where !names.contains(group) {
                 throw SchemaError.invalidDefinition(
-                    .unknownGrouping(aggregate: aggregate.name, field: groupBy)
+                    .unknownGrouping(aggregate: aggregate.name, field: group)
                 )
             }
 
@@ -96,7 +96,7 @@ extension EntityDefinition {
             }
 
             if let histogram = aggregate.measure?.histogram {
-                guard aggregate.groupBy == nil else {
+                guard aggregate.groups.isEmpty else {
                     throw SchemaError.invalidDefinition(.groupedHistogram(aggregate: aggregate.name))
                 }
                 guard (1...63).contains(histogram.bounds.count) else {

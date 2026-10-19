@@ -34,19 +34,14 @@ struct RecordFold {
             )
         }
 
-        let fields = [
-            date,
-            aggregate.groupBy,
-            aggregate.measure?.field,
-            aggregate.measure?.histogram?.field,
-        ]
+        let measured = [aggregate.measure?.field, aggregate.measure?.histogram?.field].compactMap(\.self)
 
         let records = try await ReadOperation(
             database: database,
             definition: definition,
             branches: [filters],
             sort: [],
-            fields: fields.compactMap(\.self)
+            fields: [date] + aggregate.groups + measured
         )
         .records()
 

@@ -71,7 +71,7 @@ struct AggregatesTests {
         #expect(try await ReadOperation(store: store, entity: "visit").records().count == 1)
         #expect(
             try await TotalOperation(store: store, entity: "visit")
-                .rows(field: nil, metric: .sum, group: nil)
+                .rows(field: nil, metric: .sum, groups: [])
                 .map(\.value) == [1]
         )
     }
@@ -99,7 +99,7 @@ struct AggregatesTests {
 
         #expect(try await ReadOperation(store: store, entity: "meter").records().count == 1)
         let totals = try await TotalOperation(store: store, entity: "meter").rows(
-            field: "amount", metric: .sum, group: nil)
+            field: "amount", metric: .sum, groups: [])
         #expect(totals.first?.value == 25)
     }
 
@@ -124,7 +124,7 @@ struct AggregatesTests {
         #expect(cells.count <= 3)
 
         let totals = try await TotalOperation(store: store, entity: "payment").rows(
-            field: "amount", metric: .sum, group: nil)
+            field: "amount", metric: .sum, groups: [])
         #expect(totals.count == 1)
         #expect(totals.first?.value == 21)
 
@@ -163,7 +163,7 @@ struct AggregatesTests {
             entity: "meter")
 
         let totals = try await TotalOperation(store: store, entity: "meter")
-            .rows(field: "amount", metric: .min, group: nil)
+            .rows(field: "amount", metric: .min, groups: [])
         #expect(totals.first?.value == 2)
     }
 
@@ -174,10 +174,10 @@ struct AggregatesTests {
         try await writePayments([99], product: "web")
 
         let narrowed = store.query("payment").filter("product", .equals, .string("app"))
-        #expect(try await narrowed.totals("amount", metric: .sum, group: "product").map(\.value) == [10])
+        #expect(try await narrowed.totals("amount", metric: .sum, groups: ["product"]).map(\.value) == [10])
 
         let contradicted = narrowed.filter("product", .equals, .string("web"))
-        #expect(try await contradicted.totals("amount", metric: .sum, group: "product").isEmpty)
+        #expect(try await contradicted.totals("amount", metric: .sum, groups: ["product"]).isEmpty)
         #expect(try await contradicted.take(10).isEmpty)
     }
 
@@ -187,7 +187,7 @@ struct AggregatesTests {
         try await writePayments([5, 2, 8])
 
         let totals = try await TotalOperation(store: store, entity: "payment")
-            .rows(field: "amount", metric: .min, group: nil)
+            .rows(field: "amount", metric: .min, groups: [])
         #expect(totals.count == 1)
         #expect(totals.first?.value == 2)
     }
@@ -198,7 +198,7 @@ struct AggregatesTests {
         try await writePayments([5, 2, 8])
 
         let totals = try await TotalOperation(store: store, entity: "payment")
-            .rows(field: "amount", metric: .max, group: nil)
+            .rows(field: "amount", metric: .max, groups: [])
         #expect(totals.first?.value == 8)
     }
 
@@ -214,7 +214,7 @@ struct AggregatesTests {
         try await writePayments([2.5, 1.5])
 
         let total = try #require(
-            try await TotalOperation(store: store, entity: "payment").rows(field: "amount", metric: .sum, group: nil)
+            try await TotalOperation(store: store, entity: "payment").rows(field: "amount", metric: .sum, groups: [])
                 .first)
         #expect(total.value == 4)
         #expect(try await store.query("payment").average("amount") == 2)
@@ -242,7 +242,7 @@ struct AggregatesTests {
         let refusal = SchemaError.unsupportedQuery(.averageOfOptional("amount"))
 
         await #expect(throws: refusal) {
-            try await store.query("payment").totals("amount", metric: .average, group: "product")
+            try await store.query("payment").totals("amount", metric: .average, groups: ["product"])
         }
         await #expect(throws: refusal) {
             try await store.query("payment").average("amount")
@@ -309,7 +309,7 @@ struct AggregatesTests {
         try await writePayments([10], product: "bundle")
 
         let totals = try await TotalOperation(store: store, entity: "payment").rows(
-            field: "amount", metric: .sum, group: "product")
+            field: "amount", metric: .sum, groups: ["product"])
         #expect(totals.map(\.group) == ["app", "bundle"])
         #expect(totals.map(\.value) == [6, 10])
     }
@@ -334,7 +334,7 @@ struct AggregatesTests {
             entity: "payment",
             branches: [[ClientFilter(field: "product", op: .equals, value: .string(product))]]
         )
-        .rows(field: "amount", metric: .sum, group: "product")
+        .rows(field: "amount", metric: .sum, groups: ["product"])
     }
 
     @Test("A aggregate with two metrics is rejected")
@@ -361,7 +361,7 @@ struct AggregatesTests {
         )
 
         let totals = try await TotalOperation(store: store, entity: "payment").rows(
-            field: "amount", metric: .sum, group: "product")
+            field: "amount", metric: .sum, groups: ["product"])
 
         #expect(totals.count == 2)
         #expect(totals.first { $0.group == "app" }?.value == 5)
@@ -379,7 +379,7 @@ struct AggregatesTests {
         )
 
         let totals = try await TotalOperation(store: store, entity: "payment")
-            .rows(field: "amount", metric: .min, group: nil)
+            .rows(field: "amount", metric: .min, groups: [])
         #expect(totals.count == 1)
         #expect(totals.first?.value == 2)
     }
@@ -420,7 +420,7 @@ struct AggregatesTests {
             [EntityWrite(values: ["product": .string("book"), "amount": .double(2)], uuid: nil)], entity: "sale")
 
         let totals = try await TotalOperation(store: store, entity: "sale").rows(
-            field: "amount", metric: .sum, group: "product")
+            field: "amount", metric: .sum, groups: ["product"])
         #expect(totals.first { $0.group == "app" }?.value == 15)
         #expect(totals.first { $0.group == "book" }?.value == 2)
         #expect(database.records.filter { $0.recordType == "Vector" }.count == 2)
@@ -671,7 +671,7 @@ struct AggregatesTests {
 
         #expect(try await store.query("reading").max("amount") == 41)
         #expect(try await store.query("reading").filter("product", .equals, "book").max("amount") == 41)
-        let peaks = try await store.query("reading").totals("amount", metric: .max, group: "product")
+        let peaks = try await store.query("reading").totals("amount", metric: .max, groups: ["product"])
         #expect(peaks.map(\.group) == ["app", "book"])
         #expect(peaks.map(\.value) == [10, 41])
 
@@ -683,11 +683,11 @@ struct AggregatesTests {
         try await publishLedger()
         try tamperBookSlots()
 
-        let totals = try await store.query("ledger").totals("amount", metric: .sum, group: "product")
+        let totals = try await store.query("ledger").totals("amount", metric: .sum, groups: ["product"])
         #expect(totals.map(\.group) == ["app", "book"])
         #expect(totals.map(\.value) == [16, 40])
 
-        let averages = try await store.query("ledger").totals("amount", metric: .average, group: "product")
+        let averages = try await store.query("ledger").totals("amount", metric: .average, groups: ["product"])
         #expect(averages.map(\.value) == [8, 40.0 / 3])
     }
 
