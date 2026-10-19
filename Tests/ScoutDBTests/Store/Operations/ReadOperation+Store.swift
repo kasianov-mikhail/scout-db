@@ -17,7 +17,8 @@ extension ReadOperation {
             database: store.database,
             definition: try await store.registry.definition(for: entity),
             branches: branches,
-            sort: sort
+            sort: sort,
+            fields: nil
         )
     }
 }

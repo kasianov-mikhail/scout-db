@@ -9,6 +9,7 @@ import CloudKit
 
 struct ScanPlan {
     let query: CKQuery
+    let desiredKeys: [String]?
     let remaining: [ClientFilter]
     var included: (EntityRecord) -> Bool = { _ in true }
 
@@ -18,14 +19,31 @@ struct ScanPlan {
 }
 
 extension EntityDefinition {
-    func plan(matching filters: [ClientFilter], sort: [CKQuery.Sort]) throws -> ScanPlan {
-        ScanPlan(
+    func plan(matching filters: [ClientFilter], sort: [CKQuery.Sort], fields: [String]?) throws -> ScanPlan {
+        let remaining = try clientFilters(filters)
+
+        return ScanPlan(
             query: CKQuery(
                 recordType: "Entity",
                 filters: try serverFilters(filters),
                 sort: sort
             ),
-            remaining: try clientFilters(filters)
+            desiredKeys: try fields.map { try keys(names: $0 + remaining.map(\.field)) },
+            remaining: remaining
         )
+    }
+
+    func keys(names: [String]) throws -> [String] {
+        var keys: Set = [Envelope.entity, Envelope.version, Envelope.uuid]
+
+        for name in names {
+            let slots = fields.filter { $0.name == name }.map(\.storage.slot)
+            guard !slots.isEmpty else {
+                throw SchemaError.unknownField(name)
+            }
+            keys.formUnion(slots)
+        }
+
+        return keys.sorted()
     }
 }

@@ -111,6 +111,16 @@ let recent = try await store.query("purchase")
     .take(20)
 ```
 
+`select` reads only the fields you name, so a list that needs two short fields does not
+download the large ones:
+
+```swift
+let products = try await store.query("purchase")
+    .sort("date", .reverse)
+    .select(["product_id", "amount"])
+    .take(20)
+```
+
 Aggregates are folded on write, so a total or a series over them costs a handful of records
 rather than a scan. A cell is an hour, and `series` hands those hours back for the range asked
 for — roll them up into days or weeks on the client.

@@ -18,7 +18,7 @@ enum LocalQuery {
     }
 
     static func page(
-        _ records: [CKRecord], matching query: CKQuery, resultsLimit: Int, pageLimit: Int?
+        _ records: [CKRecord], matching query: CKQuery, desiredKeys: [String]?, resultsLimit: Int, pageLimit: Int?
     ) -> QueryPage {
         let matched =
             records
@@ -32,7 +32,7 @@ enum LocalQuery {
             pageLimit ?? Int.max
         )
 
-        let page = matched.prefix(capacity).map { $0.duplicate() }
+        let page = matched.prefix(capacity).map { $0.duplicate(keeping: desiredKeys) }
         let end = page.count
 
         let cursor: QueryCursor? =
@@ -44,7 +44,7 @@ enum LocalQuery {
     }
 
     static func resume(
-        _ records: [CKRecord], from cursor: QueryCursor, resultsLimit: Int, pageLimit: Int?
+        _ records: [CKRecord], from cursor: QueryCursor, desiredKeys: [String]?, resultsLimit: Int, pageLimit: Int?
     ) -> QueryPage? {
         guard case .local(let token) = cursor, let scan = token as? Scan else {
             return nil
@@ -59,7 +59,7 @@ enum LocalQuery {
 
         while index < remaining.count, served.count < capacity {
             if let record = byID[remaining[index]] {
-                let copy = record.duplicate()
+                let copy = record.duplicate(keeping: desiredKeys)
                 served.append((copy.recordID, .success(copy)))
             }
             index += 1
@@ -69,6 +69,19 @@ enum LocalQuery {
         let next: QueryCursor? = rest.isEmpty ? nil : .local(Scan(query: scan.query, remaining: Array(rest)))
 
         return (served, next)
+    }
+}
+
+extension CKRecord {
+    fileprivate func duplicate(keeping keys: [String]?) -> CKRecord {
+        let copy = duplicate()
+        guard let keys else {
+            return copy
+        }
+        for key in copy.allKeys() where !keys.contains(key) {
+            copy[key] = nil
+        }
+        return copy
     }
 }
 

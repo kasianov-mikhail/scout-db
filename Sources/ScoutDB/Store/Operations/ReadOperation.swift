@@ -10,6 +10,7 @@ struct ReadOperation: Sendable {
     let definition: EntityDefinition
     let branches: [[ClientFilter]]
     let sort: [EntityStore.Sort]
+    let fields: [String]?
 
     func records(limit: Int? = nil) async throws -> [EntityRecord] {
         if branches.count == 1 {
@@ -57,7 +58,8 @@ struct ReadOperation: Sendable {
 
         let plan = try definition.plan(
             matching: filters,
-            sort: try definition.serverSort(sort)
+            sort: try definition.serverSort(sort),
+            fields: fields.map { $0 + self.sort.map(\.field) }
         )
 
         if let limit {
@@ -74,7 +76,7 @@ struct ReadOperation: Sendable {
         let decoder = EntityDecoder(definition: definition)
         var collected: [EntityRecord] = []
 
-        try await database.pages(matching: plan.query) { page in
+        try await database.pages(matching: plan.query, desiredKeys: plan.desiredKeys) { page in
             collected += try page.map(decoder.decode).filter(plan.includes)
         }
         return collected
@@ -100,7 +102,8 @@ extension QueryBuilder {
                 database: store.database,
                 definition: definition,
                 branches: alternatives,
-                sort: sorts
+                sort: sorts,
+                fields: selection
             )
         }
     }

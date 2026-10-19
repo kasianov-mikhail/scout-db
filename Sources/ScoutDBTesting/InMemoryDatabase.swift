@@ -167,19 +167,28 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
 
     public init() {}
 
-    public func records(matching query: CKQuery, resultsLimit: Int) async throws -> QueryPage {
+    public func records(matching query: CKQuery, desiredKeys: [String]?, resultsLimit: Int) async throws -> QueryPage {
         try counting(.query, carrying: \.matchResults.count) {
             try popErrorLocked(writing: false)
-            return pageLocked(query: query, resultsLimit: resultsLimit)
+            return LocalQuery.page(
+                indexedLocked(),
+                matching: query,
+                desiredKeys: desiredKeys,
+                resultsLimit: resultsLimit,
+                pageLimit: state.pageLimit
+            )
         }
     }
 
-    public func records(continuingMatchFrom cursor: QueryCursor, resultsLimit: Int) async throws -> QueryPage {
+    public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [String]?, resultsLimit: Int)
+        async throws -> QueryPage
+    {
         try counting(.continuation, carrying: \.matchResults.count) {
             try popErrorLocked(writing: false)
             let resumed = LocalQuery.resume(
                 indexedLocked(),
                 from: cursor,
+                desiredKeys: desiredKeys,
                 resultsLimit: resultsLimit,
                 pageLimit: state.pageLimit
             )
@@ -201,15 +210,6 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
             return
         }
         throw error
-    }
-
-    private func pageLocked(query: CKQuery, resultsLimit: Int) -> QueryPage {
-        LocalQuery.page(
-            indexedLocked(),
-            matching: query,
-            resultsLimit: resultsLimit,
-            pageLimit: state.pageLimit
-        )
     }
 
     public func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {

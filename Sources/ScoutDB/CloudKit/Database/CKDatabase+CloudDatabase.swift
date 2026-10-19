@@ -8,12 +8,13 @@
 import CloudKit
 
 extension CKDatabase: CloudDatabase {
-    public func records(matching query: CKQuery, resultsLimit: Int) async throws -> QueryPage {
+    public func records(matching query: CKQuery, desiredKeys: [String]?, resultsLimit: Int) async throws -> QueryPage {
         do {
             return try await throttled { database in
                 let (results, cursor) = try await database.records(
                     matching: query,
                     inZoneWith: nil,
+                    desiredKeys: desiredKeys,
                     resultsLimit: resultsLimit
                 )
                 return (results, cursor.map(QueryCursor.cloudKit))
@@ -23,7 +24,9 @@ extension CKDatabase: CloudDatabase {
         }
     }
 
-    public func records(continuingMatchFrom cursor: QueryCursor, resultsLimit: Int) async throws -> QueryPage {
+    public func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [String]?, resultsLimit: Int)
+        async throws -> QueryPage
+    {
         guard case .cloudKit(let cursor) = cursor else {
             throw CKError(.invalidArguments)
         }
@@ -33,6 +36,7 @@ extension CKDatabase: CloudDatabase {
                     try await withCheckedThrowingContinuation { continuation in
                         database.fetch(
                             withCursor: cursor,
+                            desiredKeys: desiredKeys,
                             resultsLimit: resultsLimit
                         ) { result in
                             continuation.resume(with: result)
