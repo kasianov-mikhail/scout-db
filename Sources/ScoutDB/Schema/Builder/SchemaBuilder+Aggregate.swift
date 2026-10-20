@@ -23,6 +23,12 @@ extension SchemaBuilder {
     /// rewrite of the same record reverses out of the hour it is rewritten in
     /// rather than the one it first landed in.
     ///
+    /// `parts` spreads the week's list of groups over several index records
+    /// when the grouping field has thousands of values, such as a device id.
+    /// Each group is filed in one part by its name, so a part stays under the
+    /// record size limit. A later `update()` may raise `parts`; the pages
+    /// written before stay readable.
+    ///
     /// ```swift
     /// try await store.schema("visit")
     ///     .field("page", .string, .ungrouped)
@@ -31,9 +37,9 @@ extension SchemaBuilder {
     ///     .create()
     /// ```
     ///
-    public func count(by group: String? = nil, at date: String? = nil, shards: Int? = nil) -> Self {
+    public func count(by group: String? = nil, at date: String? = nil, shards: Int? = nil, parts: Int? = nil) -> Self {
         var builder = self
-        builder.aggregates.append(AggregateDefinition(group: group, date: date, shards: shards))
+        builder.aggregates.append(AggregateDefinition(group: group, date: date, shards: shards, parts: parts))
         return builder
     }
 
@@ -44,9 +50,10 @@ extension SchemaBuilder {
     /// the total, never a count beside it — so `average` divides this
     /// aggregate by the count aggregate over the same grouping, and reads it
     /// only where both are declared. `at` dates the cell as in
-    /// ``count(by:at:shards:)``. `shards` spreads one hot cell over several
+    /// ``count(by:at:shards:parts:)``. `shards` spreads one hot cell over several
     /// records when many devices write the same group at once — readers sum
-    /// the shards, so declare it only where the contention is real.
+    /// the shards, so declare it only where the contention is real. `parts`
+    /// spreads the week's group list as in ``count(by:at:shards:parts:)``.
     ///
     /// ```swift
     /// try await store.schema("purchase")
@@ -59,10 +66,12 @@ extension SchemaBuilder {
     /// let revenue = try await store.query("purchase").totals("amount", metric: .sum, group: "product_id")
     /// ```
     ///
-    public func sum(_ field: String, by group: String? = nil, at date: String? = nil, shards: Int? = nil) -> Self {
+    public func sum(
+        _ field: String, by group: String? = nil, at date: String? = nil, shards: Int? = nil, parts: Int? = nil
+    ) -> Self {
         var builder = self
         builder.aggregates.append(
-            AggregateDefinition(metric: .sum, field: field, group: group, date: date, shards: shards)
+            AggregateDefinition(metric: .sum, field: field, group: group, date: date, shards: shards, parts: parts)
         )
         return builder
     }

@@ -37,6 +37,7 @@ struct AggregateDeltasTests {
             aggregate: aggregate,
             group: group,
             shard: shard,
+            part: 0,
             week: (week ?? noon).weekStart
         )
     }

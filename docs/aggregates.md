@@ -50,8 +50,8 @@ try await store.schema("purchase")
 
 | Builder method | Keeps |
 |-|-|
-| `count(by:at:shards:)` | The number of records per group. Use it for `.ungrouped` fields, for sharding, or for a count with no grouping. |
-| `sum(_:by:at:shards:)` | The running total of a numeric field per group. |
+| `count(by:at:shards:parts:)` | The number of records per group. Use it for `.ungrouped` fields, for sharding, or for a count with no grouping. |
+| `sum(_:by:at:shards:parts:)` | The running total of a numeric field per group. |
 | `min(_:by:at:)` | The smallest value per group. |
 | `max(_:by:at:)` | The largest value per group. |
 | `histogram(of:bounds:at:)` | Bucket counts of a numeric field, for percentiles. |
@@ -62,6 +62,9 @@ Parameters:
 - **`at`** — a `.timestamp` field that dates the record. Without it, a record lands in the hour of
   the write. Set `at` when you read [series](#series).
 - **`shards`** — `2...64`. Use it only when many devices write the same group at the same time.
+- **`parts`** — `2...64`. Spreads the week's list of groups over several index records. Set it when
+  the grouping field has thousands of values, such as a device id. An `update()` may raise it later;
+  the pages written before stay readable.
 
 `min` and `max` are running extremes. Deleting or rewriting the record that set the extreme does not
 lower it: the aggregate answers with what the group once reached.
@@ -184,3 +187,7 @@ Aggregates move cost from reads to writes. Every write to an entity with aggrega
 them. Concurrent writes from many devices do not lose updates.
 
 Declare the aggregates your screens read, and mark the other fields `.ungrouped`.
+
+An aggregate can group by a field with many values, such as a device id. Give it `parts`, because
+one index record cannot hold tens of thousands of groups for a week. A read fetches one record per
+group and week, so its cost grows with the number of groups in the range.

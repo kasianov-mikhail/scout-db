@@ -18,7 +18,7 @@ struct VectorFetch {
 
         let head = try await index.head
         let weeks = head.weeks(range: range)
-        let plan = ShardPlan(floor: aggregate.shards, grown: head.shards)
+        let plan = ShardPlan(aggregate: aggregate, head: head)
 
         let keys =
             if let groups {
@@ -31,19 +31,12 @@ struct VectorFetch {
 
         for key in keys {
             for shard in plan.shards(week: key.week) {
-                let slot = VectorSlot(
-                    key: key,
-                    entity: entity,
-                    aggregate: aggregate.name,
-                    shard: shard
-                )
+                let slot = VectorSlot(key: key, entity: entity, aggregate: aggregate, shard: shard)
                 named[slot.recordID] = key
             }
         }
 
-        let ids = named.keys.sorted { $0.recordName < $1.recordName }
-
-        return try await database.fetchRecords(ids: ids, batchSize: maxBatchSize).compactMap { record in
+        return try await database.fetchRecords(ids: Array(named.keys), batchSize: maxBatchSize).compactMap { record in
             guard let key = named[record.recordID] else {
                 return nil
             }
@@ -53,7 +46,14 @@ struct VectorFetch {
 }
 
 extension VectorSlot {
-    fileprivate init(key: VectorKey, entity: String, aggregate: String, shard: Int?) {
-        self.init(entity: entity, aggregate: aggregate, group: key.group, shard: shard, week: key.week)
+    fileprivate init(key: VectorKey, entity: String, aggregate: AggregateDefinition, shard: Int?) {
+        self.init(
+            entity: entity,
+            aggregate: aggregate.name,
+            group: key.group,
+            shard: shard,
+            part: key.group.bucket(count: aggregate.partCount),
+            week: key.week
+        )
     }
 }

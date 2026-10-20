@@ -7,6 +7,8 @@
 
 import Foundation
 
+private let growthThreshold = 3
+
 typealias ShardPlans = [String: ShardPlan]
 
 struct ShardPlan: Equatable {
@@ -25,11 +27,31 @@ struct ShardPlan: Equatable {
         self.grown = weeks
     }
 
+    init(aggregate: AggregateDefinition, head: IndexPage?) {
+        self.init(floor: aggregate.shards, grown: head?.shards ?? [:])
+    }
+
     func count(week: Date) -> Int? {
         [grown[week.millisecondsSince1970], floor].compactMap(\.self).max()
     }
 
     func shards(week: Date) -> [Int?] {
         count(week: week).map { (0..<$0).map(Optional.init) } ?? [nil]
+    }
+}
+
+extension ShardPlans {
+    func raised(lost: [VectorSlot: Int]) -> [VectorIndex: IndexPage] {
+        var raised: [VectorIndex: [String: Int]] = [:]
+
+        for (slot, count) in lost where count >= growthThreshold {
+            let index = slot.headIndex
+            let key = String(slot.week.millisecondsSince1970)
+            let standing = raised[index]?[key] ?? self[slot.aggregate]?.count(week: slot.week) ?? 1
+
+            raised[index, default: [:]][key] = standing * 2
+        }
+
+        return raised.mapValues { IndexPage(weeks: [], groups: [], shards: $0) }
     }
 }

@@ -17,6 +17,7 @@ struct VectorSlot: Hashable {
     let aggregate: String
     let group: String
     let shard: Int?
+    let part: Int
     let week: Date
 
     private var components: [String] {
@@ -31,11 +32,12 @@ struct VectorSlot: Hashable {
         CKRecord.ID(recordName: "vector-" + contentDigest(components: components))
     }
 
-    var index: (head: VectorIndex, week: VectorIndex) {
-        (
-            VectorIndex(entity: entity, aggregate: aggregate, week: nil),
-            VectorIndex(entity: entity, aggregate: aggregate, week: week)
-        )
+    var headIndex: VectorIndex {
+        VectorIndex(entity: entity, aggregate: aggregate)
+    }
+
+    var weekIndex: VectorIndex {
+        VectorIndex(entity: entity, aggregate: aggregate, week: week, part: part)
     }
 }
 
@@ -56,9 +58,8 @@ extension VectorSlot {
             entity: entityRecord.entity,
             aggregate: aggregate.name,
             group: group,
-            shard: shards.map { count in
-                Int(entityRecord.uuid.utf8.reduce(UInt64(0)) { $0 &* 31 &+ UInt64($1) } % UInt64(count))
-            },
+            shard: shards.map(entityRecord.uuid.bucket),
+            part: group.bucket(count: aggregate.partCount),
             week: week
         )
     }
@@ -70,14 +71,22 @@ extension [VectorSlot] {
         var groups: [VectorIndex: Set<String>] = [:]
 
         for slot in self {
-            let (head, week) = slot.index
-            weeks[head, default: []].insert(slot.week.millisecondsSince1970)
-            groups[week, default: []].insert(slot.group)
+            weeks[slot.headIndex, default: []].insert(slot.week.millisecondsSince1970)
+            groups[slot.weekIndex, default: []].insert(slot.group)
         }
 
         var pages = weeks.mapValues { IndexPage(weeks: $0.sorted(), groups: []) }
         pages.merge(groups.mapValues { IndexPage(weeks: [], groups: $0.sorted()) }) { first, _ in first }
 
         return pages
+    }
+}
+
+extension String {
+    func bucket(count: Int) -> Int {
+        guard count > 1 else {
+            return 0
+        }
+        return Int(utf8.reduce(UInt64(0)) { $0 &* 31 &+ UInt64($1) } % UInt64(count))
     }
 }

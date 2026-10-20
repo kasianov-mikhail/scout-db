@@ -100,7 +100,7 @@ later version may widen or drop the bounds but never narrow them.
 
 ## Aggregate declarations
 
-The builder also declares aggregates: `count(by:at:shards:)`, `sum(_:by:at:shards:)`,
+The builder also declares aggregates: `count(by:at:shards:parts:)`, `sum(_:by:at:shards:parts:)`,
 `min(_:by:at:)`, `max(_:by:at:)` and `histogram(of:bounds:at:)`. They are covered in
 [Aggregates](aggregates.md#declaring-aggregates).
 
@@ -137,6 +137,6 @@ if try await registry.publishedSchema(for: "purchase") == nil {
 - an update narrows the `.min` or `.max` of a kept field;
 - an aggregate names an unknown field, dates its records by a field that is not a `.timestamp`, or
   folds a field that is not numeric;
-- two aggregates have the same shape, or the `shards` or histogram bounds are out of range.
+- two aggregates have the same shape, or the `shards`, `parts` or histogram bounds are out of range.
 
 The error's `localizedDescription` names the field or aggregate and the rule it broke.

@@ -136,6 +136,13 @@ struct AggregatesTests {
             aggregates: [AggregateDefinition(shards: 1)]
         )
         #expect(throws: SchemaError.invalidDefinition(.invalidShards(aggregate: "by_all"))) { try invalid.validate() }
+
+        let unspread = makeDefinition(
+            entity: "e",
+            fields: [FieldDefinition(name: "name", type: .string, storage: .slot(.string, "s_02"))],
+            aggregates: [AggregateDefinition(parts: 1)]
+        )
+        #expect(throws: SchemaError.invalidDefinition(.invalidParts(aggregate: "by_all"))) { try unspread.validate() }
     }
 
     @Test("A min aggregate keeps the extremum an upsert lifted a record off")
@@ -770,6 +777,7 @@ private final class VectorFetches: CloudDatabase, @unchecked Sendable {
                 aggregate: aggregate,
                 group: group,
                 shard: nil,
+                part: 0,
                 week: week.weekStart
             )
             return asked.contains(slot.recordID)

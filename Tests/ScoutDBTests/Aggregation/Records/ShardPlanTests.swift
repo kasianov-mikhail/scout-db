@@ -19,6 +19,10 @@ struct ShardPlanTests {
         String(week.millisecondsSince1970)
     }
 
+    private func slot(aggregate: String, group: String) -> VectorSlot {
+        VectorSlot(entity: "payment", aggregate: aggregate, group: group, shard: nil, part: 0, week: week)
+    }
+
     @Test("An undeclared, uncontended week is unsharded and reached by the bare name")
     func bareWeek() {
         #expect(ShardPlan(floor: nil).count(week: week) == nil)
@@ -46,5 +50,26 @@ struct ShardPlanTests {
     @Test("A count that will not parse as a week is dropped rather than mistaken for one")
     func unparsableWeekIsDropped() {
         #expect(ShardPlan(floor: nil, grown: ["not-a-week": 8]).count(week: week) == nil)
+    }
+
+    @Test("A slot that lost enough races doubles its week, starting from the plan it had")
+    func raisedDoublesTheContendedWeek() {
+        let slot = slot(aggregate: "by_product", group: "app")
+        let plans: ShardPlans = ["by_product": ShardPlan(floor: 4)]
+
+        let raised = plans.raised(lost: [slot: 3])
+
+        #expect(raised == [slot.headIndex: IndexPage(weeks: [], groups: [], shards: [key: 8])])
+    }
+
+    @Test("A slot under the threshold, or of an unplanned aggregate, raises from one")
+    func raisedBelowThresholdAndUnplanned() {
+        let quiet = slot(aggregate: "by_product", group: "app")
+        let unplanned = slot(aggregate: "by_region", group: "eu")
+        let plans: ShardPlans = ["by_product": ShardPlan(floor: 4)]
+
+        let raised = plans.raised(lost: [quiet: 2, unplanned: 3])
+
+        #expect(raised == [unplanned.headIndex: IndexPage(weeks: [], groups: [], shards: [key: 2])])
     }
 }

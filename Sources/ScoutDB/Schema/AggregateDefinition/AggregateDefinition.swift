@@ -12,6 +12,7 @@ struct AggregateDefinition: Equatable, Sendable {
     let groupBy: String?
     let measure: Measure?
     let shards: Int?
+    let parts: Int?
     let date: String?
     var since: Date?
 
@@ -38,6 +39,10 @@ struct AggregateDefinition: Equatable, Sendable {
     var fold: Metric {
         measure?.metric ?? .sum
     }
+
+    var partCount: Int {
+        parts ?? 1
+    }
 }
 
 extension [AggregateDefinition] {
@@ -50,7 +55,10 @@ extension [AggregateDefinition] {
 }
 
 extension AggregateDefinition {
-    init(metric: Metric? = nil, field: String? = nil, group: String? = nil, date: String? = nil, shards: Int? = nil) {
+    init(
+        metric: Metric? = nil, field: String? = nil, group: String? = nil, date: String? = nil, shards: Int? = nil,
+        parts: Int? = nil
+    ) {
         let measure: Measure? =
             switch (metric?.storage, field) {
             case (.sum, let field?):
@@ -63,7 +71,7 @@ extension AggregateDefinition {
                 nil
             }
 
-        self.init(groupBy: group, measure: measure, shards: shards, date: date)
+        self.init(groupBy: group, measure: measure, shards: shards, parts: parts, date: date)
     }
 
     init(histogram: String, bounds: [Double], group: String?, date: String?) {
@@ -71,6 +79,7 @@ extension AggregateDefinition {
             groupBy: group,
             measure: .histogram(.init(field: histogram, bounds: bounds)),
             shards: nil,
+            parts: nil,
             date: date
         )
     }

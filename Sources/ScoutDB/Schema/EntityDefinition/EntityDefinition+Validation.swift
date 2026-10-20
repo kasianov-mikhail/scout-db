@@ -117,5 +117,8 @@ extension AggregateDefinition {
         if let shards, !(2...64).contains(shards) {
             throw SchemaError.invalidDefinition(.invalidShards(aggregate: name))
         }
+        if let parts, !(2...64).contains(parts) {
+            throw SchemaError.invalidDefinition(.invalidParts(aggregate: name))
+        }
     }
 }

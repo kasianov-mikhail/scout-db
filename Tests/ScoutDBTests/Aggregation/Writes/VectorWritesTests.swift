@@ -182,7 +182,7 @@ struct VectorWritesTests {
     }
 
     private func headShards(_ aggregate: String) throws -> [String: Int] {
-        let head = VectorIndex(entity: "payment", aggregate: aggregate, week: nil)
+        let head = VectorIndex(entity: "payment", aggregate: aggregate)
         let record = database.records.first { $0.recordID == head.recordID }
 
         return try #require(record?.indexPage).shards

@@ -33,6 +33,7 @@ enum DefinitionFault: Equatable, Sendable {
     case nonTemporalDate(aggregate: String, field: String)
     case nonNumericMetric(aggregate: String, field: String)
     case invalidShards(aggregate: String)
+    case invalidParts(aggregate: String)
     case groupedHistogram(aggregate: String)
     case invalidBounds(aggregate: String)
 }
@@ -86,6 +87,8 @@ extension DefinitionFault: CustomStringConvertible {
             "Aggregate '\(aggregate)' aggregates non-numeric '\(field)'"
         case .invalidShards(let aggregate):
             "Aggregate '\(aggregate)' must shard into 2...64 records"
+        case .invalidParts(let aggregate):
+            "Aggregate '\(aggregate)' must spread its week index over 2...64 parts"
         case .groupedHistogram(let aggregate):
             "Aggregate '\(aggregate)' cannot group a histogram: its bucket is the grouping"
         case .invalidBounds(let aggregate):

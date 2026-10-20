@@ -45,11 +45,20 @@ struct InMemoryNameTests {
 
     @Test("The names the library writes are ones CloudKit takes", arguments: ["purchase", "order line", "Ünïcøde"])
     func libraryNamesAreLegal(entity: String) {
-        let slot = VectorSlot(entity: entity, aggregate: "by_product_id", group: "sku-1", shard: nil, week: .now)
-        let index = VectorIndex(entity: entity, aggregate: "by_product_id", week: nil)
+        let slot = VectorSlot(
+            entity: entity,
+            aggregate: "by_product_id",
+            group: "sku-1",
+            shard: nil,
+            part: 0,
+            week: .now
+        )
+        let head = VectorIndex(entity: entity, aggregate: "by_product_id")
+        let part = VectorIndex(entity: entity, aggregate: "by_product_id", week: .now, part: 3)
 
         #expect(SchemaDescriptorEntry.recordID(entity: entity).isLegalRecordName)
         #expect(slot.recordID.isLegalRecordName)
-        #expect(index.recordID.isLegalRecordName)
+        #expect(head.recordID.isLegalRecordName)
+        #expect(part.recordID.isLegalRecordName)
     }
 }
