@@ -14,10 +14,7 @@ struct PendingVector {
     let slot: VectorSlot
 }
 
-struct VectorLoader {
-    let database: any CloudDatabase
-    let slots: VectorCache
-
+extension VectorAggregator {
     struct Opened {
         let pending: [CKRecord.ID: PendingVector]
         let cold: [VectorSlot]

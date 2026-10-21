@@ -19,7 +19,7 @@ struct VectorIndexReader {
 
             guard let record = try await database.fetchRecord(id: index.recordID) else {
                 let empty = IndexPage(weeks: [], groups: [])
-                try? await VectorIndexWriter(database: database).write(wanted: [index: empty])
+                try? await database.write(wanted: [index: empty])
                 return empty
             }
 

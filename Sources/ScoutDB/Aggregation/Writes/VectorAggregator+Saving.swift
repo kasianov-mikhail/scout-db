@@ -10,17 +10,14 @@ import Foundation
 
 private let baseBackoff = 0.1
 private let maxBackoff = 2.0
+private let maxSaveRetry = 6
 
 func conflictBackoff(attempt: Int) -> Duration {
     let window = min(maxBackoff, baseBackoff * pow(2, Double(attempt - 1)))
     return .seconds(Double.random(in: 0..<window))
 }
 
-struct VectorSaver {
-    let database: any CloudDatabase
-    let slots: VectorCache
-    let maxRetry = 6
-
+extension VectorAggregator {
     struct Outcome {
         let lost: [VectorSlot: Int]
         let stranded: CKRecord?
@@ -30,7 +27,7 @@ struct VectorSaver {
         var pending = pending
         var lost: [VectorSlot: Int] = [:]
 
-        for attempt in 0..<maxRetry {
+        for attempt in 0..<maxSaveRetry {
             if attempt > 0 {
                 try await Task.sleep(for: conflictBackoff(attempt: attempt))
             }

@@ -7,13 +7,14 @@
 
 import Foundation
 
-extension [AggregateDefinition] {
-    func deltas(old: [EntityRecord], new: [EntityRecord], now: Date, spread: ShardPlans) -> Deltas {
+extension ShardLayout {
+    func deltas(old: [EntityRecord], new: [EntityRecord], now: Date) -> Deltas {
         var merged: Deltas = [:]
 
         for (batch, adding) in [(old, false), (new, true)] {
             for entityRecord in batch {
-                for aggregate in self {
+                for plan in plans.values {
+                    let aggregate = plan.aggregate
                     let stamp = aggregate.stamp(entityRecord: entityRecord, now: now)
                     let week = stamp.weekStart
 
@@ -21,7 +22,7 @@ extension [AggregateDefinition] {
                         entityRecord: entityRecord,
                         aggregate: aggregate,
                         week: week,
-                        shards: spread[aggregate.name]?.count(week: week) ?? aggregate.shards
+                        shards: plan.count(week: week)
                     )
 
                     guard let slot else {

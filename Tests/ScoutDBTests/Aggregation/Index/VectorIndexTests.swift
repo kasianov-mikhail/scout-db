@@ -141,7 +141,7 @@ struct VectorIndexTests {
                 .rows(groups: nil)
         }
         await #expect(throws: SchemaError.malformedRecord(head.recordID.recordName)) {
-            try await VectorIndexWriter(database: database).write(
+            try await database.write(
                 wanted: [
                     VectorSlot(
                         entity: "payment",
@@ -248,6 +248,18 @@ struct VectorIndexTests {
         #expect(rows == [product: 2])
     }
 
+    @Test("An index page that changed under the write merges into the server's copy without a second fetch")
+    func lostRaceMergesIntoTheServerCopy() async throws {
+        let index = VectorIndex(entity: "payment", aggregate: counting.name)
+        try await database.write(wanted: [index: IndexPage(weeks: [1], groups: [])])
+
+        let racing = RacingIndexWrites(backing: database, rival: [index: IndexPage(weeks: [2], groups: [])])
+        try await racing.write(wanted: [index: IndexPage(weeks: [3], groups: [])])
+
+        #expect(head.weeks == [1, 2, 3])
+        #expect(racing.fetches == 1)
+    }
+
     @Test("The first part keeps the name the week page had before the parts")
     func firstPartKeepsItsName() {
         let week = noon.weekStart
@@ -255,5 +267,51 @@ struct VectorIndexTests {
         let components = ["payment", counting.name, String(week.millisecondsSince1970)]
 
         #expect(index.recordID.recordName == "index-" + contentDigest(components: components))
+    }
+}
+
+private final class RacingIndexWrites: CloudDatabase, @unchecked Sendable {
+    private let backing: InMemoryDatabase
+    private let lock = NSLock()
+    private var rival: [VectorIndex: IndexPage]?
+    private var fetchCount = 0
+
+    init(backing: InMemoryDatabase, rival: [VectorIndex: IndexPage]) {
+        self.backing = backing
+        self.rival = rival
+    }
+
+    var fetches: Int {
+        lock.withLock { fetchCount }
+    }
+
+    func records(matching query: CKQuery, desiredKeys: [String]?, resultsLimit: Int) async throws -> QueryPage {
+        try await backing.records(matching: query, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+    }
+
+    func records(continuingMatchFrom cursor: QueryCursor, desiredKeys: [String]?, resultsLimit: Int) async throws
+        -> QueryPage
+    {
+        try await backing.records(continuingMatchFrom: cursor, desiredKeys: desiredKeys, resultsLimit: resultsLimit)
+    }
+
+    func modifyRecords(saving records: [CKRecord], deleting recordIDs: [CKRecord.ID]) async throws {
+        try await backing.modifyRecords(saving: records, deleting: recordIDs)
+    }
+
+    func saveIfUnchanged(_ records: [CKRecord]) async throws -> [(CKRecord.ID, Result<CKRecord, any Error>)] {
+        if let rival = lock.withLock({ self.rival.take() }) {
+            try await backing.write(wanted: rival)
+        }
+        return try await backing.saveIfUnchanged(records)
+    }
+
+    func fetchRecord(id: CKRecord.ID) async throws -> CKRecord? {
+        try await backing.fetchRecord(id: id)
+    }
+
+    func fetchRecords(ids: [CKRecord.ID]) async throws -> [CKRecord] {
+        lock.withLock { fetchCount += 1 }
+        return try await backing.fetchRecords(ids: ids)
     }
 }
