@@ -106,7 +106,7 @@ The builder also declares aggregates: `count(by:at:shards:parts:)`, `sum(_:by:at
 
 ## Reading a schema back
 
-`SchemaRegistry` returns the active fields of an entity and their rules.
+`SchemaRegistry` returns the active fields of an entity, their rules, and the aggregates it keeps.
 
 ```swift
 let schema = try await registry.schema(for: "purchase")
@@ -114,7 +114,14 @@ let schema = try await registry.schema(for: "purchase")
 for field in schema.fields {
     print(field.name, field.type, field.required, field.payload)
 }
+
+for aggregate in schema.aggregates {
+    print(aggregate.group, aggregate.date, aggregate.field, aggregate.metric, aggregate.parts)
+}
 ```
+
+An `update()` always publishes a new version. Compare both `fields` and `aggregates` with your
+declaration before you call it, because an aggregate can change while the fields stay the same.
 
 `publishedSchema(for:)` returns `nil` when nothing is published under the name. Use it to choose
 between `create()` and `update()`. Any other failure, such as a network error, still throws:
