@@ -18,6 +18,12 @@ struct VectorIndexTests {
     let noon = Date(timeIntervalSince1970: 36_000)
 
     private let counting = AggregateDefinition(group: "product", date: "date")
+    private let spread = AggregateDefinition(group: "product", date: "date", parts: 8)
+    private let products = (0..<64).map { "sku-\($0)" }
+
+    private var offPart: String? {
+        products.first { $0.bucket(count: spread.partCount) != 0 }
+    }
 
     private let payment = makeDefinition(
         entity: "payment",
@@ -40,23 +46,35 @@ struct VectorIndexTests {
         }
     }
 
-    private func page(week: Date?) -> IndexPage {
-        let index = VectorIndex(entity: "payment", aggregate: counting.name, week: week)
+    private func page(week: Date?, part: Int) -> IndexPage {
+        let index = VectorIndex(entity: "payment", aggregate: counting.name, week: week, part: part)
 
         let stored = database.records.first { $0.recordID == index.recordID }
         return stored?.indexPage ?? IndexPage(weeks: [], groups: [])
     }
 
+    private var head: IndexPage {
+        page(week: nil, part: 0)
+    }
+
+    private func groups(week: Date, parts: Int = 1) -> [String] {
+        Set((0..<parts).flatMap { page(week: week, part: $0).groups }).sorted()
+    }
+
     private func aggregator(_ slots: VectorCache = VectorCache()) -> VectorAggregator {
-        VectorAggregator(database: database, aggregates: [counting], slots: slots)
+        aggregator(counting, slots: slots)
+    }
+
+    private func aggregator(_ aggregate: AggregateDefinition, slots: VectorCache = VectorCache()) -> VectorAggregator {
+        VectorAggregator(database: database, aggregates: [aggregate], slots: slots)
     }
 
     @Test("A write names the week it lands in and the group it counts")
     func namesWhatItWrote() async throws {
         try await aggregator().rebalance(old: [], new: payments(["app", "book"]))
 
-        #expect(page(week: nil).weeks == [noon.weekStart.millisecondsSince1970])
-        #expect(page(week: noon.weekStart).groups == ["app", "book"])
+        #expect(head.weeks == [noon.weekStart.millisecondsSince1970])
+        #expect(groups(week: noon.weekStart) == ["app", "book"])
     }
 
     @Test("A second week joins the first rather than replacing it")
@@ -67,11 +85,11 @@ struct VectorIndexTests {
         try await aggregator().rebalance(old: [], new: payments(["app"], at: later))
 
         #expect(
-            page(week: nil).weeks == [
+            head.weeks == [
                 noon.weekStart.millisecondsSince1970, later.weekStart.millisecondsSince1970,
             ]
         )
-        #expect(page(week: later.weekStart).groups == ["app"])
+        #expect(groups(week: later.weekStart) == ["app"])
     }
 
     @Test("A group already named is not written twice")
@@ -81,7 +99,7 @@ struct VectorIndexTests {
 
         try await aggregator().rebalance(old: [], new: payments(["app"]))
 
-        #expect(page(week: noon.weekStart).groups == ["app"])
+        #expect(groups(week: noon.weekStart) == ["app"])
         #expect(database.requests[.conditionalSave] == 1)
     }
 
@@ -95,8 +113,8 @@ struct VectorIndexTests {
 
         try await aggregator().rebalance(old: [], new: payments(["app"]))
 
-        #expect(page(week: nil).weeks == [noon.weekStart.millisecondsSince1970])
-        #expect(page(week: noon.weekStart).groups == ["app"])
+        #expect(head.weeks == [noon.weekStart.millisecondsSince1970])
+        #expect(groups(week: noon.weekStart) == ["app"])
     }
 
     @Test("A failed index write leaves no vector behind")
@@ -114,7 +132,7 @@ struct VectorIndexTests {
     func malformedPageIsRefused() async throws {
         try await aggregator().rebalance(old: [], new: payments(["app"]))
 
-        let head = VectorIndex(entity: "payment", aggregate: counting.name, week: nil)
+        let head = VectorIndex(entity: "payment", aggregate: counting.name)
         let record = try #require(database.records.first { $0.recordID == head.recordID })
         record[IndexPage.key] = Data([0x7b, 0x00])
 
@@ -130,6 +148,7 @@ struct VectorIndexTests {
                         aggregate: counting.name,
                         group: "book",
                         shard: nil,
+                        part: 0,
                         week: noon.weekStart
                     )
                 ]
@@ -140,7 +159,7 @@ struct VectorIndexTests {
 
     @Test("A read of an aggregate nothing has written leaves the head behind for the next one")
     func readSeedsTheMissingHead() async throws {
-        let head = VectorIndex(entity: "payment", aggregate: counting.name, week: nil)
+        let head = VectorIndex(entity: "payment", aggregate: counting.name)
 
         let rows = try await VectorReader(database: database, definition: payment, aggregate: counting)
             .rows(groups: nil)
@@ -162,8 +181,8 @@ struct VectorIndexTests {
 
         _ = try await VectorReader(database: database, definition: payment, aggregate: counting).rows(groups: nil)
 
-        #expect(page(week: nil).weeks == [noon.weekStart.millisecondsSince1970])
-        #expect(page(week: noon.weekStart).groups == ["app"])
+        #expect(head.weeks == [noon.weekStart.millisecondsSince1970])
+        #expect(groups(week: noon.weekStart) == ["app"])
     }
 
     @Test("A fold reads every group the index names")
@@ -176,5 +195,65 @@ struct VectorIndexTests {
 
         #expect(rows.keys.sorted() == ["app", "book", "toy"])
         #expect(rows.values.reduce(0, +) == 3)
+    }
+
+    @Test("An aggregate without parts keeps one page per week")
+    func unsplitAggregateWritesOnePage() async throws {
+        try await aggregator().rebalance(old: [], new: payments(products))
+
+        #expect(page(week: noon.weekStart, part: 0).groups == products.sorted())
+        #expect((1..<8).allSatisfy { page(week: noon.weekStart, part: $0).groups.isEmpty })
+    }
+
+    @Test("A week's groups spread over the aggregate's parts by name")
+    func groupsSpreadOverParts() async throws {
+        try await aggregator(spread).rebalance(old: [], new: payments(products))
+
+        let pages = (0..<spread.partCount).map { page(week: noon.weekStart, part: $0).groups }
+
+        #expect(pages.filter { !$0.isEmpty }.count > 1)
+        for (part, named) in pages.enumerated() {
+            #expect(named.allSatisfy { $0.bucket(count: spread.partCount) == part })
+        }
+        #expect(groups(week: noon.weekStart, parts: spread.partCount) == products.sorted())
+    }
+
+    @Test("Raising the parts keeps the page written before them readable")
+    func unsplitPageIsRead() async throws {
+        let product = try #require(offPart)
+
+        try await aggregator().rebalance(old: [], new: payments([product]))
+
+        let rows = try await VectorReader(database: database, definition: payment, aggregate: spread)
+            .rows(groups: nil)
+            .vectorRows(kind: .sum)
+
+        #expect(rows == [product: 1])
+    }
+
+    @Test("A group named in the old page and in its part is counted once")
+    func overlappingPagesCountOnce() async throws {
+        let product = try #require(offPart)
+
+        try await aggregator().rebalance(old: [], new: payments([product]))
+        try await aggregator(spread).rebalance(old: [], new: payments([product]))
+
+        #expect(page(week: noon.weekStart, part: 0).groups == [product])
+        #expect(page(week: noon.weekStart, part: product.bucket(count: spread.partCount)).groups == [product])
+
+        let rows = try await VectorReader(database: database, definition: payment, aggregate: spread)
+            .rows(groups: nil)
+            .vectorRows(kind: .sum)
+
+        #expect(rows == [product: 2])
+    }
+
+    @Test("The first part keeps the name the week page had before the parts")
+    func firstPartKeepsItsName() {
+        let week = noon.weekStart
+        let index = VectorIndex(entity: "payment", aggregate: counting.name, week: week, part: 0)
+        let components = ["payment", counting.name, String(week.millisecondsSince1970)]
+
+        #expect(index.recordID.recordName == "index-" + contentDigest(components: components))
     }
 }

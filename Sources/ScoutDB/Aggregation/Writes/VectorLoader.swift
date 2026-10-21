@@ -8,47 +8,37 @@
 import CloudKit
 import Foundation
 
+struct PendingVector {
+    var record: CKRecord
+    let delta: VectorDelta
+    let slot: VectorSlot
+}
+
 struct VectorLoader {
     let database: any CloudDatabase
     let slots: VectorCache
 
-    struct Pending {
-        var record: CKRecord
-        let delta: VectorDelta
-        let slot: VectorSlot
-    }
-
     struct Opened {
-        let pending: [CKRecord.ID: Pending]
+        let pending: [CKRecord.ID: PendingVector]
         let cold: [VectorSlot]
     }
 
     func open(deltas: Deltas) async throws -> Opened {
-        var pending: [CKRecord.ID: Pending] = [:]
-        var cold: [(id: CKRecord.ID, slot: VectorSlot, delta: VectorDelta)] = []
+        let served = try await slots.records(ids: deltas.keys.map(\.recordID), database: database)
+
+        var pending: [CKRecord.ID: PendingVector] = [:]
+        var cold: [VectorSlot] = []
 
         for (slot, delta) in deltas {
             let id = slot.recordID
+            let record = served.records[id] ?? CKRecord(recordType: VectorSlot.recordType, recordID: id)
+            pending[id] = PendingVector(record: record, delta: delta, slot: slot)
 
-            if let cached = await slots.record(id: id) {
-                pending[id] = Pending(record: cached, delta: delta, slot: slot)
-            } else {
-                cold.append((id, slot, delta))
+            if served.cold.contains(id) {
+                cold.append(slot)
             }
         }
 
-        var served: [CKRecord.ID: CKRecord] = [:]
-        let ids = cold.map(\.id).sorted { $0.recordName < $1.recordName }
-
-        for record in try await database.fetchRecords(ids: ids, batchSize: maxBatchSize) {
-            served[record.recordID] = record
-        }
-
-        for (id, slot, delta) in cold {
-            let record = served[id] ?? CKRecord(recordType: VectorSlot.recordType, recordID: id)
-            pending[id] = Pending(record: record, delta: delta, slot: slot)
-        }
-
-        return Opened(pending: pending, cold: cold.map(\.slot))
+        return Opened(pending: pending, cold: cold)
     }
 }

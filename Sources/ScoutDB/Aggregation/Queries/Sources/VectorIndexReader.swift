@@ -15,7 +15,7 @@ struct VectorIndexReader {
 
     var head: IndexPage {
         get async throws {
-            let index = VectorIndex(entity: entity, aggregate: aggregate.name, week: nil)
+            let index = VectorIndex(entity: entity, aggregate: aggregate.name)
 
             guard let record = try await database.fetchRecord(id: index.recordID) else {
                 let empty = IndexPage(weeks: [], groups: [])
@@ -28,12 +28,23 @@ struct VectorIndexReader {
     }
 
     func keys(weeks: [Date]) async throws -> [VectorKey] {
-        let pages = weeks.map { VectorIndex(entity: entity, aggregate: aggregate.name, week: $0) }
-        let named = Dictionary(uniqueKeysWithValues: zip(pages.map(\.recordID), weeks))
+        var named: [CKRecord.ID: Date] = [:]
 
-        let ids = named.keys.sorted { $0.recordName < $1.recordName }
+        for week in weeks {
+            for part in 0..<aggregate.partCount {
+                let index = VectorIndex(
+                    entity: entity,
+                    aggregate: aggregate.name,
+                    week: week,
+                    part: part
+                )
+                named[index.recordID] = week
+            }
+        }
 
-        return try await database.fetchRecords(ids: ids, batchSize: maxBatchSize).flatMap { record -> [VectorKey] in
+        let pages = try await database.fetchRecords(ids: Array(named.keys), batchSize: maxBatchSize)
+
+        return try pages.flatMap { record -> [VectorKey] in
             guard let week = named[record.recordID] else {
                 return []
             }

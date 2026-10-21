@@ -34,6 +34,12 @@ actor VectorCache {
         evict()
     }
 
+    func keep(records: [CKRecord]) {
+        for record in records {
+            keep(record: record)
+        }
+    }
+
     private func tick() -> Int64 {
         clock += 1
         return clock

@@ -20,6 +20,7 @@ extension InMemoryDatabase {
             aggregate: aggregate,
             group: group,
             shard: shard,
+            part: 0,
             week: week
         )
         return records.first { $0.recordID == slot.recordID }

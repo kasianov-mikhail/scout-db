@@ -25,7 +25,7 @@ struct VectorIndexWriter {
     }
 
     private func merge(pending: inout [VectorIndex: IndexPage]) async throws {
-        let ids = pending.keys.map(\.recordID).sorted { $0.recordName < $1.recordName }
+        let ids = pending.keys.map(\.recordID)
         let fetched = try await database.fetchRecords(ids: ids, batchSize: maxBatchSize)
         let stored = Dictionary(uniqueKeysWithValues: fetched.map { ($0.recordID, $0) })
 
