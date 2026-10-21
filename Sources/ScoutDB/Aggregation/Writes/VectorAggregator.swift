@@ -18,26 +18,29 @@ struct VectorAggregator {
             return
         }
 
-        let heads = HeadPages(database: database, slots: slots)
-        let plans = try await heads.plans(entity: entity, aggregates: aggregates)
+        let ids = aggregates.map { VectorIndex(entity: entity, aggregate: $0.name).recordID }
+        let heads = try await slots.records(ids: ids, database: database)
+        await slots.keep(records: heads.fetched)
 
-        let deltas = aggregates.deltas(
-            old: old,
-            new: new,
-            now: Date(),
-            spread: plans
+        let layout = ShardLayout(
+            zip(aggregates, ids).map { aggregate, id in
+                ShardPlan(aggregate: aggregate, head: heads.records[id]?.indexPage)
+            }
         )
 
-        let loader = VectorLoader(database: database, slots: slots)
-        let opened = try await loader.open(deltas: deltas)
-        let writer = VectorIndexWriter(database: database)
+        let deltas = layout.deltas(old: old, new: new, now: Date())
+        let opened = try await open(deltas: deltas)
 
-        try await writer.write(wanted: opened.cold.indexPages)
+        try await database.write(wanted: opened.cold.indexPages)
 
-        let saver = VectorSaver(database: database, slots: slots)
-        let outcome = try await saver.save(pending: opened.pending)
+        let outcome = try await save(pending: opened.pending)
+        let raised = layout.raised(lost: outcome.lost)
 
-        try await heads.raise(pages: plans.raised(lost: outcome.lost))
+        try await database.write(wanted: raised)
+
+        for index in raised.keys {
+            await slots.forget(id: index.recordID)
+        }
 
         if let stranded = outcome.stranded {
             throw RecordConflictError(serverRecord: stranded)

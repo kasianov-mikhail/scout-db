@@ -50,7 +50,7 @@ struct RecordFold {
         )
         .records()
 
-        return [aggregate].deltas(old: [], new: records, now: since, spread: [:])
+        return ShardLayout([ShardPlan(aggregate: aggregate, head: nil)]).deltas(old: [], new: records, now: since)
             .filter {
                 slot, _ in groups?.contains(slot.group) ?? true
             }
