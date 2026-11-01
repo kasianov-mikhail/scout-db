@@ -5,3 +5,4 @@ xcuserdata/
 Tests/ScoutDBTestHost/ScoutDBTestHost.xcodeproj/
 Tests/ScoutDBTestHost/Info.plist
 Tests/ScoutDBTestHost/ScoutDBTestHost.entitlements
+.agents/
