@@ -17,6 +17,7 @@ extension CKRecord {
 
     /// The tag a conditional save compares against, or the one the double
     /// stamped.
+    ///
     public var recordVersionTag: String? {
         overrides.changeTag ?? recordChangeTag
     }
@@ -28,6 +29,7 @@ extension CKRecord {
 
     /// Stamps the version a conditional save compares against, standing in for
     /// the tag the server bumps on every write.
+    ///
     public func overrideChangeTag(_ tag: String) {
         overrides.changeTag = tag
     }

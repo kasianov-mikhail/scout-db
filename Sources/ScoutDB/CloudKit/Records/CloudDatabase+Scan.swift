@@ -14,22 +14,22 @@ extension CloudDatabase {
 
         var collected: [EntityRecord] = []
         var page = min(limit == Int.max ? limit : limit + 1, ceiling)
-        var (batch, token) = try await records(
+        var result = try await records(
             matching: plan.query,
             desiredKeys: plan.desiredKeys,
             resultsLimit: page
         )
 
         while true {
-            collected += try batch.map { try decoder.decode(record: $0.1.get()) }.filter(plan.includes)
+            collected += try result.matchResults.map { try decoder.decode(record: $0.1.get()) }.filter(plan.includes)
 
-            guard collected.count < limit, let cursor = token else {
+            guard collected.count < limit, let cursor = result.queryCursor else {
                 break
             }
 
             page = page < Int.max / 2 ? min(page * 2, ceiling) : page
 
-            (batch, token) = try await records(
+            result = try await records(
                 continuingMatchFrom: cursor,
                 desiredKeys: plan.desiredKeys,
                 resultsLimit: page

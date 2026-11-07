@@ -12,9 +12,7 @@ import ScoutDBTesting
 @testable import ScoutDB
 
 extension InMemoryDatabase {
-    func vector(
-        _ entity: String, _ aggregate: String, group: String = "", week: Date, shard: Int? = nil
-    ) -> CKRecord? {
+    func vector(_ entity: String, _ aggregate: String, group: String = "", week: Date, shard: Int? = nil) -> CKRecord? {
         let slot = VectorSlot(
             entity: entity,
             aggregate: aggregate,
@@ -26,9 +24,7 @@ extension InMemoryDatabase {
         return records.first { $0.recordID == slot.recordID }
     }
 
-    func shards(
-        _ entity: String, _ aggregate: String, group: String = "", week: Date, over count: Int
-    ) -> [CKRecord] {
+    func shards(_ entity: String, _ aggregate: String, group: String = "", week: Date, over count: Int) -> [CKRecord] {
         (0..<count).compactMap { vector(entity, aggregate, group: group, week: week, shard: $0) }
     }
 

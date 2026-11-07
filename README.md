@@ -135,7 +135,7 @@ let revenue = try await store.query("purchase")
 
 let lastWeek = Date.now.addingTimeInterval(-7 * 24 * 3600)..<Date.now
 let hourly = try await store.query("purchase")
-    .series("amount", metric: .sum, group: "product_id", in: lastWeek)
+    .series("amount", metric: .sum, group: "product_id", range: lastWeek)
 ```
 
 ## Testing without a container

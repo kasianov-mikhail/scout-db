@@ -61,7 +61,7 @@ struct CoverageTests {
         try await write("t-4", queue: "a", weight: 11, date: later)
 
         let points = try await store.query("ticket")
-            .series("weight", metric: .sum, group: "queue", in: morning.weekStart..<later.hour(index: 1))
+            .series("weight", metric: .sum, group: "queue", range: morning.weekStart..<later.hour(index: 1))
 
         #expect(
             points == [

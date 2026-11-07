@@ -114,6 +114,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
 
     /// Drops the tally so the next call starts a fresh budget, leaving the
     /// stored records where they are.
+    ///
     public func resetRequests() {
         lock.withLock { state.tally = RequestTally() }
     }
@@ -149,6 +150,7 @@ public final class InMemoryDatabase: CloudDatabase, @unchecked Sendable {
     /// Caps every response page the way the CloudKit server does, so tests can
     /// force multi-page reads even for requests made at
     /// `CKQueryOperation.maximumResults`. `nil` leaves only `resultsLimit` in effect.
+    ///
     public var pageLimit: Int? {
         get { lock.withLock { state.pageLimit } }
         set { lock.withLock { state.pageLimit = newValue } }

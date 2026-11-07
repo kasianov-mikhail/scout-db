@@ -113,7 +113,17 @@ public enum QueryCursor: @unchecked Sendable {
 /// One page of a query: the matched records in order, and the cursor that
 /// continues the read when more remain.
 ///
-public typealias QueryPage = (
-    matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)],
-    queryCursor: QueryCursor?
-)
+public struct QueryPage {
+    /// The records this page matched, each carrying its own result.
+    public let matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)]
+
+    /// The token that continues the read, or `nil` when this is the last page.
+    public let queryCursor: QueryCursor?
+
+    /// Creates a page from the records a request matched and the cursor that continues it.
+    ///
+    public init(matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: QueryCursor?) {
+        self.matchResults = matchResults
+        self.queryCursor = queryCursor
+    }
+}

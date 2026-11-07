@@ -15,12 +15,9 @@ struct ShardLayoutDeltasTests {
     private let noon = Date(timeIntervalSince1970: 36_000)
     private let nextWeek = Date(timeIntervalSince1970: 36_000 + 7 * 86_400)
 
-    private func payment(
-        _ uuid: String,
-        product: String = "app",
-        amount: Double? = 1,
-        date: Date? = nil
-    ) -> EntityRecord {
+    private func payment(_ uuid: String, product: String = "app", amount: Double? = 1, date: Date? = nil)
+        -> EntityRecord
+    {
         var values: [String: RecordValue] = ["product": .string(product)]
         if let amount {
             values["amount"] = .double(amount)

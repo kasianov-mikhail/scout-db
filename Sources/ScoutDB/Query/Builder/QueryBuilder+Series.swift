@@ -25,13 +25,13 @@ extension QueryBuilder {
     ///
     /// ```swift
     /// let revenue = try await store.query("purchase")
-    ///     .series("amount", metric: .sum, group: "product_id", in: week)
+    ///     .series("amount", metric: .sum, group: "product_id", range: week)
     /// // [SeriesPoint(group: "sku-42", date: ..., value: 481.62), ...]
     /// ```
     ///
-    public func series(
-        _ field: String? = nil, metric: Metric, group: String? = nil, in range: Range<Date>
-    ) async throws -> [SeriesPoint] {
+    public func series(_ field: String? = nil, metric: Metric, group: String? = nil, range: Range<Date>) async throws
+        -> [SeriesPoint]
+    {
         let cells = try await cells
 
         guard metric == .average, let field else {

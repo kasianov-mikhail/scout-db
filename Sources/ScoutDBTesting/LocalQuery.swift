@@ -42,7 +42,7 @@ struct LocalQuery {
             ? .local(Scan(query: query, remaining: matched.dropFirst(end).map(\.recordID)))
             : nil
 
-        return (page.map { ($0.recordID, .success($0)) }, cursor)
+        return QueryPage(matchResults: page.map { ($0.recordID, .success($0)) }, queryCursor: cursor)
     }
 
     func resume(cursor: QueryCursor) -> QueryPage? {
@@ -67,7 +67,7 @@ struct LocalQuery {
         let rest = remaining.dropFirst(index)
         let next: QueryCursor? = rest.isEmpty ? nil : .local(Scan(query: scan.query, remaining: Array(rest)))
 
-        return (served, next)
+        return QueryPage(matchResults: served, queryCursor: next)
     }
 }
 
