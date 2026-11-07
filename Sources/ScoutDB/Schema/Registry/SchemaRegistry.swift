@@ -47,6 +47,7 @@ public actor SchemaRegistry {
     /// The entity's schema as a caller sees it: the fields a write may carry
     /// and the rules over them, without the storage the library keeps to
     /// itself.
+    ///
     public func schema(for entity: String) async throws -> EntitySchema {
         EntitySchema(definition: try await definition(entity: entity))
     }

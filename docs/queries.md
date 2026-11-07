@@ -19,7 +19,7 @@ let recent = try await store.query("purchase")
 | `first()` | The first matching record in sort order, or `nil`. |
 | `page(size:after:)` | One keyset page and a cursor to the next one. |
 | `count()`, `sum(_:)`, `min(_:)`, `max(_:)`, `average(_:)` | A number read from an aggregate. See [Aggregates](aggregates.md). |
-| `totals(_:metric:group:)`, `series(_:metric:group:in:)`, `percentile(_:of:)` | Aggregate reads. See [Aggregates](aggregates.md). |
+| `totals(_:metric:group:)`, `series(_:metric:group:range:)`, `percentile(_:of:)` | Aggregate reads. See [Aggregates](aggregates.md). |
 
 ## Filters
 

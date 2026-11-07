@@ -63,7 +63,7 @@ struct SeriesQueryTests {
 
     @Test("Each hour a group wrote in comes back as its own point")
     func pointsPerHour() async throws {
-        let points = try await store.query("payment").series("amount", metric: .sum, group: "product", in: week)
+        let points = try await store.query("payment").series("amount", metric: .sum, group: "product", range: week)
 
         #expect(
             points == [
@@ -76,7 +76,7 @@ struct SeriesQueryTests {
 
     @Test("The points of a group sum to the total folded over the same vector")
     func pointsFoldToTheTotal() async throws {
-        let points = try await store.query("payment").series("amount", metric: .sum, group: "product", in: week)
+        let points = try await store.query("payment").series("amount", metric: .sum, group: "product", range: week)
         let totals = try await store.query("payment").totals("amount", metric: .sum, group: "product")
 
         for total in totals {
@@ -87,7 +87,7 @@ struct SeriesQueryTests {
 
     @Test("Counting alone needs no metric field")
     func countingPoints() async throws {
-        let points = try await store.query("payment").series(metric: .sum, group: "product", in: week)
+        let points = try await store.query("payment").series(metric: .sum, group: "product", range: week)
 
         #expect(points.map(\.group) == ["app", "pro", "app"])
         #expect(points.map(\.value) == [1, 1, 1])
@@ -95,14 +95,15 @@ struct SeriesQueryTests {
 
     @Test("An hour nothing wrote in has no point rather than a zero")
     func gapsStayGaps() async throws {
-        let points = try await store.query("payment").series("amount", metric: .sum, group: "product", in: week)
+        let points = try await store.query("payment").series("amount", metric: .sum, group: "product", range: week)
         #expect(points.count == 3)
     }
 
     @Test("A range narrows the points to the hours it covers")
     func rangeNarrowsPoints() async throws {
         let points = try await store.query("payment").series(
-            "amount", metric: .sum, group: "product", in: evening..<week.upperBound)
+            "amount", metric: .sum, group: "product", range: evening..<week.upperBound
+        )
 
         #expect(points == [SeriesPoint(group: "app", date: evening, value: 15)])
     }
@@ -110,7 +111,7 @@ struct SeriesQueryTests {
     @Test("A range the vectors miss entirely comes back empty")
     func rangeOutsideTheWeek() async throws {
         let next = week.upperBound..<week.upperBound.hour(index: Date.hoursPerWeek)
-        let points = try await store.query("payment").series("amount", metric: .sum, group: "product", in: next)
+        let points = try await store.query("payment").series("amount", metric: .sum, group: "product", range: next)
 
         #expect(points.isEmpty)
     }
@@ -119,7 +120,7 @@ struct SeriesQueryTests {
     func filterNarrowsToOneGroup() async throws {
         let points = try await store.query("payment")
             .filter("product", .equals, .string("app"))
-            .series("amount", metric: .sum, group: "product", in: week)
+            .series("amount", metric: .sum, group: "product", range: week)
 
         #expect(points.map(\.group) == ["app", "app"])
     }
@@ -129,7 +130,8 @@ struct SeriesQueryTests {
         try await write(("app", 25, noon))
 
         let points = try await store.query("payment").series(
-            "amount", metric: .average, group: "product", in: week)
+            "amount", metric: .average, group: "product", range: week
+        )
 
         #expect(
             points == [
@@ -145,14 +147,14 @@ struct SeriesQueryTests {
         await #expect(throws: SchemaError.self) {
             try await store.query("payment")
                 .filter("amount" > 10)
-                .series("amount", metric: .sum, group: "product", in: week)
+                .series("amount", metric: .sum, group: "product", range: week)
         }
     }
 
     @Test("A shape no vector covers says so")
     func missingShapeThrows() async throws {
         await #expect(throws: SchemaError.self) {
-            try await store.query("payment").series("amount", metric: .sum, group: "missing", in: week)
+            try await store.query("payment").series("amount", metric: .sum, group: "missing", range: week)
         }
     }
 }

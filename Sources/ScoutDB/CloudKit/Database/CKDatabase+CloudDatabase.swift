@@ -17,10 +17,10 @@ extension CKDatabase: CloudDatabase {
                     desiredKeys: desiredKeys,
                     resultsLimit: resultsLimit
                 )
-                return (results, cursor.map(QueryCursor.cloudKit))
+                return QueryPage(matchResults: results, queryCursor: cursor.map(QueryCursor.cloudKit))
             }
         } catch let error as CKError where error.code == .unknownItem {
-            return ([], nil)
+            return QueryPage(matchResults: [], queryCursor: nil)
         }
     }
 
@@ -116,6 +116,6 @@ extension CKDatabase: CloudDatabase {
                         continuation.resume(with: result)
                     }
                 }
-        return (results, next.map(QueryCursor.cloudKit))
+        return QueryPage(matchResults: results, queryCursor: next.map(QueryCursor.cloudKit))
     }
 }

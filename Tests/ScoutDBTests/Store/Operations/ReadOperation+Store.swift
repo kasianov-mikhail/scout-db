@@ -8,8 +8,6 @@
 @testable import ScoutDB
 
 extension ReadOperation {
-    /// A read over the entity's current schema, for tests that drive the
-    /// operation directly instead of going through a query builder.
     init(store: EntityStore, entity: String, branches: [[ClientFilter]] = [[]], sort: [EntityStore.Sort] = [])
         async throws
     {

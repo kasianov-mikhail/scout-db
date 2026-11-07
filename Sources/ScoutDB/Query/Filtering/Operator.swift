@@ -9,6 +9,7 @@ import Foundation
 
 /// The comparison a filter asks of a field, on the server and on the client alike:
 /// every case maps to a CloudKit predicate the store can also decide locally.
+///
 public enum Operator: CaseIterable, Sendable {
     case equals
     case notEquals

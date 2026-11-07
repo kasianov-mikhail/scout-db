@@ -194,8 +194,7 @@ struct EntityDefinitionTests {
 }
 
 func makeDefinition(
-    entity: String = "purchase", version: Int = 2, fields: [FieldDefinition],
-    aggregates: [AggregateDefinition] = []
+    entity: String = "purchase", version: Int = 2, fields: [FieldDefinition], aggregates: [AggregateDefinition] = []
 ) -> EntityDefinition {
     EntityDefinition(entity: entity, version: version, fields: fields, aggregates: aggregates)
 }

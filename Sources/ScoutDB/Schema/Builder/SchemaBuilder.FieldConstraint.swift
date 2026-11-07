@@ -22,11 +22,13 @@ extension SchemaBuilder {
     public enum FieldConstraint: Sendable {
         /// Rejects a write that leaves the field without a value, once the
         /// default has been applied.
+        ///
         case required
 
         /// Keeps the field out of the typed pools, in a payload slot of its
         /// own: sixteen of those exist per entity, and a value in one lies
         /// beyond the server's filters and sorts.
+        ///
         case payload
 
         /// The closed set of strings every value of the field must come from.
@@ -42,10 +44,12 @@ extension SchemaBuilder {
         /// domain of an integer field an aggregate groups by. So a version may
         /// widen it or drop it, and ``SchemaBuilder/update()`` refuses to narrow
         /// it over records already written outside the narrower range.
+        ///
         case min(Double)
 
         /// The inclusive upper bound every numeric scalar must stay under,
         /// widenable across versions but not narrowable as in ``min(_:)``.
+        ///
         case max(Double)
 
         /// A regular expression every value of the field must match whole.
@@ -54,6 +58,7 @@ extension SchemaBuilder {
         /// Keeps the field out of the vectors a creation builds: nothing counts by
         /// it, and no write pays for its cells. For the fields of many distinct
         /// values — a uuid, a free-form string — that no read groups by.
+        ///
         case ungrouped
     }
 }

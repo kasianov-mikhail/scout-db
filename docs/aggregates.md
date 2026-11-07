@@ -144,14 +144,14 @@ let orders = try await store.query("purchase")
 
 ## Series
 
-`series(_:metric:group:in:)` returns one `SeriesPoint` per group and hour in a date range.
+`series(_:metric:group:range:)` returns one `SeriesPoint` per group and hour in a date range.
 
 ```swift
 let now = Date.now
 let lastWeek = now.addingTimeInterval(-7 * 24 * 3600)..<now
 
 let hourly = try await store.query("purchase")
-    .series("amount", metric: .sum, group: "product_id", in: lastWeek)
+    .series("amount", metric: .sum, group: "product_id", range: lastWeek)
 ```
 
 - An hour is the finest resolution. Roll the points up into days or weeks on the client.
