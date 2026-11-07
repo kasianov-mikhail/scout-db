@@ -113,7 +113,7 @@ public enum QueryCursor: @unchecked Sendable {
 /// One page of a query: the matched records in order, and the cursor that
 /// continues the read when more remain.
 ///
-public struct QueryPage {
+public struct QueryPage: Sendable {
     /// The records this page matched, each carrying its own result.
     public let matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)]
 
