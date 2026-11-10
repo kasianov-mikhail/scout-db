@@ -29,7 +29,7 @@ extension QueryBuilder {
     /// // [SeriesPoint(group: "sku-42", date: ..., value: 481.62), ...]
     /// ```
     ///
-    public func series(_ field: String? = nil, metric: Metric, group: String? = nil, range: Range<Date>) async throws
+    public func series(_ field: String? = nil, metric: Metric, group: String?, range: Range<Date>) async throws
         -> [SeriesPoint]
     {
         let cells = try await cells

@@ -7,7 +7,6 @@
 
 import CloudKit
 import Foundation
-import ScoutDBTesting
 import Testing
 
 @testable import ScoutDB
