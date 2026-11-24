@@ -187,8 +187,7 @@ struct PercentileTests {
             try definition(AggregateDefinition(histogram: "latency", bounds: [10, 10], group: nil, date: nil))
                 .validate()
         }
-        #expect(throws: SchemaError.invalidDefinition(.nonNumericMetric(aggregate: "histogram_route", field: "route")))
-        {
+        #expect(throws: SchemaError.invalidDefinition(.nonNumericMetric(aggregate: "histogram_route", field: "route"))) {
             try definition(AggregateDefinition(histogram: "route", bounds: [10], group: nil, date: nil)).validate()
         }
     }
