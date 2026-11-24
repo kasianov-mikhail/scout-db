@@ -109,13 +109,12 @@ extension CKDatabase: CloudDatabase {
     }
 
     private func page(cursor: CKQueryOperation.Cursor, keys: [String]?, limit: Int) async throws -> QueryPage {
-        let (results, next):
-            (matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?) =
-                try await withCheckedThrowingContinuation { continuation in
-                    fetch(withCursor: cursor, desiredKeys: keys, resultsLimit: limit) { result in
-                        continuation.resume(with: result)
-                    }
+        let (results, next): (matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?) =
+            try await withCheckedThrowingContinuation { continuation in
+                fetch(withCursor: cursor, desiredKeys: keys, resultsLimit: limit) { result in
+                    continuation.resume(with: result)
                 }
+            }
         return QueryPage(matchResults: results, queryCursor: next.map(QueryCursor.cloudKit))
     }
 }
